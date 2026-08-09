@@ -9,12 +9,23 @@ When the OPEN BANKING phase begins, this document is the starting point for the 
 
 ## Current Status (August 2026)
 
-> **Corrected August 2026 — see [ADR-028](DECISIONS.md#adr-028).** Earlier versions of this document
-> stated that the **Bank of Israel** regulates financial information services and maintains the
-> provider register. **That was wrong.** Licensing and supervision sit with the **Israel Securities
-> Authority (רשות ניירות ערך / ISA)** under **חוק שירות מידע פיננסי, תשפ"ב-2021**.
+> ## ⛔ LEGAL / COMPLIANCE GATE
+>
+> **No work in this document begins — not a spike, not a prototype, not an aggregator trial — until
+> Israeli fintech counsel has confirmed the licensing route in writing.**
+> See [ADR-028](DECISIONS.md#adr-028).
+>
+> **The applicable regulator and licence class depend on entity type and activity.** Supervision is
+> split: the **ISA** licenses financial information service providers; the **Bank of Israel**
+> supervises data sources and payment systems; the **Capital Market Authority** covers the non-bank
+> sector including pension and insurance. Read-only aggregation, advice and payment initiation are
+> **different activities** and may sit under different regimes.
+>
+> This document has twice named a single regulator with unwarranted confidence — first the Bank of
+> Israel (wrong), then the ISA (a simplification). **Neither this document nor any other in this
+> repository establishes our licensing path. Only counsel does.**
 
-**The regime is live, and it is a licensing gate, not just a technical one.**
+**The regime is live, and the binding constraint is legal rather than technical.**
 [VERIFIED — ISA API report, published 26 Apr 2026]
 
 | Metric (through 31 Dec 2025) | Value |
@@ -40,17 +51,20 @@ ISA's API-call breakdown. Pension data moves through the separate **מסלקה �
 That is a **different integration with a different approval path** ([Q14](DECISIONS.md#open-questions)),
 not something that arrives with open banking.
 
-**Two hard prerequisites before this phase has any value:**
-1. **An ISA licence** ([Q13](DECISIONS.md#open-questions)). Without it, connecting to Israeli banks
-   is unlawful, not merely unbuilt.
+**Three hard prerequisites before this phase has any value, in order:**
+
+1. **A written legal opinion on the licensing route** ([Q13](DECISIONS.md#open-questions)) — which
+   authority, which licence class, for our entity type and our intended activity. Everything else is
+   downstream of this.
 2. **A legal answer on household aggregation** ([Q16](DECISIONS.md#open-questions)). Open-banking
    consent is **per-individual** — each customer authorises reading *their own* accounts. Merging two
    individually-consented views into one household ledger happens at our layer, and whether that is
-   permitted under the licence terms is unresolved.
+   permitted is unresolved. **Our entire product thesis depends on the answer.**
+3. **A licence in hand**, or a contractual route through a licensed party.
 
-Until then the bridge strategy would be a licensed aggregator or screen-scraping via a partner —
-both of which still require the licence. [Q4](DECISIONS.md#open-questions) is downstream of
-[Q13](DECISIONS.md#open-questions).
+Until all three are satisfied, any bridge strategy — a licensed aggregator, or screen-scraping via a
+partner — is equally gated. [Q4](DECISIONS.md#open-questions) (which aggregator) is downstream of
+[Q13](DECISIONS.md#open-questions) (which licence), which is downstream of counsel.
 
 ---
 

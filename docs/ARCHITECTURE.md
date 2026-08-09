@@ -30,6 +30,7 @@ Five rules hold across every phase. Everything else in this document follows fro
 | 3 | Deterministic engines compute financial figures. AI only explains them. | [ADR-012](DECISIONS.md#adr-012) |
 | 4 | Domain logic emits events. It never calls a delivery channel. | [ADR-013](DECISIONS.md#adr-013), [ADR-014](DECISIONS.md#adr-014) |
 | 5 | Every externally-sourced financial fact carries versioned provenance. | [ADR-017](DECISIONS.md#adr-017) |
+| 6 | One transaction row = one movement of money. Never "a purchase". | [ADR-029](DECISIONS.md#adr-029) |
 
 ---
 
@@ -704,27 +705,49 @@ keeps four levels distinct so the shippable boundary can move as legal advice di
 
 ## Household composition and permissions (future)
 
-MVP: `role IN ('admin', 'member')`, and every member sees everything. Correct for two partners.
+**MVP:** `role IN ('admin', 'member')`, and **every member sees every row.** The UX offers two states
+— **shared** and **personal** — and those map to `is_shared`, which is **budget attribution, not
+visibility**.
 
-Future: a richer `member_type` (`adult_partner`, `adult_member`, `teen`, `child`, `dependent`,
-`advisor`) with per-type visibility policy. A teenager should see their own allowance and savings
-without seeing their parents' income or net worth.
+That is a deliberate simplification, **not a belief about what households want.** Whether Israeli
+couples want per-member privacy is [Q11](DECISIONS.md#open-questions) — a hypothesis to validate
+through user interviews *during* MVP, not a blocker for shipping it.
+
+### The two future axes
+
+They are independent and must not be conflated:
+
+| Axis | Future model | Storage |
+|---|---|---|
+| **Who is a member** | `member_type` — `adult_partner`, `adult_member`, `teen`, `child`, `dependent`, `advisor` | New column on `household_members`, defaulted |
+| **Who can see a row** | `visibility` — `household` / `private` / `selected` | New column on the financial table, defaulted to `household`, plus a grant table for `selected` |
+
+A teenager should see their own allowance without seeing their parents' income. That requires both
+axes: a `member_type` that says what they are, and a per-row `visibility` that says what they may
+see. Full schema in
+[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md#future-model--visibility-not-in-mvp).
 
 ### What makes this additive rather than a rewrite
 
 - `household_members` already supports N members with a `role` column — adding `member_type` with a
   default is a one-line migration.
 - All financial data is scoped by `household_id`, never by a pair of user columns.
-- RLS helpers are already function calls (`is_household_member`), so visibility rules extend inside
-  the function rather than across every policy.
+- **Authorization is a function call**, so visibility narrowing extends inside
+  `is_household_member()` rather than across forty policies. Today it answers *"is this user in this
+  household?"*; later it answers *"…and permitted to see this row?"*
+- Visibility is a **defaulted column**, so existing rows keep today's behaviour with no backfill.
 
 ### What MVP must not do
 
-- Assume exactly two members anywhere — schema, queries, UI logic, or copy in code comments.
-- Write an RLS policy that reads as "all members see all rows" in a way that cannot be narrowed.
+- Assume exactly two members anywhere — schema, queries, UI logic, or code comments.
+- **Overload `is_shared` to mean visibility.** It is budget attribution only. Overloading it is the
+  single most likely way to foreclose this ([ADR-029](DECISIONS.md#adr-029)).
+- Add a `visibility` column, grant table, or per-member filtering. Not yet.
+- Inline authorization logic into individual policies where it cannot later be narrowed.
 - Store user-scoped financial data outside a `household_id` scope.
 
-See [ADR-019](DECISIONS.md#adr-019) and [PRODUCT_VISION.md §6](PRODUCT_VISION.md#6-household-composition-and-permissions-future).
+See [ADR-019](DECISIONS.md#adr-019), [ADR-029](DECISIONS.md#adr-029) and
+[PRODUCT_VISION.md §6](PRODUCT_VISION.md#6-household-composition-and-permissions-future).
 
 ---
 

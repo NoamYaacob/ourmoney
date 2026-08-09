@@ -38,9 +38,13 @@ PRODUCT_VISION.md or FEATURES.md enters this phase. See [ADR-021](docs/DECISIONS
 >   visible* rules are Weak or Absent across the entire market.
 > - **Two real logins per household is already a structural advantage.** Only one Israeli budgeting
 >   app has it.
-> - **The MVP must answer whether Israeli couples actually want per-member privacy**
->   ([Q11](docs/DECISIONS.md#open-questions)). The product's clearest long-term differentiator
->   depends on the answer, and desk research cannot supply it.
+> - **Per-member privacy is a hypothesis to validate during MVP, not a blocker for it**
+>   ([Q11](docs/DECISIONS.md#open-questions)). MVP ships two states — shared and personal — and full
+>   mutual visibility. Interview users while they use it. The schema is forward-compatible either way
+>   ([ADR-029](docs/DECISIONS.md#adr-029)), so the answer changes what we build **next**, not now.
+> - **Forward-compatibility is secured by invariants, not by unused columns**
+>   ([ADR-029](docs/DECISIONS.md#adr-029)). No installment, charge-date or visibility columns land in
+>   MVP. What must hold instead: **one transaction row = one movement of money**, never "a purchase".
 
 ## MVP-1 — Foundation & Auth
 
@@ -146,6 +150,9 @@ further desk research. See [docs/OUR_ADVANTAGES.md](docs/OUR_ADVANTAGES.md#what-
 - [ ] **Do Israeli couples want per-member privacy, or is full transparency the cultural norm?**
       Every Israeli product is fully transparent. That is either an unserved gap or a correct read
       of the market — and the difference decides how much of the long-term thesis survives.
+      **Validate by interviewing households while they use the MVP.** It does not gate shipping:
+      MVP ships full mutual visibility, and the schema supports either answer
+      ([ADR-029](docs/DECISIONS.md#adr-029)).
 - [ ] **Does the shared household model produce a felt reduction in money stress?** RiseUp's reviews
       credit exactly this. If OurMoney's model does not produce it, no downstream engine compensates.
 - [ ] **Does a transparent rules engine measurably reduce categorisation effort?**
@@ -203,10 +210,28 @@ Everything here works on data the MVP already has. No server, no bank connection
 
 **Goal.** Verified, automatic transaction data. This unlocks every intelligence phase that follows.
 
-**Entry conditions**
-- POST-MVP shipped
-- [Q4](docs/DECISIONS.md#open-questions) resolved — provider selected
-- Budget approved for provider fees
+> ## ⛔ LEGAL / COMPLIANCE GATE
+>
+> **No work in this phase begins — not a spike, not a prototype, not an aggregator trial — until
+> Israeli fintech counsel has confirmed the licensing route in writing.**
+> See [ADR-028](docs/DECISIONS.md#adr-028).
+>
+> The applicable regulator and licence class **depend on entity type and activity**. Read-only
+> aggregation, advice and payment initiation are different activities; bank, pension and insurance
+> data sit under different bodies. No document in this repository establishes our path — only
+> counsel does.
+
+**Entry conditions, in order**
+1. **Written legal opinion on the licensing route** ([Q13](docs/DECISIONS.md#open-questions)) —
+   which authority, which licence class, for our entity and our activity. **Everything else is
+   downstream of this.**
+2. **Legal answer on household aggregation** ([Q16](docs/DECISIONS.md#open-questions)) — whether
+   merging two individually-consented views into one household ledger is permitted.
+   **Our product thesis depends on the answer.**
+3. **Licence in hand**, or a contractual route through a licensed party
+4. POST-MVP shipped
+5. [Q4](docs/DECISIONS.md#open-questions) resolved — provider selected (downstream of 1)
+6. Budget approved for provider fees
 
 **This phase introduces the server layer.** See [ADR-003](docs/DECISIONS.md#adr-003) and
 [docs/OPEN_BANKING.md](docs/OPEN_BANKING.md).

@@ -54,24 +54,31 @@ international, has any of them. See [MARKET_RESEARCH.md §2](MARKET_RESEARCH.md)
 
 | Primitive | Status | Notes |
 |---|---|---|
-| **Installments (תשלומים) as a first-class object** | **[PROPOSED — needs approval]** | One purchase → N future obligations. **Proposal:** carry the columns in migration 001 so the most-referenced table is not remodelled later; UI and forecasting stay POST-MVP. **This is not currently in approved MVP scope** — see [Q18](DECISIONS.md#open-questions) |
-| **Charge-date vs transaction-date** | **[PROPOSED — needs approval]** | A card transaction on the 3rd may not debit the bank until the 10th of the following month. Same proposal and same open question as installments |
+| **Installments (תשלומים) as a first-class object** | [BLOCKED: cash-flow engine] | One purchase → N future obligations. **Not in MVP** ([ADR-029](DECISIONS.md#adr-029)). Future schema written out in [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md#future-model--installments-not-in-mvp) and proven purely additive |
+| **Charge-date vs transaction-date** | [BLOCKED: cash-flow engine] | A card transaction on the 3rd may not debit the bank until the 10th of the following month. **Not in MVP**; arrives with `card_statements` |
 | **Projected consolidated card charge** | [BLOCKED: cash-flow engine] | The number Israeli households actually need. Isracard's day-countdown is the only acknowledgement of it in the market |
 | **Overdraft (מסגרת אשראי) as a modelled state** | [BLOCKED: balance sheet] | Depth, cost, and exit path — not an exception alert |
 | **CPI (מדד) linkage on liabilities** | [BLOCKED: mortgage model] | Absent from every product researched |
 | **קרן השתלמות** | [BLOCKED: pension data] | No foreign equivalent; unmodellable by any imported product |
 
-**The proposal, stated precisely.** Add installment and charge-date columns to `transactions` in
-migration 001; compute nothing over them until a cash-flow engine exists. This follows the
-[ADR-006](DECISIONS.md#adr-006) reasoning — general model now, thin implementation now, no rewrite
-later — and the same logic that keeps `receipt_url` and `parent_id` in the MVP schema unused.
+### How these stay possible without being built — decided
 
-**It is a proposal, not a decision.** Approved MVP scope does not include it, no migration reflects
-it, and it would add columns to the most security-sensitive table in the system. The argument
-against is equally real: `transactions` is the table every RLS policy and every future migration
-touches, and speculative columns on it are not free.
+**No speculative columns.** [ADR-029](DECISIONS.md#adr-029) resolved this. Forward-compatibility is
+secured three ways instead:
 
-**Do not implement without explicit approval** ([Q18](DECISIONS.md#open-questions)).
+1. **Transaction identity invariants I1–I4**, held from migration 002 onward. The important one is
+   **I1: one row = one movement of money, never "a purchase."** A twelve-instalment purchase becomes
+   twelve rows linked to one plan. If a row meant "a purchase," installments would force redefining
+   every existing row — *that* is the expensive migration, and no column prevents it.
+2. **The future migration written out in full** —
+   [installments](DATABASE_SCHEMA.md#future-model--installments-not-in-mvp) and
+   [visibility](DATABASE_SCHEMA.md#future-model--visibility-not-in-mvp) — every change a new table or
+   a nullable column with a default.
+3. **Authorization in one helper function**, so visibility narrowing is a one-function change rather
+   than forty policy edits.
+
+**What MVP must actually do differently: nothing in the schema, one thing in the UI.** Encourage
+entering what hits the account, not the headline purchase price. That is copy, not scope.
 
 ## Accounts and financial position
 

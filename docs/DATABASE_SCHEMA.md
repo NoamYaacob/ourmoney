@@ -232,7 +232,12 @@ CREATE TABLE transactions (
   currency         TEXT        NOT NULL DEFAULT 'ILS',
   description      TEXT        NOT NULL,
   merchant_name    TEXT,
+  -- The date money moves for THIS ROW. Not the purchase date, not the statement
+  -- date. One row = one movement. See "Transaction identity" below.
   txn_date         DATE        NOT NULL,
+  -- BUDGET ATTRIBUTION ONLY. Does this count toward the household budget?
+  -- This is NOT a visibility flag and must never be used as one. See
+  -- "Visibility" below.
   is_shared        BOOLEAN     NOT NULL DEFAULT TRUE,
   payer_id         UUID        REFERENCES auth.users(id),
   note             TEXT,
@@ -245,6 +250,107 @@ CREATE TABLE transactions (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
+
+### Transaction identity — the invariants that keep future models additive
+
+`transactions` is the most-referenced table in the schema. Two capabilities we know are coming —
+**installments (תשלומים)** and **per-member visibility** — must be addable **without redefining what
+a transaction row means**. That requires holding four invariants from migration 002 onward. They cost
+nothing now and are expensive to retrofit.
+
+| # | Invariant | Why |
+|---|---|---|
+| **I1** | **One row = one movement of money at one point in time.** A row is *not* "a purchase" and *not* "a bill" | A 12-instalment purchase becomes 12 rows linked to one plan. If a row meant "a purchase", installments would force a redefinition of every existing row |
+| **I2** | **`id` is an opaque surrogate UUID, never derived from business fields, never reused** | A future `installment_plan_id` or `statement_id` FK points at rows that must remain stable |
+| **I3** | **`txn_date` has exactly one meaning: the date money moves for this row.** Not the purchase date, not the statement date | Charge-date modelling adds a *new* column later. If `txn_date` were overloaded now, its meaning would have to change — a data migration on every row |
+| **I4** | **No UNIQUE constraint on business fields** (merchant, amount, date). Deduplication is application logic over a scored match, not a database constraint | Twelve identical monthly instalments are legitimately near-identical rows. A unique constraint would reject correct data |
+
+**Also:** `is_shared` is budget attribution only, and `is_excluded` is user-driven exclusion only.
+Neither may be overloaded to mean visibility, installment status, or anything else. Overloading a
+boolean is how the next person is forced into a migration.
+
+### Future model — installments (NOT in MVP)
+
+Resolved by [Q18](DECISIONS.md#open-questions): **no installment columns in the MVP schema.**
+Recorded here so the shape is agreed before it is needed.
+
+```sql
+-- FUTURE. Does not exist. Do not create in MVP.
+
+-- One row per instalment purchase. The economic event.
+CREATE TABLE installment_plans (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  household_id       UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  account_id         UUID NOT NULL REFERENCES accounts(id),
+  merchant_name      TEXT,
+  description        TEXT NOT NULL,
+  total_agorot       BIGINT NOT NULL,
+  installment_count  INTEGER NOT NULL CHECK (installment_count > 0),
+  first_charge_date  DATE NOT NULL,
+  category_id        UUID REFERENCES categories(id),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Each instalment IS a transaction (I1). The link is one nullable FK.
+ALTER TABLE transactions
+  ADD COLUMN installment_plan_id UUID REFERENCES installment_plans(id),
+  ADD COLUMN installment_index   INTEGER;   -- 1..installment_count
+
+-- The aggregated monthly card charge Israeli households actually feel.
+CREATE TABLE card_statements (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  household_id   UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  account_id     UUID NOT NULL REFERENCES accounts(id),
+  period_start   DATE NOT NULL,
+  period_end     DATE NOT NULL,
+  charge_date    DATE NOT NULL,      -- when the bank account is actually debited
+  total_agorot   BIGINT NOT NULL
+);
+
+ALTER TABLE transactions
+  ADD COLUMN statement_id UUID REFERENCES card_statements(id);
+```
+
+**Why this is purely additive:** every change is a new table or a **nullable** column. No existing
+column changes meaning, no existing row is rewritten, no constraint tightens, and `transactions.id`
+keeps referential stability. Existing budget and dashboard queries continue to work unchanged
+because each instalment is already a normal transaction on its own `txn_date`.
+
+**What MVP must therefore avoid:** entering a 12-instalment purchase as one ₪12,000 transaction. In
+MVP the user enters what actually hits the account. Guidance belongs in the UI copy, not the schema.
+
+### Future model — visibility (NOT in MVP)
+
+Resolved by [ADR-029](DECISIONS.md#adr-029). MVP UX offers exactly two states — **shared** and
+**personal** — and those map to `is_shared`, which is **budget attribution, not visibility**. Every
+member of a household can see every row in MVP.
+
+```sql
+-- FUTURE. Does not exist. Do not create in MVP.
+
+ALTER TABLE transactions
+  ADD COLUMN visibility TEXT NOT NULL DEFAULT 'household'
+    CHECK (visibility IN ('household','private','selected'));
+
+-- Only needed for 'selected'. 'private' resolves to created_by.
+CREATE TABLE transaction_visibility_grants (
+  transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  PRIMARY KEY (transaction_id, user_id)
+);
+```
+
+The same pattern applies to any future financial object that needs it — `accounts`,
+`savings_goals` — which is why it is expressed as a pattern rather than a one-off.
+
+**Why this is purely additive:** a nullable-with-default column plus a new table. The
+`DEFAULT 'household'` means every existing row keeps today's behaviour with no backfill.
+
+**The one thing MVP must get right for this to work** is where the check lives. Visibility narrowing
+must happen **inside `is_household_member()` or a sibling helper**, never inlined into forty
+policies — see [ADR-008](DECISIONS.md#adr-008). Today the helper answers *"is this user in this
+household?"*; later it answers *"is this user in this household **and** permitted to see this
+row?"*. That is one function to change.
 
 ---
 

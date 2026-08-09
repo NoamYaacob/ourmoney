@@ -23,7 +23,9 @@ chosen today do not have to be torn down later.
 > A third finding is a warning rather than a correction: **every Israeli product is fully
 > transparent between partners.** That is either an unserved gap or a correct read of the culture,
 > and desk research cannot tell which. §6 below depends on the answer.
-> See [Q11](DECISIONS.md#open-questions) — **the single most important open question in the project.**
+> See [Q11](DECISIONS.md#open-questions) — **a hypothesis to validate through user interviews during
+> MVP, not a blocker for it.** MVP ships full mutual visibility; the schema supports either answer
+> ([ADR-029](DECISIONS.md#adr-029)), so the answer changes what we build next, not what we build now.
 >
 > Full evidence: [MARKET_RESEARCH.md](MARKET_RESEARCH.md) ·
 > [COMPETITOR_ANALYSIS.md](COMPETITOR_ANALYSIS.md) · [OUR_ADVANTAGES.md](OUR_ADVANTAGES.md)

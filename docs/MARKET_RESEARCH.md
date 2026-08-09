@@ -64,18 +64,33 @@ is at least as likely to come from a bank as from another app.**
 
 ### The regulatory gate
 
-[VERIFIED] Aggregating Israeli bank data requires a licence under **חוק שירות מידע פיננסי,
-תשפ"ב-2021**, supervised by the **Israel Securities Authority (ISA)** — *not* the Bank of Israel.
-Earlier planning documents in this repository stated BOI; that was incorrect and has been corrected.
+**[VERIFIED]** Aggregating Israeli bank data is a **licensed activity** under
+**חוק שירות מידע פיננסי, תשפ"א-2021**, in force June 2022. Supervision is **split**:
+
+| Body | Role **[VERIFIED]** |
+|---|---|
+| **Israel Securities Authority** (רשות ניירות ערך) | Licenses financial information service providers; publishes the API reports cited throughout this document |
+| **Bank of Israel** | Supervises *data sources* — banks and card issuers; retains banking supervision and payment systems |
+| **Capital Market Authority** | Non-bank financial sector; runs the parallel "open finance" track covering pension and insurance |
+
+> ⚠️ **Do not read this table as settling our licensing path. [ADR-028](DECISIONS.md#adr-028)**
+> **The applicable regulator and licence class depend on entity type and activity** — read-only
+> aggregation, advice, and payment initiation are different activities, and bank data, pension data
+> and insurance data sit under different bodies. **This must be confirmed by Israeli fintech counsel
+> before any Open Banking work begins.** An earlier version of this document confidently named the
+> wrong regulator; a second version confidently named a single right one. Both were over-confident.
 
 Consequences:
-- OurMoney **cannot connect to Israeli banks without an ISA licence**. This is a hard legal gate on
-  the entire OPEN BANKING phase, not merely a technical one.
-- The MVP's manual-entry constraint is therefore not only a scope decision — it is the only lawful
-  option available without licensing.
+- **OurMoney cannot connect to Israeli banks without resolving licensing first.** This is a hard
+  **legal** gate on the OPEN BANKING phase, not merely a technical one
+  ([Q13](DECISIONS.md#open-questions)).
+- The MVP's manual-entry constraint is therefore not only a scope decision — **it is the only option
+  available without licensing under any reading** ([ADR-026](DECISIONS.md#adr-026)).
 - Payment initiation is a **separate and later** capability (ISA directive 7 June 2026; advanced
-  payment initiation effective 6 December 2026 [VERIFIED via secondary sources — confirm against
-  primary]). OurMoney has no reason to want it.
+  payment initiation effective 6 Dec 2026 **[VERIFIED via secondary sources — confirm against
+  primary]**). OurMoney has no reason to want it.
+- Whether **household aggregation** — merging two individually-consented views into one ledger — is
+  permitted under any licence class is **[UNKNOWN]** and is [Q16](DECISIONS.md#open-questions).
 
 [VERIFIED] **API migration is incomplete**, particularly for business customers, and even licensed
 incumbents report **partial coverage and connections that break every few months**.

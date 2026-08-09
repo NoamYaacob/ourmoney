@@ -588,6 +588,12 @@ channel is registered, but no financial notification fires. There is nothing to 
 
 **Integrations** — no Open Banking, no WhatsApp, no transactional email, no LLM.
 
-**Permissions** — `role IN ('admin','member')` only. No `member_type`, no visibility rules.
+**Permissions** — `role IN ('admin','member')` only. No `member_type`, no `visibility` column, no
+grant table, no per-member filtering. Every member sees every row
+([ADR-029](DECISIONS.md#adr-029)).
+
+**Speculative columns** — none. No installment, charge-date or visibility columns land in migration
+001 or 002. Forward-compatibility comes from the transaction identity invariants, not from unused
+storage ([ADR-029](DECISIONS.md#adr-029)).
 
 **Infrastructure** — no server layer, no message broker, no monorepo tooling.

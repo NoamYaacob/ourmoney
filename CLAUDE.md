@@ -21,6 +21,20 @@ or a permission system: **stop and ask.** The answer is almost certainly that it
 
 ---
 
+## Strategic findings that constrain implementation
+
+Established by the August 2026 market research. These are not aspirations — each one changes how
+code is written today. Full evidence in [docs/MARKET_RESEARCH.md](docs/MARKET_RESEARCH.md).
+
+| Finding | What it means when writing code |
+|---|---|
+| **Household is the primary product unit** | Not the user, not the couple. Every financial row is scoped by `household_id`. Never assume exactly two members ([ADR-006](docs/DECISIONS.md#adr-006)) |
+| **Editable, explainable categorisation rules are our biggest early differentiator** | Categorisation drudgery is the #1 complaint in the Israeli market, and even best-in-class Copilot **cannot show or let you edit your own rules in-app**. Rules must always be visible, editable, and able to explain *why* a transaction matched ([ADR-027](docs/DECISIONS.md#adr-027)) |
+| **Deterministic financial intelligence is a safety principle, not a preference** | Engines compute; AI only explains. A hallucinated mortgage or benefit figure harms a real family ([ADR-012](docs/DECISIONS.md#adr-012)) |
+| **WhatsApp differentiation is the *interactive assistant*, not outbound alerts** | RiseUp already pushes WhatsApp insights ~3×/week. Outbound notification is table stakes. The unbuilt thing is two-way — answering *"כמה נשאר לנו החודש?"* and accepting *"תעביר את העסקה לקטגוריית בית"* ([ADR-024](docs/DECISIONS.md#adr-024)) |
+| **The Financial Twin is a long-term moat** | Every incremental modelling decision either makes it possible or forecloses it. Nobody anywhere grounds life-event simulation in real transaction data |
+| **The Israeli rights/benefits engine is a long-term moat** | Free government infrastructure, no consumer layer, intermediaries charging 15–25% of refunds. Must run on versioned, sourced rules — never model inference ([ADR-017](docs/DECISIONS.md#adr-017)) |
+
 ## Critical Rules
 
 ### Money — Non-Negotiable
@@ -86,6 +100,37 @@ const total = 129.99 + 45.5
 - Components: named PascalCase export (no default exports for components).
 - Hooks: `useCamelCase.ts`, named export.
 - No `index.ts` barrel files — import from the specific file path.
+
+### Transaction Identity — Do Not Violate
+
+`transactions` is the most-referenced table in the schema. Four invariants keep future capabilities
+(installments, per-member visibility) addable without redefining what a row means
+([ADR-029](docs/DECISIONS.md#adr-029)):
+
+- **One row = one movement of money at one point in time.** A row is **not** "a purchase" and
+  **not** "a bill". A 12-instalment purchase will one day be 12 rows linked to one plan.
+- **`id` is an opaque surrogate UUID.** Never derived from business fields, never reused.
+- **`txn_date` means exactly one thing:** the date money moves for *this row*. Not the purchase
+  date, not the statement date.
+- **No UNIQUE constraint on business fields.** Deduplication is scored application logic. Twelve
+  identical monthly instalments are legitimately near-identical rows.
+
+**Never overload a boolean.** `is_shared` is **budget attribution only**. `is_excluded` is
+**user-driven exclusion only**. Neither may be used to mean visibility, installment status, or
+anything else.
+
+### Visibility
+
+MVP has exactly two UX states — **shared** and **personal** — and they map to `is_shared`, which is
+budget attribution. **Every household member can see every row in MVP.**
+
+That is a deliberate simplification, not a belief about what users want. Whether Israeli couples
+want per-member privacy is [Q11](docs/DECISIONS.md#open-questions), a hypothesis to validate through
+user interviews during MVP — **not a blocker for it**.
+
+- Do **not** add a `visibility` column, grant table, or any per-member filtering in MVP.
+- Do **not** write authorization logic that would be hard to narrow later. Visibility checks belong
+  **inside the RLS helper function**, never inlined across policies.
 
 ### Domain Language
 

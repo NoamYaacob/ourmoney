@@ -36,7 +36,8 @@ rather than editing history.
 | [025](#adr-025) | OurMoney takes no provider commissions | Accepted |
 | [026](#adr-026) | Manual entry is a position, not only a constraint | Accepted |
 | [027](#adr-027) | Rule transparency, not rule accuracy, is the categorisation differentiator | Accepted |
-| [028](#adr-028) | The ISA, not the Bank of Israel, regulates financial information services | Accepted |
+| [028](#adr-028) | Open Banking sits behind a legal/compliance gate; licensing path is counsel's call | Accepted |
+| [029](#adr-029) | Forward-compat by invariant, not by speculative column | Accepted |
 
 ADRs 024–028 were added after the **August 2026 market research**
 ([MARKET_RESEARCH.md](MARKET_RESEARCH.md)). ADR-028 corrects a factual error in earlier planning
@@ -890,35 +891,110 @@ point in both markets.
 ---
 
 ## ADR-028
-### The ISA, not the Bank of Israel, regulates financial information services
+### Open Banking sits behind a legal/compliance gate; the licensing path is counsel's call
 
-**Status:** Accepted — corrects an error in earlier planning documents
+**Status:** Accepted — supersedes an over-confident earlier statement
 
-**Context.** [OPEN_BANKING.md](OPEN_BANKING.md) and early research notes stated that the **Bank of
-Israel** regulates open banking and maintains the register of licensed providers. **This is
-incorrect.**
+**Context.** Earlier planning documents stated flatly that the **Bank of Israel** regulates open
+banking and maintains the provider register. A research pass then corrected this to an equally flat
+statement that **the ISA** is the regulator. **Both are over-confident.** The first was wrong; the
+second is a simplification that could still send us to the wrong authority.
 
-**Correct position** [VERIFIED, multiple independent sources]: the governing law is
-**חוק שירות מידע פיננסי, תשפ"ב-2021**, and licensing and supervision sit with the **Israel
-Securities Authority (רשות ניירות ערך / ISA)**. As of the ISA's 2025 annual report there were
-**25 licensed providers serving ~314,000 customers**, with activity heavily concentrated in a few
-players.
+**What is actually established [VERIFIED]:**
+- The governing law is **חוק שירות מידע פיננסי, תשפ"א-2021**, in force June 2022.
+- Supervision is **split across at least three bodies**: the **Israel Securities Authority**
+  licenses financial information service providers; the **Bank of Israel** supervises data sources
+  (banks, card issuers) and retains its banking-supervision and payment-system roles; the **Capital
+  Market Authority** covers the non-bank financial sector and runs a parallel "open finance" track.
+- As of the ISA's 2025 API report: **25 licences, 313,882 consenting customers, ~4% of the market**,
+  with three providers serving 92% of individuals.
 
-The Bank of Israel retains its own separate roles in banking supervision and payment systems; it is
-not the licensing authority for financial information services.
+**What is NOT established [UNKNOWN]:**
+- Which licence class, if any, applies to a product of OurMoney's shape.
+- Whether the applicable path differs by entity type (company vs. partnership vs. foreign entity),
+  by activity (read-only aggregation vs. advice vs. payment initiation), or by data category
+  (bank vs. pension vs. insurance — the latter two sit under the CMA, not the ISA).
+- Whether **merging two individually-consented views into one household ledger** is permitted under
+  any licence class ([Q16](#open-questions)). This is the question our entire thesis rests on.
+- Whether a **non-agent fintech** may query the מסלקה הפנסיונית ([Q14](#open-questions)).
 
-**Decision.** Correct all documents. Any future work on the OPEN BANKING phase begins from the ISA
-register (gov.il), not a BOI register.
+**Decision.**
 
-**Rationale.** Recorded as an ADR rather than a silent edit because it changes who must be
-approached for a licence — a gating dependency for an entire phase, and the kind of error that is
-expensive to discover late.
+1. **No document may state that a single named regulator is universally responsible for financial
+   information services.** The correct formulation is: *the applicable regulator and licensing path
+   depend on entity type and activity, and must be confirmed by Israeli fintech counsel.*
+2. **Open Banking stays behind an explicit legal/compliance gate.** No bank connectivity work — not
+   a spike, not a prototype, not an aggregator trial — begins until counsel has confirmed the
+   licensing route in writing.
+3. The gate is a named entry condition on the OPEN BANKING phase in [ROADMAP.md](../ROADMAP.md), not
+   a footnote.
+
+**Rationale.** The failure mode is asymmetric. Being vague costs nothing at this stage. Being
+confidently wrong about a regulator sends work to the wrong authority, produces an unusable
+compliance posture, and is discovered late and expensively. We have already been confidently wrong
+about this once in the same repository — that is the evidence for the rule.
 
 **Consequences.**
-- The OPEN BANKING phase acquires an explicit **regulatory prerequisite**: an ISA licence, obtained
-  before any bank connectivity work has value.
-- [Q4](#open-questions) expands: the aggregator choice is downstream of the licensing route.
-- Reinforces [ADR-026](#adr-026) — manual entry is the only lawful option without a licence.
+- MVP is unaffected: manual entry requires no licence under any reading ([ADR-026](#adr-026)).
+- [Q4](#open-questions) (aggregator choice) is downstream of [Q13](#open-questions) (licensing
+  route), which is downstream of counsel.
+- Research documents keep their **[VERIFIED]** findings about the ISA's *reports and register* —
+  those are facts about published documents. What is removed is the inference that this settles
+  *our* licensing path.
+
+---
+
+## ADR-029
+### Forward-compat by invariant, not by speculative column
+
+**Status:** Accepted — resolves [Q18](#open-questions)
+
+**Context.** Two capabilities are known to be coming and both land on `transactions`, the most
+referenced and most security-sensitive table in the schema:
+
+- **Installments (תשלומים)** — a correctness requirement in Israel that no product anywhere models
+  ([MARKET_RESEARCH.md §2.2](MARKET_RESEARCH.md)).
+- **Per-member visibility** — household-visible / private / selected-member.
+
+The tempting move is to add the columns now, unused, so the table never has to be remodelled. That
+was proposed as Q18 and it is the wrong call.
+
+**Decision.** **Add no speculative columns.** Instead:
+
+1. State the **transaction identity invariants** (I1–I4 in
+   [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md#transaction-identity--the-invariants-that-keep-future-models-additive))
+   and hold them from migration 002 onward.
+2. Write the **future schema out in full** — `installment_plans`, `card_statements`,
+   `visibility` + `transaction_visibility_grants` — so the shape is agreed before it is needed.
+3. Prove each future change is **purely additive**: new tables, or nullable columns with defaults.
+4. Keep authorization in **one helper function** so visibility narrowing is a one-function change.
+
+**Rationale.**
+
+- **The invariants are what actually protect us, not the columns.** A speculative
+  `installment_plan_id` on a table with no plans is inert. What would genuinely force a rewrite is
+  a row meaning "a purchase" instead of "a movement of money" (I1), or `txn_date` meaning two things
+  (I3), or a UNIQUE constraint that rejects twelve near-identical instalments (I4). None of those
+  are fixed by adding a column, and all are fixed for free by writing them down.
+- **Additive changes are cheap in PostgreSQL.** A nullable FK or a defaulted enum is one statement
+  with no table rewrite. The migration we are trying to avoid is not expensive.
+- **Unused columns are not free.** They appear in generated types, invite misuse, need RLS reasoning,
+  and require reviewers to ask "is this live?" on the one table where review attention is scarcest.
+- **It keeps MVP scope honestly frozen.** Q18 was the single place research pressed against the
+  scope freeze. Resolving it as "no" keeps the freeze credible.
+
+**Consequences.**
+- Migration 001 and 002 carry no installment, charge-date or visibility columns.
+- `is_shared` means **budget attribution only** and `is_excluded` means **user exclusion only**.
+  Overloading either is now a documented violation, catchable in review.
+- MVP UX keeps exactly two states, *shared* and *personal*, and every household member sees every
+  row. That is a deliberate simplification, not an assumption about what users want — see
+  [Q11](#open-questions).
+- When installments arrive, entering a 12-instalment purchase as one large transaction becomes a
+  data-quality problem. MVP UI copy should already encourage entering what hits the account.
+
+**Applies beyond these two cases.** The general rule: *when a future capability is known, write down
+the invariants it depends on and the migration it will need. Do not pre-build its storage.*
 
 ---
 
@@ -946,11 +1022,11 @@ they gate the largest strategic bets in the roadmap.
 
 | # | Question | Blocks | Notes |
 |---|---|---|---|
-| **Q11** | **Do Israeli couples want per-member privacy, or is full transparency the cultural norm?** | The visibility model ([ADR-019](#adr-019)); the core long-term thesis | **The single most important open question.** Every Israeli product is fully transparent. That is either an unserved gap or a correct read of the market. **User research, not desk research.** |
+| **Q11** | **Do Israeli couples want per-member privacy, or is full transparency the cultural norm?** | **Nothing in MVP.** Gates the *visibility* feature (POST-MVP) and the long-term thesis | **Reclassified: a hypothesis to validate, not a blocker.** Validate through user interviews during MVP, not before it. The schema is already forward-compatible either way ([ADR-029](#adr-029)), so the answer changes what we build next — not what we build now. Every Israeli product is fully transparent; that is either an unserved gap or a correct read of the culture, and only users can say |
 | **Q12** | How large is the manual-first segment in Israel? | Whether the MVP can stand alone commercially ([ADR-026](#adr-026)) | Lyra and החיים בפלוס prove it exists; size [UNKNOWN] |
 | Q13 | What is the ISA licensing route, cost, and timeline for a financial information service licence? | The entire OPEN BANKING phase ([ADR-028](#adr-028)) | Gating regulatory dependency; 25 licences exist, so the path is walkable |
 | Q14 | Is מסלקה פנסיונית access obtainable independently of open banking, and under what approval? | Pension features | Pension data is **not** on the open-banking rail; separate regulator (CMA). Supersedes the framing in [Q8](#open-questions) |
 | Q15 | Does RiseUp give each partner a separate login? | Competitive positioning for S2 | Unverifiable from outside; one trial account resolves it |
 | Q16 | Can a household ledger be lawfully assembled from two individually-consented open-banking views? | The household model under Open Banking | Consent is per-individual; the merge happens at our layer. **Legal question, not technical** |
 | Q17 | What does an unconnected product command in Israel? | Pricing | Band is ₪16.60–₪64/mo; unconnected products sit at the bottom |
-| **Q18** | **Should migration 001 carry installment and charge-date columns on `transactions`, unused?** | Migration 001 — **must be answered before MVP-1 Milestone 2** | **The one place research pressed against frozen MVP scope.** *For:* `transactions` is the table most expensive to remodel later, and Israeli installments are a correctness requirement no product has. *Against:* it is scope expansion into the most security-sensitive table, and speculative columns are not free. **Currently NOT in approved scope; nothing implements it.** See [FEATURES.md § Israeli structural primitives](FEATURES.md#israeli-structural-primitives) |
+| ~~Q18~~ | ~~Should migration 001 carry installment and charge-date columns?~~ | — | ✅ **RESOLVED: No.** See [ADR-029](#adr-029). Forward-compatibility is secured by **transaction identity invariants I1–I4** and a written-out future migration, not by unused columns. Both the installment model and the visibility model are proven purely additive |
