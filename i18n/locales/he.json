@@ -1,0 +1,32 @@
+{
+  "common": {
+    "appName": "OurMoney",
+    "comingSoon": "בקרוב"
+  },
+  "theme": {
+    "light": "מצב בהיר",
+    "dark": "מצב כהה"
+  },
+  "auth": {
+    "signIn": { "title": "התחברות" },
+    "signUp": { "title": "הרשמה" },
+    "forgotPassword": { "title": "שחזור סיסמה" }
+  },
+  "onboarding": {
+    "createHousehold": { "title": "יצירת משק בית" },
+    "invitePartner": { "title": "הזמנת בן/בת זוג" }
+  },
+  "invite": {
+    "title": "הצטרפות למשק בית",
+    "tokenLabel": "קוד הזמנה"
+  },
+  "dashboard": {
+    "title": "לוח בקרה"
+  },
+  "notifications": {
+    "budgetThresholdReached": {
+      "title": "התקציב מתקרב לגבול",
+      "body": "הגעתם ל-{{thresholdPercent}}% מהתקציב בקטגוריה זו."
+    }
+  }
+}

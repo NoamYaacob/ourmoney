@@ -192,6 +192,35 @@ on-device RTL mirroring all need a physical device, Expo Go, or an EAS developme
 Milestone 3 introduces the first interactive, native-API-dependent flows. See
 [ADR-030](DECISIONS.md#adr-030) for the ordered options and their tradeoffs.
 
+### Milestone 1 implementation notes
+
+Two real issues surfaced during scaffolding, both fixed. Recorded here rather than silently patched
+because both would resurface for anyone repeating this setup.
+
+1. **A transitive `react-dom` peer conflict, unrelated to NativeWind.** `expo-router`'s `@expo/ui`
+   dependency pulls in `vaul` (a web-only drawer library, via Radix UI) which requires
+   `react-dom@^19.2.8` — newer than the `react@19.2.3` this project pins to match Milestone 0's
+   verified version. Neither package is used by anything in this app. Fixed with a package.json
+   `overrides` entry pinning `react-dom` to `19.2.3`, matching `react` exactly — the same version
+   pairing Milestone 0 already verified works for the web export target. No dependency version from
+   Milestone 0 changed.
+2. **The RTL bootstrap looped forever on the web export target.** `I18nManager.forceRTL()` persists
+   to native prefs and survives an app restart on iOS/Android — the documented pattern of
+   force-then-`Updates.reloadAsync()` relies on that persistence. `react-native-web`'s `I18nManager`
+   has no such persistence; it is an in-memory flag reset on every page load. The original
+   implementation reloaded the page, which reset the flag, which triggered another reload,
+   indefinitely — caught by the web-export visual spot check this milestone's exit criteria require.
+   Fixed by branching on `Platform.OS`: native still forces RTL and reloads; web forces RTL and
+   marks the layout ready immediately, without reloading. Confirmed both branches actually render
+   Hebrew RTL correctly afterward (`app/(app)/dashboard/index.tsx`, screenshotted during
+   verification).
+
+A minor, non-blocking observation from the same verification pass: `I18nManager.isRTL` reads as
+`undefined` on the web platform specifically, even though the layout itself mirrors correctly (the
+`dir="rtl"` DOM attribute is set as expected). This affects only a diagnostic label on the dashboard
+placeholder screen, not RTL behavior, and is a `react-native-web` shim quirk rather than an
+`ourmoney` defect. Worth re-checking on native once device testing is available.
+
 ---
 
 ## Milestone 2 — Supabase Schema
