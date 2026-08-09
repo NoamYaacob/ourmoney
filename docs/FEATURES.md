@@ -5,6 +5,21 @@ A long-term catalogue of everything OurMoney may eventually do.
 **This is a registry, not a plan.** Presence in this document implies nothing about scheduling.
 For what is being built and in what order, see [ROADMAP.md](../ROADMAP.md).
 
+> **Revised after the August 2026 market research.** Three changes worth knowing before reading:
+>
+> 1. **A new section — [Israeli structural primitives](#israeli-structural-primitives) — was added at
+>    the top of CORE.** Installments, the aggregated card charge and overdraft-as-normal are not
+>    features; they are correctness requirements, and no product anywhere has them.
+> 2. **Several entries were downgraded** because a competitor already does them well. Cross-bank
+>    aggregation, subscription detection and pension aggregation are now marked
+>    **[COMPETITOR-SOLVED]** — see [OUR_ADVANTAGES.md § What NOT to build](OUR_ADVANTAGES.md#what-not-to-build).
+> 3. **US-style debt payoff was moved to "explicitly rejected"** — it models a debt shape Israeli
+>    households largely do not have
+>    ([MARKET_RESEARCH.md §2.3](MARKET_RESEARCH.md#23-the-overdraft-מינוס-as-a-normal-state)).
+>
+> New status marker: **[COMPETITOR-SOLVED]** — a competitor does this well enough that entering is a
+> poor use of effort. Not the same as low value.
+
 ## Tier definitions
 
 | Tier | Meaning |
@@ -23,10 +38,40 @@ For what is being built and in what order, see [ROADMAP.md](../ROADMAP.md).
 | **[BLOCKED: x]** | Requires x before it is possible |
 | **[REG]** | May carry Israeli regulatory/licensing implications — legal review required |
 | **[RESEARCH]** | Feasibility, data availability, or partnership unproven |
+| **[COMPETITOR-SOLVED]** | A competitor does this well enough that entering is a poor use of effort. Not the same as low value |
+| **[PROPOSED — needs approval]** | Research argues for it, but it is **outside approved scope** and must not be built until explicitly approved |
 
 ---
 
 # CORE
+
+## Israeli structural primitives
+
+**These are correctness requirements, not features.** A product that lacks them does not merely
+offer less — it displays wrong numbers to Israeli households. No product researched, Israeli or
+international, has any of them. See [MARKET_RESEARCH.md §2](MARKET_RESEARCH.md) and
+[PRODUCT_VISION.md §5.5](PRODUCT_VISION.md).
+
+| Primitive | Status | Notes |
+|---|---|---|
+| **Installments (תשלומים) as a first-class object** | **[PROPOSED — needs approval]** | One purchase → N future obligations. **Proposal:** carry the columns in migration 001 so the most-referenced table is not remodelled later; UI and forecasting stay POST-MVP. **This is not currently in approved MVP scope** — see [Q18](DECISIONS.md#open-questions) |
+| **Charge-date vs transaction-date** | **[PROPOSED — needs approval]** | A card transaction on the 3rd may not debit the bank until the 10th of the following month. Same proposal and same open question as installments |
+| **Projected consolidated card charge** | [BLOCKED: cash-flow engine] | The number Israeli households actually need. Isracard's day-countdown is the only acknowledgement of it in the market |
+| **Overdraft (מסגרת אשראי) as a modelled state** | [BLOCKED: balance sheet] | Depth, cost, and exit path — not an exception alert |
+| **CPI (מדד) linkage on liabilities** | [BLOCKED: mortgage model] | Absent from every product researched |
+| **קרן השתלמות** | [BLOCKED: pension data] | No foreign equivalent; unmodellable by any imported product |
+
+**The proposal, stated precisely.** Add installment and charge-date columns to `transactions` in
+migration 001; compute nothing over them until a cash-flow engine exists. This follows the
+[ADR-006](DECISIONS.md#adr-006) reasoning — general model now, thin implementation now, no rewrite
+later — and the same logic that keeps `receipt_url` and `parent_id` in the MVP schema unused.
+
+**It is a proposal, not a decision.** Approved MVP scope does not include it, no migration reflects
+it, and it would add columns to the most security-sensitive table in the system. The argument
+against is equally real: `transactions` is the table every RLS policy and every future migration
+touches, and speculative columns on it are not free.
+
+**Do not implement without explicit approval** ([Q18](DECISIONS.md#open-questions)).
 
 ## Accounts and financial position
 
@@ -58,7 +103,7 @@ For what is being built and in what order, see [ROADMAP.md](../ROADMAP.md).
 | Transaction search | **[NEXT]** | full-text over description and merchant |
 | Bulk edit / bulk categorize | **[NEXT]** | |
 | Transaction attachments beyond receipts | **[NEXT]** | warranties, invoices |
-| Open Banking auto-sync | [BLOCKED: server layer] | see OPEN_BANKING.md |
+| Open Banking auto-sync | [BLOCKED: **ISA licence** + server layer] | **[COMPETITOR-SOLVED]** Cal, Leumi and FIBI all ship free cross-bank aggregation. Needs an ISA licence ([Q13](DECISIONS.md#open-questions)) — a legal gate, not just a technical one |
 | Merchant enrichment | [BLOCKED: Open Banking] | clean merchant names, logos, locations |
 
 ## Categorization
@@ -194,7 +239,7 @@ For what is being built and in what order, see [ROADMAP.md](../ROADMAP.md).
 
 | Feature | Status | Notes |
 |---|---|---|
-| Subscription detection | **[NEXT]** | recurring small charges |
+| Subscription detection | **[NEXT]** | **[COMPETITOR-SOLVED]** Cal aggregates subscriptions and standing orders across **all issuers and banks**, free. Build for completeness, never as a headline |
 | Unused subscription detection | [BLOCKED: usage signal] | [RESEARCH] hard without usage data |
 | Duplicate subscription detection | **[NEXT]** | two music services, two clouds |
 | Banking fee analysis | [BLOCKED: Open Banking] | עמלות — often invisible to users |
@@ -282,7 +327,7 @@ For what is being built and in what order, see [ROADMAP.md](../ROADMAP.md).
 
 | Feature | Status | Notes |
 |---|---|---|
-| Pension overview | [BLOCKED: pension data] | **[REG]** |
+| Pension overview | [BLOCKED: pension data] | **[COMPETITOR-SOLVED]** — **[REG]**. FamilyBiz already does this well via the מסלקה, including minors' policies; Cover does it free with a WhatsApp agent |
 | Management fee analysis | [BLOCKED: pension data] | **[REG]** — fees quietly destroy returns |
 | Fee vs market comparison | [BLOCKED: market data] | **[REG]** |
 | Projected retirement income | [BLOCKED: pension data] | **[REG]** — deterministic projection only |
@@ -392,6 +437,33 @@ MVP (manual data)
           └─→ complete domain model ──→ Financial Twin ──→ What-if simulator
 ```
 
+## Discovered by market research (9 Aug 2026)
+
+Candidates surfaced by competitive and pain-point research that were not in the original registry.
+**None are MVP.** Each records the user problem and why existing products fail at it.
+Evidence: [USER_PAIN_POINTS.md](USER_PAIN_POINTS.md) · [OUR_ADVANTAGES.md](OUR_ADVANTAGES.md)
+
+| Feature | User problem | Why existing products fail | Phase | Regulatory |
+|---|---|---|---|---|
+| **Rule provenance — "why was this categorised here?"** | A wrong category is fixed row by row, forever | **Copilot has the market's best categoriser and will not show you your own rules.** Every Israeli product is Weak/Absent on editable rules | POST-MVP | None |
+| **Multi-condition rules (amount, timing, context)** | One merchant legitimately maps to different categories | FamilyBiz's documented structural limit is **one merchant → one category**; users ask for this explicitly | POST-MVP | None |
+| **Bulk transaction editing** | Re-categorising a month takes hours | **MyFinanda's #1 request**; FamilyBiz's #1 complaint | POST-MVP | None |
+| **Installment (תשלומים) as a first-class object** | One purchase becomes N transactions; forecasts miss the committed liability | **No product anywhere has this primitive** | INTELLIGENCE | None |
+| **Card charge-date projection** | Household looks solvent all month, overdrawn on charge day | International products assume transactions hit the account when they occur | INTELLIGENCE | None |
+| **Overdraft as a modelled state, not an alert** | For many Israeli households מינוס is the steady state, not an exception | No international product models chronic overdraft; only One Zero predicts entering it | INTELLIGENCE | None |
+| **Forecast calibration and change-explanation** | A forecast that silently moves is one users stop trusting | **Nobody publishes accuracy, confidence intervals, or why the forecast changed** | INTELLIGENCE | None |
+| **Irregular / variable income budgeting** | Mixed salaried + עצמאי households; commission and reserve-duty income | **Every budgeting model researched assumes a monthly salary.** RiseUp explicitly excludes self-employed cash flow | INTELLIGENCE | None |
+| **Proportional-income expense splitting** | "She earns 60%, so she pays 60% of shared costs" | The most-requested real couples mechanic, **automated by no product found.** People use spreadsheets | POST-MVP | None |
+| **Shared goals with tracked individual contributions** | "How much of this deposit did each of us put in?" | Goals are common; contribution attribution is tracked by nobody | POST-MVP | None |
+| **Household separation / data forking** | Relationships end; joint financial history has no exit path | **No mainstream product has a flow to fork shared data back into two clean accounts** | POST-MVP | Possible |
+| **Partner-lite mode** | One partner runs the money; the other wants a monthly summary, not homework | Every product assumes symmetric engagement | POST-MVP | None |
+| **Data-loss-free migration to Open Banking** | A four-year MyFinanda user lost **all** categorisation history on migration | The law requires deleting *data*, not the *categorisation skeleton* — a self-inflicted wound worth never repeating | OPEN BANKING | None |
+| **Duplicate insurance detection** | Households pay twice for the same cover | FamilyBiz automates it; RiseUp detects it. **Parity, not differentiation** | FIN. OPT. | Yes |
+| **Annual irregular expense planning** | Holidays, arnona, school costs wreck monthly budgets | Monthly budgeting models handle it poorly everywhere | INTELLIGENCE | None |
+| **Reserve-duty (מילואים) income disruption** | Income shocks with statutory compensation | [UNKNOWN] — not researched; FamilyBiz's reservist pricing implies the segment is recognised commercially | FIN. OPT. | Yes |
+
+---
+
 ## Explicitly rejected (for now)
 
 Recording these so they are not re-proposed:
@@ -405,3 +477,8 @@ Recording these so they are not re-proposed:
 | Credit score monitoring | [RESEARCH] Israeli credit data access unclear |
 | Social features / spending comparison with friends | Encourages harmful behavior |
 | Streaks and gamified saving pressure | Can push households into bad decisions — see PRODUCT_VISION.md §5.4 |
+| **Cross-bank aggregation as a headline feature** | **Cal, FIBI MultiBank and Leumi all do it free.** Requires an ISA licence and beats nobody — [OUR_ADVANTAGES.md](OUR_ADVANTAGES.md#what-not-to-build) |
+| **Subscription cancellation concierge** | Rocket Money's model takes 35–60% of first-year savings and generates its worst complaints; conflicts with [ADR-025](DECISIONS.md#adr-025) |
+| **Shared-wallet / who-owes-whom mechanics** | **PayBox has by far the most developed shared-money architecture in Israel**; Bit has 4.9M active devices |
+| **US-style snowball/avalanche debt payoff** | Built on revolving card debt — **not the dominant Israeli debt shape.** Would solve a problem Israeli households largely do not have |
+| **Any deposit product or neobank** | Couples-finance-as-neobank **failed economically twice** — Ivella and Zeta both died with good feature fit |

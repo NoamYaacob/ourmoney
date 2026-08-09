@@ -32,6 +32,15 @@ rather than editing history.
 | [021](#adr-021) | Document the vision, ship the MVP | Accepted |
 | [022](#adr-022) | No INSERT/UPDATE policy on `household_members` | Accepted |
 | [023](#adr-023) | Structural RLS guards over enumerated assertions | Accepted |
+| [024](#adr-024) | WhatsApp is a channel we need, not a differentiator we own | Accepted |
+| [025](#adr-025) | OurMoney takes no provider commissions | Accepted |
+| [026](#adr-026) | Manual entry is a position, not only a constraint | Accepted |
+| [027](#adr-027) | Rule transparency, not rule accuracy, is the categorisation differentiator | Accepted |
+| [028](#adr-028) | The ISA, not the Bank of Israel, regulates financial information services | Accepted |
+
+ADRs 024–028 were added after the **August 2026 market research**
+([MARKET_RESEARCH.md](MARKET_RESEARCH.md)). ADR-028 corrects a factual error in earlier planning
+documents.
 
 ---
 
@@ -724,6 +733,195 @@ policies. Guard 6.3 makes that impossible to merge.
 
 ---
 
+## ADR-024
+### WhatsApp is a channel we will need, not a differentiator we own
+
+**Status:** Accepted — supersedes the framing in the original PLATFORM plan
+
+**Context.** Planning documents treated a "WhatsApp Financial Assistant" as a major future
+differentiator, on the assumption that WhatsApp-native household finance did not exist in Israel.
+
+Market research (9 Aug 2026) established that this is false. **RiseUp's signature mechanic is
+WhatsApp** — it pushes insights roughly three times a week, and press coverage has centred on it
+since 2020. [VERIFIED]
+
+Research also established the limit of RiseUp's implementation: it is **outbound only, not
+conversational**. [VERIFIED] No Israeli product offers a two-way assistant that answers a question
+or accepts an instruction.
+
+**Decision.** WhatsApp outbound alerting is **parity work**, not differentiation. It is required to
+match the incumbent and must not be described, planned, or resourced as an advantage.
+
+The differentiating capability is **interactivity** — query and instruction — over a *household's*
+complete financial picture. PL-1 exit criteria now require two-way capability explicitly.
+
+**Rationale.** A roadmap that describes parity work as differentiation produces two failures at
+once: it over-invests in the easy half, and it declares victory at the point where the incumbent
+already stands.
+
+**Consequences.**
+- [ADR-014](#adr-014) is unaffected and now more clearly correct: channel independence is what makes
+  adding WhatsApp cheap when the time comes.
+- The strategic value of the notification layer is unchanged. The strategic value of *WhatsApp
+  specifically* is lower than previously assumed.
+- Nothing about MVP scope changes.
+
+---
+
+## ADR-025
+### OurMoney takes no provider commissions
+
+**Status:** Provisional — binding until explicitly revisited with a superseding ADR
+
+**Context.** Both Israeli market leaders monetize partly through commissions from financial product
+providers. [VERIFIED]
+
+- **RiseUp** earns commission from product providers. Its terms disclose this; **the savings page
+  calls the provider a "technology partner" and says nothing about payment, and the vouchers and
+  mortgage pages carry no disclosure at all.**
+- **FamilyBiz** earns commissions and runs a benefits marketplace, and in November 2025 launched
+  **its own insurance agency**, where AI scans user data for excess fees and alerts a human agent
+  before the customer notices.
+
+**MyFinanda** is the counter-example: no advertising, no referral marketplace, revenue from
+subscriptions plus B2B white-label — and the highest Play rating of any Israeli budgeting app.
+[VERIFIED]
+
+**Decision.** OurMoney does not earn commission, referral fees, or lead-generation revenue from
+financial product providers.
+
+If this is ever revisited, the superseding ADR must specify: (a) that the recommendation surface and
+the revenue surface are architecturally separate, and (b) that any recommendation carrying
+commercial interest renders that interest **inline**, in the same view, not in terms of service.
+The `Recommendation` object gains a `commercial_interest` field that cannot be omitted at render
+time.
+
+**Rationale.** The Action Engine ([ARCHITECTURE.md](ARCHITECTURE.md)) and the deterministic-engine
+rule ([ADR-012](#adr-012)) exist to make financial figures trustworthy and reproducible. Commission
+revenue does not corrupt them by making the engine lie — it corrupts them by determining **what the
+engine is pointed at**. A product paid for loan referrals develops excellent loan-refinancing
+detection and never builds "you do not need this loan."
+
+The strongest recommendation is often "do nothing," and no commission model pays for it.
+
+**Consequences.**
+- Removes a revenue line both competitors use, and this is a real commercial sacrifice.
+- Creates a claim neither competitor can match without changing their business model — see
+  [TRUST_AND_PRIVACY.md](TRUST_AND_PRIVACY.md) and [OUR_ADVANTAGES.md](OUR_ADVANTAGES.md) L4.
+- Makes subscription or B2B2C the realistic paths ([Q10](#open-questions)).
+- Does not prohibit *informational* comparison, or referral to a licensed human advisor where no
+  payment flows to OurMoney.
+
+---
+
+## ADR-026
+### Manual entry is a position, not only a constraint
+
+**Status:** Accepted
+
+**Context.** MVP has no bank connectivity, for three independent reasons: scope discipline, the
+absence of a server layer, and — established by research — that aggregating Israeli bank data
+**requires an ISA licence** under חוק שירות מידע פיננסי, תשפ"ב-2021. [VERIFIED]
+
+This was understood as a limitation to be apologised for until Open Banking arrives.
+
+Research changed that reading:
+- **RiseUp supports no cash at all**, and it is a repeated complaint. [VERIFIED]
+- **MyFinanda supports a cash wallet only**, also a complaint. [VERIFIED]
+- **Lyra** (manual-only, free, explicitly anti-open-banking) and **החיים בפלוס** (manual by design,
+  privacy-positioned, ₪16.70–22.90/mo) both exist, both articulate a couple model, and both choose
+  manual entry as a *position*. [VERIFIED]
+- **ProjectionLab** internationally markets the absence of bank linking as a privacy feature.
+  [VERIFIED]
+
+**Decision.** Treat manual and cash entry as a first-class capability that the category leader
+lacks — not as a placeholder. Cash spending must be as easy to log as card spending, and the
+quality bar for manual entry is "better than any connected product's manual path," not "adequate
+until sync arrives."
+
+**Rationale.** The MVP's largest apparent weakness addresses a verified, unserved complaint about
+the market leader. That does not make manual entry *better* than aggregation — it makes it a
+defensible position for a segment that demonstrably exists.
+
+**Consequences.**
+- MVP-2 exit criteria require cash parity.
+- Pricing expectations must be set against the unconnected tier (₪16.60–22.90/mo), not RiseUp's
+  ₪55–64. See [BUSINESS_MODEL.md](BUSINESS_MODEL.md).
+- **The size of the manual-first segment is [UNKNOWN]** and is a gating question for the MVP
+  ([Q12](#open-questions)).
+
+---
+
+## ADR-027
+### Rule transparency, not rule accuracy, is the categorisation differentiator
+
+**Status:** Accepted
+
+**Context.** MVP-2 already includes a categorisation rules engine. Research established what the
+quality bar should be.
+
+- **Categorisation is FamilyBiz's #1 complaint** — *"עבודה של שעות כל חודש"* (hours of work every
+  month); a paying user: *"אני מרגיש שאני עובד אצל האפליקציה"*. Its documented structural weakness is
+  **one merchant → one category, with no amount- or timing-based splitting and no bulk edit.**
+  [VERIFIED]
+- **MyFinanda's #1 request** is custom categories and **bulk/multi-transaction editing.** [VERIFIED]
+- Across the Israeli matrix, *editable rules engine* is **Weak or Absent for every product.**
+- Internationally, **Copilot has the best categoriser in the market** — a per-user ML model at
+  ~93–94% first-pass — **and users cannot view or edit their own rules in-app; they must email
+  support.** [VERIFIED]
+
+**Decision.** The differentiating property is that rules are **visible, editable, reorderable,
+testable against existing transactions before saving, and bulk-appliable** — and that a
+mis-categorised transaction leads the user to *the rule that caused it*, not merely to a dropdown.
+
+Matching Copilot's ML accuracy is explicitly **not** an MVP goal, and would not be the advantage
+even if achieved.
+
+**Rationale.** Accuracy is a race OurMoney cannot win at MVP scale, against a competitor with a
+per-user ML model and a merchant-enrichment substrate that does not exist for Hebrew. Transparency
+is cheap to build, addresses the loudest complaint in the market, and is unoccupied at every price
+point in both markets.
+
+**Consequences.**
+- MVP-2 exit criteria updated; no new MVP features.
+- Amount- and timing-based rule conditions are **not** MVP. The gap is documented so that the rule
+  schema does not preclude them — a rule is a set of conditions, not a single merchant string.
+
+---
+
+## ADR-028
+### The ISA, not the Bank of Israel, regulates financial information services
+
+**Status:** Accepted — corrects an error in earlier planning documents
+
+**Context.** [OPEN_BANKING.md](OPEN_BANKING.md) and early research notes stated that the **Bank of
+Israel** regulates open banking and maintains the register of licensed providers. **This is
+incorrect.**
+
+**Correct position** [VERIFIED, multiple independent sources]: the governing law is
+**חוק שירות מידע פיננסי, תשפ"ב-2021**, and licensing and supervision sit with the **Israel
+Securities Authority (רשות ניירות ערך / ISA)**. As of the ISA's 2025 annual report there were
+**25 licensed providers serving ~314,000 customers**, with activity heavily concentrated in a few
+players.
+
+The Bank of Israel retains its own separate roles in banking supervision and payment systems; it is
+not the licensing authority for financial information services.
+
+**Decision.** Correct all documents. Any future work on the OPEN BANKING phase begins from the ISA
+register (gov.il), not a BOI register.
+
+**Rationale.** Recorded as an ADR rather than a silent edit because it changes who must be
+approached for a licence — a gating dependency for an entire phase, and the kind of error that is
+expensive to discover late.
+
+**Consequences.**
+- The OPEN BANKING phase acquires an explicit **regulatory prerequisite**: an ISA licence, obtained
+  before any bank connectivity work has value.
+- [Q4](#open-questions) expands: the aggregator choice is downstream of the licensing route.
+- Reinforces [ADR-026](#adr-026) — manual entry is the only lawful option without a licence.
+
+---
+
 ## Open questions
 
 Not yet decided. Each needs an ADR before the dependent work begins.
@@ -739,4 +937,20 @@ Not yet decided. Each needs an ADR before the dependent work begins.
 | Q7 | Does level-3 personalized recommendation require a license in Israel? | Action Engine scope | Requires Israeli fintech legal counsel |
 | Q8 | Is there a viable path to pension/insurance data (מסלקה פנסיונית)? | Pension features | [RESEARCH] |
 | Q9 | Analytics/crash reporting vendor and what may be sent | MVP-4 (crash reporting task) | Must never include monetary values or user identifiers |
-| Q10 | Revenue model: subscription, freemium, or B2B2C | Roadmap prioritization | Affects which differentiators matter most |
+| Q10 | Revenue model: subscription, freemium, or B2B2C | Roadmap prioritization | Constrained by [ADR-025](#adr-025) — commissions are excluded |
+
+### Added by the August 2026 market research
+
+The first two cannot be answered by desk research. They require talking to Israeli households, and
+they gate the largest strategic bets in the roadmap.
+
+| # | Question | Blocks | Notes |
+|---|---|---|---|
+| **Q11** | **Do Israeli couples want per-member privacy, or is full transparency the cultural norm?** | The visibility model ([ADR-019](#adr-019)); the core long-term thesis | **The single most important open question.** Every Israeli product is fully transparent. That is either an unserved gap or a correct read of the market. **User research, not desk research.** |
+| **Q12** | How large is the manual-first segment in Israel? | Whether the MVP can stand alone commercially ([ADR-026](#adr-026)) | Lyra and החיים בפלוס prove it exists; size [UNKNOWN] |
+| Q13 | What is the ISA licensing route, cost, and timeline for a financial information service licence? | The entire OPEN BANKING phase ([ADR-028](#adr-028)) | Gating regulatory dependency; 25 licences exist, so the path is walkable |
+| Q14 | Is מסלקה פנסיונית access obtainable independently of open banking, and under what approval? | Pension features | Pension data is **not** on the open-banking rail; separate regulator (CMA). Supersedes the framing in [Q8](#open-questions) |
+| Q15 | Does RiseUp give each partner a separate login? | Competitive positioning for S2 | Unverifiable from outside; one trial account resolves it |
+| Q16 | Can a household ledger be lawfully assembled from two individually-consented open-banking views? | The household model under Open Banking | Consent is per-individual; the merge happens at our layer. **Legal question, not technical** |
+| Q17 | What does an unconnected product command in Israel? | Pricing | Band is ₪16.60–₪64/mo; unconnected products sit at the bottom |
+| **Q18** | **Should migration 001 carry installment and charge-date columns on `transactions`, unused?** | Migration 001 — **must be answered before MVP-1 Milestone 2** | **The one place research pressed against frozen MVP scope.** *For:* `transactions` is the table most expensive to remodel later, and Israeli installments are a correctness requirement no product has. *Against:* it is scope expansion into the most security-sensitive table, and speculative columns are not free. **Currently NOT in approved scope; nothing implements it.** See [FEATURES.md § Israeli structural primitives](FEATURES.md#israeli-structural-primitives) |

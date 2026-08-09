@@ -9,13 +9,48 @@ When the OPEN BANKING phase begins, this document is the starting point for the 
 
 ## Current Status (August 2026)
 
-Israel's Open Banking Law (תיקון 24 לחוק הבנקאות שירות ללקוח) mandated banks to open read APIs
-by mid-2026. The Bank of Israel (BoI) has published a draft technical standard based on the UK's
-Open Banking API specification. The major banks (Hapoalim, Leumi, Discount, Mizrahi-Tefahot)
-are in varying stages of compliance.
+> **Corrected August 2026 — see [ADR-028](DECISIONS.md#adr-028).** Earlier versions of this document
+> stated that the **Bank of Israel** regulates financial information services and maintains the
+> provider register. **That was wrong.** Licensing and supervision sit with the **Israel Securities
+> Authority (רשות ניירות ערך / ISA)** under **חוק שירות מידע פיננסי, תשפ"ב-2021**.
 
-Until the official API is stable and widely available, the bridge strategy is Salt Edge (which
-provides Israeli bank access via a combination of direct API and screen-scraping bridges).
+**The regime is live, and it is a licensing gate, not just a technical one.**
+[VERIFIED — ISA API report, published 26 Apr 2026]
+
+| Metric (through 31 Dec 2025) | Value |
+|---|---|
+| Licences granted cumulatively | **25** |
+| Consenting customers | **313,882** (244,468 individual, 69,414 corporate) |
+| Share of market | **~4%** |
+| Concentration | **Three providers serve 92% of individual customers** |
+| Individuals served via the API standard | 79.6% |
+| **Individuals still screen-scraped** | **19.5%** |
+| Corporate via API | 14.3% — effectively broken |
+
+Call mix: credit cards 42.1%, loans 28.2%, current accounts 19.7%, deposits 6.1%, securities 3.4%,
+**payment initiation 0.5%**. The ISA's own verdict: *"partial cooperation from data sources,
+primarily banks, impedes sector development."*
+
+**Banks live on the API rail** [VERIFIED, from RiseUp's public connections register — the best
+real-world evidence available]: Hapoalim, Leumi, Pepper, Mizrahi-Tefahot, Discount, Mercantile,
+FIBI, Otsar Hahayal, HSBC, One Zero. **Bank HaDoar is password/scrape only.**
+
+**Pension and insurance are NOT on this rail** [VERIFIED by absence] — entirely missing from the
+ISA's API-call breakdown. Pension data moves through the separate **מסלקה פנסיונית** under the CMA.
+That is a **different integration with a different approval path** ([Q14](DECISIONS.md#open-questions)),
+not something that arrives with open banking.
+
+**Two hard prerequisites before this phase has any value:**
+1. **An ISA licence** ([Q13](DECISIONS.md#open-questions)). Without it, connecting to Israeli banks
+   is unlawful, not merely unbuilt.
+2. **A legal answer on household aggregation** ([Q16](DECISIONS.md#open-questions)). Open-banking
+   consent is **per-individual** — each customer authorises reading *their own* accounts. Merging two
+   individually-consented views into one household ledger happens at our layer, and whether that is
+   permitted under the licence terms is unresolved.
+
+Until then the bridge strategy would be a licensed aggregator or screen-scraping via a partner —
+both of which still require the licence. [Q4](DECISIONS.md#open-questions) is downstream of
+[Q13](DECISIONS.md#open-questions).
 
 ---
 
@@ -114,7 +149,7 @@ export interface RawTransaction {
 | Adapter | Covers | Status |
 |---|---|---|
 | `SaltEdgeAdapter` | All major Israeli banks via bridge | Available today, screen-scraping |
-| `BoIApiAdapter` | Official BoI Open Banking spec | Available when BoI standard finalizes |
+| `IsaApiAdapter` | The ISA financial-information-service API standard | Live — 79.6% of individual customers already served this way |
 | `PoweredFinanceAdapter` | Israeli aggregator (backup) | Evaluate before the phase begins |
 
 Provider selection is [Q4](DECISIONS.md#open-questions) and must be resolved before the phase starts.
@@ -137,7 +172,7 @@ CREATE TABLE ob_providers (
   name_he   TEXT NOT NULL,
   name_en   TEXT NOT NULL,
   logo_url  TEXT,
-  adapter   TEXT NOT NULL,           -- 'saltedge' | 'boi_api' | 'powered_finance'
+  adapter   TEXT NOT NULL,           -- 'saltedge' | 'isa_api' | 'powered_finance'
   is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
@@ -204,9 +239,9 @@ On revocation:
 
 ---
 
-## Migration Path from Salt Edge to Official BoI API
+## Migration Path from Scraping to the API Standard
 
-When the official BoI API becomes stable for a given bank:
+19.5% of individual customers are still served by screen-scraping. When a bank becomes reliable on the API standard:
 1. Add a new row to `ob_providers` for the bank with `adapter = 'boi_api'`
 2. Mark the Salt Edge provider row `is_active = FALSE` for that bank
 3. Existing connections remain active until they expire

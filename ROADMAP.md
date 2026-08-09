@@ -26,6 +26,22 @@ enough that they keep using it.
 **Scope is frozen.** The feature list below is exactly what was approved. Nothing from
 PRODUCT_VISION.md or FEATURES.md enters this phase. See [ADR-021](docs/DECISIONS.md#adr-021).
 
+> **What the market research changed here: nothing in scope, several things in emphasis.**
+> The August 2026 research ([docs/MARKET_RESEARCH.md](docs/MARKET_RESEARCH.md)) added **no features**
+> to the MVP. It changed which already-planned features matter most, and what the MVP must prove:
+>
+> - **Manual and cash entry is a positioning advantage, not only a constraint.** RiseUp — the
+>   category leader — supports no cash at all, and it is a repeated complaint
+>   ([ADR-026](docs/DECISIONS.md#adr-026)).
+> - **The categorisation rules engine is the highest-leverage MVP-2 feature.** Categorisation
+>   drudgery is the #1 complaint against the widest-scope Israeli competitor, and *editable,
+>   visible* rules are Weak or Absent across the entire market.
+> - **Two real logins per household is already a structural advantage.** Only one Israeli budgeting
+>   app has it.
+> - **The MVP must answer whether Israeli couples actually want per-member privacy**
+>   ([Q11](docs/DECISIONS.md#open-questions)). The product's clearest long-term differentiator
+>   depends on the answer, and desk research cannot supply it.
+
 ## MVP-1 — Foundation & Auth
 
 Detailed plan: [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md)
@@ -78,6 +94,15 @@ Detailed plan: [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md)
 - [ ] Partner sees a new transaction within 2 seconds
 - [ ] Every money value passes through `lib/money/format.ts` — no float arithmetic anywhere
 - [ ] Transaction creation emits `transaction.created` and calls no notification code directly
+- [ ] **Cash spending is as easy to log as card spending** — no second-class path
+      ([ADR-026](docs/DECISIONS.md#adr-026))
+- [ ] **Every rule is visible and editable in-app, and a mis-categorised transaction leads the user
+      to the rule that caused it** — the market gap is rule *transparency*, not rule *accuracy*
+      ([ADR-027](docs/DECISIONS.md#adr-027))
+
+> Rule **reordering** and **bulk edit** are `[NEXT]`, not MVP — see
+> [FEATURES.md](docs/FEATURES.md#categorization). ADR-027 sets the quality bar for the rules that
+> MVP-2 already builds; it adds no features.
 
 ## MVP-3 — Import, Recurring, Goals & Analytics
 
@@ -109,6 +134,23 @@ Detailed plan: [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md)
 - [ ] At least 10 real households using it for a full month
 - [ ] Zero known data-isolation defects
 - [ ] Retention signal strong enough to justify the next phase
+
+**Questions the MVP must answer before OPEN BANKING, INTELLIGENCE or PLATFORM investment**
+
+These are validation gates, not features. Each is currently [UNKNOWN] and none can be answered by
+further desk research. See [docs/OUR_ADVANTAGES.md](docs/OUR_ADVANTAGES.md#what-the-mvp-must-prove).
+
+- [ ] **Will Israeli households do manual entry at all?** A manual-first segment demonstrably exists
+      (Lyra, החיים בפלוס), but its size is unknown, and RiseUp's *"I could fill in Excel for free"*
+      complaint cuts both ways.
+- [ ] **Do Israeli couples want per-member privacy, or is full transparency the cultural norm?**
+      Every Israeli product is fully transparent. That is either an unserved gap or a correct read
+      of the market — and the difference decides how much of the long-term thesis survives.
+- [ ] **Does the shared household model produce a felt reduction in money stress?** RiseUp's reviews
+      credit exactly this. If OurMoney's model does not produce it, no downstream engine compensates.
+- [ ] **Does a transparent rules engine measurably reduce categorisation effort?**
+- [ ] **What will households pay for an unconnected product?** The Israeli band is ₪16.60–₪64/mo,
+      and the unconnected products sit at the bottom of it.
 
 ---
 
@@ -328,11 +370,19 @@ Everything here respects the four-level regulatory separation
 - [Q5](docs/DECISIONS.md#open-questions) and [Q6](docs/DECISIONS.md#open-questions) resolved
 
 ## PL-1 — WhatsApp assistant
+
+> **Re-scoped after research ([ADR-024](docs/DECISIONS.md#adr-024)).** WhatsApp is **not** whitespace
+> in Israel — RiseUp's signature mechanic is WhatsApp, pushing insights ~3×/week. But RiseUp's
+> implementation is **outbound only, not conversational**. The differentiator is **interactivity**,
+> not the channel. Outbound alerts alone match the incumbent; they do not beat it.
+
 - WhatsApp Business Platform integration behind the notification layer
-- Per-member explicit opt-in, revocable
-- Transaction alerts, budget warnings, salary notifications, unusual-charge alerts
-- Interactive queries: "כמה נשאר לנו החודש?"
-- Interactive actions: "תעביר את העסקה האחרונה לקטגוריית בית"
+- Per-member explicit opt-in, revocable, with content-minimal options
+  ([TRUST_AND_PRIVACY.md](docs/TRUST_AND_PRIVACY.md) T9)
+- Transaction alerts, budget warnings, salary notifications, unusual-charge alerts — **parity, not
+  differentiation**
+- **Interactive queries — this is the differentiating half:** "כמה נשאר לנו החודש?"
+- **Interactive actions:** "תעביר את העסקה האחרונה לקטגוריית בית"
 
 ## PL-2 — AI layer
 - Conversational interface over insight objects
@@ -356,6 +406,8 @@ present in its input is a bug ([ADR-012](docs/DECISIONS.md#adr-012)).
 **Exit criteria**
 - [ ] WhatsApp alerts delivered with correct per-member preferences
 - [ ] Transaction domain code contains zero WhatsApp references
+- [ ] **WhatsApp is two-way** — a household member can ask a question and issue an instruction, not
+      only receive alerts
 - [ ] AI never produces an unsourced number
 - [ ] What-if simulations reconcile exactly with the deterministic engines
 - [ ] A household can ask a genuine life question and get a grounded, explainable answer

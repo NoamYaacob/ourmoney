@@ -9,6 +9,62 @@ chosen today do not have to be torn down later.
 **Nothing in this document is MVP scope.** For what is actually being built first, see
 [ROADMAP.md](../ROADMAP.md) and [PHASE_1_PLAN.md](PHASE_1_PLAN.md).
 
+> **Revised after the August 2026 market research.** Two assumed differentiators did not survive
+> contact with evidence and have been corrected here rather than quietly dropped:
+>
+> - **WhatsApp is not whitespace.** RiseUp's signature mechanic *is* WhatsApp, pushing insights
+>   ~3×/week **[VERIFIED]**. What remains open is that theirs is **outbound only** — nobody in Israel
+>   offers a two-way assistant. The differentiator is **interactivity, not the channel**
+>   ([ADR-024](DECISIONS.md#adr-024)).
+> - **Mortgage-refinance detection is already claimed** by FamilyBiz, Robin and Walty. What remains
+>   unbuilt is continuous, automated, **multi-track** optimisation as software rather than a paid
+>   human handoff.
+>
+> A third finding is a warning rather than a correction: **every Israeli product is fully
+> transparent between partners.** That is either an unserved gap or a correct read of the culture,
+> and desk research cannot tell which. §6 below depends on the answer.
+> See [Q11](DECISIONS.md#open-questions) — **the single most important open question in the project.**
+>
+> Full evidence: [MARKET_RESEARCH.md](MARKET_RESEARCH.md) ·
+> [COMPETITOR_ANALYSIS.md](COMPETITOR_ANALYSIS.md) · [OUR_ADVANTAGES.md](OUR_ADVANTAGES.md)
+
+---
+
+## 0. What the market research validated, and what it refuted
+
+Market research (9 August 2026) tested this vision against the Israeli and international market.
+Full evidence: [MARKET_RESEARCH.md](MARKET_RESEARCH.md) ·
+[COMPETITOR_ANALYSIS.md](COMPETITOR_ANALYSIS.md) · [OUR_ADVANTAGES.md](OUR_ADVANTAGES.md)
+
+**Validated.**
+- **The forward-looking thesis is correct and unoccupied.** Across all eight Israeli banks, **no bank
+  offers safe-to-spend, projected balance, or תחזית תזרים**. RiseUp is essentially alone with a
+  weekly "how much is left," and shows **only the current month**. [VERIFIED]
+- **"Tracking is not enough" is the incumbent's own cited weakness.** RiseUp reviewers say exactly
+  this; FamilyBiz's CEO says customers *"no longer want apps displaying data. They want financial
+  partners."* [VERIFIED]
+- **Financial twin, transaction-driven health score, and long-term family planning are empty columns
+  for every product in both markets.** [VERIFIED]
+- **Deterministic-over-AI was independently arrived at by a bank.** One Zero's MCP connector (July
+  2026) serves *processed and categorised* data rather than raw transactions, **explicitly to
+  suppress hallucination** — the same principle as [ADR-012](DECISIONS.md#adr-012). Meanwhile Cleo,
+  whose LLM narrates numbers computed elsewhere, settled with the FTC for **$17M**. [VERIFIED]
+- **The household is the defensible unit.** Open-banking consent in Israel is **per-individual**. A
+  shared household ledger must be assembled at the aggregator layer — **no bank can provide it.**
+
+**Refuted or narrowed.**
+- **WhatsApp is not whitespace.** RiseUp's signature mechanic *is* WhatsApp. What remains open is
+  interactivity — its implementation is outbound-only. See [ADR-024](DECISIONS.md#adr-024).
+- **Mortgage refinancing detection is already claimed** by FamilyBiz, and Walty is expanding into it
+  from origination. Every Israeli offering still resolves to a paid human advisor or a lead handoff,
+  so software-based continuous optimization remains open — but the ground is contested.
+- **Pension and insurance are already done well by FamilyBiz**, via the מסלקה. This is not
+  greenfield.
+- **The category may have a demand ceiling.** ~314K consenting customers across 25 licensees is ~4%
+  of the market, three providers hold 92% of it, and RiseUp cut ~50% of headcount in 2024 and closed
+  its UK operation in 2026. The vision is not invalidated by this, but it should not be planned as
+  though adoption is only a matter of building the right thing.
+
 ---
 
 ## 1. The Shift
@@ -201,6 +257,20 @@ product failure. The Action Engine must weigh tradeoffs and risks, not just opti
 Generic international budgeting apps fail Israeli households because they do not model
 חיסכון לכל ילד, מסגרת אשראי, מילואים, ארנונה, קרן השתלמות, מדד-linked mortgages, or נקודות זיכוי.
 This specificity is the moat.
+
+**The research sharpened this from a preference into a correctness requirement.** Three Israeli
+mechanics mean an imported product does not merely lack features — it **computes wrong numbers**:
+
+| Mechanic | Why an imported product is wrong, not just incomplete |
+|---|---|
+| **Installments (תשלומים)** | One purchase → N future transactions. **No product anywhere has this primitive** [INFERENCE, high confidence]. Forecasts miss committed liabilities that have not appeared yet |
+| **Aggregated monthly card charge** | Safe-to-spend must project the *future consolidated charge* against the bank balance. **A household can look solvent all month and be overdrawn on charge day** |
+| **Overdraft (מסגרת אשראי) as the steady state** | Western products treat going negative as an exception to alert on. For many Israeli households it is normal, and the useful questions are different: how deep, how expensive, what would it take to climb out |
+
+**[INFERENCE]** This also means the entire international debt-payoff category — snowball, avalanche,
+balance-transfer optimisation, credit-utilisation alerts — is built on revolving card debt that most
+Israeli households do not have. **Porting it would solve a problem that isn't there.** See
+[ADR-027](DECISIONS.md#adr-027) and [MARKET_RESEARCH.md §2](MARKET_RESEARCH.md).
 
 ### 5.6 The household, not the individual
 
