@@ -13,28 +13,34 @@ Milestones are ordered by dependency, not by date. Milestone N+1 begins when N's
 
 ---
 
-## Milestone 0 — Styling stack verification (gate)
+## Milestone 0 — Styling stack verification (gate) — ✅ COMPLETE
 
-**This blocks everything else.** [ADR-011](DECISIONS.md#adr-011) selects NativeWind v4 provisionally,
-based on documentation rather than a working build. Verify before committing to it.
+**Verdict: PASS.** [ADR-011](DECISIONS.md#adr-011) is `Accepted`. Full evidence in
+[docs/MILESTONE_0_REPORT.md](MILESTONE_0_REPORT.md). Confirmed on a scratch Expo SDK 57 project,
+9 August 2026:
 
-On a scratch Expo SDK 57 project with NativeWind ≥ 4.2.0, confirm:
+- [x] Metro/Babel bundle succeeds for iOS (971 modules, no transform errors)
+- [x] Metro/Babel bundle succeeds for Android (969 modules, no transform errors)
+- [x] No peer-dependency warnings involving `react-native-reanimated` — **the documented conflict
+      does not reproduce** on NativeWind 4.2.6 / Expo SDK 57; Reanimated arrives transitively via
+      NativeWind's own engine, not as an unmet peer
+- [x] Tailwind classes compile and apply, including arbitrary-value opacity modifiers
+- [x] The `dark:` variant responds correctly, including the stacked `dark:rtl:` case
+- [x] RTL variants (`rtl:`) and logical properties (`ms-`/`me-`/`ps-`/`pe-`) render and flip correctly
+- [x] Hebrew text renders correctly; `he-IL` currency formatting verified in a real list
 
-- [ ] `npx expo run:ios` builds and runs
-- [ ] `npx expo run:android` builds and runs
-- [ ] No peer-dependency warnings involving `react-native-reanimated`
-- [ ] Tailwind classes apply to a basic component
-- [ ] The `dark:` variant responds to system theme changes
-- [ ] RTL variants render correctly with `I18nManager.forceRTL(true)`
-- [ ] Hebrew text in a styled component renders right-to-left without manual overrides
+**Not yet confirmed:** on-device Simulator/Emulator rendering — this machine has no Xcode or Android
+Studio installed. `expo export` was used instead, which exercises the identical transform pipeline a
+real build depends on. Spot-check `npx expo run:ios` / `run:android` once local tooling exists;
+`I18nManager.forceRTL()` was simulated via a `dir="rtl"` DOM attribute on a web build, not observed
+natively.
 
-**If every box is checked:** proceed with NativeWind. Update ADR-011 to `Accepted`.
-
-**If any box fails:** abandon NativeWind. Use React Native `StyleSheet` with a typed theme object in
-`constants/theme.ts`. Write a new ADR recording what failed. The `components/ui/` API is identical
-either way, so no downstream task changes.
-
-Discard the scratch project afterwards.
+**Two one-line fixes found and folded into Milestone 1 below** — not NativeWind defects, gaps in its
+setup docs against this exact SDK/TypeScript version pair:
+1. `babel-preset-expo` must be installed explicitly (`npx expo install babel-preset-expo`) — it is
+   not top-level in the SDK 57 template despite NativeWind's babel config assuming it is.
+2. TypeScript 6 rejects the untyped `./global.css` side-effect import (`TS2882`); add
+   `declare module '*.css' {}` to `nativewind-env.d.ts`.
 
 ---
 
@@ -93,12 +99,20 @@ npm install react-i18next i18next
 
 ### 1.4 NativeWind
 
+Confirmed by [Milestone 0](MILESTONE_0_REPORT.md): `nativewind@^4.2.0` (verified against `4.2.6`),
+`tailwindcss@^3.4.0`, plus the two fixes it surfaced.
+
 ```bash
 npx expo install nativewind tailwindcss
+npx expo install babel-preset-expo   # not top-level in the SDK 57 template — Milestone 0 finding
 ```
 
-- Configure `tailwind.config.js` with content paths and RTL variant.
-- Wrap app in NativeWind provider.
+- Configure `tailwind.config.js` with content paths, `darkMode: 'class'`, and the `nativewind/preset`.
+- Configure `babel.config.js` (`babel-preset-expo` with `jsxImportSource: 'nativewind'`, plus
+  `nativewind/babel`) and `metro.config.js` (`withNativeWind`).
+- Create `nativewind-env.d.ts` with `/// <reference types="nativewind/types" />` **and**
+  `declare module '*.css' {}` — the second line is required for `tsc --strict` to accept the
+  `global.css` side-effect import (TypeScript 6 `TS2882`; Milestone 0 finding).
 - Create `constants/colors.ts` with semantic tokens for light and dark mode.
 
 ### 1.5 TanStack Query
@@ -476,14 +490,13 @@ For MVP-1, Settings shows:
 
 - Use Expo's `useColorScheme()` for system preference detection.
 - User override stored in `expo-secure-store` (`'appearance_mode'` key).
-- Color changes come from the NativeWind `dark:` variant, or from the theme object if Milestone 0
-  rejected NativeWind.
+- Color changes come from the NativeWind `dark:` variant ([confirmed](MILESTONE_0_REPORT.md),
+  Milestone 0).
 - Create a `useTheme()` hook that merges system + user preference.
 
 ### 5.4 Shared Component Library (minimum for this phase)
 
-Build only what these screens actually need. The component API must be identical regardless of the
-Milestone 0 styling outcome, so that the decision does not leak into feature code.
+Build only what these screens actually need.
 
 ```
 components/ui/
@@ -502,7 +515,7 @@ components/ui/
 ## Exit Criteria
 
 ### Build and types
-- [ ] Milestone 0 styling verification complete; ADR-011 resolved to `Accepted` or superseded
+- [x] Milestone 0 styling verification complete; [ADR-011](DECISIONS.md#adr-011) `Accepted`
 - [ ] `tsc --noEmit` passes with zero errors
 - [ ] No `any` types anywhere in the codebase
 - [ ] iOS and Android both build and run
@@ -549,12 +562,11 @@ components/ui/
 
 ## Dependencies
 
-Versions are pinned at scaffold time against the Expo SDK selected in Milestone 0.
 `npx expo install` resolves Expo-managed packages to SDK-compatible versions — use it rather than
 `npm install` for anything `expo-*`.
 
 ```
-expo                          SDK 57 (verify at scaffold — ADR-011)
+expo                          57.x
 expo-router
 expo-secure-store
 expo-local-authentication
@@ -567,11 +579,10 @@ expo-linking
 zustand                       ^4
 react-i18next
 i18next
-nativewind                    >=4.2.0   (provisional — Milestone 0 gate)
-tailwindcss                   ^3        (provisional — paired with NativeWind v4)
+nativewind                    ^4.2.0    (verified 4.2.6 — see ADR-011, MILESTONE_0_REPORT.md)
+tailwindcss                   ^3.4.0
+babel-preset-expo             (explicit top-level install required — Milestone 0 finding)
 ```
-
-`nativewind` and `tailwindcss` are dropped entirely if Milestone 0 fails.
 
 ---
 

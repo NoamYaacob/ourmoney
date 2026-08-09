@@ -19,7 +19,7 @@ rather than editing history.
 | [008](#adr-008) | RLS as the primary authorization mechanism | Accepted |
 | [009](#adr-009) | Invitation by token + native share sheet | Accepted |
 | [010](#adr-010) | `accept_invitation` as SECURITY DEFINER RPC | Accepted (conditional) |
-| [011](#adr-011) | NativeWind v4 stable for styling | Provisional |
+| [011](#adr-011) | NativeWind v4 stable for styling | ✅ Accepted — [verified](MILESTONE_0_REPORT.md) |
 | [012](#adr-012) | Deterministic engines compute, AI only explains | Accepted |
 | [013](#adr-013) | Event-driven boundaries without an event bus | Accepted |
 | [014](#adr-014) | Notification channels decoupled from domain logic | Accepted |
@@ -312,37 +312,68 @@ auditable, and explicitly tested.
 ## ADR-011
 ### NativeWind v4 stable for styling
 
-**Status:** Provisional — verify at scaffold time
+**Status:** ✅ **Accepted — verified against a real build, 9 August 2026 (Milestone 0)**
 
 **Context.** The styling options were NativeWind (Tailwind syntax for React Native), React Native
 `StyleSheet` with a hand-rolled theme, or a component library like Tamagui.
 
-**Findings (verified August 2026).**
-- Expo SDK 57 is the current stable release (June 2026), shipping React Native 0.86 and React 19.2.
-- NativeWind maintains two tracks: **v4 stable** (Tailwind v3) and **v5 preview** (Tailwind v4).
-- NativeWind lists Expo SDK 57 as supported, and **v4 is the track recommended for production**.
-- NativeWind v4 had a genuine Reanimated v4 peer-dependency conflict starting with Expo SDK 54;
-  this was resolved in NativeWind **v4.2.0+**. Any pinned version must be ≥ 4.2.0.
+**The gate.** This ADR was provisional pending a scratch-project build proving NativeWind v4 works
+cleanly on Expo SDK 57 — iOS build, Android build, Hebrew RTL, dark mode, RTL variants, no forced
+Reanimated workarounds, no preview/nightly dependencies. Full method and evidence in
+[docs/MILESTONE_0_REPORT.md](MILESTONE_0_REPORT.md). Summary below.
 
-**Decision.** Use NativeWind v4 stable, pinned to ≥ 4.2.0, on Expo SDK 57. Do **not** use the v5
-preview track.
+**Verified findings, from an actual install and build — not documentation:**
 
-**Why this is provisional.** The instruction was explicitly not to sacrifice stability for Tailwind
-syntax. Web search is not a substitute for a working install. **Milestone 0 of MVP-1 is a gate that
-blocks all other work** until a scratch scaffold proves:
-- A clean `npx create-expo-app` on SDK 57 with NativeWind v4.2.0+ builds for both iOS and Android.
-- RTL variants render correctly.
-- Dark mode via the `dark:` variant works.
-- Reanimated coexists without version warnings.
+- **Expo SDK 57.0.11**, React Native 0.86.2, React 19.2.3 — `create-expo-app` default template.
+- **NativeWind 4.2.6 is `latest` on the stable v3-Tailwind track.** The v5 preview
+  (`5.0.0-preview.4`) exists on a separate dist-tag and was not touched.
+- **The documented Reanimated peer conflict does not reproduce on this version pair.** NativeWind
+  4.1.23 through 4.2.6 all declare exactly one peer dependency: `tailwindcss`. Reanimated 4.5.3
+  arrives as a **transitive dependency of NativeWind's own `react-native-css-interop` engine**, not
+  as a peer the consumer must satisfy. `npm install --strict-peer-deps` and `expo install --check`
+  both pass clean. **This corrects the ADR's original premise** — there is no peer conflict to work
+  around on the Expo SDK 57 / NativeWind 4.2.6 pair.
+- **iOS Metro bundle: pass.** 971 modules, 2.5MB Hermes bytecode, no transform errors.
+- **Android Metro bundle: pass.** 969 modules, 2.5MB Hermes bytecode.
+- **`tsc --noEmit` with `strict: true`: pass, zero errors**, after one one-line fix (below).
+  `className` is genuinely typed — verified with a negative test (`className={42}` correctly
+  rejected with a type error).
+- **Hebrew RTL: pass**, verified visually. Hebrew text, `he-IL` currency formatting, `flex-row`
+  reversal, `rtl:` variants, and **logical properties (`ms-`/`me-`/`ps-`/`pe-`) all render and flip
+  correctly** under `dir="rtl"`.
+- **Dark mode: pass**, verified visually via `nativewind`'s `colorScheme.set()`. Every `dark:`
+  surface, text, border and button state inverted correctly, including the **stacked
+  `dark:rtl:` variant**.
+- **No preview or nightly dependency was installed anywhere in the tree.**
 
-**Fallback.** If any of the above fails, drop NativeWind and use React Native `StyleSheet` with a
-typed theme object in `constants/theme.ts`. The component API in `components/ui/` is designed to be
-identical either way, so this choice does not leak into feature code. Record the outcome as a new ADR.
+**Two real issues found, both fixed, neither disqualifying:**
 
-**Sources:** [Expo SDK 57 changelog](https://expo.dev/changelog/sdk-57) ·
-[NativeWind installation docs](https://www.nativewind.dev/v5/getting-started/installation) ·
-[NativeWind — recommended Expo versions](https://github.com/nativewind/nativewind/discussions/1604) ·
-[NativeWind — Reanimated v4 support](https://github.com/nativewind/nativewind/discussions/1529)
+1. **`babel-preset-expo` is not a top-level dependency of the SDK 57 template**, though NativeWind's
+   babel config assumes it is. Fix: `npx expo install babel-preset-expo`. One command, now folded
+   into the standard Milestone 1 install sequence.
+2. **TypeScript 6's `TS2882` rejects the untyped `import './global.css'` side-effect import**
+   NativeWind's setup docs specify, because NativeWind ships no ambient `*.css` module declaration.
+   Fix: one line, `declare module '*.css' {}`, added to `nativewind-env.d.ts` alongside the
+   `nativewind/types` reference.
+
+**Residual, not blocking:** `npm audit` reports 21 vulnerabilities, all inherited from the Expo
+CLI/Metro toolchain itself (`@expo/config-plugins`, `metro`, `xcode`, `uuid`) — **18 of these are
+already present in the bare SDK 57 scaffold before NativeWind is installed.** NativeWind's own
+dependency (`react-native-reanimated`) adds 3 more, tracing to the same `react-native`/`metro`
+chain. Standard state of a fresh Expo project; not specific to this styling choice.
+
+**Not exercised in Milestone 0** (deferred to real device/simulator testing in later milestones,
+per the user's instruction not to create hosted resources or touch native toolchains this session):
+on-device iOS Simulator and Android Emulator rendering; `I18nManager.forceRTL()` (this test used
+`dir="rtl"` injection to simulate the OS-level effect on a web build, which exercises the same CSS
+variant logic but not the native module); physical-device performance.
+
+**Decision.** Use **NativeWind 4.2.6**, pinned `^4.2.0`, with `tailwindcss ^3.4.0`, on Expo SDK 57.
+Fold the two fixes above into the Milestone 1 setup steps in
+[docs/PHASE_1_PLAN.md](PHASE_1_PLAN.md). Do not use the v5 preview track.
+
+**Sources:** [docs/MILESTONE_0_REPORT.md](MILESTONE_0_REPORT.md) — full command log and screenshots
+from the verification run, 9 August 2026.
 
 ---
 

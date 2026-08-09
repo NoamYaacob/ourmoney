@@ -344,8 +344,8 @@ POST-MVP.
 ### Dark / Light Mode
 - Follows system preference by default
 - User can override in Settings → Appearance
-- All colors come from semantic theme tokens; no hardcoded hex values in components
-  (NativeWind `dark:` variants, or the theme object if ADR-011's gate rejects NativeWind)
+- All colors come from semantic theme tokens via NativeWind `dark:` variants; no hardcoded hex
+  values in components ([ADR-011](DECISIONS.md#adr-011))
 
 ### Security
 - RLS on all financial tables (see [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md))
