@@ -163,6 +163,35 @@ financial events to notify about yet.
 
 MVP-1 emits exactly one real event: `household.member_joined`.
 
+### Milestone 1 exit criteria
+
+All items below are verifiable **without a simulator, emulator, or physical device** — see
+[ADR-030](DECISIONS.md#adr-030). Nothing in Milestone 1 is interactive yet, so this is a complete
+gate, not a partial one.
+
+- [ ] `npx tsc --noEmit` passes with zero errors, `strict: true`
+- [ ] ESLint passes with zero errors
+- [ ] `npx expo export --platform ios` bundles cleanly
+- [ ] `npx expo export --platform android` bundles cleanly
+- [ ] `npx expo export --platform web` bundles cleanly (used for the RTL/dark-mode visual spot check
+      below, same technique as [MILESTONE_0_REPORT.md](MILESTONE_0_REPORT.md))
+- [ ] No `any` type anywhere in the codebase
+- [ ] The five-tab navigation skeleton, RTL bootstrap, and dark/light theming render correctly in
+      the web export (visual spot check, not a substitute for native confirmation — see below)
+- [ ] `lib/events/types.ts` declares the full event vocabulary from
+      [ARCHITECTURE.md](ARCHITECTURE.md#event-vocabulary)
+- [ ] `lib/notifications/channels/` contains no reference to WhatsApp:
+      `grep -ri "whatsapp" features/ app/ lib/ --exclude-dir=notifications` returns zero results
+- [ ] `.env.example` exists and is committed; `.env` is gitignored; no secret appears in any tracked
+      file (`git log -p` clean, or this being the first commit, a plain diff review)
+- [ ] No financial table, Supabase project, or auth flow exists — Milestone 1 is scaffold only
+
+**Deferred to Milestone 3 (auth) or later, with a named trigger — not silently skipped:**
+real biometric prompt behavior, real deep-link handling, real tap/gesture interaction, and genuine
+on-device RTL mirroring all need a physical device, Expo Go, or an EAS development build once
+Milestone 3 introduces the first interactive, native-API-dependent flows. See
+[ADR-030](DECISIONS.md#adr-030) for the ordered options and their tradeoffs.
+
 ---
 
 ## Milestone 2 — Supabase Schema
@@ -512,13 +541,21 @@ components/ui/
 
 ---
 
-## Exit Criteria
+## Exit Criteria for the whole MVP-1 phase (Milestones 1–5)
+
+Local iOS Simulator and Android Emulator are not installed on this machine by decision
+([ADR-030](DECISIONS.md#adr-030)) — disk-space cost, not a blocker on principle. Every item below
+still applies at full strength; items needing real device interaction are marked and route to a
+named alternative (Expo Go on a physical device, or an EAS development build) rather than being
+weakened or dropped.
 
 ### Build and types
 - [x] Milestone 0 styling verification complete; [ADR-011](DECISIONS.md#adr-011) `Accepted`
 - [ ] `tsc --noEmit` passes with zero errors
 - [ ] No `any` types anywhere in the codebase
-- [ ] iOS and Android both build and run
+- [ ] iOS and Android both **bundle cleanly** via `expo export` (Milestone 1) —
+      **real interactive on-device run is required starting Milestone 3**, via a physical device
+      (Expo Go or an EAS development build), per [ADR-030](DECISIONS.md#adr-030)
 
 ### Database
 - [ ] `001_initial_schema.sql` applies cleanly to an empty database
@@ -537,7 +574,7 @@ components/ui/
 - [ ] No service role key appears anywhere in client code
 - [ ] Session tokens are in `expo-secure-store`, not AsyncStorage
 
-### Functional
+### Functional — **requires a real device** ([ADR-030](DECISIONS.md#adr-030)); flag before Milestone 3
 - [ ] User A signs up, creates a household, reaches the dashboard
 - [ ] User A shares an invite link via the OS share sheet
 - [ ] User B taps the link, signs up, and joins User A's household
@@ -554,9 +591,10 @@ components/ui/
 - [ ] No message broker, queue, or pub/sub dependency in `package.json`
 
 ### Localization and theming
-- [ ] All UI text renders in Hebrew, RTL, on both platforms
+- [ ] All UI text renders in Hebrew, RTL — **web export spot check in Milestone 1
+      ([confirmed technique](MILESTONE_0_REPORT.md)); native on-device confirmation in Milestone 3**
 - [ ] No hardcoded Hebrew strings outside `i18n/locales/he.json`
-- [ ] Dark and light mode both render without defects
+- [ ] Dark and light mode both render without defects — same staged check as above
 
 ---
 

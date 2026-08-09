@@ -67,14 +67,17 @@ Detailed plan: [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md)
 - Navigation skeleton and auth guard
 - Domain event type vocabulary + in-process dispatcher ([ADR-013](docs/DECISIONS.md#adr-013))
 
-**Exit criteria**
+**Exit criteria** — full detail and which items need a real device in
+[docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md#exit-criteria-for-the-whole-mvp-1-phase-milestones-15).
+No local Simulator/Emulator on this machine by decision ([ADR-030](docs/DECISIONS.md#adr-030)) —
+not a blocker, routes to Expo Go or an EAS build once Milestone 3 needs real interaction.
 - [ ] Two users sign up, form one household, and both reach a shared dashboard
 - [ ] `supabase/rls_tests.sql` passes, including all ten `accept_invitation` conditions
 - [ ] Migration 001 applies cleanly to an empty database
 - [ ] `tsc --noEmit` clean, no `any`
-- [ ] Hebrew RTL renders correctly on iOS and Android
-- [ ] Dark and light mode both render without defects
-- [ ] Biometric lock triggers on resume after 30s background
+- [ ] Hebrew RTL renders correctly (web export spot check now; native on-device from Milestone 3)
+- [ ] Dark and light mode both render without defects (same staged check)
+- [ ] Biometric lock triggers on resume after 30s background (real device, Milestone 3)
 
 ## MVP-2 — Core Financial Loop
 

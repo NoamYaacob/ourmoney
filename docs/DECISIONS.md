@@ -38,6 +38,7 @@ rather than editing history.
 | [027](#adr-027) | Rule transparency, not rule accuracy, is the categorisation differentiator | Accepted |
 | [028](#adr-028) | Open Banking sits behind a legal/compliance gate; licensing path is counsel's call | Accepted |
 | [029](#adr-029) | Forward-compat by invariant, not by speculative column | Accepted |
+| [030](#adr-030) | Native device validation deferred; non-simulator checks not weakened | Accepted |
 
 ADRs 024–028 were added after the **August 2026 market research**
 ([MARKET_RESEARCH.md](MARKET_RESEARCH.md)). ADR-028 corrects a factual error in earlier planning
@@ -1026,6 +1027,60 @@ was proposed as Q18 and it is the wrong call.
 
 **Applies beyond these two cases.** The general rule: *when a future capability is known, write down
 the invariants it depends on and the migration it will need. Do not pre-build its storage.*
+
+---
+
+## ADR-030
+### Native device validation is deferred; non-simulator checks are not weakened
+
+**Status:** Accepted
+
+**Context.** This development machine has neither Xcode nor Android Studio installed, and the user
+has decided not to install either right now because of disk-space cost (Xcode alone is ~40GB).
+Milestone 0 already worked around this by using `expo export` instead of `expo run:ios`/`run:android`
+— proven in [MILESTONE_0_REPORT.md](MILESTONE_0_REPORT.md) to exercise the identical Metro/Babel
+transform pipeline a real build depends on, without launching a device.
+
+**Decision.** For Milestone 1 (and until stated otherwise), local iOS Simulator and Android Emulator
+are **not required** and do **not block** any exit criterion. In their place:
+
+- `tsc --noEmit --strict` — zero errors, non-negotiable
+- ESLint — zero errors, non-negotiable
+- `expo export --platform ios` and `--platform android` — both must bundle cleanly
+- Any other static check available without a device (dependency audit, structural checks)
+
+**What this explicitly does NOT relax.** None of the above is a lowered bar — it is a different bar
+that happens to be enforceable without a simulator. Strict TypeScript, lint cleanliness, and a
+successful bundle for both platforms remain mandatory. What is deferred is specifically **visual,
+on-device confirmation** — does RTL actually mirror the layout, does a real tap register, does the
+app not crash on a real Hermes runtime on a real OS.
+
+**When native validation becomes necessary, it must be raised explicitly, not silently assumed
+covered by `expo export`.** Concretely:
+- **Milestone 1 (scaffold):** not required. Nothing here is interactive yet.
+- **Milestone 3 (auth) onward:** real interaction — text input, biometric prompts, deep links — needs
+  a physical device or a real emulator/simulator to genuinely verify, not just to bundle. At that
+  point the options are, in order of setup cost: **Expo Go on a physical iPhone** (fastest, but
+  cannot test `expo-local-authentication`'s native biometric prompt or custom native code), a
+  **development build via EAS** installed on a physical device (works for everything MVP-1 needs,
+  no local Xcode required — EAS builds in the cloud), or **local Xcode/Android Studio** (only if the
+  above two are insufficient).
+- The MVP-1 exit criteria in [PHASE_1_PLAN.md](PHASE_1_PLAN.md) mark which items need real-device
+  confirmation versus which are satisfied by static checks alone.
+
+**Rationale.** The alternative — quietly treating `expo export` success as "the app works" through
+Milestone 5 — would let a real RTL mirroring bug, a biometric integration bug, or a deep-link bug
+ship undetected, because none of those are transform-pipeline failures. Naming the gate explicitly,
+and naming what closes it, prevents that failure mode without forcing a 40GB install before it is
+needed.
+
+**Consequences.**
+- [PHASE_1_PLAN.md](PHASE_1_PLAN.md)'s exit criteria are annotated per-item: static-check-verifiable
+  now, or deferred-to-device-with-a-named-trigger.
+- No exit criterion is deleted or weakened. Items requiring a device are marked pending with the
+  reason, not silently dropped.
+- The scratch-project pattern from Milestone 0 (throwaway, outside the repo) is reusable if a future
+  gate needs the same treatment.
 
 ---
 
