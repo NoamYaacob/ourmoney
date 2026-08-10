@@ -1,5 +1,7 @@
-// The active household ID, used to scope every query. Set once a household
-// exists (Milestone 4) — nothing writes to this store yet.
+// The active household ID, used to scope every query. Written by
+// features/household/hooks/useHousehold.ts (sync from the server query),
+// useCreateHousehold.ts, and useAcceptInvitation.ts; cleared by
+// features/auth/hooks/useSignOut.ts on sign-out.
 
 import { create } from 'zustand'
 

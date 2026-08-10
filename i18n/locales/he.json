@@ -76,15 +76,44 @@
     }
   },
   "onboarding": {
-    "createHousehold": { "title": "יצירת משק בית" },
-    "invitePartner": { "title": "הזמנת בן/בת זוג" }
+    "createHousehold": {
+      "title": "יצירת משק בית",
+      "nameLabel": "שם משק הבית",
+      "namePlaceholder": "לדוגמה: משפחת כהן",
+      "submit": "יצירת משק בית"
+    },
+    "invitePartner": {
+      "title": "הזמנת בן/בת זוג",
+      "description": "אפשר להזמין עכשיו או להזמין מאוחר יותר דרך ההגדרות.",
+      "shareButton": "שליחת הזמנה",
+      "skipButton": "דילוג להזמנה מאוחר יותר",
+      "shareMessage": "מצטרפים אליי ב-OurMoney כדי לנהל את הכספים המשותפים שלנו: {{link}}",
+      "shareError": "שיתוף ההזמנה נכשל. אפשר לנסות שוב"
+    }
   },
   "invite": {
     "title": "הצטרפות למשק בית",
-    "tokenLabel": "קוד הזמנה"
+    "status": {
+      "checking": "בודקים את ההזמנה...",
+      "redirecting": "יש להתחבר כדי להמשיך...",
+      "accepting": "מצטרפים למשק הבית..."
+    },
+    "errors": {
+      "invalidInvitation": "ההזמנה הזו אינה תקפה עוד",
+      "generic": "משהו השתבש. נסו שוב"
+    },
+    "backToDashboard": "מעבר ללוח הבקרה"
   },
   "dashboard": {
     "title": "לוח בקרה"
+  },
+  "household": {
+    "errors": {
+      "invalidName": "יש להזין שם תקין למשק הבית",
+      "alreadyInHousehold": "אתם כבר חברים במשק בית אחר",
+      "inviteFailed": "שליחת ההזמנה נכשלה. נסו שוב",
+      "bug": "משהו השתבש. נסו שוב"
+    }
   },
   "notifications": {
     "budgetThresholdReached": {

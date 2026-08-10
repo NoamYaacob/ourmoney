@@ -9,16 +9,34 @@ import { Slot } from 'expo-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { queryClient } from '../lib/queryClient'
+import { useAuth } from '../features/auth/hooks/useAuth'
 import { useAuthGuard } from '../features/auth/hooks/useAuthGuard'
+import { useHousehold } from '../features/household/hooks/useHousehold'
 
 // The auth guard's own loading state (session restore + household check) is
 // rendered here, not inside individual screens — see ARCHITECTURE.md § Auth
 // Flow. Nothing route-specific renders until it resolves, which is what
 // keeps a signed-in user from ever flashing a sign-in screen (or vice versa).
+//
+// useHousehold is mounted here (not inside useAuthGuard, which stays
+// single-purpose: redirect wiring only) so store/householdStore.ts is
+// populated once per session regardless of which screen the user lands on
+// first — satisfies §4.4's "on app launch, load the household ID." The
+// useAuth() call here is cache-deduped with useAuthGuard's internal call to
+// the same hook (same TanStack Query key), not an extra network round trip.
+//
+// Its own isLoading is folded into this gate too (mobile review finding):
+// useAuthGuard's readiness only depends on the lightweight
+// useHasHousehold existence check, a separate query from this hook's
+// heavier household-details fetch — without this, <Slot/> could render
+// before store/householdStore.ts is actually populated, flashing an
+// unpopulated store to whatever (app) screen mounts first.
 function AuthGate() {
   const { isLoading } = useAuthGuard()
+  const { session } = useAuth()
+  const { isLoading: isHouseholdLoading } = useHousehold(session?.user.id)
 
-  if (isLoading) {
+  if (isLoading || (!!session && isHouseholdLoading)) {
     return (
       <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
         <ActivityIndicator />

@@ -5,9 +5,10 @@
 //
 // createQueryBuilderMock lets a test configure what a `.from(...)` chain
 // resolves to without hand-building the real PostgrestFilterBuilder API —
-// select/eq/limit all return the same chainable object, and the object is
-// thenable so `await` on the chain resolves to the configured result,
-// mirroring how the real query builder works regardless of call order.
+// select/eq/limit/insert/single/maybeSingle all return the same chainable
+// object, and the object is thenable so `await` on the chain resolves to
+// the configured result, mirroring how the real query builder works
+// regardless of call order.
 
 import { jest } from '@jest/globals'
 
@@ -16,6 +17,9 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     select: jest.Mock
     eq: jest.Mock
     limit: jest.Mock
+    insert: jest.Mock
+    single: jest.Mock
+    maybeSingle: jest.Mock
     then: (
       onfulfilled?: ((value: typeof result) => unknown) | null,
       onrejected?: ((reason: unknown) => unknown) | null
@@ -24,6 +28,9 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     select: jest.fn(() => builder),
     eq: jest.fn(() => builder),
     limit: jest.fn(() => builder),
+    insert: jest.fn(() => builder),
+    single: jest.fn(() => builder),
+    maybeSingle: jest.fn(() => builder),
     then: (onfulfilled, onrejected) => Promise.resolve(result).then(onfulfilled, onrejected),
   }
   return builder
@@ -41,4 +48,5 @@ export const supabase = {
     signOut: jest.fn(),
   },
   from: jest.fn(),
+  rpc: jest.fn(),
 }
