@@ -41,3 +41,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Claude Code — personal/local machine settings (permission allowlists etc.),
+# never shared. .claude/agents/ and .claude/skills/ ARE committed — they're
+# project-local reusable tooling, not personal config.
+.claude/settings.local.json
+.claude/worktrees/

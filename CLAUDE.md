@@ -293,6 +293,17 @@ These must not be introduced until explicitly approved:
 - No floating point money math.
 - No hardcoded Hebrew strings in components.
 
+## Project-Local Agents & Skills
+
+`.claude/agents/` defines project-local reviewer subagents (`architecture-reviewer`,
+`database-security-reviewer`, `qa-adversarial-reviewer`, `mobile-expo-reviewer`,
+`integration-boundary-reviewer`, `product-scope-guardian`, `migration-test-runner`), and
+`.claude/skills/milestone-execution/` defines the standard workflow for implementing a milestone
+end-to-end. Use the `milestone-execution` skill when starting or resuming work on a numbered
+milestone; invoke the individual review agents directly for anything narrower (e.g. reviewing one
+migration, one PR, one plan). Each agent file documents its own purpose, triggers, and hard stop
+conditions — read the relevant one rather than re-deriving its judgment calls from this file.
+
 ## Documentation Map
 
 | File | Purpose |
