@@ -6,12 +6,17 @@
 --   PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
 --     -v ON_ERROR_STOP=1 -f supabase/rls_tests.sql
 --
--- Coverage matches docs/PHASE_1_PLAN.md §2.5 — the MVP-1 subset of the full
--- test matrix in docs/DATABASE_SCHEMA.md#rls-security-tests. Groups 1/2/3
--- cover only the sub-tests that apply to tables created in migration 001
--- (profiles, households, household_members, invitations); the remaining
--- sub-tests in those groups need financial tables and land with migration
--- 002 in MVP-2. Groups 3b, 3c, 5, and 6 are implemented in full.
+-- Coverage matches docs/PHASE_1_PLAN.md §2.5 plus the Milestone 6 (MVP-2)
+-- financial-table additions. Groups 1/2/3 are now complete (the MVP-1
+-- subset landed with migration 001; the remaining sub-tests, needing
+-- accounts/categories/category_rules/recurring_transactions/transactions/
+-- budgets/budget_allocations/savings_goals, land here with migration 002).
+-- Group 4 (categories) is new in Milestone 6. Groups 3b, 3c, 5, and 6 are
+-- unchanged from MVP-1 and remain implemented in full. Milestone 6 also adds:
+-- the D2 cross-household FK-coherence tests, the financial visibility
+-- matrix (VM.*, per the M6 plan §6a), the D6 CHECK (amount_agorot <> 0)
+-- tests, the save_budget_allocations() RPC test group (RPC.*), and a
+-- grant/policy parity check across all 8 new tables.
 --
 -- Design: every test impersonates a role via `SET LOCAL role` +
 -- `SET LOCAL request.jwt.claims` (the technique DATABASE_SCHEMA.md
@@ -94,7 +99,51 @@ INSERT INTO invitations (id, household_id, invited_by, token, status, expires_at
   ('a0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'tok-h1-accepted',  'accepted',  NOW() + INTERVAL '7 days'),
   ('a0000000-0000-0000-0000-000000000005', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'tok-h2-pending',   'pending',   NOW() + INTERVAL '7 days');
 
-DO $$ BEGIN RAISE NOTICE '=== fixtures loaded ==='; END $$;
+-- ----------------------------------------------------------------------------
+-- Milestone 6 (MVP-2) fixtures — real rows in BOTH households for every
+-- financial table, per the M6 plan's explicit non-vacuous-test requirement.
+-- A Household-2 row of every type is required for every "User A SELECTs
+-- Household 2's X => 0 rows" assertion to mean anything; without one, such
+-- an assertion passes identically whether RLS is correct or entirely absent.
+-- ----------------------------------------------------------------------------
+
+INSERT INTO accounts (id, household_id, owner_id, name, type) VALUES
+  ('5a000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', NULL, 'חשבון עו״ש בית 1', 'checking'),
+  ('5a000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', NULL, 'חשבון עו״ש בית 2', 'checking');
+
+INSERT INTO categories (id, household_id, name_he, is_system) VALUES
+  ('5c000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'קטגוריה מותאמת בית 1', FALSE),
+  ('5c000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'קטגוריה מותאמת בית 2', FALSE);
+
+INSERT INTO category_rules (id, household_id, category_id, field, operator, value) VALUES
+  ('5d000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5c000000-0000-0000-0000-000000000001', 'description', 'contains', 'סופר'),
+  ('5d000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '5c000000-0000-0000-0000-000000000002', 'description', 'contains', 'סופר');
+
+INSERT INTO recurring_transactions (id, household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by) VALUES
+  ('5e000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -5000, 'הו״ק בית 1', 'monthly', '2026-09-01', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('5e000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000002', -5000, 'הו״ק בית 2', 'monthly', '2026-09-01', 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
+-- Household 1: one shared transaction created by A, one personal
+-- transaction created by A (the two visibility-matrix cells the M6 plan §6a
+-- requires tested) — Household 2: one transaction by C.
+INSERT INTO transactions (id, household_id, account_id, category_id, amount_agorot, description, txn_date, is_shared, payer_id, created_by) VALUES
+  ('5f000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -2000, 'קניה משותפת בית 1', '2026-08-05', TRUE,  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('5f000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1500, 'קניה אישית בית 1',  '2026-08-06', FALSE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('5f000000-0000-0000-0000-000000000003', '22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000002', -3000, 'קניה בית 2',        '2026-08-05', TRUE,  'cccccccc-cccc-cccc-cccc-cccccccccccc', 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
+INSERT INTO budgets (id, household_id, period_start, period_end) VALUES
+  ('5b000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '2026-08-01', '2026-08-31'),
+  ('5b000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '2026-08-01', '2026-08-31');
+
+INSERT INTO budget_allocations (id, household_id, budget_id, category_id, amount_agorot) VALUES
+  ('5b100000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5b000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', 10000),
+  ('5b100000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '5b000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000002', 10000);
+
+INSERT INTO savings_goals (id, household_id, account_id, name, target_agorot, created_by) VALUES
+  ('59000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', 'יעד חיסכון בית 1', 100000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('59000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000002', 'יעד חיסכון בית 2', 100000, 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
+DO $$ BEGIN RAISE NOTICE '=== fixtures loaded (incl. Milestone 6 financial fixtures, both households) ==='; END $$;
 
 -- ============================================================================
 -- Group 1 — Cross-household isolation (MVP-1 subset: 1.12-1.14)
@@ -800,6 +849,1030 @@ RESET role;
 ROLLBACK TO SAVEPOINT sp_5_18;
 
 -- ============================================================================
+-- ============================================================================
+-- Milestone 6 (MVP-2) — financial schema tests. Fills the Group 1/2/3
+-- sub-tests reserved for financial tables in MVP-1 (see this file's header),
+-- adds Group 4 (categories), the D2 cross-household FK-coherence tests, the
+-- financial visibility matrix (M6 plan §6a), the D6 CHECK constraint tests,
+-- and the save_budget_allocations() RPC test group.
+-- ============================================================================
+
+-- Group 1 — Cross-household isolation (1.1-1.11): User A (Household 1)
+-- against Household 2's financial rows.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM transactions WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.1: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.1', 'User A cannot SELECT Household 2 transactions');
+END $$;
+RESET role;
+
+SAVEPOINT sp_1_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000002', -100, 'ניסיון חדירה', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 1.2: User A inserted a transaction into Household 2';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('1.2', 'User A cannot INSERT a Household 2 transaction');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_1_2;
+
+SAVEPOINT sp_1_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT := 0;
+BEGIN
+  UPDATE transactions SET note = 'עודכן בזדון' WHERE id = '5f000000-0000-0000-0000-000000000003';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 1.3: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('1.3', 'User A cannot UPDATE a Household 2 transaction');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_1_3;
+
+SAVEPOINT sp_1_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  DELETE FROM transactions WHERE id = '5f000000-0000-0000-0000-000000000003';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 1.4: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('1.4', 'User A cannot DELETE a Household 2 transaction (not even admin of H1 helps — not a member of H2 at all)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_1_4;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM accounts WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.5: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.5', 'User A cannot SELECT Household 2 accounts');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM budgets WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.6: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.6', 'User A cannot SELECT Household 2 budgets');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM budget_allocations WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.7: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.7', 'User A cannot SELECT Household 2 budget_allocations');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  -- Household 2's CUSTOM category only — system categories are legitimately visible (Group 4).
+  SELECT count(*) INTO v_count FROM categories WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.8: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.8', 'User A cannot SELECT Household 2''s custom categories');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM category_rules WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.9: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.9', 'User A cannot SELECT Household 2 category_rules');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM recurring_transactions WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.10: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.10', 'User A cannot SELECT Household 2 recurring_transactions');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM savings_goals WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 1.11: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('1.11', 'User A cannot SELECT Household 2 savings_goals');
+END $$;
+RESET role;
+
+-- Group 2 additions (2.2-2.5, 2.7): User D, no household.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM transactions;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 2.2: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('2.2', 'User D (no household) SELECTs transactions => 0 rows');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM accounts;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 2.3: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('2.3', 'User D (no household) SELECTs accounts => 0 rows');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM budgets;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 2.4: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('2.4', 'User D (no household) SELECTs budgets => 0 rows');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM savings_goals;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 2.5: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('2.5', 'User D (no household) SELECTs savings_goals => 0 rows');
+END $$;
+RESET role;
+
+SAVEPOINT sp_2_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -100, 'לא רלוונטי', '2026-08-05', 'dddddddd-dddd-dddd-dddd-dddddddddddd');
+    RAISE EXCEPTION 'FAIL 2.7: User D inserted into Household 1 transactions';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('2.7', 'User D (no household) cannot INSERT into any household''s transactions');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_2_7;
+
+-- Group 3 additions (3.1, 3.2, 3.5, 3.6): User B (member, not admin) of Household 1.
+SAVEPOINT sp_3_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  DELETE FROM transactions WHERE id = '5f000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 3.1: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('3.1', 'member cannot DELETE a Household 1 transaction (admin only)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_3_1;
+
+SAVEPOINT sp_3_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  DELETE FROM accounts WHERE id = '5a000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 3.2: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('3.2', 'member cannot DELETE a Household 1 account (admin only)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_3_2;
+
+SAVEPOINT sp_3_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  DELETE FROM categories WHERE id = '5c000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 3.5: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('3.5', 'member cannot DELETE a Household 1 custom category (admin only)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_3_5;
+
+SAVEPOINT sp_3_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -300, 'תנועה של בן/בת הזוג', '2026-08-07', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL 3.6: expected 1 row inserted, got %', v_rows; END IF;
+  PERFORM _pass('3.6', 'member CAN INSERT a Household 1 transaction');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_3_6;
+
+-- ============================================================================
+-- Group 4 — Categories
+-- ============================================================================
+
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  -- User D belongs to no household — proves system-category visibility is
+  -- not household-membership-gated at all.
+  SELECT count(*) INTO v_count FROM categories WHERE is_system = TRUE;
+  IF v_count <> 23 THEN RAISE EXCEPTION 'FAIL 4.1: expected 23 system categories visible, got %', v_count; END IF;
+  PERFORM _pass('4.1', 'any authenticated user (even with no household) can SELECT all 23 system categories');
+END $$;
+RESET role;
+
+SAVEPOINT sp_4_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO categories (household_id, name_he) VALUES (NULL, 'קטגוריית מערכת מזויפת');
+    RAISE EXCEPTION 'FAIL 4.2: User A created a category with household_id=NULL';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('4.2', 'a household member cannot create a category with household_id=NULL');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_4_2;
+
+SAVEPOINT sp_4_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO categories (household_id, name_he, is_system) VALUES ('11111111-1111-1111-1111-111111111111', 'קטגוריה מזויפת', TRUE);
+    RAISE EXCEPTION 'FAIL 4.3: User A created a category with is_system=TRUE';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('4.3', 'a household member cannot create a category with is_system=TRUE');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_4_3;
+
+SAVEPOINT sp_4_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT := 0; v_system_id UUID;
+BEGIN
+  SELECT id INTO v_system_id FROM categories WHERE is_system = TRUE LIMIT 1;
+  UPDATE categories SET name_he = 'שונה בזדון' WHERE id = v_system_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 4.4: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('4.4', 'a household member cannot UPDATE a system category');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_4_4;
+
+SAVEPOINT sp_4_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_system_id UUID;
+BEGIN
+  SELECT id INTO v_system_id FROM categories WHERE is_system = TRUE LIMIT 1;
+  DELETE FROM categories WHERE id = v_system_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN RAISE EXCEPTION 'FAIL 4.5: expected 0 rows affected, got %', v_rows; END IF;
+  PERFORM _pass('4.5', 'a household member (even admin) cannot DELETE a system category');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_4_5;
+
+SAVEPOINT sp_4_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO categories (household_id, name_he) VALUES ('11111111-1111-1111-1111-111111111111', 'קטגוריה חדשה בית 1');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL 4.6: expected 1 row inserted, got %', v_rows; END IF;
+  PERFORM _pass('4.6', 'a household member can create a custom category for their own household');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_4_6;
+
+-- ============================================================================
+-- D2 — cross-household FK coherence (the widened WITH CHECK clauses)
+-- ============================================================================
+
+-- D2.1: transactions.account_id pointing at Household 2's account => rejected
+SAVEPOINT sp_d2_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000001', -100, 'חשבון חוצה בית', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D2.1: transaction with a cross-household account_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.1', 'transactions.account_id pointing at another household''s account is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_1;
+
+-- D2.2: transactions.category_id pointing at Household 2's custom category => rejected
+SAVEPOINT sp_d2_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000002', -100, 'קטגוריה חוצה בית', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D2.2: transaction with a cross-household category_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.2', 'transactions.category_id pointing at another household''s custom category is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_2;
+
+-- D2.3 (positive): transactions.category_id pointing at a SYSTEM category => succeeds
+SAVEPOINT sp_d2_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_system_id UUID;
+BEGIN
+  SELECT id INTO v_system_id FROM categories WHERE is_system = TRUE LIMIT 1;
+  INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', v_system_id, -100, 'קטגורית מערכת', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D2.3: expected 1 row inserted referencing a system category, got %', v_rows; END IF;
+  PERFORM _pass('D2.3', 'a transaction referencing a SYSTEM category still succeeds (the fix does not break the primary MVP-2 categorization scheme)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_3;
+
+-- D2.4: transactions.recurring_id pointing at Household 2's recurring row => rejected
+SAVEPOINT sp_d2_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, recurring_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', '5e000000-0000-0000-0000-000000000002', -100, 'הו״ק חוצה בית', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D2.4: transaction with a cross-household recurring_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.4', 'transactions.recurring_id pointing at another household''s recurring row is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_4;
+
+-- D2.5: transactions.payer_id set to a user outside the household (User C, Household 2) => rejected
+SAVEPOINT sp_d2_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, payer_id, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -100, 'שיוך תשלום כוזב', '2026-08-05', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D2.5: transaction with payer_id outside the household was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.5', 'transactions.payer_id cannot be set to a user outside the household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_5;
+
+-- D2.6: transactions.created_by set to a different user on INSERT => rejected (must equal auth.uid())
+SAVEPOINT sp_d2_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -100, 'יצירה כוזבת', '2026-08-05', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    RAISE EXCEPTION 'FAIL D2.6: User A inserted a transaction with created_by set to User B';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.6', 'INSERT requires created_by = auth.uid() — cannot attribute a new row to someone else');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_6;
+
+-- D2.7 (co-editing, VM.3): User B UPDATEs the Household 1 transaction created
+-- by User A without touching created_by => succeeds (financial visibility
+-- matrix: any household member may edit any transaction).
+SAVEPOINT sp_d2_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE transactions SET note = 'ערוך על ידי בן/בת הזוג' WHERE id = '5f000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D2.7: expected 1 row updated, got %', v_rows; END IF;
+  PERFORM _pass('D2.7', 'User B can UPDATE a Household 1 transaction created by User A (co-editing, not creator-only)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_7;
+
+-- D2.8: User B UPDATEs the same transaction, reattributing created_by to
+-- User C (outside the household) => rejected.
+SAVEPOINT sp_d2_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    UPDATE transactions SET created_by = 'cccccccc-cccc-cccc-cccc-cccccccccccc' WHERE id = '5f000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL D2.8: User B reattributed created_by to a user outside the household';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.8', 'UPDATE cannot reattribute created_by to a user outside the household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_8;
+
+-- D2.9 (positive): User B UPDATEs the same transaction, reattributing
+-- created_by to themselves (a current household member) => succeeds.
+SAVEPOINT sp_d2_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE transactions SET created_by = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' WHERE id = '5f000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D2.9: expected 1 row updated, got %', v_rows; END IF;
+  PERFORM _pass('D2.9', 'UPDATE can reattribute created_by to any CURRENT household member (locks in the intended scope)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_9;
+
+-- D2.10: category_rules.category_id pointing at Household 2's custom category => rejected
+SAVEPOINT sp_d2_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO category_rules (household_id, category_id, field, operator, value)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5c000000-0000-0000-0000-000000000002', 'description', 'contains', 'x');
+    RAISE EXCEPTION 'FAIL D2.10: category_rule referencing another household''s category was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.10', 'category_rules.category_id pointing at another household''s category is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_10;
+
+-- D2.11 (positive): category_rules.category_id pointing at a SYSTEM category => succeeds
+SAVEPOINT sp_d2_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_system_id UUID;
+BEGIN
+  SELECT id INTO v_system_id FROM categories WHERE is_system = TRUE LIMIT 1;
+  INSERT INTO category_rules (household_id, category_id, field, operator, value)
+  VALUES ('11111111-1111-1111-1111-111111111111', v_system_id, 'description', 'contains', 'x');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D2.11: expected 1 row inserted referencing a system category, got %', v_rows; END IF;
+  PERFORM _pass('D2.11', 'a category_rule referencing a SYSTEM category still succeeds');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_11;
+
+-- D2.12: recurring_transactions.account_id pointing at Household 2's account => rejected
+SAVEPOINT sp_d2_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000001', -100, 'הו״ק חוצה בית', 'monthly', '2026-09-01', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D2.12: recurring_transactions with a cross-household account_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.12', 'recurring_transactions.account_id pointing at another household''s account is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_12;
+
+-- D2.13: recurring_transactions.created_by set to a different user on INSERT => rejected
+SAVEPOINT sp_d2_13;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -100, 'יצירה כוזבת', 'monthly', '2026-09-01', 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+    RAISE EXCEPTION 'FAIL D2.13: recurring_transactions inserted with created_by set to an outside user';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.13', 'recurring_transactions INSERT requires created_by = auth.uid()');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_13;
+
+-- D2.14: budget_allocations.category_id pointing at Household 2's custom category => rejected
+SAVEPOINT sp_d2_14;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO budget_allocations (household_id, budget_id, category_id, amount_agorot)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5b000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000002', 5000);
+    RAISE EXCEPTION 'FAIL D2.14: budget_allocations referencing another household''s category was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.14', 'budget_allocations.category_id pointing at another household''s category is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_14;
+
+-- D2.15 (positive): budget_allocations.category_id pointing at a SYSTEM category => succeeds
+SAVEPOINT sp_d2_15;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_system_id UUID;
+BEGIN
+  SELECT id INTO v_system_id FROM categories WHERE is_system = TRUE LIMIT 1;
+  INSERT INTO budget_allocations (household_id, budget_id, category_id, amount_agorot)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5b000000-0000-0000-0000-000000000001', v_system_id, 5000);
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D2.15: expected 1 row inserted allocating to a system category, got %', v_rows; END IF;
+  PERFORM _pass('D2.15', 'a budget_allocation referencing a SYSTEM category still succeeds');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_15;
+
+-- D2.16: accounts.owner_id set to a user outside the household => rejected
+SAVEPOINT sp_d2_16;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO accounts (household_id, owner_id, name, type)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'חשבון בבעלות זרה', 'cash');
+    RAISE EXCEPTION 'FAIL D2.16: account with owner_id outside the household was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.16', 'accounts.owner_id cannot be set to a user outside the household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_16;
+
+-- D2.17 (positive): accounts.owner_id set to a fellow household member => succeeds
+SAVEPOINT sp_d2_17;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO accounts (household_id, owner_id, name, type)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'חשבון אישי', 'cash');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D2.17: expected 1 row inserted with an in-household owner_id, got %', v_rows; END IF;
+  PERFORM _pass('D2.17', 'accounts.owner_id set to a fellow household member succeeds');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_17;
+
+-- D2.18: categories.parent_id pointing at Household 2's custom category => rejected
+SAVEPOINT sp_d2_18;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO categories (household_id, name_he, parent_id)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'תת-קטגוריה', '5c000000-0000-0000-0000-000000000002');
+    RAISE EXCEPTION 'FAIL D2.18: category with parent_id pointing at another household was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.18', 'categories.parent_id pointing at another household''s category is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_18;
+
+-- D2.19: savings_goals.account_id pointing at Household 2's account => rejected
+SAVEPOINT sp_d2_19;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO savings_goals (household_id, account_id, name, target_agorot, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000002', 'יעד עם חשבון זר', 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D2.19: savings_goal with account_id pointing at another household was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('D2.19', 'savings_goals.account_id pointing at another household''s account is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d2_19;
+
+-- ============================================================================
+-- Financial visibility matrix (M6 plan §6a) — is_shared/created_by/payer_id
+-- are attribution/display only, never a read authorization predicate.
+-- ============================================================================
+
+-- VM.1: User B (partner) SELECTs the Household 1 SHARED transaction created by A => visible.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM transactions WHERE id = '5f000000-0000-0000-0000-000000000001';
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL VM.1: expected the shared transaction to be visible to User B, got % rows', v_count; END IF;
+  PERFORM _pass('VM.1', 'User B can SELECT a shared Household 1 transaction created by User A');
+END $$;
+RESET role;
+
+-- VM.2 (the Monarch-failure-mode test): User B SELECTs the Household 1
+-- PERSONAL transaction created by A => STILL visible. is_shared=false is
+-- budget attribution only, never a visibility flag.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM transactions WHERE id = '5f000000-0000-0000-0000-000000000002';
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL VM.2: expected the PERSONAL transaction to be visible to User B, got % rows — is_shared=false must never gate visibility', v_count; END IF;
+  PERFORM _pass('VM.2', 'User B can SELECT User A''s PERSONAL (is_shared=false) transaction — every member sees every row in MVP');
+END $$;
+RESET role;
+
+-- VM.5: after User B is removed from household_members, User B loses SELECT
+-- access to Household 1's financial data (not just household_members
+-- itself) — proves the visibility loss is structural (RLS), independent of
+-- any client-side cache behavior.
+SAVEPOINT sp_vm_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  DELETE FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+END $$;
+RESET role;
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM transactions WHERE household_id = '11111111-1111-1111-1111-111111111111';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL VM.5: expected 0 rows after removal, got %', v_count; END IF;
+  PERFORM _pass('VM.5', 'a removed member loses SELECT access to the household''s financial data (D9 — fails closed at the RLS layer, independent of client cache)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_vm_5;
+
+-- ============================================================================
+-- D6 — CHECK (amount_agorot <> 0)
+-- ============================================================================
+
+SAVEPOINT sp_d6_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', 0, 'תנועת אפס', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D6.1: a zero-agorot transaction was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('D6.1', 'a zero-agorot transaction is rejected by CHECK (amount_agorot <> 0)');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d6_1;
+
+SAVEPOINT sp_d6_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO transactions (household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', 5000, 'הכנסה', '2026-08-05', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL D6.2: a valid positive (income) transaction was rejected'; END IF;
+  PERFORM _pass('D6.2', 'a positive (income) non-zero transaction is accepted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d6_2;
+
+SAVEPOINT sp_d6_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', 0, 'הו״ק אפס', 'monthly', '2026-09-01', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL D6.3: a zero-agorot recurring_transactions row was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('D6.3', 'a zero-agorot recurring_transactions row is rejected by CHECK (amount_agorot <> 0)');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_d6_3;
+
+-- ============================================================================
+-- save_budget_allocations() RPC (D3) — a fresh period (2026-09) so these
+-- tests don't interact with the fixture budget already seeded for 2026-08.
+-- ============================================================================
+
+-- RPC.1: happy path — User A saves an allocation for Household 1's custom category.
+SAVEPOINT sp_rpc_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_budget_id UUID; v_alloc_count INT; v_alloc_amount BIGINT;
+BEGIN
+  SELECT save_budget_allocations('2026-09-01'::date, jsonb_build_array(
+    jsonb_build_object('categoryId', '5c000000-0000-0000-0000-000000000001', 'amountAgorot', '15000')
+  )) INTO v_result;
+  IF (v_result->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL RPC.1: expected ok:true, got %', v_result; END IF;
+  v_budget_id := (v_result->>'budget_id')::uuid;
+  SELECT count(*), max(amount_agorot) INTO v_alloc_count, v_alloc_amount FROM budget_allocations WHERE budget_id = v_budget_id;
+  IF v_alloc_count <> 1 OR v_alloc_amount <> 15000 THEN
+    RAISE EXCEPTION 'FAIL RPC.1: expected exactly 1 allocation of 15000, got count=% amount=%', v_alloc_count, v_alloc_amount;
+  END IF;
+  PERFORM _pass('RPC.1', 'save_budget_allocations happy path creates the budget and allocation rows');
+END $$;
+RESET role;
+
+-- RPC.4 continued in the same savepoint scope: idempotent re-save with the
+-- identical payload leaves exactly one budget and one allocation row.
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_budget_count INT; v_alloc_count INT;
+BEGIN
+  PERFORM save_budget_allocations('2026-09-01'::date, jsonb_build_array(
+    jsonb_build_object('categoryId', '5c000000-0000-0000-0000-000000000001', 'amountAgorot', '15000')
+  ));
+  SELECT count(*) INTO v_budget_count FROM budgets WHERE household_id = '11111111-1111-1111-1111-111111111111' AND period_start = '2026-09-01';
+  SELECT count(*) INTO v_alloc_count FROM budget_allocations ba JOIN budgets b ON b.id = ba.budget_id WHERE b.household_id = '11111111-1111-1111-1111-111111111111' AND b.period_start = '2026-09-01';
+  IF v_budget_count <> 1 THEN RAISE EXCEPTION 'FAIL RPC.4: expected exactly 1 budget row after re-save, got %', v_budget_count; END IF;
+  IF v_alloc_count <> 1 THEN RAISE EXCEPTION 'FAIL RPC.4: expected exactly 1 allocation row after re-save, got %', v_alloc_count; END IF;
+  PERFORM _pass('RPC.4', 'calling save_budget_allocations twice with the same payload is idempotent — no duplicate budget/allocation rows');
+END $$;
+RESET role;
+
+-- RPC.5: true replace — saving with only the SYSTEM category this time
+-- removes the previously-saved custom-category allocation.
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_system_id UUID; v_old_category_count INT; v_new_category_count INT;
+BEGIN
+  SELECT id INTO v_system_id FROM categories WHERE is_system = TRUE LIMIT 1;
+  SELECT save_budget_allocations('2026-09-01'::date, jsonb_build_array(
+    jsonb_build_object('categoryId', v_system_id, 'amountAgorot', '20000')
+  )) INTO v_result;
+  IF (v_result->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL RPC.5: expected ok:true, got %', v_result; END IF;
+
+  SELECT count(*) INTO v_old_category_count FROM budget_allocations ba JOIN budgets b ON b.id = ba.budget_id
+    WHERE b.household_id = '11111111-1111-1111-1111-111111111111' AND b.period_start = '2026-09-01' AND ba.category_id = '5c000000-0000-0000-0000-000000000001';
+  SELECT count(*) INTO v_new_category_count FROM budget_allocations ba JOIN budgets b ON b.id = ba.budget_id
+    WHERE b.household_id = '11111111-1111-1111-1111-111111111111' AND b.period_start = '2026-09-01' AND ba.category_id = v_system_id;
+
+  IF v_old_category_count <> 0 THEN RAISE EXCEPTION 'FAIL RPC.5: expected the prior custom-category allocation to be deleted (true replace), got % rows', v_old_category_count; END IF;
+  IF v_new_category_count <> 1 THEN RAISE EXCEPTION 'FAIL RPC.5: expected the new system-category allocation to exist, got % rows', v_new_category_count; END IF;
+  PERFORM _pass('RPC.5', 'save_budget_allocations uses TRUE REPLACE semantics — an omitted category''s prior allocation is deleted, not left stale');
+END $$;
+RESET role;
+
+-- RPC.6: empty payload clears the whole month.
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_alloc_count INT;
+BEGIN
+  SELECT save_budget_allocations('2026-09-01'::date, '[]'::jsonb) INTO v_result;
+  IF (v_result->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL RPC.6: expected ok:true, got %', v_result; END IF;
+  SELECT count(*) INTO v_alloc_count FROM budget_allocations ba JOIN budgets b ON b.id = ba.budget_id
+    WHERE b.household_id = '11111111-1111-1111-1111-111111111111' AND b.period_start = '2026-09-01';
+  IF v_alloc_count <> 0 THEN RAISE EXCEPTION 'FAIL RPC.6: expected 0 allocations after an empty-array save, got %', v_alloc_count; END IF;
+  PERFORM _pass('RPC.6', 'an empty-array payload legitimately clears every allocation for the month (true replace, not upsert-only)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_rpc_1;
+
+-- RPC.2: User D (no household) => {ok:false, error:'no_household'}, no budget row created.
+SAVEPOINT sp_rpc_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT save_budget_allocations('2026-09-01'::date, '[]'::jsonb) INTO v_result;
+  IF v_result <> '{"ok": false, "error": "no_household"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL RPC.2: expected no_household, got %', v_result;
+  END IF;
+  PERFORM _pass('RPC.2', 'a caller with no household gets {ok:false, error:no_household}, not an unhandled NOT NULL violation');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_rpc_2;
+
+-- RPC.3: cross-household category_id in the payload is rejected by the
+-- underlying RLS policy (SECURITY INVOKER — no bypass), not by function logic.
+SAVEPOINT sp_rpc_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    PERFORM save_budget_allocations('2026-09-01'::date, jsonb_build_array(
+      jsonb_build_object('categoryId', '5c000000-0000-0000-0000-000000000002', 'amountAgorot', '1000')
+    ));
+    RAISE EXCEPTION 'FAIL RPC.3: a cross-household category_id in the payload was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('RPC.3', 'save_budget_allocations does not reopen D2 — a cross-household category_id is rejected by the underlying RLS policy');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_rpc_3;
+
+-- RPC.9: invalid (non-integer) amount input is rejected cleanly.
+SAVEPOINT sp_rpc_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT save_budget_allocations('2026-09-01'::date, jsonb_build_array(
+    jsonb_build_object('categoryId', '5c000000-0000-0000-0000-000000000001', 'amountAgorot', '12.5')
+  )) INTO v_result;
+  IF v_result <> '{"ok": false, "error": "invalid_allocation"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL RPC.9: expected invalid_allocation for a non-integer amount, got %', v_result;
+  END IF;
+  PERFORM _pass('RPC.9', 'a non-integer amountAgorot ("12.5") is rejected as invalid_allocation, never rounded through a numeric cast');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_rpc_9;
+
+-- RPC.10: zero/negative amount is rejected.
+SAVEPOINT sp_rpc_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT save_budget_allocations('2026-09-01'::date, jsonb_build_array(
+    jsonb_build_object('categoryId', '5c000000-0000-0000-0000-000000000001', 'amountAgorot', '0')
+  )) INTO v_result;
+  IF v_result <> '{"ok": false, "error": "invalid_allocation"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL RPC.10: expected invalid_allocation for a zero amount, got %', v_result;
+  END IF;
+  PERFORM _pass('RPC.10', 'a zero amountAgorot is rejected as invalid_allocation');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_rpc_10;
+
+-- RPC.7: grants — authenticated only, via information_schema.
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'save_budget_allocations' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL RPC.7: save_budget_allocations is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('RPC.7', 'save_budget_allocations grants exclude anon and PUBLIC');
+END $$;
+
+-- RPC.8: grants — call as anon => EXECUTE denied.
+SAVEPOINT sp_rpc_8;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM save_budget_allocations('2026-09-01'::date, '[]'::jsonb);
+    RAISE EXCEPTION 'FAIL RPC.8: anon was able to call save_budget_allocations';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('RPC.8', 'anon cannot EXECUTE save_budget_allocations');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_rpc_8;
+
+-- ============================================================================
+-- Grant/policy parity — structural guard (ADR-023), not an enumerated list.
+-- Iterates every base table actually present in the public schema, so a
+-- future migration that forgets its own REVOKE ALL / GRANT pair is caught
+-- automatically rather than only tables named here (database-security-
+-- reviewer LOW finding on the prior, table-name-enumerated version of this
+-- test, folded into a HIGH/MEDIUM finding: the enumerated version also never
+-- checked migration 001's 4 tables at all, and never checked `authenticated`
+-- for TRUNCATE/REFERENCES/TRIGGER — only for a SELECT grant).
+--
+-- Asserts, for every public-schema base table:
+--   (a) `anon` holds zero privileges of any kind. TRUNCATE/REFERENCES/
+--       TRIGGER are NOT mediated by RLS at all, so a residual anon grant of
+--       any privilege type — not just SELECT/INSERT/UPDATE/DELETE — defeats
+--       fail-closed/least-privilege even though PostgREST never exposes a
+--       TRUNCATE endpoint. This is the exact defect a live `supabase db
+--       reset` found: every table had anon TRUNCATE/REFERENCES/TRIGGER with
+--       no anon DML, because Supabase's local Postgres instance grants
+--       those three privileges directly to anon/authenticated by default,
+--       independent of config.toml's `auto_expose_new_tables`.
+--   (b) `authenticated` holds no TRUNCATE/REFERENCES/TRIGGER either — this
+--       project's app code never needs them, so least-privilege applies to
+--       authenticated too, not just anon.
+--   (c) `authenticated` has at least a SELECT grant — every table in this
+--       schema is read through the app.
+-- ============================================================================
+
+DO $$
+DECLARE v_table TEXT; v_bad TEXT := '';
+BEGIN
+  FOR v_table IN
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.role_table_grants
+      WHERE table_schema = 'public' AND table_name = v_table AND grantee = 'anon'
+    ) THEN
+      v_bad := v_bad || v_table || ' has an anon grant; ';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM information_schema.role_table_grants
+      WHERE table_schema = 'public' AND table_name = v_table AND grantee = 'authenticated'
+        AND privilege_type IN ('TRUNCATE', 'REFERENCES', 'TRIGGER')
+    ) THEN
+      v_bad := v_bad || v_table || ' grants authenticated TRUNCATE/REFERENCES/TRIGGER; ';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.role_table_grants
+      WHERE table_schema = 'public' AND table_name = v_table AND grantee = 'authenticated' AND privilege_type = 'SELECT'
+    ) THEN
+      v_bad := v_bad || v_table || ' is missing a SELECT grant for authenticated; ';
+    END IF;
+  END LOOP;
+  IF v_bad <> '' THEN RAISE EXCEPTION 'FAIL grants-parity: %', v_bad; END IF;
+  PERFORM _pass('grants-parity', 'every public-schema table has an authenticated SELECT grant, no anon grant of any kind, and no authenticated TRUNCATE/REFERENCES/TRIGGER grant');
+END $$;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -906,7 +1979,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3 subset; 3b,3c,5 minus 5.9,6 in full) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6 additions) ===', v_total;
 END $$;
 
 ROLLBACK;
@@ -1059,4 +2132,4 @@ DELETE FROM invitations WHERE id = 'a0000000-0000-0000-0000-000000000098';
 DELETE FROM households WHERE id = '88888888-8888-8888-8888-888888888888' OR name = 'הבית שלי במרוץ';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000010', 'f0000000-0000-0000-0000-000000000011');
 
-DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (51 assertions: 49 in the main transaction + 5.9 + ADR-020-race) ==='; END $$;
+DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (112 assertions: 110 in the main transaction + 5.9 + ADR-020-race) ==='; END $$;

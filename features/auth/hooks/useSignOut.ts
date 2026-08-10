@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
-import { useHouseholdStore } from '@/store/householdStore'
+import { clearHouseholdScopedQueries } from '@/lib/cache/clearHouseholdScopedQueries'
 import { clearPendingInvitationToken } from '@/features/household/lib/pendingInvitationToken'
 
 export function useSignOut() {
@@ -23,9 +23,11 @@ export function useSignOut() {
       // features/household/hooks/useHousehold.ts's householdQueryKey(userId)
       // — the specific userId isn't reliably available here since the
       // session is already gone by the time this fires.
-      useHouseholdStore.getState().setHouseholdId(null)
-      void queryClient.removeQueries({ queryKey: ['household', 'current'] })
-      void queryClient.removeQueries({ queryKey: ['auth', 'household-membership'] })
+      // Also clears every financial query-key prefix (accounts/categories/
+      // categoryRules/transactions/budgets) and resets the selected period —
+      // the same helper D9 uses from useHasHousehold.ts for a mid-session
+      // membership revocation, so the prefix list lives in one place.
+      clearHouseholdScopedQueries(queryClient)
 
       // A pending invitation token stored by whoever was using this device
       // before must not be silently inherited by the next person who signs

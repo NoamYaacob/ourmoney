@@ -5,6 +5,9 @@ import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
 import { useTranslation } from 'react-i18next'
 import { useBiometricGuard } from '@/features/auth/hooks/useBiometricGuard'
+import { useAuth } from '@/features/auth/hooks/useAuth'
+import { useHousehold } from '@/features/household/hooks/useHousehold'
+import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { colors } from '@/constants/colors'
 
 // Milestone 5's real tab bar (Dashboard/Transactions/Budgets/Settings),
@@ -32,6 +35,9 @@ import { colors } from '@/constants/colors'
 export default function AppLayout() {
   const { t } = useTranslation()
   const { isLocked } = useBiometricGuard()
+  const { user } = useAuth()
+  const { householdId } = useHousehold(user?.id)
+  useTransactionsRealtimeSync(householdId)
   const { colorScheme: scheme } = useColorScheme()
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light

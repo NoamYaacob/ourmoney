@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Share, Switch, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useColorScheme } from 'nativewind'
 import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
@@ -32,6 +33,7 @@ const APPEARANCE_OPTIONS: AppearancePreference[] = ['system', 'light', 'dark']
 // account-switch regression test for the concrete guarantee this relies on.
 export default function Settings() {
   const { t } = useTranslation()
+  const router = useRouter()
   const { colorScheme: scheme } = useColorScheme()
   const { user } = useAuth()
   const { displayName, avatarUrl, isLoading: isProfileLoading } = useProfile(user?.id)
@@ -123,6 +125,19 @@ export default function Settings() {
           onPress={handleInvite}
           loading={createInvitation.isPending}
           variant="secondary"
+        />
+      </View>
+
+      {/* Financial — Milestone 6, reached from Settings, not a tab */}
+      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+        {t('settings.financial.title')}
+      </Text>
+      <View className="gap-2">
+        <Button title={t('settings.financial.accounts')} variant="secondary" onPress={() => router.push('/accounts')} />
+        <Button
+          title={t('settings.financial.categories')}
+          variant="secondary"
+          onPress={() => router.push('/settings/categories')}
         />
       </View>
 

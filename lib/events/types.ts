@@ -25,6 +25,11 @@ export interface TransactionCreatedPayload {
   categoryId: string | null
   amountAgorot: number
   isShared: boolean
+  // Added in Milestone 6 alongside this event's first real subscriber
+  // (features/budgets/lib/budgetThresholdSubscriber.ts) — needed to resolve
+  // which budget period the crossing check applies to. txn_date is the one
+  // and only source of "which month," per invariant I3.
+  txnDate: string
 }
 
 export interface TransactionUpdatedPayload {

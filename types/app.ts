@@ -28,3 +28,41 @@ export interface HouseholdMemberWithProfile {
   displayName: string
   avatarUrl: string | null
 }
+
+// ============================================================================
+// Milestone 6 — MVP-2 Core Financial Loop
+// ============================================================================
+
+export type AccountType = 'checking' | 'savings' | 'credit_card' | 'cash' | 'investment' | 'other'
+export type CategoryRuleField = 'description' | 'merchant_name'
+export type CategoryRuleOperator = 'contains' | 'equals' | 'starts_with'
+export type TransactionSource = 'manual' | 'csv_import' | 'recurring'
+
+export type Account = Tables<'accounts'>
+
+export type Category = Tables<'categories'>
+
+export interface CategoryRule extends Omit<Tables<'category_rules'>, 'field' | 'operator'> {
+  field: CategoryRuleField
+  operator: CategoryRuleOperator
+}
+
+export interface Transaction extends Omit<Tables<'transactions'>, 'source'> {
+  source: TransactionSource
+}
+
+export type Budget = Tables<'budgets'>
+export type BudgetAllocation = Tables<'budget_allocations'>
+
+// features/budgets/hooks/useBudgetProgress.ts's per-category derived shape —
+// camelCase, UI-shaped, computed client-side from canonical transactions
+// (CLAUDE.md: no redundant persisted "spent" counters).
+export interface BudgetCategoryProgress {
+  categoryId: string
+  categoryNameHe: string
+  categoryIcon: string
+  allocatedAgorot: number
+  spentAgorot: number
+  remainingAgorot: number
+  percentSpent: number | null
+}

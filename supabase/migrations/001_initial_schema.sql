@@ -249,6 +249,24 @@ CREATE POLICY "invitations_update" ON invitations
 -- matching exactly what its RLS policies already permit — nothing broader.
 -- `anon` gets no grants on any of these tables; every policy above requires
 -- `authenticated`.
+--
+-- The REVOKE ALL below is not redundant with the above (database-security-
+-- reviewer HIGH finding, confirmed against a live `supabase db reset`):
+-- Supabase's local Postgres instance grants `anon`/`authenticated` TABLE-WIDE
+-- privileges — TRUNCATE, REFERENCES, TRIGGER — on every newly created public
+-- table by default, via a mechanism independent of `auto_expose_new_tables`
+-- (that setting only governs the Data-API-relevant SELECT/INSERT/UPDATE/
+-- DELETE privileges). TRUNCATE and REFERENCES are NOT subject to RLS at all,
+-- so without an explicit REVOKE this defeats fail-closed/least-privilege
+-- even though PostgREST never exposes a TRUNCATE endpoint. REVOKE ALL FROM
+-- PUBLIC alone is not sufficient either — these privileges are granted
+-- directly to the named roles, not via the PUBLIC pseudo-role — so `anon`
+-- and `authenticated` must both be named explicitly.
+
+REVOKE ALL ON profiles           FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON households         FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON household_members  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON invitations        FROM PUBLIC, anon, authenticated;
 
 GRANT SELECT, UPDATE ON profiles TO authenticated;
 GRANT SELECT, UPDATE ON households TO authenticated;

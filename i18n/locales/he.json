@@ -1,7 +1,8 @@
 {
   "common": {
     "appName": "OurMoney",
-    "comingSoon": "בקרוב"
+    "comingSoon": "בקרוב",
+    "cancel": "ביטול"
   },
   "theme": {
     "light": "מצב בהיר",
@@ -14,10 +15,143 @@
     "settings": "הגדרות"
   },
   "transactions": {
-    "title": "תנועות"
+    "title": "תנועות",
+    "empty": "עדיין אין תנועות. הוסיפו את הראשונה שלכם.",
+    "excludedLabel": "לא נכלל בתקציב",
+    "addButton": "הוספת תנועה",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "התנועה לא נמצאה"
+    },
+    "form": {
+      "title": "תנועה חדשה",
+      "expense": "הוצאה",
+      "income": "הכנסה",
+      "amountLabel": "סכום",
+      "amountPlaceholder": "0.00",
+      "descriptionLabel": "תיאור",
+      "descriptionPlaceholder": "לדוגמה: קניות בסופר",
+      "merchantLabel": "בית עסק (אופציונלי)",
+      "merchantPlaceholder": "לדוגמה: שופרסל",
+      "accountLabel": "חשבון",
+      "accountPlaceholder": "בחירת חשבון",
+      "categoryLabel": "קטגוריה (אופציונלי)",
+      "categoryPlaceholder": "בחירת קטגוריה",
+      "sharedLabel": "שיוך",
+      "shared": "משותפת",
+      "personal": "אישית",
+      "sharedHint": "כל חברי משק הבית רואים כל תנועה — השיוך קובע רק אם היא נספרת בתקציב המשותף.",
+      "payerLabel": "מי שילם",
+      "payerPlaceholder": "בחירת משלם/ת",
+      "submit": "שמירת תנועה",
+      "errors": {
+        "missingAccount": "יש לבחור חשבון",
+        "missingDescription": "יש להזין תיאור",
+        "generic": "משהו השתבש. נסו שוב",
+        "amount": {
+          "invalid": "יש להזין סכום תקין",
+          "not_positive": "הסכום חייב להיות גדול מאפס",
+          "too_large": "הסכום גדול מדי",
+          "too_many_decimals": "עד שתי ספרות אחרי הנקודה"
+        }
+      }
+    },
+    "detail": {
+      "title": "פרטי תנועה",
+      "save": "שמירה",
+      "exclude": "אל תכלול בתקציב",
+      "include": "כלול בתקציב",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת תנועה",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    }
+  },
+  "accounts": {
+    "title": "חשבונות",
+    "empty": "עדיין אין חשבונות.",
+    "addButton": "הוספת חשבון",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "החשבון לא נמצא"
+    },
+    "types": {
+      "checking": "עו״ש",
+      "savings": "חיסכון",
+      "credit_card": "כרטיס אשראי",
+      "cash": "מזומן",
+      "investment": "השקעות",
+      "other": "אחר"
+    },
+    "form": {
+      "nameLabel": "שם החשבון",
+      "typeLabel": "סוג חשבון",
+      "submit": "הוספת חשבון"
+    },
+    "detail": {
+      "archive": "העברה לארכיון",
+      "archived": "בארכיון",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת חשבון",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
+      "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום."
+    }
+  },
+  "categories": {
+    "title": "קטגוריות",
+    "customTitle": "קטגוריות מותאמות אישית",
+    "empty": "עדיין אין קטגוריות מותאמות אישית.",
+    "delete": "מחיקה",
+    "rulesTitle": "כללי סיווג",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב"
+    },
+    "form": {
+      "nameLabel": "שם הקטגוריה",
+      "namePlaceholder": "לדוגמה: תחביבים",
+      "submit": "הוספת קטגוריה"
+    },
+    "rules": {
+      "empty": "עדיין אין כללי סיווג.",
+      "applyRetroactively": "החלת הכללים על תנועות קיימות",
+      "field": {
+        "description": "תיאור",
+        "merchant_name": "בית עסק"
+      },
+      "operator": {
+        "contains": "מכיל",
+        "equals": "שווה ל",
+        "starts_with": "מתחיל ב"
+      },
+      "form": {
+        "categoryLabel": "קטגוריית יעד",
+        "categoryPlaceholder": "בחירת קטגוריה",
+        "fieldLabel": "שדה",
+        "operatorLabel": "תנאי",
+        "valueLabel": "ערך",
+        "valuePlaceholder": "לדוגמה: שופרסל",
+        "submit": "הוספת כלל"
+      }
+    }
   },
   "budgets": {
-    "title": "תקציבים"
+    "title": "תקציבים",
+    "prevMonth": "◀ חודש קודם",
+    "nextMonth": "חודש הבא ▶",
+    "totalAllocated": "סה״כ תוקצב",
+    "totalSpent": "סה״כ הוצא",
+    "categoriesTitle": "תקציב לפי קטגוריה",
+    "allocationLabel": "סכום תקציב",
+    "saveAllocation": "שמירה",
+    "addCategoryLabel": "הוספת קטגוריה לתקציב",
+    "addCategoryPlaceholder": "בחירת קטגוריה",
+    "uncategorizedTitle": "תנועות ללא קטגוריה",
+    "uncategorizedEmpty": "כל התנועות מסווגות 🎉",
+    "assignCategoryButton": "שיוך לקטגוריה",
+    "assignCategoryLabel": "קטגוריה",
+    "assignCategorySubmit": "שיוך",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב"
+    }
   },
   "appearance": {
     "system": "לפי המכשיר"
@@ -125,7 +259,16 @@
     "backToDashboard": "מעבר ללוח הבקרה"
   },
   "dashboard": {
-    "title": "לוח בקרה"
+    "title": "לוח בקרה",
+    "spent": "הוצא החודש",
+    "remaining": "נותר",
+    "categoriesTitle": "לפי קטגוריה",
+    "noBudget": "עדיין לא הוגדר תקציב לחודש זה.",
+    "recentTitle": "תנועות אחרונות",
+    "noTransactions": "עדיין אין תנועות החודש.",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב"
+    }
   },
   "household": {
     "errors": {
@@ -147,6 +290,11 @@
       "button": "הזמנת בן/בת זוג",
       "shareError": "שיתוף ההזמנה נכשל. אפשר לנסות שוב"
     },
+    "financial": {
+      "title": "ניהול כספים",
+      "accounts": "חשבונות",
+      "categories": "קטגוריות וכללי סיווג"
+    },
     "appearance": {
       "title": "מראה"
     },
@@ -160,6 +308,10 @@
     "budgetThresholdReached": {
       "title": "התקציב מתקרב לגבול",
       "body": "הגעתם ל-{{thresholdPercent}}% מהתקציב בקטגוריה זו."
+    },
+    "budgetExceeded": {
+      "title": "חריגה מהתקציב",
+      "body": "חרגתם מהתקציב שהוגדר לקטגוריה זו החודש."
     }
   }
 }

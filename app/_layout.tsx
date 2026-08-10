@@ -1,6 +1,7 @@
 import '../global.css'
 import '../i18n'
 import '../lib/notifications/router'
+import '../features/budgets/lib/budgetThresholdSubscriber'
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native'
