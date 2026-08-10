@@ -1,3 +1,12 @@
+// Deep-link landing target for ourmoney://reset-password (see
+// features/auth/hooks/useForgotPassword.ts and useRecoverySession.ts). Not
+// part of the (auth) group — features/auth/lib/authRedirect.ts treats
+// 'reset-password' as a pass-through regardless of session state, so the
+// guard never fights a user who is here because Supabase just established a
+// recovery session for them. Not in docs/PHASE_1_PLAN.md's literal
+// Milestone 3 file list; added this session so forgot-password is usable
+// end-to-end instead of pointing at a route that doesn't exist.
+
 import { useState } from 'react'
 import {
   ActivityIndicator,
@@ -13,58 +22,82 @@ import {
 import { Link } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
-import { useSignUp } from '@/features/auth/hooks/useSignUp'
+import { useRecoverySession } from '@/features/auth/hooks/useRecoverySession'
+import { useResetPassword } from '@/features/auth/hooks/useResetPassword'
 import { mapAuthError } from '@/features/auth/lib/mapAuthError'
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MIN_PASSWORD_LENGTH = 8
 
 interface FieldErrors {
-  displayName?: string
-  email?: string
   password?: string
   confirmPassword?: string
 }
 
-export default function SignUp() {
+export default function ResetPassword() {
   const { t } = useTranslation()
   const scheme = useColorScheme()
   const placeholderColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
-  const signUp = useSignUp()
+  const recoveryStatus = useRecoverySession()
+  const resetPassword = useResetPassword()
 
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
 
   function validate(): FieldErrors {
     const next: FieldErrors = {}
-    if (displayName.trim().length === 0) next.displayName = t('auth.validation.displayNameRequired')
-    if (email.trim().length === 0) next.email = t('auth.validation.emailRequired')
-    else if (!EMAIL_PATTERN.test(email.trim())) next.email = t('auth.validation.emailInvalid')
     if (password.length < MIN_PASSWORD_LENGTH) next.password = t('auth.validation.passwordTooShort')
     if (confirmPassword !== password) next.confirmPassword = t('auth.validation.passwordMismatch')
     return next
   }
 
   function handleSubmit() {
-    if (signUp.isPending) return
+    if (resetPassword.isPending) return
     const nextErrors = validate()
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
-    signUp.mutate({ email: email.trim(), password, displayName: displayName.trim() })
+    resetPassword.mutate(password)
   }
 
-  if (signUp.isSuccess) {
+  if (recoveryStatus === 'loading') {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
+  if (recoveryStatus === 'error') {
     return (
       <View className="flex-1 items-center justify-center bg-surface-light px-6 dark:bg-surface-dark">
         <Text className="mb-2 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-          {t('auth.signUp.successTitle')}
+          {t('auth.resetPassword.invalidLinkTitle')}
         </Text>
-        <Text className="text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.successBody')}
+        <Text className="mb-6 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
+          {t('auth.resetPassword.invalidLinkBody')}
         </Text>
+        <Link
+          href="/forgot-password"
+          className="text-sm font-semibold text-accent-light dark:text-accent-dark"
+        >
+          {t('auth.resetPassword.requestNewLink')}
+        </Link>
+      </View>
+    )
+  }
+
+  if (resetPassword.isSuccess) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-light px-6 dark:bg-surface-dark">
+        <Text className="mb-2 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
+          {t('auth.resetPassword.successTitle')}
+        </Text>
+        <Text className="mb-6 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
+          {t('auth.resetPassword.successBody')}
+        </Text>
+        <Link href="/sign-in" className="text-sm font-semibold text-accent-light dark:text-accent-dark">
+          {t('auth.forgotPassword.backToSignIn')}
+        </Link>
       </View>
     )
   }
@@ -76,48 +109,16 @@ export default function SignUp() {
     >
       <ScrollView contentContainerClassName="grow justify-center px-6" keyboardShouldPersistTaps="handled">
         <Text className="mb-8 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-          {t('auth.signUp.title')}
+          {t('auth.resetPassword.title')}
         </Text>
 
         <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.displayNameLabel')}
-        </Text>
-        <TextInput
-          value={displayName}
-          onChangeText={setDisplayName}
-          placeholder={t('auth.signUp.displayNamePlaceholder')}
-          placeholderTextColor={placeholderColor}
-          autoComplete="name"
-          textContentType="name"
-          className="mb-1 rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 text-ink-light dark:border-border-dark dark:bg-surfaceMuted-dark dark:text-ink-dark"
-        />
-        {errors.displayName && (
-          <Text className="mb-3 text-sm text-red-600 dark:text-red-400">{errors.displayName}</Text>
-        )}
-
-        <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.emailLabel')}
-        </Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder={t('auth.signUp.emailPlaceholder')}
-          placeholderTextColor={placeholderColor}
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          className="mb-1 rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 text-ink-light dark:border-border-dark dark:bg-surfaceMuted-dark dark:text-ink-dark"
-        />
-        {errors.email && <Text className="mb-3 text-sm text-red-600 dark:text-red-400">{errors.email}</Text>}
-
-        <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.passwordLabel')}
+          {t('auth.resetPassword.newPasswordLabel')}
         </Text>
         <TextInput
           value={password}
           onChangeText={setPassword}
-          placeholder={t('auth.signUp.passwordPlaceholder')}
+          placeholder={t('auth.resetPassword.newPasswordPlaceholder')}
           placeholderTextColor={placeholderColor}
           secureTextEntry
           autoComplete="new-password"
@@ -129,12 +130,12 @@ export default function SignUp() {
         )}
 
         <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.confirmPasswordLabel')}
+          {t('auth.resetPassword.confirmPasswordLabel')}
         </Text>
         <TextInput
           value={confirmPassword}
           onChangeText={setConfirmPassword}
-          placeholder={t('auth.signUp.confirmPasswordPlaceholder')}
+          placeholder={t('auth.resetPassword.confirmPasswordPlaceholder')}
           placeholderTextColor={placeholderColor}
           secureTextEntry
           autoComplete="new-password"
@@ -145,32 +146,25 @@ export default function SignUp() {
           <Text className="mb-4 text-sm text-red-600 dark:text-red-400">{errors.confirmPassword}</Text>
         )}
 
-        {signUp.isError && (
+        {resetPassword.isError && (
           <Text className="mb-4 text-center text-sm text-red-600 dark:text-red-400">
-            {t(mapAuthError('signUp', signUp.error))}
+            {t(mapAuthError('resetPassword', resetPassword.error))}
           </Text>
         )}
 
         <Pressable
           onPress={handleSubmit}
-          disabled={signUp.isPending}
+          disabled={resetPassword.isPending}
           className="items-center rounded-xl bg-slate-900 px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-slate-100"
         >
-          {signUp.isPending ? (
+          {resetPassword.isPending ? (
             <ActivityIndicator color={scheme === 'dark' ? colors.surface.dark : colors.surface.light} />
           ) : (
-            <Text className="font-semibold text-white dark:text-slate-900">{t('auth.signUp.submit')}</Text>
+            <Text className="font-semibold text-white dark:text-slate-900">
+              {t('auth.resetPassword.submit')}
+            </Text>
           )}
         </Pressable>
-
-        <View className="mt-6 flex-row justify-center gap-1">
-          <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
-            {t('auth.signUp.signInPrompt')}
-          </Text>
-          <Link href="/sign-in" className="text-sm font-semibold text-accent-light dark:text-accent-dark">
-            {t('auth.signUp.signInLink')}
-          </Link>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   )

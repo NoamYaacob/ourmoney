@@ -8,9 +8,72 @@
     "dark": "מצב כהה"
   },
   "auth": {
-    "signIn": { "title": "התחברות" },
-    "signUp": { "title": "הרשמה" },
-    "forgotPassword": { "title": "שחזור סיסמה" }
+    "signIn": {
+      "title": "התחברות",
+      "emailLabel": "אימייל",
+      "emailPlaceholder": "האימייל שלך",
+      "passwordLabel": "סיסמה",
+      "passwordPlaceholder": "הסיסמה שלך",
+      "submit": "התחברות",
+      "signUpPrompt": "עדיין אין לך חשבון?",
+      "signUpLink": "הרשמה",
+      "forgotPasswordLink": "שכחת סיסמה?"
+    },
+    "signUp": {
+      "title": "הרשמה",
+      "displayNameLabel": "שם תצוגה",
+      "displayNamePlaceholder": "איך נקרא לך?",
+      "emailLabel": "אימייל",
+      "emailPlaceholder": "האימייל שלך",
+      "passwordLabel": "סיסמה",
+      "passwordPlaceholder": "לפחות 8 תווים",
+      "confirmPasswordLabel": "אימות סיסמה",
+      "confirmPasswordPlaceholder": "הקלידו את הסיסמה שוב",
+      "submit": "הרשמה",
+      "signInPrompt": "כבר יש לך חשבון?",
+      "signInLink": "התחברות",
+      "successTitle": "נרשמתם בהצלחה",
+      "successBody": "שלחנו לכם מייל לאימות החשבון. יש לאשר את הכתובת כדי להתחבר."
+    },
+    "forgotPassword": {
+      "title": "שחזור סיסמה",
+      "emailLabel": "אימייל",
+      "emailPlaceholder": "האימייל שלך",
+      "submit": "שליחת קישור לאיפוס",
+      "successTitle": "הקישור נשלח",
+      "successBody": "אם קיים חשבון עם כתובת זו, נשלח אליו קישור לאיפוס הסיסמה.",
+      "backToSignIn": "חזרה להתחברות"
+    },
+    "resetPassword": {
+      "title": "איפוס סיסמה",
+      "invalidLinkTitle": "הקישור אינו תקין",
+      "invalidLinkBody": "ייתכן שהקישור פג תוקף או שכבר נעשה בו שימוש. אפשר לבקש קישור חדש.",
+      "requestNewLink": "בקשת קישור חדש",
+      "newPasswordLabel": "סיסמה חדשה",
+      "newPasswordPlaceholder": "לפחות 8 תווים",
+      "confirmPasswordLabel": "אימות סיסמה",
+      "confirmPasswordPlaceholder": "הקלידו את הסיסמה שוב",
+      "submit": "עדכון סיסמה",
+      "successTitle": "הסיסמה עודכנה",
+      "successBody": "ניתן להתחבר עם הסיסמה החדשה."
+    },
+    "validation": {
+      "emailRequired": "יש להזין כתובת אימייל",
+      "emailInvalid": "כתובת האימייל אינה תקינה",
+      "passwordTooShort": "הסיסמה חייבת לכלול לפחות 8 תווים",
+      "passwordMismatch": "הסיסמאות אינן תואמות",
+      "displayNameRequired": "יש להזין שם תצוגה"
+    },
+    "errors": {
+      "signInFailed": "אימייל או סיסמה שגויים",
+      "signUpFailed": "ההרשמה נכשלה. נסו שוב מאוחר יותר",
+      "resetPasswordFailed": "עדכון הסיסמה נכשל. נסו שוב",
+      "generic": "משהו השתבש. נסו שוב"
+    },
+    "biometric": {
+      "promptMessage": "אימות זהות לפתיחת האפליקציה",
+      "locked": "האפליקציה נעולה"
+    }
   },
   "onboarding": {
     "createHousehold": { "title": "יצירת משק בית" },

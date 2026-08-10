@@ -1,8 +1,14 @@
-import { Redirect } from 'expo-router'
+import { ActivityIndicator, View } from 'react-native'
 
-// No session exists yet (Milestone 3 adds real auth). Every cold start
-// currently lands on sign-in; this becomes conditional on session presence
-// once one exists.
+// The root guard (app/_layout.tsx's AuthGate → useAuthGuard) owns all
+// redirect logic via useSegments(). "/" never matches any known route
+// group, so the guard redirects away from here on its first effect run —
+// this screen exists only because Expo Router requires something to
+// resolve to at "/", and is visible for at most one render.
 export default function Index() {
-  return <Redirect href="/sign-in" />
+  return (
+    <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
+      <ActivityIndicator />
+    </View>
+  )
 }

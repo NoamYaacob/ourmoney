@@ -39,6 +39,7 @@ rather than editing history.
 | [028](#adr-028) | Open Banking sits behind a legal/compliance gate; licensing path is counsel's call | Accepted |
 | [029](#adr-029) | Forward-compat by invariant, not by speculative column | Accepted |
 | [030](#adr-030) | Native device validation deferred; non-simulator checks not weakened | Accepted |
+| [031](#adr-031) | Jest + jest-expo + React Native Testing Library for client-side tests | Accepted |
 
 ADRs 024–028 were added after the **August 2026 market research**
 ([MARKET_RESEARCH.md](MARKET_RESEARCH.md)). ADR-028 corrects a factual error in earlier planning
@@ -1081,6 +1082,52 @@ needed.
   reason, not silently dropped.
 - The scratch-project pattern from Milestone 0 (throwaway, outside the repo) is reusable if a future
   gate needs the same treatment.
+
+---
+
+## ADR-031
+### Jest + jest-expo + React Native Testing Library for client-side tests
+
+**Status:** Accepted
+
+**Context.** Before Milestone 3, the repository had no client-side test infrastructure of any kind —
+`CLAUDE.md` only referred to "the project's eventual client-side test convention for app code" in the
+future tense. Milestone 3 introduces the first logic that genuinely needs unit coverage without a real
+device: the auth-state/household-membership redirect guard, whose most important property — it never
+enters a redirect loop — is exactly the kind of thing that should be a repeatable assertion, not a
+manually re-verified behavior.
+
+**Decision.** Use `jest` with the `jest-expo` preset and `@testing-library/react-native` for all
+client-side (non-database) tests, matching Expo's own documented setup for this stack. Mock the
+Supabase client via a manual mock at `lib/supabase/__mocks__/client.ts` so tests never touch a real
+Supabase project or network. Tests are colocated as `*.test.ts(x)` next to the file they cover (e.g.
+`features/auth/hooks/useAuth.test.ts`), not gathered into a separate `__tests__/` tree.
+
+**Rationale.**
+- `jest-expo` is Expo's own recommended preset; it configures the RN/Hermes transform pipeline
+  automatically, avoiding hand-rolled Babel/Jest wiring for React Native's non-standard module system.
+- Mocking the Supabase client (rather than pointing tests at a real local Supabase instance) keeps these
+  tests fast, hermetic, and independent of `supabase start` being up — consistent with `supabase/
+  rls_tests.sql` already being the correct, separate tool for anything that needs the real database and
+  RLS enforcement. Client-side auth/routing logic and RLS enforcement are tested by different tools on
+  purpose; this ADR does not change how RLS is tested.
+- Colocated `*.test.ts` files keep a hook and its test adjacent, consistent with this project's existing
+  preference for locality over indirection (no barrel files, kebab/camelCase naming next to usage).
+- Extracting decision logic into small pure functions (e.g. `features/auth/lib/authRedirect.ts`) so it
+  can be tested without mocking `expo-router` internals is the pattern this ADR expects future milestones
+  to reuse for their own guard/state-machine logic, rather than each milestone re-deriving a mocking
+  strategy for the router.
+
+**Consequences.**
+- `jest`, `jest-expo`, `@testing-library/react-native`, `react-test-renderer` are `devDependencies`;
+  `react-test-renderer` is pinned to the exact `react` version (`19.2.3`) rather than a caret range,
+  because newer `react-test-renderer` releases require a newer `react` peer than this project pins
+  (Milestone 0's verified version pairing) — an unpinned caret would let a routine `npm install` select
+  an incompatible version.
+- `npm test` runs the suite; no CI wiring is added by this ADR.
+- This is scoped to app-layer logic only. It does not replace, duplicate, or change
+  `supabase/rls_tests.sql`, which remains the sole test suite for RLS/database behavior and must
+  continue to pass before any schema migration is merged.
 
 ---
 

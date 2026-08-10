@@ -3,16 +3,33 @@ import '../i18n'
 import '../lib/notifications/router'
 
 import { useEffect, useState } from 'react'
-import { I18nManager, Platform } from 'react-native'
+import { ActivityIndicator, I18nManager, Platform, View } from 'react-native'
 import * as Updates from 'expo-updates'
 import { Slot } from 'expo-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { queryClient } from '../lib/queryClient'
+import { useAuthGuard } from '../features/auth/hooks/useAuthGuard'
 
-// RTL bootstrap — see ARCHITECTURE.md § RTL Implementation. There is no auth
-// guard here: no session exists yet in MVP-1 (Milestone 3 adds one). This
-// layout is app shell only — providers, RTL, and a route outlet.
+// The auth guard's own loading state (session restore + household check) is
+// rendered here, not inside individual screens — see ARCHITECTURE.md § Auth
+// Flow. Nothing route-specific renders until it resolves, which is what
+// keeps a signed-in user from ever flashing a sign-in screen (or vice versa).
+function AuthGate() {
+  const { isLoading } = useAuthGuard()
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
+  return <Slot />
+}
+
+// RTL bootstrap — see ARCHITECTURE.md § RTL Implementation.
 export default function RootLayout() {
   const [rtlReady, setRtlReady] = useState(I18nManager.isRTL)
 
@@ -48,7 +65,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <Slot />
+        <AuthGate />
       </QueryClientProvider>
     </SafeAreaProvider>
   )
