@@ -2,16 +2,18 @@ import '../global.css'
 import '../i18n'
 import '../lib/notifications/router'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native'
 import * as Updates from 'expo-updates'
 import { Slot } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { queryClient } from '../lib/queryClient'
 import { useAuth } from '../features/auth/hooks/useAuth'
 import { useAuthGuard } from '../features/auth/hooks/useAuthGuard'
 import { useHousehold } from '../features/household/hooks/useHousehold'
+import { useTheme } from '../features/settings/hooks/useTheme'
 
 // The auth guard's own loading state (session restore + household check) is
 // rendered here, not inside individual screens — see ARCHITECTURE.md § Auth
@@ -45,6 +47,35 @@ function AuthGate() {
   }
 
   return <Slot />
+}
+
+// Holds first paint until the persisted appearance preference has been read
+// and applied to NativeWind at least once (see
+// features/settings/hooks/useTheme.ts) — without this, the app would render
+// one frame under NativeWind's own default ('system') before snapping to
+// the user's actual override, a visible flash on cold start. Deliberately a
+// separate component from the RTL gate below: it needs QueryClientProvider
+// context (useTheme uses useQuery), which isn't mounted yet at the point the
+// RTL gate short-circuits — nesting it here, rather than folding the two
+// gates into one boolean, leaves the already-reviewed M1 RTL bootstrap
+// completely untouched.
+function ThemeGate({ children }: { children: ReactNode }) {
+  const { theme, isLoading } = useTheme()
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
+  return (
+    <>
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      {children}
+    </>
+  )
 }
 
 // RTL bootstrap — see ARCHITECTURE.md § RTL Implementation.
@@ -83,7 +114,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthGate />
+        <ThemeGate>
+          <AuthGate />
+        </ThemeGate>
       </QueryClientProvider>
     </SafeAreaProvider>
   )

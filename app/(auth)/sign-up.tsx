@@ -1,20 +1,13 @@
 import { useState } from 'react'
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native'
+import { Text, View } from 'react-native'
 import { Link } from 'expo-router'
 import { useTranslation } from 'react-i18next'
-import { colors } from '@/constants/colors'
 import { useSignUp } from '@/features/auth/hooks/useSignUp'
 import { mapAuthError } from '@/features/auth/lib/mapAuthError'
+import { Screen } from '@/components/ui/Screen'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { ErrorMessage } from '@/components/ui/ErrorMessage'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MIN_PASSWORD_LENGTH = 8
@@ -28,8 +21,6 @@ interface FieldErrors {
 
 export default function SignUp() {
   const { t } = useTranslation()
-  const scheme = useColorScheme()
-  const placeholderColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const signUp = useSignUp()
 
   const [displayName, setDisplayName] = useState('')
@@ -58,120 +49,77 @@ export default function SignUp() {
 
   if (signUp.isSuccess) {
     return (
-      <View className="flex-1 items-center justify-center bg-surface-light px-6 dark:bg-surface-dark">
+      <Screen center>
         <Text className="mb-2 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
           {t('auth.signUp.successTitle')}
         </Text>
         <Text className="text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
           {t('auth.signUp.successBody')}
         </Text>
-      </View>
+      </Screen>
     )
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      className="flex-1 bg-surface-light dark:bg-surface-dark"
-    >
-      <ScrollView contentContainerClassName="grow justify-center px-6" keyboardShouldPersistTaps="handled">
-        <Text className="mb-8 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-          {t('auth.signUp.title')}
-        </Text>
+    <Screen center keyboardAvoiding>
+      <Text className="mb-8 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
+        {t('auth.signUp.title')}
+      </Text>
 
-        <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.displayNameLabel')}
-        </Text>
-        <TextInput
-          value={displayName}
-          onChangeText={setDisplayName}
-          placeholder={t('auth.signUp.displayNamePlaceholder')}
-          placeholderTextColor={placeholderColor}
-          autoComplete="name"
-          textContentType="name"
-          className="mb-1 rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 text-ink-light dark:border-border-dark dark:bg-surfaceMuted-dark dark:text-ink-dark"
-        />
-        {errors.displayName && (
-          <Text className="mb-3 text-sm text-red-600 dark:text-red-400">{errors.displayName}</Text>
-        )}
+      <Input
+        label={t('auth.signUp.displayNameLabel')}
+        value={displayName}
+        onChangeText={setDisplayName}
+        placeholder={t('auth.signUp.displayNamePlaceholder')}
+        autoComplete="name"
+        textContentType="name"
+        error={errors.displayName}
+      />
 
-        <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.emailLabel')}
-        </Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder={t('auth.signUp.emailPlaceholder')}
-          placeholderTextColor={placeholderColor}
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          className="mb-1 rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 text-ink-light dark:border-border-dark dark:bg-surfaceMuted-dark dark:text-ink-dark"
-        />
-        {errors.email && <Text className="mb-3 text-sm text-red-600 dark:text-red-400">{errors.email}</Text>}
+      <Input
+        label={t('auth.signUp.emailLabel')}
+        value={email}
+        onChangeText={setEmail}
+        placeholder={t('auth.signUp.emailPlaceholder')}
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        textContentType="emailAddress"
+        error={errors.email}
+      />
 
-        <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.passwordLabel')}
-        </Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder={t('auth.signUp.passwordPlaceholder')}
-          placeholderTextColor={placeholderColor}
-          secureTextEntry
-          autoComplete="new-password"
-          textContentType="newPassword"
-          className="mb-1 rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 text-ink-light dark:border-border-dark dark:bg-surfaceMuted-dark dark:text-ink-dark"
-        />
-        {errors.password && (
-          <Text className="mb-3 text-sm text-red-600 dark:text-red-400">{errors.password}</Text>
-        )}
+      <Input
+        label={t('auth.signUp.passwordLabel')}
+        value={password}
+        onChangeText={setPassword}
+        placeholder={t('auth.signUp.passwordPlaceholder')}
+        secureTextEntry
+        autoComplete="new-password"
+        textContentType="newPassword"
+        error={errors.password}
+      />
 
-        <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-          {t('auth.signUp.confirmPasswordLabel')}
-        </Text>
-        <TextInput
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          placeholder={t('auth.signUp.confirmPasswordPlaceholder')}
-          placeholderTextColor={placeholderColor}
-          secureTextEntry
-          autoComplete="new-password"
-          textContentType="newPassword"
-          className="mb-2 rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 text-ink-light dark:border-border-dark dark:bg-surfaceMuted-dark dark:text-ink-dark"
-        />
-        {errors.confirmPassword && (
-          <Text className="mb-4 text-sm text-red-600 dark:text-red-400">{errors.confirmPassword}</Text>
-        )}
+      <Input
+        label={t('auth.signUp.confirmPasswordLabel')}
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        placeholder={t('auth.signUp.confirmPasswordPlaceholder')}
+        secureTextEntry
+        autoComplete="new-password"
+        textContentType="newPassword"
+        error={errors.confirmPassword}
+      />
 
-        {signUp.isError && (
-          <Text className="mb-4 text-center text-sm text-red-600 dark:text-red-400">
-            {t(mapAuthError('signUp', signUp.error))}
-          </Text>
-        )}
+      {signUp.isError && <ErrorMessage message={t(mapAuthError('signUp', signUp.error))} />}
 
-        <Pressable
-          onPress={handleSubmit}
-          disabled={signUp.isPending}
-          className="items-center rounded-xl bg-slate-900 px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-slate-100"
-        >
-          {signUp.isPending ? (
-            <ActivityIndicator color={scheme === 'dark' ? colors.surface.dark : colors.surface.light} />
-          ) : (
-            <Text className="font-semibold text-white dark:text-slate-900">{t('auth.signUp.submit')}</Text>
-          )}
-        </Pressable>
+      <Button title={t('auth.signUp.submit')} onPress={handleSubmit} loading={signUp.isPending} />
 
-        <View className="mt-6 flex-row justify-center gap-1">
-          <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
-            {t('auth.signUp.signInPrompt')}
-          </Text>
-          <Link href="/sign-in" className="text-sm font-semibold text-accent-light dark:text-accent-dark">
-            {t('auth.signUp.signInLink')}
-          </Link>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      <View className="mt-6 flex-row justify-center gap-1">
+        <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('auth.signUp.signInPrompt')}</Text>
+        <Link href="/sign-in" className="text-sm font-semibold text-accent-light dark:text-accent-dark">
+          {t('auth.signUp.signInLink')}
+        </Link>
+      </View>
+    </Screen>
   )
 }

@@ -35,12 +35,25 @@
 // is awaited (with a local, silent catch — a failed sign-out attempt must
 // not throw into this handler) so a slow/failed sign-out keeps the overlay
 // up rather than exposing data behind an unconfirmed logout.
+//
+// isBiometricEnabled (Milestone 5's Settings toggle, ../lib/biometricPreference.ts):
+// guarded at the very top of the listener callback, before either branch —
+// while disabled, backgroundedAtRef is simply never set, so re-enabling the
+// preference later starts a clean timer on the next real background/
+// foreground cycle rather than firing off a stale elapsed window. This is
+// listed explicitly in the AppState effect's dependency array (architecture
+// review requirement) rather than read via closure alone — this file has a
+// documented history of fail-open regressions from exactly this class of
+// stale-closure bug, and a preference toggled mid-session (no remount) must
+// take effect on the very next background/foreground cycle, not only after
+// a fresh mount.
 import { useEffect, useRef } from 'react'
 import { AppState, Platform } from 'react-native'
 import * as LocalAuthentication from 'expo-local-authentication'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/authStore'
 import { useSignOut } from './useSignOut'
+import { useBiometricPreference } from './useBiometricPreference'
 
 const BACKGROUND_THRESHOLD_MS = 30_000
 
@@ -48,6 +61,7 @@ export function useBiometricGuard() {
   const isLocked = useAuthStore((state) => state.isBiometricLocked)
   const setBiometricLocked = useAuthStore((state) => state.setBiometricLocked)
   const signOut = useSignOut()
+  const { enabled: isBiometricEnabled } = useBiometricPreference()
   const backgroundedAtRef = useRef<number | null>(null)
   const checkInProgressRef = useRef(false)
   const { t } = useTranslation()
@@ -60,6 +74,7 @@ export function useBiometricGuard() {
     if (Platform.OS === 'web') return
 
     const subscription = AppState.addEventListener('change', (nextState) => {
+      if (!isBiometricEnabled) return
       if (nextState === 'background') {
         backgroundedAtRef.current = Date.now()
         return
@@ -101,7 +116,7 @@ export function useBiometricGuard() {
     })
 
     return () => subscription.remove()
-  }, [setBiometricLocked, signOut, t])
+  }, [setBiometricLocked, signOut, t, isBiometricEnabled])
 
   return { isLocked }
 }

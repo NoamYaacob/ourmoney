@@ -29,4 +29,8 @@ export const colors = {
     light: '#4f46e5',
     dark: '#818cf8',
   },
+  danger: {
+    light: '#dc2626',
+    dark: '#f87171',
+  },
 } as const

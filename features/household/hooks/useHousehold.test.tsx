@@ -70,4 +70,60 @@ describe('useHousehold', () => {
     await renderHook(() => useHousehold('user-42'), { wrapper })
     await waitFor(() => expect(builder.eq).toHaveBeenCalledWith('user_id', 'user-42'))
   })
+
+  // Required regression (user-specified): a stale householdId from a
+  // previous account must never drive what the next account's screens
+  // fetch/render. useHousehold's query key is scoped by the CURRENT
+  // user id (['household','current',userId]) — switching users is a
+  // different cache key entirely, so query.data for the new key starts
+  // undefined, and householdId correctly reads null during the gap before
+  // the new user's household resolves, never the previous user's id.
+  it('account switch: householdId reads null (never the previous user\'s id) until the new user\'s household resolves', async () => {
+    const householdA = { household_id: 'household-A', role: 'admin', households: { id: 'household-A', name: 'A' } }
+    const householdB = { household_id: 'household-B', role: 'member', households: { id: 'household-B', name: 'B' } }
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    function sharedWrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    }
+
+    jest
+      .mocked(supabase.from)
+      .mockReturnValue(
+        createQueryBuilderMock({ data: householdA, error: null }) as unknown as ReturnType<typeof supabase.from>
+      )
+
+    const { result, rerender } = await renderHook(({ userId }: { userId: string }) => useHousehold(userId), {
+      wrapper: sharedWrapper,
+      initialProps: { userId: 'user-A' },
+    })
+    await waitFor(() => expect(result.current.householdId).toBe('household-A'))
+
+    // Simulate sign-out -> a different user signing in: switch the user id
+    // (a fresh mount would behave identically; this proves the property
+    // holds for a re-render of the SAME hook instance too) while the new
+    // user's household query has not resolved yet.
+    let resolveB!: () => void
+    const pendingB = new Promise<void>((resolve) => {
+      resolveB = resolve
+    })
+    jest.mocked(supabase.from).mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockReturnThis(),
+      then: (onfulfilled: (value: { data: typeof householdB; error: null }) => unknown) =>
+        pendingB.then(() => onfulfilled({ data: householdB, error: null })),
+    } as unknown as ReturnType<typeof supabase.from>)
+
+    await rerender({ userId: 'user-B' })
+
+    // Before user B's household query resolves: must read null, NEVER
+    // household A's id.
+    expect(result.current.householdId).toBeNull()
+    expect(result.current.household).toBeNull()
+
+    resolveB()
+    await waitFor(() => expect(result.current.householdId).toBe('household-B'))
+    expect(result.current.household).toEqual(householdB.households)
+  })
 })

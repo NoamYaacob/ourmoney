@@ -7,6 +7,21 @@
     "light": "מצב בהיר",
     "dark": "מצב כהה"
   },
+  "tabs": {
+    "dashboard": "לוח בקרה",
+    "transactions": "תנועות",
+    "budgets": "תקציבים",
+    "settings": "הגדרות"
+  },
+  "transactions": {
+    "title": "תנועות"
+  },
+  "budgets": {
+    "title": "תקציבים"
+  },
+  "appearance": {
+    "system": "לפי המכשיר"
+  },
   "auth": {
     "signIn": {
       "title": "התחברות",
@@ -119,6 +134,27 @@
       "inviteFailed": "שליחת ההזמנה נכשלה. נסו שוב",
       "bug": "משהו השתבש. נסו שוב"
     }
+  },
+  "settings": {
+    "title": "הגדרות",
+    "household": {
+      "title": "משק הבית",
+      "membersTitle": "חברים",
+      "roleAdmin": "מנהל/ת",
+      "roleMember": "חבר/ה"
+    },
+    "invite": {
+      "button": "הזמנת בן/בת זוג",
+      "shareError": "שיתוף ההזמנה נכשל. אפשר לנסות שוב"
+    },
+    "appearance": {
+      "title": "מראה"
+    },
+    "security": {
+      "title": "אבטחה",
+      "biometricToggle": "נעילה ביומטרית"
+    },
+    "signOut": "התנתקות"
   },
   "notifications": {
     "budgetThresholdReached": {
