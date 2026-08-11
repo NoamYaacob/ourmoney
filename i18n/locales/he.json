@@ -1,4 +1,9 @@
 {
+  "appErrorBoundary": {
+    "title": "משהו השתבש",
+    "message": "אירעה שגיאה לא צפויה. אפשר לנסות שוב.",
+    "retry": "נסו שוב"
+  },
   "common": {
     "appName": "OurMoney",
     "comingSoon": "בקרוב",
