@@ -30,8 +30,19 @@ export function Modal({
   return (
     <RNModal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View className="flex-1 items-center justify-center bg-black/40 px-6">
-        <View className="w-full rounded-xl bg-surface-light p-5 dark:bg-surface-dark">
-          <Text className="mb-2 text-lg font-bold text-ink-light dark:text-ink-dark">{title}</Text>
+        {/* accessibilityViewIsModal (iOS): scopes VoiceOver's virtual cursor
+            to this content only, so swiping can't escape to whatever screen
+            is still mounted behind the dialog. accessibilityRole="alert" on
+            the title mirrors ErrorMessage.tsx's existing convention — it's
+            what makes a screen reader actually announce that a dialog
+            appeared, instead of the user needing to discover it by exploring. */}
+        <View
+          className="w-full rounded-xl bg-surface-light p-5 dark:bg-surface-dark"
+          accessibilityViewIsModal
+        >
+          <Text accessibilityRole="alert" className="mb-2 text-lg font-bold text-ink-light dark:text-ink-dark">
+            {title}
+          </Text>
           {message && <Text className="mb-4 text-sm text-inkMuted-light dark:text-inkMuted-dark">{message}</Text>}
           <View className="flex-row-reverse gap-2">
             <Button

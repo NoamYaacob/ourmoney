@@ -120,6 +120,13 @@ export default function RootLayout() {
           title={i18n.t('appErrorBoundary.title')}
           message={i18n.t('appErrorBoundary.message')}
           retryLabel={i18n.t('appErrorBoundary.retry')}
+          onError={(error, info) => {
+            // No crash-reporting service is wired up yet (MVP has none) — a
+            // console log is the minimum needed so a caught error isn't
+            // silently invisible. Never log monetary values or tokens, per
+            // CLAUDE.md; error/stack/componentStack carry no such data here.
+            console.error('[AppErrorBoundary]', error, info.componentStack)
+          }}
         >
           <ThemeGate>
             <AuthGate />

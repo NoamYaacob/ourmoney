@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import * as SecureStore from 'expo-secure-store'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
@@ -20,7 +21,7 @@ describe('useSignOut', () => {
   })
 
   it('calls supabase.auth.signOut', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     function wrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     }
@@ -39,7 +40,7 @@ describe('useSignOut', () => {
   // a sign-out and leak into whatever the next signed-in user on this
   // device sees (architecture review finding).
   it('clears the household store and household-scoped query cache on success', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     function wrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     }
@@ -65,7 +66,7 @@ describe('useSignOut', () => {
   // next person who signs in on it and auto-join them to a household they
   // never agreed to join.
   it('clears the pending invitation token on success', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     function wrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     }
@@ -88,7 +89,7 @@ describe('useSignOut', () => {
   // more than household data does — closes "leaving stale financial data
   // visible during auth/household transitions."
   it('clears every financial query-key prefix and resets the selected period on success', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     function wrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     }
@@ -116,7 +117,7 @@ describe('useSignOut', () => {
   })
 
   it('does not clear the household store or cache on a failed sign-out', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     function wrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import * as SecureStore from 'expo-secure-store'
 import { colorScheme } from 'nativewind'
 import type { ReactNode } from 'react'
@@ -14,7 +15,7 @@ import { APPEARANCE_SECURE_STORE_KEY } from '../lib/appearancePreference'
 jest.mock('expo-secure-store')
 
 function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 

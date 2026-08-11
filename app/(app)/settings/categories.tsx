@@ -86,6 +86,7 @@ export default function Categories() {
                   }}
                   disabled={deleteCategory.isPending}
                   accessibilityRole="button"
+                  accessibilityLabel={t('categories.deleteCategoryLabel', { name: category.name_he })}
                   accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
                 >
                   <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
@@ -150,6 +151,11 @@ export default function Categories() {
                     }}
                     disabled={deleteRule.isPending}
                     accessibilityRole="button"
+                    accessibilityLabel={t('categories.rules.deleteRuleLabel', {
+                      field: t(`categories.rules.field.${rule.field}`),
+                      operator: t(`categories.rules.operator.${rule.operator}`),
+                      value: rule.value,
+                    })}
                     accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
                   >
                     <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
