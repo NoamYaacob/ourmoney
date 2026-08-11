@@ -1,8 +1,14 @@
 {
+  "appErrorBoundary": {
+    "title": "משהו השתבש",
+    "message": "אירעה שגיאה לא צפויה. אפשר לנסות שוב.",
+    "retry": "נסו שוב"
+  },
   "common": {
     "appName": "OurMoney",
     "comingSoon": "בקרוב",
-    "cancel": "ביטול"
+    "cancel": "ביטול",
+    "loading": "טוען..."
   },
   "theme": {
     "light": "מצב בהיר",
@@ -101,6 +107,7 @@
     "customTitle": "קטגוריות מותאמות אישית",
     "empty": "עדיין אין קטגוריות מותאמות אישית.",
     "delete": "מחיקה",
+    "deleteCategoryLabel": "מחיקת קטגוריית {{name}}",
     "rulesTitle": "כללי סיווג",
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
@@ -113,6 +120,7 @@
     "rules": {
       "empty": "עדיין אין כללי סיווג.",
       "applyRetroactively": "החלת הכללים על תנועות קיימות",
+      "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
       "field": {
         "description": "תיאור",
         "merchant_name": "בית עסק"

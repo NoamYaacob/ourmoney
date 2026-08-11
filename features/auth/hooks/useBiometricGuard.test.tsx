@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react-native'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import { AppState, Platform } from 'react-native'
 import * as LocalAuthentication from 'expo-local-authentication'
 import * as SecureStore from 'expo-secure-store'
@@ -30,14 +31,36 @@ jest.mock('react-i18next', () => ({
 }))
 
 function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-function fireAppState(nextState: 'background' | 'active') {
+// Async + act-wrapped: the mocked AppState listener synchronously triggers
+// state updates inside useBiometricGuard, and (for the cases that go on to
+// call a TanStack Query mutation) can also schedule a batched notifyManager
+// notification via a real setTimeout (confirmed against
+// @tanstack/query-core's source — notifyManager's default scheduler is
+// setTimeout-based, not microtask-based). A bare synchronous call here
+// produced "not wrapped in act(...)" warnings for both the immediate update
+// and, in some tests, that deferred notification landing outside any act
+// scope. async act() flushes both.
+async function fireAppState(nextState: 'background' | 'active') {
   const mockCalls = jest.mocked(AppState.addEventListener).mock.calls
   const listener = mockCalls[mockCalls.length - 1]?.[1]
-  listener?.(nextState)
+  await act(async () => {
+    listener?.(nextState)
+  })
+}
+
+// Standard "flush the macrotask queue" idiom for tests that need to assert a
+// negative (nothing happened) after triggering work that may complete via a
+// real timer — a single `await Promise.resolve()` only flushes microtasks,
+// not a setTimeout-scheduled notifyManager notification, which is what
+// produced the act warnings this replaces.
+async function flushAsync() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 describe('useBiometricGuard', () => {
@@ -58,11 +81,11 @@ describe('useBiometricGuard', () => {
     now.mockReturnValue(1_000)
 
     const { result } = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 29_000)
-    fireAppState('active')
+    await fireAppState('active')
 
-    await Promise.resolve()
+    await flushAsync()
     expect(LocalAuthentication.hasHardwareAsync).not.toHaveBeenCalled()
     expect(result.current.isLocked).toBe(false)
   })
@@ -77,13 +100,14 @@ describe('useBiometricGuard', () => {
       .mockResolvedValue({ success: true } as Awaited<ReturnType<typeof LocalAuthentication.authenticateAsync>>)
 
     const { result } = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
 
     await waitFor(() => expect(result.current.isLocked).toBe(false))
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalled()
     expect(supabase.auth.signOut).not.toHaveBeenCalled()
+    await flushAsync()
   })
 
   it('signs out when the biometric check fails (including a cancel), and stays locked (fail closed) while sign-out is in flight', async () => {
@@ -96,15 +120,16 @@ describe('useBiometricGuard', () => {
     } as Awaited<ReturnType<typeof LocalAuthentication.authenticateAsync>>)
 
     const { result } = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
 
     await waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalled())
     // The overlay must not be cleared just because signOut was called — only
     // once the session is actually gone (which app/(app)/_layout.tsx unmounting
     // handles, not this hook clearing its own flag).
     expect(result.current.isLocked).toBe(true)
+    await flushAsync()
   })
 
   it('never locks when there is no biometric hardware or nothing enrolled (safe fallback)', async () => {
@@ -114,11 +139,11 @@ describe('useBiometricGuard', () => {
     jest.mocked(LocalAuthentication.isEnrolledAsync).mockResolvedValue(false)
 
     const { result } = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
 
-    await Promise.resolve()
+    await flushAsync()
     expect(LocalAuthentication.authenticateAsync).not.toHaveBeenCalled()
     expect(result.current.isLocked).toBe(false)
   })
@@ -127,6 +152,13 @@ describe('useBiometricGuard', () => {
     Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true })
 
     await renderHook(() => useBiometricGuard(), { wrapper })
+    // useBiometricPreference() is called unconditionally (the Platform.OS
+    // check only gates the AppState subscription effect below it) — its
+    // underlying query still resolves asynchronously here even though
+    // nothing on web ever reads the result. Flushed so that resolution
+    // lands inside this test's act scope rather than leaking into whatever
+    // renders next.
+    await flushAsync()
     expect(AppState.addEventListener).not.toHaveBeenCalled()
     expect(LocalAuthentication.hasHardwareAsync).not.toHaveBeenCalled()
   })
@@ -145,11 +177,15 @@ describe('useBiometricGuard', () => {
 
     // First mount: app backgrounded 31s, biometric check fails -> signs out.
     const first = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
     await waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalled())
     await first.unmount()
+    // Drain any notifyManager notification still pending against the first
+    // hook's queryClient before mounting the second — otherwise it can land
+    // during/after the second renderHook() and get misattributed to it.
+    await flushAsync()
 
     // User signs back in — app/(app)/_layout.tsx (and useBiometricGuard)
     // mount fresh, as they would after the auth guard routes them into (app).
@@ -170,19 +206,17 @@ describe('useBiometricGuard', () => {
     await renderHook(() => useBiometricGuard(), { wrapper })
 
     now.mockReturnValue(1_000)
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
-    await Promise.resolve()
-    await Promise.resolve()
+    await fireAppState('active')
+    await flushAsync()
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1)
 
     now.mockReturnValue(1_000 + 31_000 + 1_000)
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000 + 1_000 + 31_000)
-    fireAppState('active')
-    await Promise.resolve()
-    await Promise.resolve()
+    await fireAppState('active')
+    await flushAsync()
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1)
   })
 
@@ -199,12 +233,13 @@ describe('useBiometricGuard', () => {
     jest.mocked(LocalAuthentication.authenticateAsync).mockRejectedValue(new Error('native module error'))
 
     const { result } = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
 
     await waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalled())
     expect(result.current.isLocked).toBe(true)
+    await flushAsync()
   })
 
   // Regression (mobile/Expo re-review): an earlier fix cleared isBiometricLocked
@@ -228,14 +263,13 @@ describe('useBiometricGuard', () => {
     jest.mocked(supabase.auth.signOut).mockImplementation(() => new Promise(() => {}))
 
     const { result } = await renderHook(() => useBiometricGuard(), { wrapper })
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
 
     await waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalled())
     // Give any (incorrect) optimistic-clear microtask a chance to run.
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushAsync()
     expect(result.current.isLocked).toBe(true)
   })
 
@@ -253,11 +287,11 @@ describe('useBiometricGuard', () => {
     await renderHook(() => useBiometricGuard(), { wrapper })
     await waitFor(() => expect(jest.mocked(AppState.addEventListener).mock.calls.length).toBeGreaterThan(1))
 
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
 
-    await Promise.resolve()
+    await flushAsync()
     expect(LocalAuthentication.hasHardwareAsync).not.toHaveBeenCalled()
   })
 
@@ -284,7 +318,7 @@ describe('useBiometricGuard', () => {
       success: true,
     } as Awaited<ReturnType<typeof LocalAuthentication.authenticateAsync>>)
 
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     function sharedWrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     }
@@ -297,24 +331,43 @@ describe('useBiometricGuard', () => {
     await waitFor(() => expect(SecureStore.getItemAsync).toHaveBeenCalled())
 
     // First cycle: still enabled -> locks and prompts as usual.
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000)
-    fireAppState('active')
+    await fireAppState('active')
     await waitFor(() => expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(result.current.isLocked).toBe(false))
 
     // Toggle the preference in the SAME query cache this still-mounted hook
     // reads from — simulates Settings' toggle elsewhere in the app without
     // this hook ever remounting.
+    //
+    // The wait below must be relative to the listener count captured RIGHT
+    // BEFORE the toggle, not a hardcoded ">1" — by this point in the test,
+    // several earlier renders (the initial mount, the preference query
+    // resolving, both setBiometricLocked calls) have already pushed the
+    // count well past 1 on their own (see the file-level comment above this
+    // test: this effect re-subscribes on every render for reasons unrelated
+    // to isBiometricEnabled). A ">1" check is already satisfied before
+    // setQueryData's own notifyManager-batched re-render even starts, so
+    // fireAppState's "use the most recently registered listener" below was
+    // grabbing a listener from BEFORE the toggle — one still closed over
+    // isBiometricEnabled=true — and firing it happened to call
+    // authenticateAsync a second time. A short flush previously hid this
+    // (the stale call didn't finish registering before the assertion ran);
+    // properly awaiting fireAppState/flushAsync (both now real act-wrapped
+    // waits) makes it happen deterministically, which is what surfaced this.
+    const listenerCountBeforeToggle = jest.mocked(AppState.addEventListener).mock.calls.length
     queryClient.setQueryData(['settings', 'biometric-preference'], false)
-    await waitFor(() => expect(jest.mocked(AppState.addEventListener).mock.calls.length).toBeGreaterThan(1))
+    await waitFor(() =>
+      expect(jest.mocked(AppState.addEventListener).mock.calls.length).toBeGreaterThan(listenerCountBeforeToggle)
+    )
 
     // Second cycle: now disabled -> must NOT prompt again.
     now.mockReturnValue(1_000 + 31_000 + 1_000)
-    fireAppState('background')
+    await fireAppState('background')
     now.mockReturnValue(1_000 + 31_000 + 1_000 + 31_000)
-    fireAppState('active')
-    await Promise.resolve()
+    await fireAppState('active')
+    await flushAsync()
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1)
   })
 })

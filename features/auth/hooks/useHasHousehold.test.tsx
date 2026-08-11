@@ -1,6 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals'
 import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { createQueryBuilderMock } from '@/lib/supabase/__mocks__/client'
@@ -10,7 +11,7 @@ import { usePeriodStore } from '@/store/periodStore'
 jest.mock('@/lib/supabase/client')
 
 async function renderWithClient(userId: string | undefined) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
@@ -62,7 +63,7 @@ describe('useHasHousehold', () => {
         >
       )
 
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     )
@@ -98,7 +99,7 @@ describe('useHasHousehold', () => {
         createQueryBuilderMock({ data: [], error: null }) as unknown as ReturnType<typeof supabase.from>
       )
 
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     )

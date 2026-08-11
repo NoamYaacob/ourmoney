@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react-native'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import * as SecureStore from 'expo-secure-store'
 import type { Session } from '@supabase/supabase-js'
 import type { ReactNode } from 'react'
@@ -84,7 +85,7 @@ function mockDeferred(token: string) {
 }
 
 async function renderWithClient(token: string | undefined) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
@@ -191,7 +192,7 @@ describe('useInviteAcceptance', () => {
         result: { ok: true, household_id: 'household-1', already_member: false },
       })
 
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const queryClient = createTestQueryClient()
       const wrapper = ({ children }: { children: ReactNode }) => (
         <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       )
@@ -247,8 +248,10 @@ describe('useInviteAcceptance', () => {
       const { result, queryClient } = await renderWithClient('tok-abc')
       expect(result.current.status).toBe('confirming')
 
-      result.current.confirm()
-      result.current.confirm() // a second tap/re-render must not double-accept
+      await act(async () => {
+        result.current.confirm()
+        result.current.confirm() // a second tap/re-render must not double-accept
+      })
 
       await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1))
       expect(mutate).toHaveBeenCalledWith('tok-abc', expect.anything())
@@ -267,7 +270,9 @@ describe('useInviteAcceptance', () => {
       const { result, queryClient } = await renderWithClient('tok-abc')
       expect(result.current.status).toBe('confirming')
 
-      result.current.cancel()
+      await act(async () => {
+        result.current.cancel()
+      })
 
       await waitFor(() => expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('ourmoney.pendingInvitationToken'))
       await waitFor(() => expect(queryClient.getQueryData(pendingInvitationTokenQueryKey)).toBeNull())
@@ -301,14 +306,21 @@ describe('useInviteAcceptance', () => {
       const { result } = await renderWithClient('tok-abc')
       await waitFor(() => expect(result.current.status).toBe('confirming'))
 
-      result.current.cancel()
+      await act(async () => {
+        result.current.cancel()
+      })
 
       await waitFor(() => expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('ourmoney.pendingInvitationToken'))
       await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'))
       // Give the real query cache's notifyManager a chance to flush any
       // subsequent re-render before asserting the negative — this is
-      // exactly the window the confirmed bug lived in.
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      // exactly the window the confirmed bug lived in. Wrapped in act()
+      // since notifyManager's batched notification can trigger a real state
+      // update during this window (query-core schedules it via a real
+      // setTimeout, confirmed against @tanstack/query-core's source).
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      })
 
       expect(mutate).not.toHaveBeenCalled()
       expect(mockReplace).not.toHaveBeenCalledWith('/dashboard')
@@ -322,7 +334,9 @@ describe('useInviteAcceptance', () => {
       const { result, queryClient } = await renderWithClient('dead-token')
       expect(result.current.status).toBe('confirming')
 
-      result.current.confirm()
+      await act(async () => {
+        result.current.confirm()
+      })
 
       await waitFor(() => expect(result.current.status).toBe('error'))
       expect(result.current.errorMessageKey).toBe('invite.errors.invalidInvitation')

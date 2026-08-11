@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { renderHook } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useTransactionsRealtimeSync } from './useTransactionsRealtimeSync'
@@ -13,7 +14,7 @@ interface MockChannel {
 }
 
 function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
@@ -54,7 +55,7 @@ describe('useTransactionsRealtimeSync', () => {
   })
 
   it('invalidates both the transactions and budget-progress prefixes on any change (invalidate, never merge)', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
 
     function localWrapper({ children }: { children: ReactNode }) {

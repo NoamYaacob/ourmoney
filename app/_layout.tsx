@@ -1,5 +1,5 @@
 import '../global.css'
-import '../i18n'
+import i18n from '../i18n'
 import '../lib/notifications/router'
 import '../features/budgets/lib/budgetThresholdSubscriber'
 
@@ -15,6 +15,7 @@ import { useAuth } from '../features/auth/hooks/useAuth'
 import { useAuthGuard } from '../features/auth/hooks/useAuthGuard'
 import { useHousehold } from '../features/household/hooks/useHousehold'
 import { useTheme } from '../features/settings/hooks/useTheme'
+import { AppErrorBoundary } from '../components/ui/AppErrorBoundary'
 
 // The auth guard's own loading state (session restore + household check) is
 // rendered here, not inside individual screens — see ARCHITECTURE.md § Auth
@@ -115,9 +116,22 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <ThemeGate>
-          <AuthGate />
-        </ThemeGate>
+        <AppErrorBoundary
+          title={i18n.t('appErrorBoundary.title')}
+          message={i18n.t('appErrorBoundary.message')}
+          retryLabel={i18n.t('appErrorBoundary.retry')}
+          onError={(error, info) => {
+            // No crash-reporting service is wired up yet (MVP has none) — a
+            // console log is the minimum needed so a caught error isn't
+            // silently invisible. Never log monetary values or tokens, per
+            // CLAUDE.md; error/stack/componentStack carry no such data here.
+            console.error('[AppErrorBoundary]', error, info.componentStack)
+          }}
+        >
+          <ThemeGate>
+            <AuthGate />
+          </ThemeGate>
+        </AppErrorBoundary>
       </QueryClientProvider>
     </SafeAreaProvider>
   )

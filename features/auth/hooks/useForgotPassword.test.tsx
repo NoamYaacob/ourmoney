@@ -1,6 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals'
 import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useForgotPassword } from './useForgotPassword'
@@ -8,7 +9,7 @@ import { useForgotPassword } from './useForgotPassword'
 jest.mock('@/lib/supabase/client')
 
 function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { renderHook, waitFor } from '@testing-library/react-native'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '@/lib/testing/createTestQueryClient'
 import type { ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useCreateHousehold } from './useCreateHousehold'
@@ -11,7 +12,7 @@ jest.mock('@/lib/supabase/client')
 jest.mock('@/features/auth/hooks/useAuth')
 
 function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = createTestQueryClient()
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
@@ -81,7 +82,7 @@ describe('useCreateHousehold', () => {
   // without this, the guard never routes a freshly-onboarded user forward
   // until an app restart.
   it('invalidates the household-membership and household query keys on success', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryClient = createTestQueryClient()
     const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
     function localWrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
