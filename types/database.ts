@@ -1,15 +1,3 @@
-// NOTE (Milestone 6): the accounts/categories/category_rules/
-// recurring_transactions/transactions/budgets/budget_allocations/
-// savings_goals tables and save_budget_allocations() below were added by
-// hand, not by `supabase gen types typescript --local`, because the local
-// Supabase/Docker stack could not be started in this environment (Docker
-// Hub registry pulls were rate-limited — see the Milestone 6 final report).
-// They are hand-derived directly from supabase/migrations/002_financial_
-// schema.sql's actual column definitions, not guessed. This must be
-// replaced by running the real generation command against a live local DB
-// at the next opportunity — this file is not supposed to be hand-edited
-// (see CLAUDE.md § Supabase), and this is a deliberate, reported exception
-// forced by that environment constraint, not a new convention.
 export type Json =
   | string
   | number
@@ -137,6 +125,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_allocations_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
             referencedColumns: ["id"]
           },
         ]
@@ -657,6 +652,14 @@ export type Database = {
     }
     Functions: {
       accept_invitation: { Args: { p_token: string }; Returns: Json }
+      advance_recurring_due_date: {
+        Args: {
+          p_day_of_month: number
+          p_due_date: string
+          p_frequency: string
+        }
+        Returns: string
+      }
       create_household: { Args: { p_name: string }; Returns: Json }
       dblink: { Args: { "": string }; Returns: Record<string, unknown>[] }
       dblink_cancel_query: { Args: { "": string }; Returns: string }
@@ -692,10 +695,15 @@ export type Database = {
         Returns: Record<string, unknown>[]
       }
       dblink_is_busy: { Args: { "": string }; Returns: number }
+      generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
       is_household_member: { Args: { hid: string }; Returns: boolean }
       save_budget_allocations: {
-        Args: { p_period_start: string; p_allocations: Json }
+        Args: { p_allocations: Json; p_period_start: string }
+        Returns: Json
+      }
+      skip_recurring_occurrence: {
+        Args: { p_recurring_id: string }
         Returns: Json
       }
     }

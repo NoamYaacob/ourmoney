@@ -1950,7 +1950,7 @@ SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","r
 DO $$
 DECLARE
   v_recurring_id UUID;
-  v_due_date DATE := CURRENT_DATE - 1;
+  v_due_date DATE := CURRENT_DATE;
   v_result JSONB;
   v_txn_count INT;
   v_new_due_date DATE;
@@ -1980,7 +1980,7 @@ SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","r
 DO $$
 DECLARE
   v_recurring_id UUID;
-  v_due_date DATE := CURRENT_DATE - 1;
+  v_due_date DATE := CURRENT_DATE;
   v_txn_count INT;
 BEGIN
   INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
@@ -2180,18 +2180,23 @@ BEGIN
   PERFORM _pass('RECURRING.GRANTS.5', 'advance_recurring_due_date grants exclude anon and PUBLIC');
 END $$;
 
--- RECURRING.GRANTS.6: derive_savings_goal_completion (trigger function) has
--- NO grant to any role at all — nothing should ever call it directly.
+-- RECURRING.GRANTS.6: derive_savings_goal_completion is trigger-only.
+-- The owning role (postgres) inherently retains EXECUTE as object owner;
+-- no non-owner/application role should have an explicit EXECUTE grant.
 DO $$
 DECLARE v_grantees TEXT;
 BEGIN
   SELECT string_agg(grantee, ',') INTO v_grantees
   FROM information_schema.role_routine_grants
-  WHERE routine_schema = 'public' AND routine_name = 'derive_savings_goal_completion';
+  WHERE routine_schema = 'public'
+    AND routine_name = 'derive_savings_goal_completion'
+    AND grantee <> 'postgres';
+
   IF v_grantees IS NOT NULL THEN
-    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.6: derive_savings_goal_completion has grants (%), expected none — trigger-only function', v_grantees;
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.6: derive_savings_goal_completion has unexpected non-owner grants (%) — trigger-only function', v_grantees;
   END IF;
-  PERFORM _pass('RECURRING.GRANTS.6', 'derive_savings_goal_completion has no EXECUTE grant to any role — trigger-only');
+
+  PERFORM _pass('RECURRING.GRANTS.6', 'derive_savings_goal_completion has no EXECUTE grant to any non-owner role — trigger-only');
 END $$;
 
 -- ============================================================================
