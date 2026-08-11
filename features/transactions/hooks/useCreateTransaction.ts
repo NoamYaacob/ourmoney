@@ -24,6 +24,13 @@ export interface CreateTransactionInput {
   isShared: boolean
   payerId?: string | null
   note?: string | null
+  // Defaults to 'manual'. features/import/hooks/useImportTransactions.ts is
+  // the only other caller, passing 'csv_import' — deliberately reusing this
+  // exact insert path (same matchRule auto-categorization, same RLS, same
+  // transaction.created event) rather than a separate import-specific
+  // write path, per the M7 design requirement that imported rows go
+  // through the identical household/security invariants as manual entry.
+  source?: 'manual' | 'csv_import'
 }
 
 export function useCreateTransaction(householdId: string | null | undefined) {
@@ -61,7 +68,7 @@ export function useCreateTransaction(householdId: string | null | undefined) {
           is_shared: input.isShared,
           payer_id: input.payerId ?? null,
           note: input.note ?? null,
-          source: 'manual',
+          source: input.source ?? 'manual',
           created_by: user?.id as string,
         })
         .select('id')

@@ -26,15 +26,24 @@ See [ADR-006](DECISIONS.md#adr-006) and [ADR-019](DECISIONS.md#adr-019).
 
 ## Migration layout
 
-This document specifies the complete MVP schema. It is delivered in two migrations:
+This document specifies the complete MVP schema. It is delivered in three migrations:
 
 | Migration | Phase | Contents |
 |---|---|---|
 | `001_initial_schema.sql` | MVP-1 | `profiles`, `households`, `household_members`, `invitations`, both RLS helpers, `create_household`, `accept_invitation`, and all their policies |
-| `002_financial_schema.sql` | MVP-2 | `accounts`, `categories`, `category_rules`, `transactions`, `recurring_transactions`, `budgets`, `budget_allocations`, `savings_goals`, and all their policies |
+| `002_financial_schema.sql` | MVP-2 | `accounts`, `categories`, `category_rules`, `transactions`, `recurring_transactions`, `budgets`, `budget_allocations`, `savings_goals`, and all their policies. `recurring_transactions`/`savings_goals` shipped schema+RLS only in this migration — no UI/engine consumed them until MVP-3. |
+| `003_recurring_generation_and_goal_completion.sql` | MVP-3 | No new tables. Adds `advance_recurring_due_date()`, `generate_recurring_transactions()`, `skip_recurring_occurrence()`, and a `derive_savings_goal_completion` trigger on the already-existing `savings_goals` table — see § Functions and Triggers. |
 
 Each migration includes the RLS policies for the tables it creates, in the same file. Structural
 guards 6.3 and 6.4 fail the build if a table lands without them.
+
+**A note on this document's own accuracy:** the `recurring_transactions`/`savings_goals`/
+`budget_allocations` RLS policy bodies below were found stale relative to the actual, shipped
+migration 002 SQL during MVP-3 planning — the real migration adds cross-household FK-coherence
+`WITH CHECK` clauses (D2) and `CHECK (amount_agorot <> 0)` constraints (D6) that were missing from
+earlier drafts of this document. The sections below have been corrected to match
+`supabase/migrations/002_financial_schema.sql` verbatim; treat the migration file itself as
+authoritative if the two ever diverge again.
 
 ---
 
@@ -199,7 +208,7 @@ CREATE TABLE recurring_transactions (
   household_id      UUID        NOT NULL REFERENCES households(id) ON DELETE CASCADE,
   account_id        UUID        NOT NULL REFERENCES accounts(id),
   category_id       UUID        REFERENCES categories(id),
-  amount_agorot     BIGINT      NOT NULL,
+  amount_agorot     BIGINT      NOT NULL CHECK (amount_agorot <> 0), -- D6
   currency          TEXT        NOT NULL DEFAULT 'ILS',
   description       TEXT        NOT NULL,
   is_shared         BOOLEAN     NOT NULL DEFAULT TRUE,
@@ -727,6 +736,48 @@ GRANT EXECUTE ON FUNCTION accept_invitation(TEXT) TO authenticated;
 
 ---
 
+### Migration 003 — recurring generation and savings-goal completion (MVP-3)
+
+Three callable functions and one trigger, no new tables. Every function has a fixed
+`SET search_path = public, pg_temp`, matching migrations 001/002's convention — including the pure
+SQL helper and the trigger function, not only the two RPCs.
+
+**`advance_recurring_due_date(p_due_date DATE, p_frequency TEXT, p_day_of_month INTEGER) RETURNS DATE`**
+— pure, `LANGUAGE sql IMMUTABLE`, no table access. Daily/weekly/biweekly add fixed day counts;
+monthly/quarterly/yearly step N months and clamp to `day_of_month` (so a 31st-of-month template lands
+on Feb 28/29, then returns to the 31st in March — always re-derived from the stored `day_of_month`,
+never from the previous computed date, which is what prevents permanent drift after a short month).
+Its TypeScript mirror, `features/recurring/lib/recurringDueDate.ts`, is the unit-tested reference
+implementation used for client-side preview display only; this SQL function is authoritative for the
+actual mutation. `supabase/rls_tests.sql`'s `DB.PARITY.*` group asserts both agree on the same
+fixture table.
+
+**`generate_recurring_transactions() RETURNS JSONB`** — `SECURITY INVOKER`, no parameters. The client
+sends nothing generation-specific: the function resolves the caller's household from
+`household_members`, locks every due (`next_due_date <= CURRENT_DATE`) active template
+(`SELECT ... FOR UPDATE`, ordered by `id` to avoid deadlocking a concurrent call from the other
+household member), and for each one sequentially generates every missed occurrence — reading
+`amount_agorot`/`account_id`/`category_id`/`description`/`is_shared` from the locked row itself, never
+from client input. Idempotency comes from the row lock plus a re-read under READ COMMITTED: a
+duplicate or concurrent call simply blocks until the first commits, then sees the already-advanced
+`next_due_date` and generates nothing further for that template. Being `SECURITY INVOKER`, every
+`INSERT INTO transactions` and `UPDATE recurring_transactions` inside it still runs under the caller's
+own RLS (including the D2 coherence checks above) — no bypass.
+
+**`skip_recurring_occurrence(p_recurring_id UUID) RETURNS JSONB`** — `SECURITY INVOKER`, the explicit
+"skip a single occurrence" action. Requires `is_active = TRUE` in its own `SELECT ... FOR UPDATE` —
+an inactive or inaccessible (not-a-member's) template returns the same generic `not_found` and its
+`next_due_date` is left untouched. Reuses `advance_recurring_due_date()` for the single-step advance;
+generates no transaction.
+
+**`derive_savings_goal_completion()`** — `BEFORE INSERT OR UPDATE` trigger on `savings_goals`,
+unconditionally setting `NEW.is_completed := NEW.current_agorot >= NEW.target_agorot`. This is the
+single source of truth for `is_completed` — a client-supplied value is silently overridden regardless
+of write path. Trigger-only: `REVOKE ALL ... FROM PUBLIC, anon, authenticated` with no `GRANT` at all,
+mirroring migration 001's `handle_new_user()`.
+
+---
+
 ## Row-Level Security Policies
 
 ### profiles
@@ -979,11 +1030,35 @@ ALTER TABLE recurring_transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "recurring_select" ON recurring_transactions
   FOR SELECT TO authenticated USING (is_household_member(household_id));
 
+-- D2: account_id/category_id must belong to the same household (or be a
+-- system category) — the FK alone only guarantees the row exists, not that
+-- it's this household's. created_by is pinned to the inserting user on
+-- INSERT, but only required to resolve to a current household member on
+-- UPDATE (co-editing between members stays possible).
 CREATE POLICY "recurring_insert" ON recurring_transactions
-  FOR INSERT TO authenticated WITH CHECK (is_household_member(household_id));
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    is_household_member(household_id)
+    AND account_id IN (SELECT id FROM accounts WHERE accounts.household_id = recurring_transactions.household_id)
+    AND (
+      category_id IS NULL
+      OR category_id IN (SELECT id FROM categories WHERE categories.household_id = recurring_transactions.household_id OR categories.household_id IS NULL)
+    )
+    AND created_by = auth.uid()
+  );
 
 CREATE POLICY "recurring_update" ON recurring_transactions
-  FOR UPDATE TO authenticated USING (is_household_member(household_id));
+  FOR UPDATE TO authenticated
+  USING (is_household_member(household_id))
+  WITH CHECK (
+    is_household_member(household_id)
+    AND account_id IN (SELECT id FROM accounts WHERE accounts.household_id = recurring_transactions.household_id)
+    AND (
+      category_id IS NULL
+      OR category_id IN (SELECT id FROM categories WHERE categories.household_id = recurring_transactions.household_id OR categories.household_id IS NULL)
+    )
+    AND created_by IN (SELECT user_id FROM household_members WHERE household_members.household_id = recurring_transactions.household_id)
+  );
 
 CREATE POLICY "recurring_delete" ON recurring_transactions
   FOR DELETE TO authenticated USING (is_household_member(household_id));
@@ -997,15 +1072,39 @@ ALTER TABLE savings_goals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "savings_goals_select" ON savings_goals
   FOR SELECT TO authenticated USING (is_household_member(household_id));
 
+-- D2: account_id (nullable) must belong to the same household when present.
 CREATE POLICY "savings_goals_insert" ON savings_goals
-  FOR INSERT TO authenticated WITH CHECK (is_household_member(household_id));
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    is_household_member(household_id)
+    AND (
+      account_id IS NULL
+      OR account_id IN (SELECT id FROM accounts WHERE accounts.household_id = savings_goals.household_id)
+    )
+    AND created_by = auth.uid()
+  );
 
 CREATE POLICY "savings_goals_update" ON savings_goals
-  FOR UPDATE TO authenticated USING (is_household_member(household_id));
+  FOR UPDATE TO authenticated
+  USING (is_household_member(household_id))
+  WITH CHECK (
+    is_household_member(household_id)
+    AND (
+      account_id IS NULL
+      OR account_id IN (SELECT id FROM accounts WHERE accounts.household_id = savings_goals.household_id)
+    )
+    AND created_by IN (SELECT user_id FROM household_members WHERE household_members.household_id = savings_goals.household_id)
+  );
 
 CREATE POLICY "savings_goals_delete" ON savings_goals
   FOR DELETE TO authenticated USING (is_household_member(household_id));
 ```
+
+Milestone 7 adds one more trigger to this table — `derive_completion` (`BEFORE INSERT OR UPDATE`,
+calling `derive_savings_goal_completion()`) — unconditionally setting
+`is_completed := current_agorot >= target_agorot` on every write. See § Functions and Triggers.
+`is_completed` should never be treated as client-authoritative — this trigger is the single source
+of truth for it, regardless of which write path sets `current_agorot`.
 
 ---
 

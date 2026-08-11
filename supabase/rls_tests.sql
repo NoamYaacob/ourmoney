@@ -1873,6 +1873,551 @@ BEGIN
   PERFORM _pass('grants-parity', 'every public-schema table has an authenticated SELECT grant, no anon grant of any kind, and no authenticated TRUNCATE/REFERENCES/TRIGGER grant');
 END $$;
 
+-- ============================================================================
+-- Milestone 7 — DB.PARITY: advance_recurring_due_date() SQL parity with the
+-- TypeScript reference implementation (features/recurring/lib/
+-- recurringDueDate.ts). Same fixture table, both places.
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF advance_recurring_due_date('2026-01-31'::date, 'monthly', 31) <> '2026-02-28'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.1: expected 2026-02-28';
+  END IF;
+  PERFORM _pass('DB.PARITY.1', 'monthly 31st clamps to Feb 28 in a non-leap year');
+END $$;
+
+DO $$
+BEGIN
+  IF advance_recurring_due_date('2028-01-31'::date, 'monthly', 31) <> '2028-02-29'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.2: expected 2028-02-29';
+  END IF;
+  PERFORM _pass('DB.PARITY.2', 'monthly 31st clamps to Feb 29 in a leap year');
+END $$;
+
+DO $$
+DECLARE v_after_feb DATE; v_after_march DATE;
+BEGIN
+  v_after_feb := advance_recurring_due_date('2026-01-31'::date, 'monthly', 31);
+  v_after_march := advance_recurring_due_date(v_after_feb, 'monthly', 31);
+  IF v_after_march <> '2026-03-31'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.3: expected re-derivation from day_of_month=31 to land on 2026-03-31, got %', v_after_march;
+  END IF;
+  PERFORM _pass('DB.PARITY.3', 'always re-derives from the original day_of_month — no permanent drift after a short month');
+END $$;
+
+DO $$
+BEGIN
+  IF advance_recurring_due_date('2026-01-31'::date, 'quarterly', 31) <> '2026-04-30'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.4: expected 2026-04-30';
+  END IF;
+  PERFORM _pass('DB.PARITY.4', 'quarterly clamps across a 3-month step landing on a 30-day month');
+END $$;
+
+DO $$
+BEGIN
+  IF advance_recurring_due_date('2028-02-29'::date, 'yearly', 29) <> '2029-02-28'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.5: expected 2029-02-28';
+  END IF;
+  PERFORM _pass('DB.PARITY.5', 'yearly clamps a leap-day template in a non-leap target year');
+END $$;
+
+DO $$
+BEGIN
+  IF advance_recurring_due_date('2026-01-31'::date, 'daily', NULL) <> '2026-02-01'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.6: expected 2026-02-01 for daily';
+  END IF;
+  IF advance_recurring_due_date('2026-01-28'::date, 'weekly', NULL) <> '2026-02-04'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.6: expected 2026-02-04 for weekly';
+  END IF;
+  IF advance_recurring_due_date('2026-01-28'::date, 'biweekly', NULL) <> '2026-02-11'::date THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.6: expected 2026-02-11 for biweekly';
+  END IF;
+  PERFORM _pass('DB.PARITY.6', 'daily/weekly/biweekly advance by exactly 1/7/14 days, matching the TS reference');
+END $$;
+
+-- ============================================================================
+-- Milestone 7 — RECURRING.*: generate_recurring_transactions(). All fixture
+-- due dates are CURRENT_DATE-relative (never hardcoded absolute dates) so
+-- these tests are correct regardless of when the suite actually runs.
+-- ============================================================================
+
+-- RECURRING.1: a single due, active template generates exactly one
+-- transaction and advances next_due_date.
+SAVEPOINT sp_recurring_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_recurring_id UUID;
+  v_due_date DATE := CURRENT_DATE - 1;
+  v_result JSONB;
+  v_txn_count INT;
+  v_new_due_date DATE;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.1 daily', 'daily', v_due_date, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_recurring_id;
+
+  SELECT generate_recurring_transactions() INTO v_result;
+  IF (v_result->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL RECURRING.1: expected ok:true, got %', v_result; END IF;
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = v_recurring_id;
+  IF v_txn_count <> 1 THEN RAISE EXCEPTION 'FAIL RECURRING.1: expected exactly 1 generated transaction, got %', v_txn_count; END IF;
+
+  SELECT next_due_date INTO v_new_due_date FROM recurring_transactions WHERE id = v_recurring_id;
+  IF v_new_due_date <> v_due_date + 1 THEN RAISE EXCEPTION 'FAIL RECURRING.1: expected next_due_date to advance to %, got %', v_due_date + 1, v_new_due_date; END IF;
+
+  PERFORM _pass('RECURRING.1', 'a single due active template generates exactly one transaction and advances next_due_date');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_1;
+
+-- RECURRING.2: repeated app opens / duplicate RPC calls — idempotent.
+SAVEPOINT sp_recurring_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_recurring_id UUID;
+  v_due_date DATE := CURRENT_DATE - 1;
+  v_txn_count INT;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.2 repeated', 'daily', v_due_date, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_recurring_id;
+
+  PERFORM generate_recurring_transactions(); -- first "app open"
+  PERFORM generate_recurring_transactions(); -- second "app open" / duplicate RPC call
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = v_recurring_id;
+  IF v_txn_count <> 1 THEN RAISE EXCEPTION 'FAIL RECURRING.2: expected still exactly 1 transaction after a second call, got %', v_txn_count; END IF;
+  PERFORM _pass('RECURRING.2', 'repeated app opens / duplicate RPC calls do not generate a duplicate transaction — idempotent by construction (row lock + re-read), no client-side dedupe key involved');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_2;
+
+-- RECURRING.3: multiple missed periods are caught up in a single call, with
+-- correct re-derivation from the original day_of_month at each step.
+SAVEPOINT sp_recurring_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_recurring_id UUID;
+  v_due_date DATE := CURRENT_DATE - 3;
+  v_txn_count INT;
+  v_new_due_date DATE;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.3 catchup', 'daily', v_due_date, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_recurring_id;
+
+  PERFORM generate_recurring_transactions();
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = v_recurring_id;
+  IF v_txn_count <> 4 THEN RAISE EXCEPTION 'FAIL RECURRING.3: expected 4 missed daily occurrences (3 days late plus today) generated in one call, got %', v_txn_count; END IF;
+
+  SELECT next_due_date INTO v_new_due_date FROM recurring_transactions WHERE id = v_recurring_id;
+  IF v_new_due_date <> CURRENT_DATE + 1 THEN RAISE EXCEPTION 'FAIL RECURRING.3: expected next_due_date to land one day after today, got %', v_new_due_date; END IF;
+
+  PERFORM _pass('RECURRING.3', 'one call catches up every missed occurrence (multiple missed periods) atomically in a single RPC call');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_3;
+
+-- RECURRING.4: an inactive template is never generated from.
+SAVEPOINT sp_recurring_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_recurring_id UUID;
+  v_due_date DATE := CURRENT_DATE - 1;
+  v_txn_count INT;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, is_active, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.4 inactive', 'daily', v_due_date, FALSE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_recurring_id;
+
+  PERFORM generate_recurring_transactions();
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = v_recurring_id;
+  IF v_txn_count <> 0 THEN RAISE EXCEPTION 'FAIL RECURRING.4: an inactive template must never generate, got % transactions', v_txn_count; END IF;
+  PERFORM _pass('RECURRING.4', 'an inactive template is never generated from');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_4;
+
+-- RECURRING.5: no sub claim => unauthenticated.
+SAVEPOINT sp_recurring_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT generate_recurring_transactions() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "unauthenticated"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL RECURRING.5: expected unauthenticated, got %', v_result;
+  END IF;
+  PERFORM _pass('RECURRING.5', 'a call with no sub claim is rejected as unauthenticated');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_5;
+
+-- RECURRING.6: a caller with no household => no_household.
+SAVEPOINT sp_recurring_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT generate_recurring_transactions() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "no_household"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL RECURRING.6: expected no_household, got %', v_result;
+  END IF;
+  PERFORM _pass('RECURRING.6', 'a caller with no household gets {ok:false, error:no_household}');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_6;
+
+-- RECURRING.7: cross-household isolation — User C's call never touches
+-- Household 1's due templates, even though one genuinely is due.
+SAVEPOINT sp_recurring_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.7 h1 due', 'daily', CURRENT_DATE - 1, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_id;
+  CREATE TEMP TABLE IF NOT EXISTS _sp_recurring_7 (recurring_id UUID);
+  DELETE FROM _sp_recurring_7;
+  INSERT INTO _sp_recurring_7 VALUES (v_id);
+END $$;
+RESET role;
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$ BEGIN PERFORM generate_recurring_transactions(); END $$;
+RESET role;
+
+DO $$
+DECLARE v_recurring_id UUID; v_txn_count INT;
+BEGIN
+  SELECT recurring_id INTO v_recurring_id FROM _sp_recurring_7;
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = v_recurring_id;
+  IF v_txn_count <> 0 THEN RAISE EXCEPTION 'FAIL RECURRING.7: User C''s call generated a transaction for Household 1''s template, got % rows', v_txn_count; END IF;
+  PERFORM _pass('RECURRING.7', 'a caller only ever generates from their own household''s due templates, never another household''s');
+END $$;
+ROLLBACK TO SAVEPOINT sp_recurring_7;
+
+-- RECURRING.GRANTS.1/2: generate_recurring_transactions grants.
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'generate_recurring_transactions' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.1: generate_recurring_transactions is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('RECURRING.GRANTS.1', 'generate_recurring_transactions grants exclude anon and PUBLIC');
+END $$;
+
+SAVEPOINT sp_recurring_grants_2;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM generate_recurring_transactions();
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.2: anon was able to call generate_recurring_transactions';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('RECURRING.GRANTS.2', 'anon cannot EXECUTE generate_recurring_transactions');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_grants_2;
+
+-- RECURRING.GRANTS.3/4: skip_recurring_occurrence grants.
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'skip_recurring_occurrence' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.3: skip_recurring_occurrence is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('RECURRING.GRANTS.3', 'skip_recurring_occurrence grants exclude anon and PUBLIC');
+END $$;
+
+SAVEPOINT sp_recurring_grants_4;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM skip_recurring_occurrence('5e000000-0000-0000-0000-000000000001'::uuid);
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.4: anon was able to call skip_recurring_occurrence';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('RECURRING.GRANTS.4', 'anon cannot EXECUTE skip_recurring_occurrence');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_recurring_grants_4;
+
+-- RECURRING.GRANTS.5: advance_recurring_due_date grants.
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'advance_recurring_due_date' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.5: advance_recurring_due_date is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('RECURRING.GRANTS.5', 'advance_recurring_due_date grants exclude anon and PUBLIC');
+END $$;
+
+-- RECURRING.GRANTS.6: derive_savings_goal_completion (trigger function) has
+-- NO grant to any role at all — nothing should ever call it directly.
+DO $$
+DECLARE v_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'derive_savings_goal_completion';
+  IF v_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL RECURRING.GRANTS.6: derive_savings_goal_completion has grants (%), expected none — trigger-only function', v_grantees;
+  END IF;
+  PERFORM _pass('RECURRING.GRANTS.6', 'derive_savings_goal_completion has no EXECUTE grant to any role — trigger-only');
+END $$;
+
+-- ============================================================================
+-- Milestone 7 — RECURRING.SKIP.*: skip_recurring_occurrence()
+-- ============================================================================
+
+-- SKIP.1: happy path — advances exactly one period, generates no
+-- transaction, works even before the occurrence is actually due.
+SAVEPOINT sp_skip_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_recurring_id UUID;
+  v_due_date DATE := CURRENT_DATE + 5;
+  v_result JSONB;
+  v_txn_count INT;
+  v_new_due_date DATE;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'SKIP.1', 'weekly', v_due_date, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_recurring_id;
+
+  SELECT skip_recurring_occurrence(v_recurring_id) INTO v_result;
+  IF (v_result->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL SKIP.1: expected ok:true, got %', v_result; END IF;
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = v_recurring_id;
+  IF v_txn_count <> 0 THEN RAISE EXCEPTION 'FAIL SKIP.1: skip must never generate a transaction, got %', v_txn_count; END IF;
+
+  SELECT next_due_date INTO v_new_due_date FROM recurring_transactions WHERE id = v_recurring_id;
+  IF v_new_due_date <> v_due_date + 7 THEN RAISE EXCEPTION 'FAIL SKIP.1: expected next_due_date to advance by exactly one week to %, got %', v_due_date + 7, v_new_due_date; END IF;
+
+  PERFORM _pass('SKIP.1', 'skip_recurring_occurrence advances exactly one period with no transaction generated, works even before the occurrence is due');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_skip_1;
+
+-- SKIP.2: an inactive template cannot be skipped — not_found, and its
+-- next_due_date is left completely unchanged.
+SAVEPOINT sp_skip_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_recurring_id UUID;
+  v_due_date DATE := CURRENT_DATE + 5;
+  v_result JSONB;
+  v_after_due_date DATE;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, is_active, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'SKIP.2 inactive', 'weekly', v_due_date, FALSE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_recurring_id;
+
+  SELECT skip_recurring_occurrence(v_recurring_id) INTO v_result;
+  IF v_result <> '{"ok": false, "error": "not_found"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL SKIP.2: expected not_found for an inactive template, got %', v_result;
+  END IF;
+
+  SELECT next_due_date INTO v_after_due_date FROM recurring_transactions WHERE id = v_recurring_id;
+  IF v_after_due_date <> v_due_date THEN
+    RAISE EXCEPTION 'FAIL SKIP.2: an inactive template''s next_due_date must remain unchanged, expected % got %', v_due_date, v_after_due_date;
+  END IF;
+
+  PERFORM _pass('SKIP.2', 'an inactive recurring template cannot be skipped (not_found) and its next_due_date is left unchanged');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_skip_2;
+
+-- SKIP.3: a cross-household template id => not_found, same shape as
+-- nonexistent — no existence oracle.
+SAVEPOINT sp_skip_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT skip_recurring_occurrence('5e000000-0000-0000-0000-000000000002'::uuid) INTO v_result;
+  IF v_result <> '{"ok": false, "error": "not_found"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL SKIP.3: expected not_found for another household''s template, got %', v_result;
+  END IF;
+  PERFORM _pass('SKIP.3', 'a cross-household recurring template id returns not_found, same as nonexistent');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_skip_3;
+
+-- ============================================================================
+-- Milestone 7 — RECURRING.ATOMICITY: a forced INSERT failure partway through
+-- the loop rolls back the WHOLE call — single PostgreSQL transaction
+-- semantics. Two templates are due; whichever one the trigger's forced
+-- failure hits, NEITHER template may retain a generated transaction or an
+-- advanced cursor afterward.
+-- ============================================================================
+
+SAVEPOINT sp_recurring_atomicity;
+CREATE OR REPLACE FUNCTION _test_force_failure_recurring() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.description = 'RECURRING.ATOMICITY trigger-target' THEN
+    RAISE EXCEPTION 'test-forced-failure-recurring-atomicity';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER _test_block_recurring_insert BEFORE INSERT ON transactions
+  FOR EACH ROW EXECUTE FUNCTION _test_force_failure_recurring();
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_a_id UUID;
+  v_fail_id UUID;
+  v_due_date DATE := CURRENT_DATE - 1;
+BEGIN
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.ATOMICITY template-a', 'daily', v_due_date, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_a_id;
+  INSERT INTO recurring_transactions (household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1234, 'RECURRING.ATOMICITY trigger-target', 'daily', v_due_date, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_fail_id;
+
+  CREATE TEMP TABLE IF NOT EXISTS _sp_recurring_atomicity (a_id UUID, fail_id UUID, a_due_date DATE);
+  DELETE FROM _sp_recurring_atomicity;
+  INSERT INTO _sp_recurring_atomicity VALUES (v_a_id, v_fail_id, v_due_date);
+
+  BEGIN
+    PERFORM generate_recurring_transactions();
+    RAISE EXCEPTION 'FAIL RECURRING.ATOMICITY: generate_recurring_transactions did not raise despite the forced trigger failure';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM <> 'test-forced-failure-recurring-atomicity' THEN
+      RAISE EXCEPTION 'FAIL RECURRING.ATOMICITY: unexpected error: %', SQLERRM;
+    END IF;
+  END;
+END $$;
+RESET role;
+
+DO $$
+DECLARE
+  v_a_id UUID; v_fail_id UUID; v_a_due_date DATE;
+  v_a_txn_count INT; v_fail_txn_count INT; v_a_current_due_date DATE;
+BEGIN
+  SELECT a_id, fail_id, a_due_date INTO v_a_id, v_fail_id, v_a_due_date FROM _sp_recurring_atomicity;
+
+  SELECT count(*) INTO v_a_txn_count FROM transactions WHERE recurring_id = v_a_id;
+  SELECT count(*) INTO v_fail_txn_count FROM transactions WHERE recurring_id = v_fail_id;
+  IF v_a_txn_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL RECURRING.ATOMICITY: a co-processed template''s transaction survived a forced failure elsewhere in the same call — not atomic, got % rows', v_a_txn_count;
+  END IF;
+  IF v_fail_txn_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL RECURRING.ATOMICITY: the failing template unexpectedly has a generated transaction, got % rows', v_fail_txn_count;
+  END IF;
+
+  SELECT next_due_date INTO v_a_current_due_date FROM recurring_transactions WHERE id = v_a_id;
+  IF v_a_current_due_date <> v_a_due_date THEN
+    RAISE EXCEPTION 'FAIL RECURRING.ATOMICITY: a co-processed template''s next_due_date advanced despite the whole call failing, expected % got %', v_a_due_date, v_a_current_due_date;
+  END IF;
+
+  PERFORM _pass('RECURRING.ATOMICITY', 'a forced failure partway through the loop rolls back the ENTIRE call — no partially-generated transaction, no partially-advanced cursor, for either template');
+END $$;
+ROLLBACK TO SAVEPOINT sp_recurring_atomicity;
+
+-- ============================================================================
+-- Milestone 7 — SAVINGS.TRIGGER.*: derive_savings_goal_completion is the
+-- sole source of truth for is_completed; a client-supplied value is
+-- silently overridden.
+-- ============================================================================
+
+-- SAVINGS.TRIGGER.1: INSERT with a contradictory is_completed=true supplied
+-- by the client while current_agorot < target_agorot => trigger forces false.
+SAVEPOINT sp_savings_trigger_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_is_completed BOOLEAN;
+BEGIN
+  INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, is_completed, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.1', 100000, 10000, TRUE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING is_completed INTO v_is_completed;
+  IF v_is_completed IS DISTINCT FROM FALSE THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.1: expected the trigger to override a contradictory is_completed=true on INSERT, got %', v_is_completed;
+  END IF;
+  PERFORM _pass('SAVINGS.TRIGGER.1', 'a client-supplied is_completed=true on INSERT is overridden by the DB trigger when current_agorot < target_agorot');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_savings_trigger_1;
+
+-- SAVINGS.TRIGGER.2: UPDATE attempting to set is_completed=false directly
+-- while current_agorot >= target_agorot => trigger forces true.
+SAVEPOINT sp_savings_trigger_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_goal_id UUID; v_is_completed BOOLEAN;
+BEGIN
+  INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.2', 100000, 100000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_goal_id;
+
+  UPDATE savings_goals SET is_completed = FALSE WHERE id = v_goal_id RETURNING is_completed INTO v_is_completed;
+  IF v_is_completed IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: expected the trigger to override a contradictory is_completed=false on UPDATE, got %', v_is_completed;
+  END IF;
+  PERFORM _pass('SAVINGS.TRIGGER.2', 'a client-supplied is_completed=false on UPDATE is overridden by the DB trigger when current_agorot >= target_agorot');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_savings_trigger_2;
+
+-- SAVINGS.TRIGGER.3: a normal progress update (current_agorot only, no
+-- is_completed in the payload) correctly derives is_completed on crossing.
+SAVEPOINT sp_savings_trigger_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_goal_id UUID; v_is_completed BOOLEAN;
+BEGIN
+  INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.3', 100000, 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_goal_id;
+
+  UPDATE savings_goals SET current_agorot = 100000 WHERE id = v_goal_id RETURNING is_completed INTO v_is_completed;
+  IF v_is_completed IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.3: expected is_completed=true after current_agorot reached target, got %', v_is_completed;
+  END IF;
+  PERFORM _pass('SAVINGS.TRIGGER.3', 'is_completed is correctly derived true when a plain current_agorot update reaches target');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_savings_trigger_3;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -1979,7 +2524,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6 additions) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT) ===', v_total;
 END $$;
 
 ROLLBACK;
@@ -2132,4 +2677,79 @@ DELETE FROM invitations WHERE id = 'a0000000-0000-0000-0000-000000000098';
 DELETE FROM households WHERE id = '88888888-8888-8888-8888-888888888888' OR name = 'הבית שלי במרוץ';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000010', 'f0000000-0000-0000-0000-000000000011');
 
-DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (112 assertions: 110 in the main transaction + 5.9 + ADR-020-race) ==='; END $$;
+-- ============================================================================
+-- Test RECURRING.CONCURRENT — true concurrency: two members of the SAME
+-- household call generate_recurring_transactions() at the same time for the
+-- same due template. Needs a second real connection (dblink), so — like 5.9
+-- and ADR-020-race above — it commits its own fixture and cleans up after
+-- itself.
+-- ============================================================================
+
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000020', 'authenticated', 'authenticated', 'race-recurring-1@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Race Recurring 1"}', NOW(), NOW(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000021', 'authenticated', 'authenticated', 'race-recurring-2@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Race Recurring 2"}', NOW(), NOW(), '', '', '', '');
+
+INSERT INTO households (id, name, created_by) VALUES
+  ('77777777-7777-7777-7777-777777777777', 'בית מרוץ הו״ק', 'f0000000-0000-0000-0000-000000000020');
+INSERT INTO household_members (household_id, user_id, role) VALUES
+  ('77777777-7777-7777-7777-777777777777', 'f0000000-0000-0000-0000-000000000020', 'admin'),
+  ('77777777-7777-7777-7777-777777777777', 'f0000000-0000-0000-0000-000000000021', 'member');
+INSERT INTO accounts (id, household_id, name, type) VALUES
+  ('7a000000-0000-0000-0000-000000000001', '77777777-7777-7777-7777-777777777777', 'חשבון מרוץ הו״ק', 'checking');
+INSERT INTO recurring_transactions (id, household_id, account_id, amount_agorot, description, frequency, next_due_date, created_by) VALUES
+  ('7e000000-0000-0000-0000-000000000001', '77777777-7777-7777-7777-777777777777', '7a000000-0000-0000-0000-000000000001', -1234, 'הו״ק מרוץ', 'daily', CURRENT_DATE, 'f0000000-0000-0000-0000-000000000020');
+
+DO $$
+DECLARE
+  v_r1 JSONB;
+  v_r2 JSONB;
+  v_txn_count INT;
+  v_final_due_date DATE;
+BEGIN
+  PERFORM dblink_connect('conn1', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+  PERFORM dblink_connect('conn2', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+
+  PERFORM dblink_exec('conn1', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn1', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000020","role":"authenticated"}'$q$);
+  PERFORM dblink_exec('conn2', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn2', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000021","role":"authenticated"}'$q$);
+
+  -- Both household members race generate_recurring_transactions() for the
+  -- SAME due template at the same time.
+  PERFORM dblink_send_query('conn1', $q$SELECT generate_recurring_transactions()$q$);
+  PERFORM dblink_send_query('conn2', $q$SELECT generate_recurring_transactions()$q$);
+
+  SELECT res INTO v_r1 FROM dblink_get_result('conn1') AS t(res JSONB);
+  SELECT res INTO v_r2 FROM dblink_get_result('conn2') AS t(res JSONB);
+  PERFORM dblink_get_result('conn1');
+  PERFORM dblink_get_result('conn2');
+
+  PERFORM dblink_disconnect('conn1');
+  PERFORM dblink_disconnect('conn2');
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE recurring_id = '7e000000-0000-0000-0000-000000000001';
+  SELECT next_due_date INTO v_final_due_date FROM recurring_transactions WHERE id = '7e000000-0000-0000-0000-000000000001';
+
+  IF v_txn_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL RECURRING.CONCURRENT: expected exactly 1 transaction generated from two concurrent calls, got % (r1=%, r2=%)', v_txn_count, v_r1, v_r2;
+  END IF;
+  IF v_final_due_date <> CURRENT_DATE + 1 THEN
+    RAISE EXCEPTION 'FAIL RECURRING.CONCURRENT: expected next_due_date to have advanced exactly once, to %, got %', CURRENT_DATE + 1, v_final_due_date;
+  END IF;
+
+  RAISE NOTICE 'PASS RECURRING.CONCURRENT: two concurrent generate_recurring_transactions() calls from different household members => exactly one transaction generated, cursor advanced exactly once';
+END $$;
+
+-- Cleanup — real DELETEs, since this section committed its own fixture.
+DELETE FROM transactions WHERE recurring_id = '7e000000-0000-0000-0000-000000000001';
+DELETE FROM recurring_transactions WHERE id = '7e000000-0000-0000-0000-000000000001';
+DELETE FROM accounts WHERE id = '7a000000-0000-0000-0000-000000000001';
+DELETE FROM household_members WHERE household_id = '77777777-7777-7777-7777-777777777777';
+DELETE FROM households WHERE id = '77777777-7777-7777-7777-777777777777';
+DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000020', 'f0000000-0000-0000-0000-000000000021');
+
+DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT) ==='; END $$;

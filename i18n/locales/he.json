@@ -133,6 +133,104 @@
       }
     }
   },
+  "recurring": {
+    "title": "הוראות קבע",
+    "empty": "עדיין אין הוראות קבע.",
+    "addButton": "הוספת הוראת קבע",
+    "nextDue": "תאריך הבא:",
+    "inactive": "מושהית",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "הוראת הקבע לא נמצאה"
+    },
+    "frequency": {
+      "daily": "יומי",
+      "weekly": "שבועי",
+      "biweekly": "דו־שבועי",
+      "monthly": "חודשי",
+      "quarterly": "רבעוני",
+      "yearly": "שנתי"
+    },
+    "form": {
+      "frequencyLabel": "תדירות",
+      "nextDueDateLabel": "תאריך הבא",
+      "submit": "הוספת הוראת קבע",
+      "errors": {
+        "missingAccount": "יש לבחור חשבון",
+        "missingDescription": "יש להזין תיאור"
+      }
+    },
+    "detail": {
+      "skip": "דילוג על החיוב הקרוב",
+      "pause": "השהיה",
+      "resume": "הפעלה מחדש",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת הוראת קבע",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    }
+  },
+  "savings": {
+    "title": "יעדי חיסכון",
+    "empty": "עדיין אין יעדי חיסכון.",
+    "addButton": "הוספת יעד חיסכון",
+    "completed": "היעד הושג! 🎉",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "יעד החיסכון לא נמצא"
+    },
+    "form": {
+      "nameLabel": "שם היעד",
+      "namePlaceholder": "לדוגמה: חופשה משפחתית",
+      "targetLabel": "סכום יעד",
+      "submit": "הוספת יעד",
+      "errors": {
+        "missingName": "יש להזין שם ליעד"
+      }
+    },
+    "detail": {
+      "updateProgressLabel": "עדכון סכום נוכחי",
+      "updateProgressSubmit": "עדכון",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת יעד חיסכון",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    }
+  },
+  "import": {
+    "title": "ייבוא מקובץ CSV",
+    "entryButton": "ייבוא מ-CSV",
+    "pickHint": "בחרו קובץ CSV מהמכשיר כדי לייבא תנועות.",
+    "pickButton": "בחירת קובץ",
+    "fileLabel": "קובץ:",
+    "accountLabel": "חשבון יעד",
+    "mapColumnsTitle": "התאמת עמודות",
+    "mapColumnsSubmit": "המשך לתצוגה מקדימה",
+    "columnRole": {
+      "ignore": "התעלמות",
+      "date": "תאריך",
+      "description": "תיאור",
+      "amount": "סכום",
+      "debit": "חובה",
+      "credit": "זכות"
+    },
+    "previewCount": "{{selected}} מתוך {{total}} נבחרו לייבוא",
+    "duplicateFlag": "כפילות אפשרית",
+    "selected": "נבחר",
+    "notSelected": "לא נבחר",
+    "invalidRow": "שורה לא תקינה: {{reason}}",
+    "invalidReason": {
+      "invalid_date": "תאריך לא תקין",
+      "missing_description": "חסר תיאור",
+      "missing_amount": "חסר סכום",
+      "invalid_amount": "סכום לא תקין"
+    },
+    "confirmButton": "ייבוא {{count}} תנועות",
+    "doneMessage": "יובאו {{count}} תנועות בהצלחה.",
+    "backToTransactions": "חזרה לתנועות",
+    "errors": {
+      "readFailed": "קריאת הקובץ נכשלה. נסו שוב",
+      "partialFailure": "יובאו {{succeeded}} מתוך {{total}} תנועות. חלק מהשורות נכשלו."
+    }
+  },
   "budgets": {
     "title": "תקציבים",
     "prevMonth": "◀ חודש קודם",
@@ -266,6 +364,12 @@
     "noBudget": "עדיין לא הוגדר תקציב לחודש זה.",
     "recentTitle": "תנועות אחרונות",
     "noTransactions": "עדיין אין תנועות החודש.",
+    "analytics": {
+      "trendTitle": "מגמה חודשית",
+      "breakdownTitle": "פילוח לפי קטגוריה",
+      "topCategoriesTitle": "קטגוריות מובילות",
+      "empty": "אין מספיק נתונים להצגה."
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
     }
@@ -293,7 +397,9 @@
     "financial": {
       "title": "ניהול כספים",
       "accounts": "חשבונות",
-      "categories": "קטגוריות וכללי סיווג"
+      "categories": "קטגוריות וכללי סיווג",
+      "recurring": "הוראות קבע",
+      "goals": "יעדי חיסכון"
     },
     "appearance": {
       "title": "מראה"
@@ -312,6 +418,10 @@
     "budgetExceeded": {
       "title": "חריגה מהתקציב",
       "body": "חרגתם מהתקציב שהוגדר לקטגוריה זו החודש."
+    },
+    "goalCompleted": {
+      "title": "יעד חיסכון הושג!",
+      "body": "הגעתם ליעד החיסכון שהגדרתם. כל הכבוד!"
     }
   }
 }

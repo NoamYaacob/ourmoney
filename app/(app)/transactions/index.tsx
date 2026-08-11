@@ -8,6 +8,7 @@ import { formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
+import { Button } from '@/components/ui/Button'
 import { FAB } from '@/components/ui/FAB'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -29,7 +30,10 @@ export default function Transactions() {
 
   return (
     <Screen scroll={false}>
-      <Text className="mb-4 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('transactions.title')}</Text>
+      <View className="mb-4 flex-row items-center justify-between">
+        <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark">{t('transactions.title')}</Text>
+        <Button title={t('import.entryButton')} variant="ghost" onPress={() => router.push('/transactions/import')} />
+      </View>
 
       {error ? (
         <ErrorMessage message={t('transactions.errors.generic')} />

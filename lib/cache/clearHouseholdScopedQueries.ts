@@ -19,5 +19,8 @@ export function clearHouseholdScopedQueries(queryClient: QueryClient): void {
   void queryClient.removeQueries({ queryKey: ['categoryRules'] })
   void queryClient.removeQueries({ queryKey: ['transactions'] })
   void queryClient.removeQueries({ queryKey: ['budgets'] })
+  // Milestone 7 additions — same registry, same reasoning.
+  void queryClient.removeQueries({ queryKey: ['recurringTransactions'] })
+  void queryClient.removeQueries({ queryKey: ['savingsGoals'] })
   usePeriodStore.getState().resetToCurrentMonth()
 }

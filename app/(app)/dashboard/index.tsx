@@ -5,10 +5,17 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
+import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePeriodStore } from '@/store/periodStore'
 import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 import { remainingAgorot } from '@/lib/money/arithmetic'
 import { formatILS } from '@/lib/money/format'
+import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
+import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
+import { computeTopCategories } from '@/features/analytics/lib/topCategories'
+import { MonthlyTrendChart } from '@/features/analytics/components/MonthlyTrendChart'
+import { CategoryDonutChart } from '@/features/analytics/components/CategoryDonutChart'
+import { TopCategoriesList } from '@/features/analytics/components/TopCategoriesList'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -39,6 +46,32 @@ export default function Dashboard() {
   })
 
   const recentTransactions = transactions.slice(0, 5)
+
+  // Analytics — lives inside Dashboard, not a separate route (no route is
+  // reserved for it anywhere in the app tree). A widened 6-month window,
+  // reusing useTransactions' existing filters shape (no new query-key
+  // prefix — ['transactions', householdId] already covers it, so no change
+  // to lib/cache/clearHouseholdScopedQueries.ts was needed for this).
+  const last6MonthStarts = Array.from({ length: 6 }, (_, i) => shiftMonth(periodStart, -(5 - i)))
+  const analyticsWindowStart = last6MonthStarts[0] as string
+  const { transactions: analyticsTransactions, isLoading: isAnalyticsLoading } = useTransactions(householdId, {
+    periodStart: analyticsWindowStart,
+    periodEnd: periodStart,
+  })
+  const { categories: allCategories } = useCategories(householdId)
+  const categoryNameById = Object.fromEntries(allCategories.map((c) => [c.id, c.name_he]))
+  const categoryIconById = Object.fromEntries(allCategories.map((c) => [c.id, c.icon]))
+
+  const analyticsInput = analyticsTransactions.map((t) => ({
+    categoryId: t.category_id,
+    amountAgorot: t.amount_agorot,
+    txnDate: t.txn_date,
+    isShared: t.is_shared,
+    isExcluded: t.is_excluded,
+  }))
+  const monthlyTrendPoints = computeMonthlyTrend(analyticsInput, last6MonthStarts)
+  const categoryBreakdown = computeCategoryBreakdown(analyticsInput, periodStart)
+  const topCategories = computeTopCategories(categoryBreakdown, 5)
 
   // Fail-safe display: while useHousehold is still resolving (a real
   // network round trip on every cold start), householdId is null and every
@@ -149,6 +182,49 @@ export default function Dashboard() {
               </Pressable>
             </View>
           ))}
+        </Card>
+      )}
+
+      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+        {t('dashboard.analytics.trendTitle')}
+      </Text>
+      {isAnalyticsLoading ? (
+        <LoadingSpinner />
+      ) : (
+        <Card>
+          <MonthlyTrendChart points={monthlyTrendPoints} />
+        </Card>
+      )}
+
+      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+        {t('dashboard.analytics.breakdownTitle')}
+      </Text>
+      {!isAnalyticsLoading && (
+        <Card>
+          {categoryBreakdown.length === 0 ? (
+            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.analytics.empty')}</Text>
+          ) : (
+            <View className="items-center">
+              <CategoryDonutChart breakdown={categoryBreakdown} />
+            </View>
+          )}
+        </Card>
+      )}
+
+      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+        {t('dashboard.analytics.topCategoriesTitle')}
+      </Text>
+      {!isAnalyticsLoading && (
+        <Card>
+          {topCategories.length === 0 ? (
+            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.analytics.empty')}</Text>
+          ) : (
+            <TopCategoriesList
+              entries={topCategories}
+              categoryNameById={categoryNameById}
+              categoryIconById={categoryIconById}
+            />
+          )}
         </Card>
       )}
 

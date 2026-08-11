@@ -8,6 +8,7 @@ import { useBiometricGuard } from '@/features/auth/hooks/useBiometricGuard'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
+import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
 import { colors } from '@/constants/colors'
 
 // Milestone 5's real tab bar (Dashboard/Transactions/Budgets/Settings),
@@ -38,6 +39,12 @@ export default function AppLayout() {
   const { user } = useAuth()
   const { householdId } = useHousehold(user?.id)
   useTransactionsRealtimeSync(householdId)
+  // Milestone 7 — client-on-open recurring generation (ADR-003/Q2). Mounted
+  // once here, next to the realtime sync, for the same reason: this hook
+  // owns its own subscribe/trigger lifecycle, so it must not be mounted
+  // more than once (would just mean redundant, harmlessly idempotent RPC
+  // calls, but still — one owner, matching the realtime sync's convention).
+  useGenerateRecurringTransactions(householdId)
   const { colorScheme: scheme } = useColorScheme()
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light

@@ -139,6 +139,12 @@ export default function Settings() {
           variant="secondary"
           onPress={() => router.push('/settings/categories')}
         />
+        <Button
+          title={t('settings.financial.recurring')}
+          variant="secondary"
+          onPress={() => router.push('/recurring')}
+        />
+        <Button title={t('settings.financial.goals')} variant="secondary" onPress={() => router.push('/goals')} />
       </View>
 
       {/* Appearance */}

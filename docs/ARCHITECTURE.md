@@ -70,15 +70,21 @@ app/                          Expo Router pages
       index.tsx
       [id].tsx
       new.tsx                 Reached via FAB, not a tab
+      import.tsx               Milestone 7 — CSV import wizard, reached from transactions/index.tsx
     budgets/
       index.tsx
     settings/
       index.tsx
+      categories.tsx           Reached from Settings, not a tab
     accounts/                 Reached from Settings, not a tab
       index.tsx
       [id].tsx
-    goals/                    Reached from Settings, not a tab
+    goals/                    Reached from Settings, not a tab — Milestone 7
       index.tsx
+      [id].tsx
+    recurring/                Reached from Settings, not a tab — Milestone 7
+      index.tsx
+      [id].tsx
   onboarding/
     _layout.tsx
     create-household.tsx

@@ -66,3 +66,19 @@ export interface BudgetCategoryProgress {
   remainingAgorot: number
   percentSpent: number | null
 }
+
+// ============================================================================
+// Milestone 7 — MVP-3 (Recurring, Savings Goals, CSV Import, Analytics)
+// ============================================================================
+
+export type RecurringFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'
+
+export interface RecurringTransaction extends Omit<Tables<'recurring_transactions'>, 'frequency'> {
+  frequency: RecurringFrequency
+}
+
+// is_completed is DB-derived (migration 003's derive_savings_goal_completion
+// trigger: current_agorot >= target_agorot) — never client-set. No narrowing
+// beyond the generated row shape is needed since every column here already
+// has a concrete type.
+export type SavingsGoal = Tables<'savings_goals'>

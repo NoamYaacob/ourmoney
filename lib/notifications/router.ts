@@ -21,7 +21,7 @@
 import i18n from '../../i18n'
 import { on } from '../events/dispatcher'
 import { supabase } from '../supabase/client'
-import type { BudgetThresholdReachedPayload, DomainEvent, EventType } from '../events/types'
+import type { BudgetThresholdReachedPayload, DomainEvent, EventType, GoalCompletedPayload } from '../events/types'
 import { pushChannel } from './channels/push'
 import type { NotificationChannel, RenderedNotification } from './types'
 
@@ -72,6 +72,13 @@ function renderBudgetExceeded(): RenderedNotification {
   }
 }
 
+function renderGoalCompleted(): RenderedNotification {
+  return {
+    title: i18n.t('notifications.goalCompleted.title'),
+    body: i18n.t('notifications.goalCompleted.body'),
+  }
+}
+
 on('budget.threshold_reached', (event) => {
   void fanOutToHousehold(event.householdId, renderBudgetThresholdReached(event), event)
 })
@@ -80,4 +87,14 @@ on('budget.threshold_reached', (event) => {
 // subscriber at all despite the notification content already being defined.
 on('budget.exceeded', (event) => {
   void fanOutToHousehold(event.householdId, renderBudgetExceeded(), event)
+})
+
+// Milestone 7: a savings goal reaching its target is a natural notification
+// moment. goal.progress_updated deliberately gets NO subscriber here — a
+// notification on every manual progress edit would be noise, not signal;
+// only the specific false->true completion transition (see
+// features/savings/hooks/useUpdateSavingsGoalProgress.ts) is worth telling
+// the household about.
+on('goal.completed', (event: DomainEvent<'goal.completed', GoalCompletedPayload>) => {
+  void fanOutToHousehold(event.householdId, renderGoalCompleted(), event)
 })
