@@ -39,8 +39,9 @@ jobs:
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
-          psql "host=$HOST port=5432 dbname=postgres user=postgres sslmode=require" -v ON_ERROR_STOP=1 -f supabase/rls_tests.sql
+          HOST="aws-1-eu-west-1.pooler.supabase.com"
+          USER="postgres.${SUPABASE_PROJECT_REF}"
+          psql "host=$HOST port=5432 dbname=postgres user=$USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/rls_tests.sql
 
       - name: Generate database types
         run: supabase gen types typescript --project-id "$SUPABASE_PROJECT_REF" > /tmp/database.ts
