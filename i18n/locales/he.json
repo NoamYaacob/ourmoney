@@ -416,7 +416,17 @@
       "title": "אבטחה",
       "biometricToggle": "נעילה ביומטרית"
     },
-    "signOut": "התנתקות"
+    "signOut": "התנתקות",
+    "deleteAccount": {
+      "button": "מחיקת חשבון",
+      "confirmTitle": "מחיקת חשבון",
+      "confirmMessage": "פעולה זו תמחק את החשבון שלכם לצמיתות ולא ניתן לבטל אותה. אם אתם החברים היחידים במשק הבית, כל הנתונים הפיננסיים של משק הבית — חשבונות, תנועות, תקציבים ויעדי חיסכון — יימחקו גם הם.",
+      "confirmButton": "מחיקה לצמיתות",
+      "cancelButton": "ביטול",
+      "errors": {
+        "generic": "מחיקת החשבון נכשלה. נסו שוב"
+      }
+    }
   },
   "notifications": {
     "budgetThresholdReached": {

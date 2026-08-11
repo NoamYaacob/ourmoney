@@ -222,6 +222,10 @@ Settings → Household → Invite partner
 - Admin can remove a member
 - Members can leave a household
 - A user can only be in one household at a time (MVP constraint)
+- Deleting your account (Settings) removes your household membership: if you're the admin and others
+  remain, the longest-tenured remaining member becomes admin automatically; if you're the household's
+  only member, the household and all its data are deleted with you; shared data you created is kept
+  for the remaining members either way ([ADR-032](DECISIONS.md#adr-032))
 
 ### Partner Invitation
 - Invite by shareable deep link via the native share sheet (WhatsApp, iMessage, etc.)

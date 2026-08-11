@@ -26,13 +26,14 @@ See [ADR-006](DECISIONS.md#adr-006) and [ADR-019](DECISIONS.md#adr-019).
 
 ## Migration layout
 
-This document specifies the complete MVP schema. It is delivered in three migrations:
+This document specifies the complete MVP schema. It is delivered in four migrations:
 
 | Migration | Phase | Contents |
 |---|---|---|
 | `001_initial_schema.sql` | MVP-1 | `profiles`, `households`, `household_members`, `invitations`, both RLS helpers, `create_household`, `accept_invitation`, and all their policies |
 | `002_financial_schema.sql` | MVP-2 | `accounts`, `categories`, `category_rules`, `transactions`, `recurring_transactions`, `budgets`, `budget_allocations`, `savings_goals`, and all their policies. `recurring_transactions`/`savings_goals` shipped schema+RLS only in this migration — no UI/engine consumed them until MVP-3. |
 | `003_recurring_generation_and_goal_completion.sql` | MVP-3 | No new tables. Adds `advance_recurring_due_date()`, `generate_recurring_transactions()`, `skip_recurring_occurrence()`, and a `derive_savings_goal_completion` trigger on the already-existing `savings_goals` table — see § Functions and Triggers. |
+| `004_account_deletion.sql` | MVP-4 | No new tables. Relaxes every attribution-only FK to `auth.users` (`households.created_by`, `invitations.invited_by`, `accounts.owner_id`, `transactions.payer_id`/`created_by`, `recurring_transactions.created_by`, `savings_goals.created_by`) to nullable with `ON DELETE SET NULL`; widens `transactions_update`/`recurring_update`/`savings_goals_update`'s `WITH CHECK` to accept a `NULL` `created_by`; adds `delete_own_account()`. See § Account Deletion below and [ADR-032](DECISIONS.md#adr-032). |
 
 Each migration includes the RLS policies for the tables it creates, in the same file. Structural
 guards 6.3 and 6.4 fail the build if a table lands without them.
@@ -778,6 +779,146 @@ mirroring migration 001's `handle_new_user()`.
 
 ---
 
+### Migration 004 — Account deletion (MVP-4)
+
+No new tables. Implements the store-compliance "Delete account" flow (`PROJECT_SPEC.md` § Settings)
+and resolves [T-Q1](TRUST_AND_PRIVACY.md#open-questions) — the three product decisions behind it are
+recorded in full, with rationale, in [ADR-032](DECISIONS.md#adr-032). Summary here; ADR-032 is
+authoritative.
+
+**Every FK to `auth.users` that had no `ON DELETE` clause becomes `ON DELETE SET NULL`** (and, where
+it was `NOT NULL`, nullable): `households.created_by`, `invitations.invited_by`, `accounts.owner_id`,
+`transactions.payer_id`, `transactions.created_by`, `recurring_transactions.created_by`,
+`savings_goals.created_by`. None of these gate any RLS policy — every policy in this schema
+authorizes exclusively through `is_household_member`/`is_household_admin(household_id)` — so nulling
+them on account deletion never changes what any remaining member can see or do. `profiles.id` and
+`household_members.user_id` already had `ON DELETE CASCADE` (migration 001) and are unchanged; that
+cascade is what removes a departed user's own profile and membership row automatically once
+`delete_own_account()` deletes their `auth.users` row.
+
+**`transactions_update`/`recurring_update`/`savings_goals_update` widened**, from
+`created_by IN (SELECT user_id FROM household_members WHERE ...)` to
+`created_by IS NULL OR created_by IN (...)`. Required: once `created_by` is nullable,
+`NULL IN (SELECT ...)` is never `TRUE` in SQL, so without this widening any row created by a departed
+member would become permanently un-editable. Accepted side effect, pinned by a test: an *active*
+member can now also null a still-active co-member's `created_by`, not only a departed one — the
+non-`NULL` coherence branch (the actual cross-household protection) is unchanged.
+
+```sql
+CREATE OR REPLACE FUNCTION delete_own_account()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user_id            UUID := auth.uid();
+  v_household_id       UUID;
+  v_role               TEXT;
+  v_other_member_count INT;
+  v_new_admin_id       UUID;
+  v_household_deleted  BOOLEAN := FALSE;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'unauthenticated');
+  END IF;
+
+  SELECT household_id INTO v_household_id
+  FROM household_members WHERE user_id = v_user_id;
+
+  IF FOUND THEN
+    -- Advisory lock keyed on household_id (namespace 72702) — serializes
+    -- any two calls touching this household's membership. Every decision
+    -- below reads FRESH state taken AFTER the lock is held.
+    PERFORM pg_advisory_xact_lock(72702, hashtext(v_household_id::text));
+
+    SELECT role INTO v_role
+    FROM household_members WHERE household_id = v_household_id AND user_id = v_user_id;
+    SELECT COUNT(*) INTO v_other_member_count
+    FROM household_members WHERE household_id = v_household_id AND user_id <> v_user_id;
+
+    IF v_other_member_count = 0 THEN
+      -- Sole member: the household is unreachable the instant this user is
+      -- gone. Delete it — household_id ON DELETE CASCADE removes every
+      -- financial row that belonged to it, in this same statement.
+      DELETE FROM households WHERE id = v_household_id;
+      v_household_deleted := TRUE;
+    ELSE
+      IF v_role = 'admin' THEN
+        -- Auto-promote the longest-tenured remaining member.
+        SELECT user_id INTO v_new_admin_id
+        FROM household_members
+        WHERE household_id = v_household_id AND user_id <> v_user_id
+        ORDER BY joined_at ASC LIMIT 1;
+
+        UPDATE household_members SET role = 'admin'
+        WHERE household_id = v_household_id AND user_id = v_new_admin_id;
+      END IF;
+
+      -- Household continues: null every attribution-only FK pointing at
+      -- this user; convert their personal accounts to household-owned.
+      UPDATE households SET created_by = NULL WHERE id = v_household_id AND created_by = v_user_id;
+      UPDATE invitations SET invited_by = NULL WHERE household_id = v_household_id AND invited_by = v_user_id;
+      UPDATE accounts SET owner_id = NULL WHERE household_id = v_household_id AND owner_id = v_user_id;
+      UPDATE transactions SET payer_id = NULL WHERE household_id = v_household_id AND payer_id = v_user_id;
+      UPDATE transactions SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+      UPDATE recurring_transactions SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+      UPDATE savings_goals SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+    END IF;
+  END IF;
+
+  -- Cascades to profiles and (if the household still exists) this user's
+  -- own household_members row. Matching zero rows on a repeat call with a
+  -- stale-but-valid JWT is a harmless no-op — naturally idempotent.
+  DELETE FROM auth.users WHERE id = v_user_id;
+
+  RETURN jsonb_build_object(
+    'ok', true, 'household_deleted', v_household_deleted, 'new_admin_id', v_new_admin_id
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION delete_own_account() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION delete_own_account() TO authenticated;
+```
+
+**Design notes**
+
+- **Zero parameters, deliberately.** The only user this function can ever affect is `auth.uid()`
+  itself — no parameter through which a caller could target another user, household, or role, which
+  makes cross-account/cross-household deletion structurally impossible rather than merely
+  policy-forbidden.
+- **Why `SECURITY DEFINER` is required, not just convenient:** deleting a `households` row has no
+  DELETE policy at all (there never has been one), and promoting a member to admin has no UPDATE
+  policy at all ([ADR-022](DECISIONS.md#adr-022), deliberate). Both are only reachable through an
+  audited definer function — exactly what ADR-022 names as the sole legitimate future path to ever
+  change a role.
+- **Concurrency: a single `pg_advisory_xact_lock`, not row locks.** An earlier draft took two
+  `SELECT ... FOR UPDATE` locks (the caller's own row, then every row in the household) and could
+  deadlock for real: two members of the same household calling concurrently, each already holding
+  their own row locked, each then blocking on the other's. A single advisory lock target
+  (namespace `72702`, keyed on `household_id` — distinct from `create_household`/`accept_invitation`'s
+  per-user namespace `72701`) has no such circular-wait shape and fully serializes any two calls
+  touching the same household. Every decision (`role`, member count) is re-read *after* the lock is
+  acquired, never from a value read beforehand, since a concurrent call may have already changed this
+  user's own role (e.g. promoted them) while this call was waiting.
+- **`DELETE FROM auth.users` from a client holding only the anon key.** This runs under the function
+  owner's privileges (`SECURITY DEFINER`), not a service-role key — [ADR-003](DECISIONS.md#adr-003)'s
+  "no service-role key in client code" is unaffected. **Needs live verification** (cannot be proven
+  without Docker/Supabase in a sandbox): that the owning role genuinely has `DELETE` on `auth.users`
+  and that GoTrue's auxiliary tables cascade cleanly. No Storage usage exists in this app today
+  (`avatar_url`/`receipt_url` are unused columns), so a `storage.objects` owner-FK conflict is
+  currently moot — re-check before receipt-photo attachment (POST-MVP) makes it relevant.
+- **Known, accepted residual race**, documented rather than engineered around (see ADR-032): a
+  household's sole remaining member deleting their account at the exact instant someone else accepts a
+  pending invitation to it is not covered by this function's lock, since `accept_invitation()` takes no
+  lock on the `households` row. Bounded, non-destructive, out of scope to close (would mean touching an
+  already-hardened, individually-audited function, [ADR-010](DECISIONS.md#adr-010)).
+- **Not built:** a standalone "leave household without deleting your account" flow. See ADR-032's
+  Consequences.
+
+---
+
 ## Row-Level Security Policies
 
 ### profiles
@@ -1262,6 +1403,24 @@ written once and then catch entire classes of future mistake automatically:
 
 A guard that fails loudly on a future migration is worth more than any number of hand-written
 row-level assertions.
+
+### Group 7 — `delete_own_account()` (Milestone 9, migration 004)
+
+| # | Test | Expected |
+|---|---|---|
+| 7.1 | Fixed `search_path` | `pg_proc.proconfig` contains `search_path=public, pg_temp` |
+| 7.2 | Grants | `information_schema.role_routine_grants` shows `authenticated` only |
+| 7.3 | Caller is `anon` | `EXECUTE` denied |
+| 7.4 | No `sub` claim | `{ok: false, error: 'unauthenticated'}` |
+| 7.5 | Regular member (User B) deletes, Household 1 continues | household preserved, User A's role unchanged, B's personal account `owner_id` nulled, B's transaction `created_by` nulled |
+| 7.6 | D2-widening regression check | a remaining member can still `UPDATE` a transaction whose `created_by` is now `NULL` |
+| 7.7 | Accepted behavior, pinned | an active member can null `created_by` on another still-active member's row |
+| 7.8 | Admin (User A) deletes, Household 1 continues | User B auto-promoted to admin, `households.created_by` and A's transactions' `created_by` nulled |
+| 7.9 | Post-succession capability check | the newly-promoted admin can immediately exercise an admin-only policy (`households_update`) |
+| 7.10 | Sole member (User C, Household 2) deletes | Household 2 and every row that belonged to it (accounts/categories/category_rules/transactions/recurring_transactions/budgets/budget_allocations/savings_goals/invitations), plus the user's profile, are gone |
+| 7.11 | User with no household deletes | only their own `auth.users`/`profiles` rows are affected |
+| 7.12 | Idempotency | calling the function twice in a row is a clean no-op the second time |
+| DELETE_ACCOUNT.CONCURRENT | Two members of the same household call concurrently (isolated dblink section, true concurrency) | no deadlock, both calls succeed, household and both users end up fully gone regardless of call order |
 
 ---
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Share, Switch, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useColorScheme } from 'nativewind'
@@ -8,6 +8,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useBiometricPreference } from '@/features/auth/hooks/useBiometricPreference'
 import { useSignOut } from '@/features/auth/hooks/useSignOut'
+import { useDeleteUserAccount } from '@/features/auth/hooks/useDeleteUserAccount'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMembers'
 import { useCreateInvitation } from '@/features/household/hooks/useCreateInvitation'
@@ -19,6 +20,7 @@ import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
@@ -44,6 +46,30 @@ export default function Settings() {
   const { preference, setPreference } = useTheme()
   const biometric = useBiometricPreference()
   const signOut = useSignOut()
+  const deleteAccount = useDeleteUserAccount()
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false)
+  // deleteAccount.isPending only updates after a real render — TanStack
+  // Query's notifyManager batches mutation-state notifications via a real
+  // setTimeout, not synchronously (confirmed against @tanstack/query-core's
+  // source). Two presses close enough together (a JS-thread stall, an
+  // assistive-tech double-activate) can both read isPending=false and both
+  // call mutate() before either re-render lands. This ref is checked and
+  // set synchronously in the same tick, closing that gap for an
+  // irreversible action (qa-adversarial-reviewer finding, Milestone 9) —
+  // the RPC's own advisory lock is a second line of defense, not a
+  // substitute for this.
+  const isDeletingRef = useRef(false)
+
+  function handleConfirmDelete() {
+    if (isDeletingRef.current || deleteAccount.isPending) return
+    isDeletingRef.current = true
+    deleteAccount.mutate(undefined, {
+      onSettled: () => {
+        isDeletingRef.current = false
+        setDeleteConfirmVisible(false)
+      },
+    })
+  }
 
   function handleInvite() {
     if (!householdId || createInvitation.isPending) return
@@ -189,6 +215,32 @@ export default function Settings() {
       <View className="mt-6">
         <Button title={t('settings.signOut')} onPress={() => signOut.mutate()} variant="secondary" />
       </View>
+
+      {/* Delete account — store compliance requirement (PROJECT_SPEC.md
+          § Settings). Destructive by construction: danger-styled trigger,
+          explicit confirmation modal, disabled while pending so a
+          double-tap can't fire two concurrent deletions. */}
+      <View className="mt-3">
+        {deleteAccount.isError && <ErrorMessage message={t('settings.deleteAccount.errors.generic')} />}
+        <Button
+          title={t('settings.deleteAccount.button')}
+          onPress={() => setDeleteConfirmVisible(true)}
+          variant="danger"
+          disabled={deleteAccount.isPending}
+        />
+      </View>
+
+      <Modal
+        visible={deleteConfirmVisible}
+        title={t('settings.deleteAccount.confirmTitle')}
+        message={t('settings.deleteAccount.confirmMessage')}
+        confirmLabel={t('settings.deleteAccount.confirmButton')}
+        cancelLabel={t('settings.deleteAccount.cancelButton')}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirmVisible(false)}
+        destructive
+        loading={deleteAccount.isPending}
+      />
     </Screen>
   )
 }

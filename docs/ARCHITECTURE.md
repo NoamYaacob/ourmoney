@@ -262,8 +262,8 @@ Budget progress recalculates on the client when the transaction list updates.
 2. All policies scope through `is_household_member(household_id)` or `is_household_admin(household_id)`.
 3. DELETE on shared resources (accounts, categories, budgets, transactions) is admin-only.
 4. `household_members` has **no INSERT and no UPDATE policy**. Membership is written only by the
-   `create_household` and `accept_invitation` `SECURITY DEFINER` functions, so a client can neither
-   join an arbitrary household nor promote itself to admin.
+   `create_household`, `accept_invitation`, and `delete_own_account` `SECURITY DEFINER` functions, so
+   a client can neither join an arbitrary household nor promote itself to admin.
 5. Every `SECURITY DEFINER` function sets a fixed `search_path` and grants `EXECUTE` to
    `authenticated` only. Structural tests 6.5 and 6.6 enforce both.
 6. The anon key is used in client code. It cannot bypass RLS.
@@ -271,6 +271,11 @@ Budget progress recalculates on the client when the transaction list updates.
 8. `supabase/rls_tests.sql` must pass before any schema change is merged.
 9. `accept_invitation` is an audited exception to rule 2. Its ten conditions are specified in
    [ADR-010](DECISIONS.md#adr-010) and each is individually tested.
+10. `delete_own_account` is the only way to delete a `households` row (no DELETE policy has ever
+    existed on that table) or promote a member to admin (no UPDATE policy on `household_members`,
+    rule 4). Zero parameters — resolves only `auth.uid()`, never a caller-supplied id — which makes
+    cross-account/cross-household deletion structurally impossible. See
+    [ADR-032](DECISIONS.md#adr-032).
 
 ---
 

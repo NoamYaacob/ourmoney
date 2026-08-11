@@ -40,6 +40,7 @@ rather than editing history.
 | [029](#adr-029) | Forward-compat by invariant, not by speculative column | Accepted |
 | [030](#adr-030) | Native device validation deferred; non-simulator checks not weakened | Accepted |
 | [031](#adr-031) | Jest + jest-expo + React Native Testing Library for client-side tests | Accepted |
+| [032](#adr-032) | Account deletion: admin succession, sole-member cascade, attribution preservation | Accepted — resolves T-Q1 |
 
 ADRs 024–028 were added after the **August 2026 market research**
 ([MARKET_RESEARCH.md](MARKET_RESEARCH.md)). ADR-028 corrects a factual error in earlier planning
@@ -1128,6 +1129,124 @@ Supabase project or network. Tests are colocated as `*.test.ts(x)` next to the f
 - This is scoped to app-layer logic only. It does not replace, duplicate, or change
   `supabase/rls_tests.sql`, which remains the sole test suite for RLS/database behavior and must
   continue to pass before any schema migration is merged.
+
+---
+
+## ADR-032
+### Account deletion: admin succession, sole-member cascade, attribution preservation
+
+**Status:** Accepted — resolves [T-Q1](TRUST_AND_PRIVACY.md#open-questions)
+
+**Context.** ROADMAP.md's MVP-4 ("Ship Quality") lists "Delete-account flow (store compliance
+requirement)" as a literal exit item — App Store Review Guideline 5.1.1(v) and Google Play's
+account-deletion policy both require in-app account deletion for any app supporting in-app account
+creation, which this app does via `supabase.auth.signUp`. `TRUST_AND_PRIVACY.md`'s T8 already states
+the principle ("deletion is real and complete") but explicitly left the mechanics as an open
+question — **T-Q1**: *"What happens to shared household data when one member leaves or a household
+dissolves? Blocks: nothing in MVP; must precede real user data."* Building the flow is what makes
+this question live. Three concrete decisions were required and were confirmed explicitly (not
+inferred) before migration `004_account_deletion.sql` was written.
+
+**Decision.**
+
+1. **Admin succession.** If the deleting user is a household's admin and other members remain, the
+   longest-tenured remaining member (`MIN(joined_at)`) is auto-promoted to admin, atomically, in the
+   same function call. No admin-promotion mechanism existed anywhere in the schema before this —
+   [ADR-022](#adr-022) deliberately left `household_members` with no client-writable UPDATE policy,
+   naming "another audited `SECURITY DEFINER` function" as the only legitimate future path to ever
+   change a role. This is that function.
+2. **Sole-member households are deleted, not orphaned.** Once a household's last member is gone, RLS
+   makes it permanently unreachable — every policy requires `is_household_member(household_id)`, and
+   nothing can ever satisfy that again. The household row itself is deleted, and the existing
+   `household_id ON DELETE CASCADE` chains (migrations 001/002) remove every account, category,
+   category rule, transaction, recurring template, budget, budget allocation, savings goal, and
+   invitation that belonged to it, in the same statement.
+3. **Attribution is not ownership.** Money belongs to `household_id`, not to whichever user happened
+   to create a row (`CLAUDE.md`, `DATABASE_SCHEMA.md`). When a household continues past a member's
+   departure, every attribution-only FK pointing at that user (`households.created_by`,
+   `invitations.invited_by`, `transactions.created_by`/`payer_id`, `recurring_transactions.created_by`,
+   `savings_goals.created_by`) is nulled — never used as a reason to delete or hide shared data. A
+   departing member's personal accounts (`accounts.owner_id` = them) convert to household-owned
+   (`owner_id -> NULL`) rather than being deleted, so balances and historical budget totals stay
+   correct for the remaining members.
+
+**Mechanism.** A single zero-parameter `SECURITY DEFINER` RPC, `delete_own_account()`, resolves the
+caller from `auth.uid()` alone — there is no parameter through which a caller could target another
+user, household, or role, which makes cross-account/cross-household deletion structurally impossible
+rather than merely policy-forbidden (the same design property `create_household()`/`accept_invitation()`
+already rely on). It is the only way to reach the two operations that have no policy path at all:
+deleting a `households` row (no DELETE policy has ever existed on that table) and promoting a member
+to admin (no UPDATE policy on `household_members`, deliberately, per ADR-022). Concurrent calls
+touching the same household serialize on a single `pg_advisory_xact_lock` keyed on `household_id`
+(namespace `72702`, distinct from `create_household`/`accept_invitation`'s per-user namespace `72701`)
+— an earlier draft used two-step row locking (`SELECT ... FOR UPDATE` on the caller's own row, then on
+every row in the household) and could deadlock for real between two members of the same household
+calling concurrently; the advisory lock has no such circular-wait shape. Deleting the underlying
+`auth.users` row (not a soft delete, not merely a local sign-out) runs inside this function under the
+function owner's privileges — no service-role key is used or exposed anywhere on the client
+([ADR-003](#adr-003)), matching the standard, documented pattern for self-service account deletion from
+a client that only ever holds the anon key.
+
+**Rationale.**
+- A raw `CASCADE` on any attribution FK (in particular `households.created_by`) would have deleted an
+  entire household's shared data merely because the admin who happened to create it deleted their own
+  account — destroying data that belongs to, and is still needed by, other members. Reviewing every
+  foreign key to `auth.users` across migrations 001/002 before writing this migration (per explicit
+  instruction) is what surfaced this as the central risk to design against.
+- Leaving a sole-member household un-deleted would create exactly the "orphaned/inaccessible household"
+  this milestone was explicitly asked to avoid: a row nobody can ever read again (RLS-protected, not a
+  security exposure, but real, permanent, unowned data — in direct tension with T8's "deletion is real
+  and complete").
+- Auto-promotion (rather than blocking deletion until the admin manually names a successor, or allowing
+  a household to end up with no admin at all) was chosen because MVP has no admin-transfer UI to block
+  on, and a household with no admin forever would permanently lose the ability to remove members, rename
+  itself, or hard-delete shared accounts/categories/transactions — with no way to recover that capability
+  short of a future migration.
+
+**Consequences.**
+- `transactions_update`/`recurring_update`/`savings_goals_update`'s `WITH CHECK` clauses were widened
+  from `created_by IN (SELECT user_id FROM household_members ...)` to
+  `created_by IS NULL OR created_by IN (...)` — required, not optional: once `created_by` is nullable,
+  `NULL IN (SELECT ...)` is never `TRUE` in SQL, so without this widening every row created by a
+  departed member would become permanently un-editable by anyone. **Accepted side effect:** this also
+  means any *currently active* household member can now null another active member's `created_by` via
+  a plain UPDATE, not only a departed one's — RLS `WITH CHECK` cannot see a row's prior value to
+  restrict this to "only if it was already NULL" (that needs a trigger, not a policy). Stays
+  strictly same-household — the non-`NULL` branch of every check is unchanged, so `created_by` can
+  still never be pointed at a user outside the household — and mirrors an already-shipped precedent
+  (`payer_id IS NULL OR payer_id IN (...)`, permitted since migration 002). Pinned by a dedicated test
+  rather than engineered around.
+- **Known, accepted residual race**, on the same basis as D5 in the Milestone 6 planning history: if a
+  household's sole remaining member calls `delete_own_account()` at the exact instant someone else
+  accepts a pending invitation to that household, `accept_invitation()` takes no lock on the
+  `households` row (only on the `invitations` row it consumes) and does not take this function's
+  advisory lock either — the newly-inserted `household_members` row can be cascade-deleted along with
+  the household a moment later. Bounded and non-destructive to the new joiner's own account (only their
+  membership row vanishes; their invitation shows accepted against a household that no longer exists).
+  Closing it fully would mean adding a lock to `accept_invitation()`, an already extensively hardened
+  and individually-audited function ([ADR-010](#adr-010), Group 5) — broadening that surface is out of
+  scope for an account-deletion milestone.
+- **Explicitly not built:** a standalone "leave household without deleting your account" UI/RPC. The
+  existing `household_members_delete` policy (migration 001, `user_id = auth.uid() OR
+  is_household_admin(household_id)`) already technically permits a raw self-removal, but it predates
+  this ADR and has none of the admin-succession or orphan-prevention logic above — no UI in the app
+  calls it today, so the gap is latent, not live. Closing it (routing a voluntary "leave" through the
+  same succession/cascade logic `delete_own_account()` uses) is a reasonable future addition but is
+  account-lifecycle scope beyond account *deletion*, which is what this migration was scoped to.
+- **Needs live verification, cannot be proven in a sandbox without Docker/Supabase**: that the
+  function-owning role genuinely has `DELETE` on `auth.users` (a different privilege than the one
+  `handle_new_user`'s trigger attachment already proves), that GoTrue's auxiliary tables cascade
+  cleanly, and — before receipt-photo attachment (POST-MVP) makes it relevant — that a user who has
+  uploaded a Supabase Storage object (avatar, receipt) doesn't hit an FK violation `storage.objects`'
+  owner column this migration does not account for. No Storage usage exists in the app today
+  (`avatar_url`/`receipt_url` are unused columns), so this is currently moot but must be re-checked
+  before that feature ships.
+
+**Related:** [ADR-003](#adr-003) (no service-role key in client code), [ADR-006](#adr-006) (household as
+the core entity, never assume exactly two members), [ADR-010](#adr-010) (the other audited
+`SECURITY DEFINER` exception to RLS), [ADR-022](#adr-022) (no role-change policy — this is the function
+it names as the only legitimate path). See `docs/DATABASE_SCHEMA.md`'s Account Deletion section and
+`supabase/migrations/004_account_deletion.sql`'s own header for the full implementation detail.
 
 ---
 

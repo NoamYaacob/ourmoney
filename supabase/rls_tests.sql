@@ -16,7 +16,14 @@
 -- the D2 cross-household FK-coherence tests, the financial visibility
 -- matrix (VM.*, per the M6 plan §6a), the D6 CHECK (amount_agorot <> 0)
 -- tests, the save_budget_allocations() RPC test group (RPC.*), and a
--- grant/policy parity check across all 8 new tables.
+-- grant/policy parity check across all 8 new tables. Milestone 7 adds
+-- DB.PARITY.*/RECURRING.*/RECURRING.SKIP.*/RECURRING.ATOMICITY/
+-- SAVINGS.TRIGGER.* for migration 003. Milestone 9 adds Group 7
+-- (delete_own_account(), migration 004): search_path/grants, admin
+-- succession, sole-member household cascade, attribution nulling vs.
+-- shared-data preservation, the D2-widening regression it introduces and
+-- fixes in the same migration, idempotency, and the DELETE_ACCOUNT.CONCURRENT
+-- true-concurrency test (isolated section, same reason as 5.9 below).
 --
 -- Design: every test impersonates a role via `SET LOCAL role` +
 -- `SET LOCAL request.jwt.claims` (the technique DATABASE_SCHEMA.md
@@ -2423,6 +2430,334 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_3;
 
+-- ============================================================================
+-- Milestone 9 — Group 7: delete_own_account() (migration 004)
+-- ============================================================================
+-- Covers the three confirmed product decisions (admin succession, sole-member
+-- household cascade, attribution-nulling vs. shared-data preservation), the
+-- grant/search_path structural requirements every SECURITY DEFINER function
+-- in this schema must meet, and the D2-widening regression the migration's
+-- Part 2 exists to prevent. True concurrency (two members of the same
+-- household calling this function at once) is covered separately near the
+-- end of this file, in the isolated dblink section, for the same reason
+-- test 5.9 lives there — a second real connection cannot see this
+-- transaction's uncommitted fixtures.
+
+-- 7.1: fixed search_path
+DO $$
+DECLARE v_config TEXT[];
+BEGIN
+  SELECT proconfig INTO v_config FROM pg_proc WHERE proname = 'delete_own_account' AND pronamespace = 'public'::regnamespace;
+  IF v_config IS NULL OR NOT ('search_path=public, pg_temp' = ANY (v_config)) THEN
+    RAISE EXCEPTION 'FAIL 7.1: delete_own_account search_path not fixed, got %', v_config;
+  END IF;
+  PERFORM _pass('7.1', 'delete_own_account has a fixed search_path');
+END $$;
+
+-- 7.2: grants — authenticated only, via information_schema
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'delete_own_account' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 7.2: delete_own_account is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('7.2', 'delete_own_account grants exclude anon and PUBLIC');
+END $$;
+
+-- 7.3: grants — call as anon => EXECUTE denied
+SAVEPOINT sp_7_3;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM delete_own_account();
+    RAISE EXCEPTION 'FAIL 7.3: anon was able to call delete_own_account';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('7.3', 'anon cannot EXECUTE delete_own_account');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_7_3;
+
+-- 7.4: requires auth — call with no sub claim. auth.uid() resolves to NULL,
+-- which the function's own leading check maps to a clean unauthenticated
+-- response, mirroring 5.2's identical assertion for accept_invitation.
+SAVEPOINT sp_7_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_own_account() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "unauthenticated"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 7.4: expected unauthenticated, got %', v_result;
+  END IF;
+  PERFORM _pass('7.4', 'a call with no sub claim is rejected as unauthenticated');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_7_4;
+
+-- 7.5: regular member (User B) deletes their account. Household 1 continues,
+-- no admin change, B's own attribution nulled, B's personal account
+-- converts to household-owned. A test-local transaction/personal account
+-- created_by/owner_id = B is inserted first (the shared fixture has no
+-- B-created rows) so the nulling behavior is actually observable.
+SAVEPOINT sp_7_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO accounts (id, household_id, owner_id, name, type)
+  VALUES ('5a000000-0000-0000-0000-0000000000b1', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'ארנק אישי של B', 'cash');
+  INSERT INTO transactions (id, household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+  VALUES ('5f000000-0000-0000-0000-0000000000b1', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -700, 'קניה של B', '2026-08-07', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+END $$;
+RESET role;
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_own_account() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'household_deleted')::boolean OR v_result->'new_admin_id' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 7.5: expected {ok:true, household_deleted:false, new_admin_id:null} for a regular member, got %', v_result;
+  END IF;
+  PERFORM _pass('7.5', 'a regular member deleting their account does not delete or promote anything in the household');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_role TEXT; v_owner UUID; v_created_by UUID; v_user_exists BOOLEAN; v_household_exists BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') INTO v_user_exists;
+  IF v_user_exists THEN RAISE EXCEPTION 'FAIL 7.5: User B''s auth.users row still exists'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM households WHERE id = '11111111-1111-1111-1111-111111111111') INTO v_household_exists;
+  IF NOT v_household_exists THEN RAISE EXCEPTION 'FAIL 7.5: Household 1 was deleted despite User A remaining'; END IF;
+
+  SELECT role INTO v_role FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  IF v_role <> 'admin' THEN RAISE EXCEPTION 'FAIL 7.5: User A''s role changed to %, expected unchanged admin', v_role; END IF;
+
+  SELECT owner_id INTO v_owner FROM accounts WHERE id = '5a000000-0000-0000-0000-0000000000b1';
+  IF v_owner IS NOT NULL THEN RAISE EXCEPTION 'FAIL 7.5: B''s personal account owner_id was not nulled, got %', v_owner; END IF;
+
+  SELECT created_by INTO v_created_by FROM transactions WHERE id = '5f000000-0000-0000-0000-0000000000b1';
+  IF v_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 7.5: B''s transaction created_by was not nulled, got %', v_created_by; END IF;
+
+  PERFORM _pass('7.5', 'the household is preserved, User A keeps admin, User B''s personal account and transaction attribution are nulled/converted, not deleted');
+END $$;
+
+-- 7.6 (D2.NULL): a remaining household member can still UPDATE a
+-- transaction whose created_by was just nulled by 7.5 — the exact
+-- regression migration 004 Part 2 exists to prevent (before it, this
+-- UPDATE would have been silently rejected: NULL IN (SELECT ...) is never
+-- TRUE).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE transactions SET description = 'עודכן על ידי A' WHERE id = '5f000000-0000-0000-0000-0000000000b1';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 7.6: expected the remaining member to be able to UPDATE a transaction with a NULL created_by, %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('7.6', 'a remaining household member can still UPDATE a transaction whose creator has departed (created_by IS NULL)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_7_5;
+
+-- 7.7 (accepted behavior, pinned): an ACTIVE household member can null out
+-- created_by on a transaction created by another ACTIVE member too, not
+-- only a departed one -- reviewed and accepted consequence of Part 2's
+-- widened WITH CHECK (see the migration's own comment). Stays
+-- same-household; not a boundary violation.
+SAVEPOINT sp_7_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  -- 5f...001 was created_by User A, who is still an active member here.
+  UPDATE transactions SET created_by = NULL WHERE id = '5f000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 7.7: expected User B to be able to null an active co-member''s created_by, %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('7.7', 'an active member can null created_by on a still-active co-member''s row (accepted, same-household, pinned by this test)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_7_7;
+
+-- 7.8: household admin (User A) deletes their account. Household 1
+-- continues (User B remains), User B is auto-promoted to admin, A's
+-- attribution is nulled everywhere it appears.
+SAVEPOINT sp_7_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_own_account() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean
+     OR (v_result->>'household_deleted')::boolean
+     OR v_result->>'new_admin_id' <> 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+  THEN
+    RAISE EXCEPTION 'FAIL 7.8: expected household preserved with User B promoted, got %', v_result;
+  END IF;
+  PERFORM _pass('7.8', 'an admin deleting their account with other members remaining auto-promotes the longest-tenured remaining member');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_role TEXT; v_household_created_by UUID; v_txn_created_by UUID; v_user_exists BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') INTO v_user_exists;
+  IF v_user_exists THEN RAISE EXCEPTION 'FAIL 7.8: User A''s auth.users row still exists'; END IF;
+
+  SELECT role INTO v_role FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  IF v_role <> 'admin' THEN RAISE EXCEPTION 'FAIL 7.8: User B''s role is %, expected admin after succession', v_role; END IF;
+
+  SELECT created_by INTO v_household_created_by FROM households WHERE id = '11111111-1111-1111-1111-111111111111';
+  IF v_household_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 7.8: households.created_by was not nulled, got %', v_household_created_by; END IF;
+
+  SELECT created_by INTO v_txn_created_by FROM transactions WHERE id = '5f000000-0000-0000-0000-000000000001';
+  IF v_txn_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 7.8: transaction 5f...001''s created_by (User A) was not nulled, got %', v_txn_created_by; END IF;
+
+  PERFORM _pass('7.8', 'the departed admin''s attribution is nulled on households.created_by and on every transaction they created');
+END $$;
+
+-- 7.9: the newly-promoted admin (User B) can now exercise an admin-only
+-- capability, proving the SECURITY DEFINER role UPDATE actually took
+-- effect for authorization purposes, not just for the role column's value.
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE households SET name = 'שם חדש אחרי קידום' WHERE id = '11111111-1111-1111-1111-111111111111';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 7.9: expected the newly-promoted admin to be able to rename the household (admin-only policy), %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('7.9', 'the auto-promoted member can immediately exercise admin-only RLS policies (households_update)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_7_8;
+
+-- 7.10: sole member (User C, Household 2) deletes their account. The
+-- entire household and every row that belonged to it must be gone.
+SAVEPOINT sp_7_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_own_account() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'household_deleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL 7.10: expected {ok:true, household_deleted:true} for the sole member of Household 2, got %', v_result;
+  END IF;
+  PERFORM _pass('7.10', 'the sole member of a household deleting their account reports household_deleted:true');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_count BIGINT;
+BEGIN
+  IF EXISTS (SELECT 1 FROM households WHERE id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 row still exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM household_members WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 still has membership rows';
+  END IF;
+  IF EXISTS (SELECT 1 FROM accounts WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 accounts were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM transactions WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 transactions were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 recurring_transactions were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM budgets WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 budgets were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM budget_allocations WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 budget_allocations were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 savings_goals were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM category_rules WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 category_rules were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM categories WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2''s custom category was not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM invitations WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 7.10: Household 2 invitations were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM auth.users WHERE id = 'cccccccc-cccc-cccc-cccc-cccccccccccc') THEN
+    RAISE EXCEPTION 'FAIL 7.10: User C''s auth.users row still exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM profiles WHERE id = 'cccccccc-cccc-cccc-cccc-cccccccccccc') THEN
+    RAISE EXCEPTION 'FAIL 7.10: User C''s profile row still exists';
+  END IF;
+  PERFORM _pass('7.10', 'a sole member deleting their account cascades the entire household: every account/category/category_rule/transaction/recurring_transaction/budget/budget_allocation/savings_goal/invitation, plus the user''s own profile');
+END $$;
+ROLLBACK TO SAVEPOINT sp_7_10;
+
+-- 7.11: a user with no household deletes their account -- just the user,
+-- nothing household-related.
+SAVEPOINT sp_7_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_own_account() INTO v_result;
+  IF v_result <> '{"ok": true, "household_deleted": false, "new_admin_id": null}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 7.11: expected a plain no-household success, got %', v_result;
+  END IF;
+  PERFORM _pass('7.11', 'a user with no household deleting their account affects only their own auth.users/profile row');
+END $$;
+RESET role;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM auth.users WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd') THEN
+    RAISE EXCEPTION 'FAIL 7.11: User D''s auth.users row still exists';
+  END IF;
+  PERFORM _pass('7.11', 'User D''s auth.users row is gone');
+END $$;
+ROLLBACK TO SAVEPOINT sp_7_11;
+
+-- 7.12: idempotency -- calling delete_own_account() a second time with the
+-- same (now stale) session is a harmless no-op, not an error. Models a
+-- client retry, or a still-valid JWT issued before the first call.
+SAVEPOINT sp_7_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee","role":"authenticated"}';
+DO $$
+DECLARE v_first JSONB; v_second JSONB;
+BEGIN
+  SELECT delete_own_account() INTO v_first;
+  SELECT delete_own_account() INTO v_second;
+  IF v_first <> '{"ok": true, "household_deleted": false, "new_admin_id": null}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 7.12: unexpected first-call result %', v_first;
+  END IF;
+  IF v_second <> '{"ok": true, "household_deleted": false, "new_admin_id": null}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 7.12: expected a harmless no-op on the second call, got %', v_second;
+  END IF;
+  PERFORM _pass('7.12', 'calling delete_own_account() twice in a row is idempotent -- the second call is a clean no-op');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_7_12;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -2529,7 +2864,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT) ===', v_total;
 END $$;
 
 ROLLBACK;
@@ -2757,4 +3092,93 @@ DELETE FROM household_members WHERE household_id = '77777777-7777-7777-7777-7777
 DELETE FROM households WHERE id = '77777777-7777-7777-7777-777777777777';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000020', 'f0000000-0000-0000-0000-000000000021');
 
-DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT) ==='; END $$;
+-- ============================================================================
+-- Test DELETE_ACCOUNT.CONCURRENT — true concurrency: the two members of a
+-- 2-person household both call delete_own_account() at the same moment.
+-- Milestone 9 — the specific scenario database-security-reviewer found a
+-- real deadlock in during design review (two SELECT ... FOR UPDATE calls,
+-- each already holding its own row locked, each then blocking on the
+-- other's — a circular wait). The fix replaced that with a single
+-- pg_advisory_xact_lock keyed on household_id. This test proves the fix:
+-- both calls must complete cleanly with no deadlock error, and the household
+-- must end up fully and correctly resolved regardless of which of the two
+-- calls the database happens to run first. User 40 is admin, User 41 is a
+-- plain member — whichever call wins the lock first promotes the other to
+-- admin (decision 1); the second call then re-reads AFTER acquiring the
+-- lock, sees itself as the sole remaining (now-admin) member, and deletes
+-- the household outright (decision 2) — exercising both decision branches
+-- in one race, exactly the interleaving a stale, pre-lock read would get
+-- wrong.
+-- ============================================================================
+
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000040', 'authenticated', 'authenticated', 'del-race-1@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Del Race 1"}', NOW(), NOW(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000041', 'authenticated', 'authenticated', 'del-race-2@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Del Race 2"}', NOW(), NOW(), '', '', '', '');
+
+INSERT INTO households (id, name, created_by) VALUES
+  ('66666666-6666-6666-6666-666666666666', 'בית מרוץ מחיקה', 'f0000000-0000-0000-0000-000000000040');
+
+INSERT INTO household_members (household_id, user_id, role) VALUES
+  ('66666666-6666-6666-6666-666666666666', 'f0000000-0000-0000-0000-000000000040', 'admin'),
+  ('66666666-6666-6666-6666-666666666666', 'f0000000-0000-0000-0000-000000000041', 'member');
+
+DO $$
+DECLARE
+  v_r1 JSONB;
+  v_r2 JSONB;
+  v_household_exists BOOLEAN;
+  v_user1_exists BOOLEAN;
+  v_user2_exists BOOLEAN;
+  v_ok_count INT;
+BEGIN
+  PERFORM dblink_connect('conn1', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+  PERFORM dblink_connect('conn2', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+
+  PERFORM dblink_exec('conn1', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn1', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000040","role":"authenticated"}'$q$);
+  PERFORM dblink_exec('conn2', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn2', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000041","role":"authenticated"}'$q$);
+
+  -- Dispatch both calls asynchronously before collecting either result, so
+  -- they race on the advisory lock exactly as they would in production.
+  PERFORM dblink_send_query('conn1', $q$SELECT delete_own_account()$q$);
+  PERFORM dblink_send_query('conn2', $q$SELECT delete_own_account()$q$);
+
+  SELECT res INTO v_r1 FROM dblink_get_result('conn1') AS t(res JSONB);
+  SELECT res INTO v_r2 FROM dblink_get_result('conn2') AS t(res JSONB);
+  PERFORM dblink_get_result('conn1'); -- drain end-of-results marker
+  PERFORM dblink_get_result('conn2');
+
+  PERFORM dblink_disconnect('conn1');
+  PERFORM dblink_disconnect('conn2');
+
+  SELECT (CASE WHEN (v_r1->>'ok')::boolean THEN 1 ELSE 0 END) + (CASE WHEN (v_r2->>'ok')::boolean THEN 1 ELSE 0 END) INTO v_ok_count;
+  IF v_ok_count <> 2 THEN
+    RAISE EXCEPTION 'FAIL DELETE_ACCOUNT.CONCURRENT: expected both concurrent calls to succeed cleanly (no deadlock), got % successes (r1=%, r2=%)', v_ok_count, v_r1, v_r2;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM households WHERE id = '66666666-6666-6666-6666-666666666666') INTO v_household_exists;
+  IF v_household_exists THEN
+    RAISE EXCEPTION 'FAIL DELETE_ACCOUNT.CONCURRENT: household still exists after both members deleted their accounts (r1=%, r2=%)', v_r1, v_r2;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'f0000000-0000-0000-0000-000000000040') INTO v_user1_exists;
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'f0000000-0000-0000-0000-000000000041') INTO v_user2_exists;
+  IF v_user1_exists OR v_user2_exists THEN
+    RAISE EXCEPTION 'FAIL DELETE_ACCOUNT.CONCURRENT: expected both users'' auth.users rows gone, got user1=%, user2=%', v_user1_exists, v_user2_exists;
+  END IF;
+
+  RAISE NOTICE 'PASS DELETE_ACCOUNT.CONCURRENT: two concurrent delete_own_account() calls from the two members of the same household => no deadlock, both succeed, household and both users fully gone (r1=%, r2=%)', v_r1, v_r2;
+END $$;
+
+-- Cleanup — real DELETEs, in case any assertion above failed partway and
+-- left something behind (the happy path already leaves nothing to clean).
+DELETE FROM household_members WHERE household_id = '66666666-6666-6666-6666-666666666666';
+DELETE FROM households WHERE id = '66666666-6666-6666-6666-666666666666';
+DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000040', 'f0000000-0000-0000-0000-000000000041');
+
+DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + DELETE_ACCOUNT.CONCURRENT) ==='; END $$;
