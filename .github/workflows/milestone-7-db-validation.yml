@@ -1,0 +1,53 @@
+name: Milestone 7 DB Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - milestone-7-validation
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/milestone-7-db-validation.yml'
+
+jobs:
+  validate-db:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: lmgzfjembfafvokywyzi
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Push migrations to validation project
+        run: supabase db push --include-all --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Run Milestone 7 RLS tests
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
+          psql "host=$HOST port=5432 dbname=postgres user=postgres sslmode=require" -v ON_ERROR_STOP=1 -f supabase/rls_tests.sql
+
+      - name: Generate database types
+        run: supabase gen types typescript --project-id "$SUPABASE_PROJECT_REF" > /tmp/database.ts
+
+      - name: Verify generated RPC types
+        run: |
+          grep -q "generate_recurring_transactions" /tmp/database.ts
+          grep -q "skip_recurring_occurrence" /tmp/database.ts
+          grep -q "advance_recurring_due_date" /tmp/database.ts
+          echo "Milestone 7 RPC types found in generated database types."
