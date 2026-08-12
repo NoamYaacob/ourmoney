@@ -20,8 +20,9 @@ import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { DatePickerField } from '@/components/ui/DatePickerField'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
 import type { RecurringFrequency } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
@@ -107,13 +108,16 @@ export default function Recurring() {
       {error ? (
         <ErrorMessage message={t('recurring.errors.generic')} />
       ) : isLoading || isRecurringLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={3} />
       ) : (
         <>
           {recurringTransactions.length === 0 && (
-            <Text className="mb-4 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
-              {t('recurring.empty')}
-            </Text>
+            <EmptyState
+              icon="🔁"
+              message={t('recurring.empty')}
+              actionLabel={t('recurring.addButton')}
+              onAction={() => setIsAdding(true)}
+            />
           )}
           {recurringTransactions.map((item) => (
             <Pressable
