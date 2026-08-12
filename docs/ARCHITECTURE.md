@@ -111,6 +111,10 @@ lib/
     router.ts                 Event → who + which channels
     channels/
       push.ts                 MVP: the only implemented channel
+  monitoring/
+    crashReporting.ts         Milestone 11 — Sentry, errors only, see ADR-033. The
+                               sole permitted Sentry.* call site; everything else
+                               goes through captureException()/addBreadcrumb()
   utils/
   queryClient.ts              TanStack Query configuration
 
@@ -447,6 +451,25 @@ query. The transaction code that emitted the event is unaware any of it happened
 
 WhatsApp additionally requires the server layer, a verified WhatsApp Business Account, approved
 message templates, and per-member explicit opt-in. None of that touches the MVP.
+
+### The crash-reporting constraint
+
+Crash reporting (Milestone 11, [ADR-033](DECISIONS.md#adr-033)) is infrastructure/observability, not a
+domain event — an uncaught render error has no `householdId`-scoped business meaning, no per-member
+routing question, and no channel preference, so it is deliberately kept outside the domain-event system
+entirely (`lib/events/dispatcher.ts`, `lib/notifications/router.ts`) rather than becoming a second
+notification-like pathway. The architectural requirement is the same shape as the WhatsApp constraint
+above, stated as a testable invariant:
+
+> `grep -rn "Sentry\." features/ app/ lib/ components/ hooks/ store/ --exclude-dir=monitoring` must
+> return zero results, and `grep -rn "Sentry\.setUser(" lib/monitoring/ --exclude=*.test.ts` must
+> return zero results, permanently.
+
+`lib/monitoring/` is excluded because the Sentry adapter necessarily lives there. Everywhere else —
+domain features, screens, engines, queries — must be unaware Sentry exists beyond calling the exported
+`captureException()`/`addBreadcrumb()` wrappers. Both greps are enforced as an executable Jest test,
+`lib/monitoring/__structural__.test.ts`, not only documented here. See ADR-033 for the full
+data-minimization design this invariant helps enforce.
 
 ---
 

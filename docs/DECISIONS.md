@@ -1250,6 +1250,145 @@ it names as the only legitimate path). See `docs/DATABASE_SCHEMA.md`'s Account D
 
 ---
 
+## ADR-033
+### Crash reporting: Sentry, errors only, with a binding data-minimization boundary
+
+**Status:** Accepted — resolves [Q9](#open-questions)
+
+**Context.** ROADMAP.md's MVP-4 gates the "Crash reporting" line item explicitly on resolving Q9
+first: *"Analytics/crash reporting vendor and what may be sent... Must never include monetary values or
+user identifiers."* `TRUST_AND_PRIVACY.md`'s T10 already states the binding rule in advance of any
+implementation: *"Never log tokens, user IDs, or monetary values — including to crash reporting
+(Q9)."* This ADR is that resolution, decided and confirmed before `lib/monitoring/crashReporting.ts`
+was written (Milestone 11).
+
+This is explicitly **not** an analytics decision. No product-usage tracking, no funnels, no session
+recording. The only question this ADR answers is: when the app crashes or catches an unexpected error,
+what may leave the device to help fix it, and what must never leave the device under any circumstance.
+
+**Decision.**
+
+1. **Vendor: Sentry** (`@sentry/react-native`), configured error-reporting-only.
+2. **Allowed to leave the device:** exception/error type, a sanitized error message (only where the
+   scrub rules below confirm it's safe), JS/native stack trace, app version/build, OS/platform, device
+   model and other technical runtime information needed for crash diagnosis, release/update metadata.
+3. **Must never leave the device**, enforced by `lib/monitoring/crashReporting.ts`'s `beforeBreadcrumb`/
+   `beforeSend` scrub rules (see Mechanism): monetary values (agorot amounts, account balances,
+   transaction amounts, budget/savings-goal values), transaction descriptions, merchant names,
+   user-created category names, email address, display name, Supabase user ID, household ID, account
+   IDs, transaction IDs, invitation tokens, auth/session tokens, CSV/import contents, arbitrary Supabase
+   query payloads, or any request/response body carrying user financial data.
+4. **No Session Replay.** Sentry's `mobileReplayIntegration()` is never added to the `integrations`
+   array — replay is opt-in in the SDK, not default-on, and this ADR's decision is to keep it off
+   permanently, not merely to skip enabling it for now.
+5. **No product analytics of any kind.** `tracesSampleRate: 0` — no performance tracing, no custom
+   event tracking calls anywhere in the codebase.
+6. **No user identification.** `Sentry.setUser()` is never called, anywhere. Enforced by a permanent
+   structural invariant (see Mechanism), the same enforcement pattern `ARCHITECTURE.md`'s WhatsApp grep
+   invariant already uses for a different permanent prohibition.
+7. **Crash reporting is production-only** (`enabled: !__DEV__`). Development logging stays
+   `console.error`/`console.warn`, unchanged from today — this ADR does not touch local dev logging.
+
+**Mechanism.** `lib/monitoring/crashReporting.ts` is the sole call site permitted to invoke any
+`Sentry.*` API — every other file goes through its exported `captureException()`/`addBreadcrumb()`
+wrappers, mirroring the existing pattern of funneling a cross-cutting concern through one module
+(`lib/notifications/router.ts` is the sole caller of a channel's `send()`). Three layers enforce the
+data-minimization boundary, not one:
+
+- **Design-time:** `sendDefaultPii: false` (explicit, not relying on the SDK default); `beforeBreadcrumb`
+  drops `'console'`-category breadcrumbs entirely, scrubs breadcrumb `message` text against the same
+  deny-list as below, strips `data`/`body`/query-string from `'http'`/`'fetch'`/`'xhr'`-category
+  breadcrumbs, and — **every other breadcrumb category's `data` field is also deep-scrubbed**, not just
+  the three network categories, since a category like `'ui.click'` carrying a `data.label` with an
+  amount in it must not sail through just because it isn't HTTP-shaped; `beforeSend` walks
+  `event.extra`, `event.contexts`, and `event.breadcrumbs` recursively (not shallow-only), **and also
+  scrubs `event.message` and every `event.exception.values[].value`** — an `Error` message is exactly
+  where a developer reflexively interpolates a domain value for debuggability (e.g.
+  `` `insufficient funds: ${amountAgorot}` ``), and is the single most realistic real-world leak path,
+  so it cannot be left uncovered while only `extra`/`contexts`/`breadcrumbs` are scrubbed. All of the
+  above strip/redact any key or text matching a deny-list of substrings (`amount`, `agorot`, `balance`,
+  `email`, `token`, `password`, `household`, `account`, `transaction`, `budget`, `category`, `merchant`,
+  `user`, `name`, `description`, `note`, `csv`, `import`, `invitation`, case-insensitive substring
+  match) as a last-resort, deliberately over-inclusive net — free-form text that matches is replaced
+  with a fixed redaction placeholder rather than surgically edited, since partial redaction of prose is
+  unreliable. **Named residual limitation:** this substring net catches values accompanied by a matching
+  field name (in a key or inline in message text); it cannot catch a bare, unlabeled value with no
+  nearby keyword — accepted and stated plainly, the same posture this codebase already takes with other
+  named residual risks (see Milestone 6's D5).
+- **Test-time:** `lib/monitoring/crashReporting.test.ts` proves the scrub rules against fixtures shaped
+  like this app's actual Supabase payloads (agorot amounts, household IDs, emails, nested objects,
+  exception messages, non-HTTP breadcrumb categories), not generic examples.
+- **Structural/grep-time:** `grep -rn "Sentry\." features/ app/ lib/ components/ hooks/ store/
+  --exclude-dir=monitoring` must return zero results, and `grep -rn "Sentry\.setUser(" lib/monitoring/
+  --exclude=*.test.ts` must return zero results — both enforced permanently as an executable Jest test
+  (`lib/monitoring/__structural__.test.ts`) and documented in `docs/ARCHITECTURE.md`'s security section,
+  alongside the existing WhatsApp invariant.
+- **Exception-safety:** every function in `lib/monitoring/crashReporting.ts` that calls into the Sentry
+  SDK (`Sentry.init`, `Sentry.captureException`, `Sentry.addBreadcrumb`) does so inside a `try/catch` —
+  a bug in the crash-reporting layer itself, or an SDK failure, must never propagate into
+  `AppErrorBoundary.componentDidCatch()` (which nothing else protects) or block `app/_layout.tsx`'s
+  module-scope evaluation before any component exists to catch it.
+
+`components/ui/AppErrorBoundary.tsx`'s existing `onError` prop (unchanged itself) is wired, in
+`app/_layout.tsx`, to call `captureException(error, { componentStack: info.componentStack ?? '' })`
+alongside (not replacing) the existing `console.error` — `info.componentStack` is a React-internal
+list of component names, not user data.
+
+**Rationale.**
+- A DSN is not a secret (Sentry's own SDK is designed to embed it in client bundles), so it is supplied
+  via `EXPO_PUBLIC_SENTRY_DSN`, matching this project's existing `EXPO_PUBLIC_*` convention
+  (`lib/supabase/client.ts`) — but unlike the Supabase client, a missing DSN must not throw at startup:
+  crash reporting is best-effort infrastructure, not a functional dependency the app requires to run.
+- Three independent layers (design/test/structural) exist because a single scrub function is one bug
+  away from a real leak, and this is exactly the kind of rule ("never log monetary values or user
+  identifiers") the codebase already states as an absolute in `CLAUDE.md` and `TRUST_AND_PRIVACY.md`
+  T10 — a structural, executable, permanent check is the same enforcement discipline already used for
+  the WhatsApp channel-isolation invariant, applied here to a different, equally binding prohibition.
+- Session Replay, analytics, and user identification are refused outright rather than "not configured
+  yet," because each is a product decision this ADR is explicitly not making (Decision 2's brief: "this
+  is NOT an analytics milestone") — leaving them as a future possibility invites exactly the kind of
+  quiet scope creep this project's other structural invariants exist to prevent.
+
+**Consequences.**
+- Source-map upload during a native/EAS build (via `@sentry/react-native/expo`'s config plugin and
+  `@sentry/react-native/metro`'s Metro wrap) cannot be exercised or verified without a real EAS project
+  and a `SENTRY_AUTH_TOKEN` — neither exists in this repo yet. Named as an unresolved-in-this-environment
+  item, not silently assumed to work.
+- Real end-to-end event delivery to Sentry cannot be verified in a sandboxed environment without a real
+  DSN and network reachability to Sentry's ingestion endpoint — only the scrub logic itself is
+  proven, via unit tests.
+- A future contributor adding a "helpful" Sentry integration (Session Replay, tracing, a convenience
+  `setUser()` call for support purposes) must be stopped by the structural test above, not by review
+  discipline alone — this is why the grep is an executable Jest test, not only a documented rule.
+
+**Related:** [T10](TRUST_AND_PRIVACY.md#t10-security-posture-already-binding-in-mvp) (the pre-existing
+binding rule this ADR resolves the mechanics of), [ADR-014](#adr-014) (the WhatsApp channel-isolation
+structural invariant this ADR's enforcement pattern mirrors). See `lib/monitoring/crashReporting.ts`'s
+own header comment for the full implementation detail.
+
+---
+
+## Release versioning convention
+
+Not an ADR (no architectural reversal is at stake) — documented here, alongside the ADRs, because no
+prior document states it and Milestone 11 was asked to write it down. `app.json`'s three version
+fields serve different purposes and are governed by different rules:
+
+- **`expo.version`** (semver, e.g. `"1.0.0"`) — the user-facing version. Bumped on every release with
+  user-visible changes, following standard semver (major.minor.patch).
+- **`expo.ios.buildNumber`** (string) — increments by exactly 1 on every build submitted to App Store
+  Connect (TestFlight or production), regardless of whether `version` changed. Never reused, never
+  reset, even across `version` bumps.
+- **`expo.android.versionCode`** (integer) — increments by exactly 1 on every build uploaded to Play
+  Console. Same rule: must strictly increase, never reused, independent of `version`.
+
+Both build-identity counters are bumped only when an actual build is being submitted to a store —
+never speculatively, and never more than once per submitted build. As of Milestone 11, this app has
+never been submitted to either store, so `version: "1.0.0"`, `buildNumber: "1"`, `versionCode: 1` are
+already internally consistent and correct as-is; no change was made to any of them by this milestone.
+
+---
+
 ## Open questions
 
 Not yet decided. Each needs an ADR before the dependent work begins.
@@ -1264,7 +1403,7 @@ Not yet decided. Each needs an ADR before the dependent work begins.
 | Q6 | Which LLM provider, and does household financial data leave Israel? | AI layer | Privacy and possibly regulatory implications |
 | Q7 | Does level-3 personalized recommendation require a license in Israel? | Action Engine scope | Requires Israeli fintech legal counsel |
 | Q8 | Is there a viable path to pension/insurance data (מסלקה פנסיונית)? | Pension features | [RESEARCH] |
-| Q9 | Analytics/crash reporting vendor and what may be sent | MVP-4 (crash reporting task) | Must never include monetary values or user identifiers |
+| ~~Q9~~ | ~~Analytics/crash reporting vendor and what may be sent~~ | — | ✅ **RESOLVED: Sentry, errors only.** See [ADR-033](#adr-033). No Session Replay, no analytics, no user identification; monetary values and user identifiers are stripped by `beforeBreadcrumb`/`beforeSend`, enforced by a structural test |
 | Q10 | Revenue model: subscription, freemium, or B2B2C | Roadmap prioritization | Constrained by [ADR-025](#adr-025) — commissions are excluded |
 
 ### Added by the August 2026 market research

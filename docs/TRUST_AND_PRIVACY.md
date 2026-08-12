@@ -199,7 +199,7 @@ From [CLAUDE.md](../CLAUDE.md) and [ARCHITECTURE.md](ARCHITECTURE.md):
 - RLS on every table, enforced at the database, with structural guards
   ([ADR-023](DECISIONS.md#adr-023))
 - **Never log tokens, user IDs, or monetary values** — including to crash reporting
-  ([Q9](DECISIONS.md#open-questions))
+  (resolved by [ADR-033](DECISIONS.md#adr-033): Sentry, errors only, three-layer scrub enforcement)
 - No service role key in client code
 
 ---
