@@ -128,13 +128,18 @@ not a blocker, routes to Expo Go or an EAS build once Milestone 3 needs real int
 
 ## MVP-4 — Ship Quality
 
-- Onboarding flow
+- ~~Onboarding flow~~ ✅ **Satisfied (Milestone 11):** the existing Milestone 3–4 functional flow
+  (sign up → create household → invite/skip partner → dashboard, invitation acceptance included)
+  meets this requirement as-is. Verified still functional in Milestone 11; no tutorial/welcome/
+  walkthrough UX was added — none is specified anywhere in `docs/PROJECT_SPEC.md`.
 - Empty states and skeleton loaders
 - Error boundaries
 - Accessibility pass (contrast, font scaling, tap targets)
-- Crash reporting ([Q9](docs/DECISIONS.md#open-questions) must be resolved before this task)
+- Crash reporting — ✅ resolved via [ADR-033](docs/DECISIONS.md#adr-033) (Milestone 11): Sentry,
+  errors only
 - Delete-account flow (store compliance requirement)
-- App Store and Play Store submission
+- App Store and Play Store submission — code-adjacent release-readiness sliver (splash screen,
+  version/build numbering) done in Milestone 11; real store submission itself remains deferred
 
 **MVP exit criteria — the gate to everything after**
 - [ ] Published on both stores

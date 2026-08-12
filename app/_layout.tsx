@@ -16,6 +16,20 @@ import { useAuthGuard } from '../features/auth/hooks/useAuthGuard'
 import { useHousehold } from '../features/household/hooks/useHousehold'
 import { useTheme } from '../features/settings/hooks/useTheme'
 import { AppErrorBoundary } from '../components/ui/AppErrorBoundary'
+import { captureException, initCrashReporting } from '../lib/monitoring/crashReporting'
+import { hideSplashScreen, initSplashGate } from '../lib/monitoring/splashGate'
+
+// Both run once at module load, before first render — Milestone 11 / ADR-033.
+// initSplashGate() calls SplashScreen.preventAutoHideAsync() (Expo's own
+// documented guidance: call this in global scope, not inside a component)
+// and arms a failure-safe timeout so a stuck gate chain never leaves the
+// splash screen up forever. Runs first, deliberately: it holds the splash
+// regardless of what happens next, so nothing later in this module can ever
+// skip arming it. initCrashReporting() no-ops if EXPO_PUBLIC_SENTRY_DSN is
+// unset, and never throws even on a real init failure (see its own
+// try/catch) — but ordering it second is a free extra safety margin.
+initSplashGate()
+initCrashReporting()
 
 // The auth guard's own loading state (session restore + household check) is
 // rendered here, not inside individual screens — see ARCHITECTURE.md § Auth
@@ -48,7 +62,29 @@ function AuthGate() {
     )
   }
 
-  return <Slot />
+  return (
+    <SplashReadySignal>
+      <Slot />
+    </SplashReadySignal>
+  )
+}
+
+// Fires the splash-hide signal the moment this mounts — which only happens
+// once AuthGate stops rendering its own spinner, and AuthGate is itself
+// nested inside ThemeGate below (ThemeGate returns its spinner instead of
+// children while loading, so AuthGate cannot mount at all until ThemeGate has
+// already resolved). Mounting is therefore "the whole gate chain settled,"
+// with no need to separately thread ThemeGate's loading state down here.
+// A thin wrapper component, not an onReady prop on AuthGate itself — keeps
+// this Milestone 11 addition to one line of AuthGate's existing return,
+// rather than a second behavioral change to an already-reviewed component
+// (see the AppErrorBoundary wiring in RootLayout below for the other one).
+function SplashReadySignal({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    hideSplashScreen()
+  }, [])
+
+  return <>{children}</>
 }
 
 // Holds first paint until the persisted appearance preference has been read
@@ -121,11 +157,14 @@ export default function RootLayout() {
           message={i18n.t('appErrorBoundary.message')}
           retryLabel={i18n.t('appErrorBoundary.retry')}
           onError={(error, info) => {
-            // No crash-reporting service is wired up yet (MVP has none) — a
-            // console log is the minimum needed so a caught error isn't
-            // silently invisible. Never log monetary values or tokens, per
-            // CLAUDE.md; error/stack/componentStack carry no such data here.
+            // console.error kept for local dev visibility; captureException
+            // reports through the centralized, scrubbed crash-reporting
+            // layer in production (Milestone 11 / ADR-033). Never log
+            // monetary values or tokens, per CLAUDE.md — error/stack/
+            // componentStack carry no such data here, and componentStack is
+            // a React-internal list of component names, not user data.
             console.error('[AppErrorBoundary]', error, info.componentStack)
+            captureException(error, { componentStack: info.componentStack ?? '' })
           }}
         >
           <ThemeGate>
