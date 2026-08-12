@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
-import { AppState } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import type { Database } from '@/types/database'
 
 const ExpoSecureStoreAdapter = {
@@ -8,6 +8,26 @@ const ExpoSecureStoreAdapter = {
   setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
   removeItem: (key: string) => SecureStore.deleteItemAsync(key),
 }
+
+// expo-secure-store has no web implementation — its native module resolves to
+// an empty object on web (node_modules/expo-secure-store/*/ExpoSecureStore.web.*),
+// so every method throws the moment GoTrueClient reads/writes a session during
+// client init. Web falls back to localStorage; native (Keychain/Keystore via
+// SecureStore) is completely unchanged.
+const WebStorageAdapter = {
+  getItem: (key: string) =>
+    Promise.resolve(typeof window === 'undefined' ? null : window.localStorage.getItem(key)),
+  setItem: (key: string, value: string) => {
+    if (typeof window !== 'undefined') window.localStorage.setItem(key, value)
+    return Promise.resolve()
+  },
+  removeItem: (key: string) => {
+    if (typeof window !== 'undefined') window.localStorage.removeItem(key)
+    return Promise.resolve()
+  },
+}
+
+const authStorage = Platform.OS === 'web' ? WebStorageAdapter : ExpoSecureStoreAdapter
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
@@ -23,7 +43,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: ExpoSecureStoreAdapter,
+    storage: authStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
