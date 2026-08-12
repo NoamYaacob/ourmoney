@@ -36,13 +36,17 @@
 // console.error/console.warn, unchanged by this module.
 //
 // KNOWN RESIDUAL LIMITATION, stated plainly rather than silently: the scrub
-// below is a coarse, deliberately over-inclusive substring match against
-// field NAMES (extra/context keys, breadcrumb data keys, and — since a
-// developer's thrown Error message often includes the field name inline,
-// e.g. "insufficient funds: amountAgorot=1234500" — the exception message
-// text itself). It cannot catch a bare, unlabeled value with no
-// accompanying keyword (e.g. a raw phone number or amount with no "amount"/
-// "agorot"/etc. nearby in the string). This is the same class of accepted,
+// below is a coarse, deliberately over-inclusive substring match — applied
+// to field NAMES (extra/context/breadcrumb-data keys, dropping the whole
+// field) AND independently to string CONTENT (extra/context/breadcrumb-data
+// string values, exception messages, breadcrumb messages — redacting the
+// whole string if it matches). Both checks run regardless of each other, so
+// a benignly-named key holding a sensitive value (e.g. `{ debugInfo:
+// "household abc-123 balance 500000" }`) is still caught by the content
+// check even though the key itself wouldn't trigger the key check. What
+// this CANNOT catch is a bare, unlabeled value with no accompanying keyword
+// anywhere nearby (e.g. a raw phone number or amount with no "amount"/
+// "agorot"/etc. in the same string). This is the same class of accepted,
 // named limitation this codebase already uses elsewhere (see Milestone 6's
 // D5 in docs/DECISIONS.md) rather than pretending a keyword-substring net is
 // a perfect classifier.
@@ -102,7 +106,19 @@ function scrubText(text: string): string {
 
 // Recursive, not shallow — a nested object one level down (e.g.
 // extra.request.body.email) must be scrubbed too, not just top-level keys.
+//
+// Two independent checks, not one: a key matching the deny-list drops that
+// field entirely (isScrubbedKey), AND every string leaf is separately
+// content-scanned (scrubText) regardless of its key. Filtering by key alone
+// misses a benignly-named key holding a sensitive value — e.g.
+// `{ debugInfo: 'household abc-123 balance 500000' }` has no deny-listed
+// key, so without the content scan that string would sail through
+// unredacted. Found by the final pre-merge adversarial review pass; fixed
+// here rather than left as a residual limitation, since it's a real
+// key-vs-content gap, not the "bare unlabeled value" limitation ADR-033
+// already names and accepts.
 function scrubObjectDeep<T>(value: T): T {
+  if (typeof value === 'string') return scrubText(value) as T
   if (value === null || typeof value !== 'object') return value
 
   if (Array.isArray(value)) {

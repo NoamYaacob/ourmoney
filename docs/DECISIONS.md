@@ -1311,10 +1311,17 @@ data-minimization boundary, not one:
   `user`, `name`, `description`, `note`, `csv`, `import`, `invitation`, case-insensitive substring
   match) as a last-resort, deliberately over-inclusive net — free-form text that matches is replaced
   with a fixed redaction placeholder rather than surgically edited, since partial redaction of prose is
-  unreliable. **Named residual limitation:** this substring net catches values accompanied by a matching
-  field name (in a key or inline in message text); it cannot catch a bare, unlabeled value with no
-  nearby keyword — accepted and stated plainly, the same posture this codebase already takes with other
-  named residual risks (see Milestone 6's D5).
+  unreliable. **The key-based and content-based checks are independent of each other** — a benignly-named
+  key holding a sensitive value (e.g. `{ debugInfo: "household abc-123 balance 500000" }`) is still
+  caught by the content check even though its key alone wouldn't trigger the key check (found as a real
+  gap — this ADR's decision text originally overclaimed this before the implementation actually did it —
+  by the final pre-merge adversarial review pass on Milestone 11, and closed by a follow-up commit on the
+  same branch before merge; not left as a residual limitation, since it's a straightforward key-vs-content
+  coverage gap rather than the limitation named below). **Named residual limitation:** this substring net catches values accompanied
+  by a matching field name (in a key or inline in message text, now checked independently of each
+  other); it cannot catch a bare, unlabeled value with no nearby keyword anywhere in the same string —
+  accepted and stated plainly, the same posture this codebase already takes with other named residual
+  risks (see Milestone 6's D5).
 - **Test-time:** `lib/monitoring/crashReporting.test.ts` proves the scrub rules against fixtures shaped
   like this app's actual Supabase payloads (agorot amounts, household IDs, emails, nested objects,
   exception messages, non-HTTP breadcrumb categories), not generic examples.

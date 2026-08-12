@@ -93,6 +93,16 @@ describe('crashReporting', () => {
       const result = beforeBreadcrumb({ category: 'navigation', message: 'amountAgorot=12000' })
       expect(result?.message).toBe('[redacted by crash-reporting scrub rules — see ADR-033]')
     })
+
+    it('redacts breadcrumb data.<key> VALUES that match the deny-list, not just the keys themselves (final-review finding)', () => {
+      // A benignly-named key ("label") holding a sensitive value must still
+      // be caught — key-based filtering alone would let this through.
+      const result = beforeBreadcrumb({
+        category: 'ui.click',
+        data: { label: 'Paid amountAgorot 50000 to merchant Rami Levy' },
+      })
+      expect(result?.data?.label).toBe('[redacted by crash-reporting scrub rules — see ADR-033]')
+    })
   })
 
   describe('beforeSend', () => {
@@ -123,6 +133,28 @@ describe('crashReporting', () => {
     it('leaves an event with no matching keys unchanged', () => {
       const event = { type: undefined, extra: { screen: 'dashboard', action: 'tap' } }
       expect(beforeSend(event)).toEqual(event)
+    })
+
+    it('redacts an extra VALUE matching the deny-list even under a benign key name (final-review finding)', () => {
+      // Key-only filtering would miss this: "debugInfo" isn't on the
+      // deny-list, but its string value contains "amountAgorot"/"household".
+      const result = beforeSend({
+        type: undefined,
+        extra: { debugInfo: 'Failed to sync: amountAgorot=1234500 household=abc-123 for user@example.com' },
+      })
+      expect(result?.extra).toEqual({
+        debugInfo: '[redacted by crash-reporting scrub rules — see ADR-033]',
+      })
+    })
+
+    it('redacts a nested context VALUE matching the deny-list even under a benign key name (final-review finding)', () => {
+      const result = beforeSend({
+        type: undefined,
+        contexts: { debugState: { info: 'household abc-123 balance 500000 agorot' } },
+      })
+      expect(result?.contexts).toEqual({
+        debugState: { info: '[redacted by crash-reporting scrub rules — see ADR-033]' },
+      })
     })
 
     it('applies the breadcrumb scrub to every breadcrumb on the event', () => {
