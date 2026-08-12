@@ -2505,9 +2505,14 @@ ROLLBACK TO SAVEPOINT sp_7_4;
 -- converts to household-owned. A test-local transaction/personal account
 -- created_by/owner_id = B is inserted first (the shared fixture has no
 -- B-created rows) so the nulling behavior is actually observable.
+-- Both fixture rows are inserted as User B, not User A: migration 004's
+-- own D2.6 check (created_by = auth.uid(), confirmed passing moments ago
+-- at test D2.6) rejects a transaction INSERT whose created_by doesn't
+-- match the acting session — a real local-Postgres failure this exact
+-- fixture originally hit when it ran as A while attributing the row to B.
 SAVEPOINT sp_7_5;
 SET LOCAL role = authenticated;
-SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 DO $$
 BEGIN
   INSERT INTO accounts (id, household_id, owner_id, name, type)
