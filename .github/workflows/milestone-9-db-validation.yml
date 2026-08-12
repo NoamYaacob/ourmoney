@@ -188,8 +188,28 @@ jobs:
       - name: Check for whitespace errors relative to main
         run: git diff --check origin/main...HEAD
 
+      # Jest itself reliably passes the full suite in ~15-20s (confirmed by
+      # a custom onRunComplete reporter showing 0 active handles/requests
+      # the instant Jest reports done), but on this runner the underlying
+      # npm/sh/node process tree does not exit on its own afterward — a
+      # real run (2026-08-12, job 94019717603) sat idle for 29m25s past
+      # "Ran all test suites" until GitHub's own 30-minute job timeout had
+      # to force-cancel it, and the runner's orphan-process cleanup listed
+      # all three of npm, sh, and node as still alive at that point. `npm
+      # test -- --runInBand` alone therefore never reliably returns here.
+      # `timeout` bounds the whole step's process tree externally (unlike
+      # --forceExit, which only affects Jest's own process and would not
+      # help if the hang is in npm's wrapper layer) and pass/fail is judged
+      # from Jest's own printed summary line, not the wrapped process's
+      # exit code, so a slow-to-die-but-genuinely-passing run is never
+      # misreported as a failure.
       - name: Unit tests
-        run: npm test -- --runInBand
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout --signal=TERM 90 npm test -- --runInBand 2>&1 | tee jest-output.txt || true
+          grep -qE "^Test Suites: [0-9]+ passed, [0-9]+ total$" jest-output.txt
+          grep -qE "^Tests:       [0-9]+ passed, [0-9]+ total$" jest-output.txt
 
       - name: TypeScript
         run: npm run typecheck
