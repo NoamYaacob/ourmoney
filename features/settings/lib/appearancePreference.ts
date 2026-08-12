@@ -11,6 +11,9 @@
 // whatever appearance was chosen across a sign-out/sign-in cycle.
 
 import * as SecureStore from 'expo-secure-store'
+// TEMPORARY — spinner-flash-on-tab-focus investigation. See
+// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
+import { diagLog } from '@/lib/debug/spinnerDiagnostics'
 
 export type AppearancePreference = 'light' | 'dark' | 'system'
 
@@ -26,9 +29,18 @@ function isValidPreference(value: string): value is AppearancePreference {
 // Defaults to 'system' when nothing is stored yet, or when the stored value
 // is somehow malformed — never a hard error over a cosmetic preference.
 export async function readAppearancePreference(): Promise<AppearancePreference> {
-  const raw = await SecureStore.getItemAsync(APPEARANCE_SECURE_STORE_KEY)
-  if (raw && isValidPreference(raw)) return raw
-  return 'system'
+  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Timing +
+  // success/error only, no stored value.
+  const start = Date.now()
+  try {
+    const raw = await SecureStore.getItemAsync(APPEARANCE_SECURE_STORE_KEY)
+    diagLog('readAppearancePreference', { outcome: 'success', durationMs: Date.now() - start })
+    if (raw && isValidPreference(raw)) return raw
+    return 'system'
+  } catch (error) {
+    diagLog('readAppearancePreference', { outcome: 'error', durationMs: Date.now() - start })
+    throw error
+  }
 }
 
 export async function writeAppearancePreference(preference: AppearancePreference): Promise<void> {
