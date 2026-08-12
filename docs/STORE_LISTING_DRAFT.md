@@ -34,9 +34,9 @@ Hebrew draft (needs native review): *ניהול תקציב משותף לזוגו
 > **Built for two.** Invite your partner with one tap. You each get your own login, your own
 > transactions, and a shared view of where your household's money goes.
 >
-> **Categorization that explains itself.** Set up rules once — "anything from Rami Levy is
-> groceries" — and every future purchase categorizes itself. See exactly which rule matched, and fix
-> it in one tap if it's wrong.
+> **Categorization rules you control.** Set up rules once — "anything from Rami Levy is
+> groceries" — and every future purchase categorizes itself. Every rule is listed in Settings,
+> visible and editable any time.
 >
 > **A real budget, not a guess.** Set a monthly amount per category and watch your progress in real
 > time. Your partner's purchases show up within seconds.
@@ -56,7 +56,7 @@ Hebrew draft (needs native review): *ניהול תקציב משותף לזוגו
 - Manual transaction entry, in seconds — cash and card alike
 - CSV import from your bank's export, with duplicate detection
 - Shared household budgeting with real-time partner sync
-- Editable, transparent categorization rules — see and fix exactly why something was categorized
+- Editable, transparent categorization rules — every rule is visible and editable in Settings
 - Monthly category budgets with live spent/remaining progress
 - Recurring transaction templates (rent, subscriptions, bills)
 - Savings goals with progress tracking
@@ -103,9 +103,9 @@ Both stores require this to be disclosed accurately:
 Drawn directly from `docs/PRIVACY_POLICY.md` — the two forms must not diverge from what that
 document says. Concretely:
 
-- **Data collected:** email address, password (hashed), display name, optional avatar, financial
-  data you enter (accounts, transactions, categories, budgets, goals), device/technical data via
-  Sentry crash reporting only.
+- **Data collected:** email address, password (hashed), display name, financial data you enter
+  (accounts, transactions, categories, budgets, goals), device/technical data via Sentry crash
+  reporting only. (No profile picture / avatar upload exists in this version.)
 - **Data linked to your identity:** account/profile data, financial data (scoped to your household).
 - **Data used for tracking:** none. No advertising identifier is collected. No cross-app or
   cross-site tracking.
@@ -141,8 +141,8 @@ actual shipped screens:
    (draft): "See your whole household's money, together."
 2. **Add transaction** — the FAB/quick-add flow with the shared/personal toggle visible. Caption:
    "Log a purchase in seconds — cash or card."
-3. **Categorization rule** — the "create rule from an uncategorized transaction" flow. Caption: "See
-   exactly why something was categorized — and fix it in one tap."
+3. **Categorization rules (Settings)** — the rules list + create-rule form in Settings → Categories.
+   Caption: "Rules you set, and can see and edit any time."
 4. **Budgets** — the monthly allocation editor with progress bars. Caption: "Set a budget. Watch it
    update in real time."
 5. **Transactions list** — filterable list showing both partners' entries. Caption: "Everything in
