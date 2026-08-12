@@ -111,14 +111,10 @@ export default function Recurring() {
         <SkeletonList rows={3} />
       ) : (
         <>
-          {recurringTransactions.length === 0 && (
-            <EmptyState
-              icon="🔁"
-              message={t('recurring.empty')}
-              actionLabel={t('recurring.addButton')}
-              onAction={() => setIsAdding(true)}
-            />
-          )}
+          {/* No actionLabel/onAction — the persistent "Add recurring"
+              button below already covers it (mobile-expo-reviewer finding,
+              same as accounts/index.tsx and goals/index.tsx). */}
+          {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
           {recurringTransactions.map((item) => (
             <Pressable
               key={item.id}

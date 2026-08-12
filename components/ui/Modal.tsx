@@ -56,14 +56,26 @@ export function Modal({
             {title}
           </Text>
           {message && <Text className="mb-4 text-sm text-inkMuted-light dark:text-inkMuted-dark">{message}</Text>}
+          {/* maxFontSizeMultiplier=1.5: this row has no flex constraint on
+              either Button, so unbounded font scaling at iOS's largest
+              accessibility sizes (~310%) could overflow the dialog's fixed
+              width — the one place in the app this cap applies (Button's
+              own default is uncapped; see its prop comment). */}
           <View className="flex-row-reverse gap-2">
             <Button
               title={confirmLabel}
               onPress={onConfirm}
               loading={loading}
               variant={destructive ? 'danger' : 'secondary'}
+              maxFontSizeMultiplier={1.5}
             />
-            <Button title={cancelLabel} onPress={onCancel} variant="ghost" disabled={loading} />
+            <Button
+              title={cancelLabel}
+              onPress={onCancel}
+              variant="ghost"
+              disabled={loading}
+              maxFontSizeMultiplier={1.5}
+            />
           </View>
         </View>
       </View>

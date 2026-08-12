@@ -73,14 +73,10 @@ export default function Goals() {
         <SkeletonList rows={3} />
       ) : (
         <>
-          {goals.length === 0 && (
-            <EmptyState
-              icon="🏆"
-              message={t('savings.empty')}
-              actionLabel={t('savings.addButton')}
-              onAction={() => setIsAdding(true)}
-            />
-          )}
+          {/* No actionLabel/onAction — the persistent "Add goal" button
+              below already covers it (mobile-expo-reviewer finding, same
+              as accounts/index.tsx and recurring/index.tsx). */}
+          {goals.length === 0 && <EmptyState icon="🏆" message={t('savings.empty')} />}
           {goals.map((goal) => {
             const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
             return (

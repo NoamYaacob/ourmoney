@@ -132,7 +132,9 @@ export default function Dashboard() {
       </Text>
       {isProgressLoading ? (
         <SkeletonList rows={3} />
-      ) : progressError ? null : progress.length === 0 ? (
+      ) : progressError ? (
+        <ErrorMessage message={t('dashboard.errors.generic')} />
+      ) : progress.length === 0 ? (
         <EmptyState icon="🎯" message={t('dashboard.noBudget')} />
       ) : (
         <Card>
@@ -208,7 +210,9 @@ export default function Dashboard() {
         {t('dashboard.analytics.breakdownTitle')}
       </Text>
       {isAnalyticsLoading ? (
-        <SkeletonList rows={1} rowClassName="h-40 w-full rounded-xl" />
+        <View className="items-center">
+          <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
+        </View>
       ) : categoryBreakdown.length === 0 ? (
         <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
       ) : (

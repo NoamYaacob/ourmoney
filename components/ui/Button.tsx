@@ -25,6 +25,18 @@ interface ButtonProps {
   disabled?: boolean
   loading?: boolean
   selected?: boolean
+  // Undefined (the default) means uncapped — every button's title scales
+  // freely with the OS accessibility font-size setting, which is the
+  // correct default and the whole point of respecting it. Only Modal.tsx
+  // passes a value: it renders two Buttons side by side with no flex
+  // constraint on either, so unbounded growth at iOS's largest
+  // accessibility sizes (~310%) can overflow the dialog's fixed width.
+  // This must NOT be hardcoded inside Button itself — every other caller
+  // (every "Add X" CTA, form submits, delete-account) has a full-width,
+  // unconstrained row to grow into and should not be capped (mobile-expo-
+  // reviewer finding, Milestone 10: a hardcoded cap here silently applied
+  // to every button title in the app, not just Modal's).
+  maxFontSizeMultiplier?: number
 }
 
 const containerByVariant: Record<ButtonVariant, string> = {
@@ -56,6 +68,7 @@ export function Button({
   disabled = false,
   loading = false,
   selected,
+  maxFontSizeMultiplier,
 }: ButtonProps) {
   const { colorScheme: scheme } = useColorScheme()
   const isDisabled = disabled || loading
@@ -68,16 +81,6 @@ export function Button({
       accessibilityState={{ disabled: isDisabled, busy: loading, selected }}
       className={containerByVariant[variant]}
     >
-      {/* Font-scaling policy (Milestone 10): every other Text in the app
-          scales freely with the OS accessibility font-size setting — that
-          is the correct default and the whole point of respecting it. This
-          is the one deliberate exception: Modal.tsx renders two Buttons
-          side by side with no flex constraint on either, so unbounded
-          growth at iOS's largest accessibility sizes (~310%) can overflow
-          the dialog's fixed width. Capping at 1.5x still honors a
-          meaningful accessibility request (title text is legible up to
-          150% larger) without letting two buttons in a row break the
-          layout entirely. */}
       {loading ? (
         <ActivityIndicator
           color={
@@ -95,7 +98,7 @@ export function Button({
           }
         />
       ) : (
-        <Text className={textByVariant[variant]} maxFontSizeMultiplier={1.5}>
+        <Text className={textByVariant[variant]} maxFontSizeMultiplier={maxFontSizeMultiplier}>
           {title}
         </Text>
       )}

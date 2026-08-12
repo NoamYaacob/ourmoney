@@ -60,14 +60,11 @@ export default function Accounts() {
         <SkeletonList rows={3} />
       ) : (
         <>
-          {accounts.length === 0 && (
-            <EmptyState
-              icon="💳"
-              message={t('accounts.empty')}
-              actionLabel={t('accounts.addButton')}
-              onAction={() => setIsAdding(true)}
-            />
-          )}
+          {/* No actionLabel/onAction here — the persistent "Add account"
+              button below already covers it; a second identical CTA
+              stacked directly above it was confusing, not helpful
+              (mobile-expo-reviewer finding). */}
+          {accounts.length === 0 && <EmptyState icon="💳" message={t('accounts.empty')} />}
           {accounts.map((account) => (
             <Pressable
               key={account.id}
