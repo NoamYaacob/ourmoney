@@ -139,7 +139,13 @@ not a blocker, routes to Expo Go or an EAS build once Milestone 3 needs real int
   errors only
 - Delete-account flow (store compliance requirement)
 - App Store and Play Store submission — code-adjacent release-readiness sliver (splash screen,
-  version/build numbering) done in Milestone 11; real store submission itself remains deferred
+  version/build numbering) done in Milestone 11. **Repo-side submission readiness completed in
+  Milestone 12:** `eas.json` build profiles, `docs/RELEASE_CHECKLIST.md`, a `docs/PRIVACY_POLICY.md`
+  draft, and a `docs/STORE_LISTING_DRAFT.md` draft. **Actual App Store / Play Store submission has
+  not happened** — it requires external developer accounts, credentials, a real device for
+  screenshots and verification, and a published privacy-policy URL, none of which exist in this
+  repository or environment. See `docs/RELEASE_CHECKLIST.md` for the exact remaining steps and who
+  they require.
 
 **MVP exit criteria — the gate to everything after**
 - [ ] Published on both stores
