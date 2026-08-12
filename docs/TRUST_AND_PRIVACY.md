@@ -228,7 +228,7 @@ management team could quietly change.
 
 | # | Question | Blocks |
 |---|---|---|
-| T-Q1 | What happens to shared household data when one member leaves or a household dissolves? | Nothing in MVP; must precede real user data |
+| ~~T-Q1~~ | ~~What happens to shared household data when one member leaves or a household dissolves?~~ | ✅ **RESOLVED (Milestone 9):** admin succession to the longest-tenured remaining member; a sole remaining member's departure deletes the whole household and its data (no permanently orphaned household); shared/financial data is preserved for remaining members, with attribution-only columns nulled rather than the data deleted. See [ADR-032](DECISIONS.md#adr-032) |
 | T-Q2 | Does household financial data leave Israel for AI processing? | AI layer ([Q6](DECISIONS.md#open-questions)) |
 | T-Q3 | Israeli Privacy Protection Law obligations for a licensed financial information service | Open Banking phase |
 | T-Q4 | Retention period for derived data after connection revocation | Open Banking phase |

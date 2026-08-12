@@ -16,7 +16,7 @@ import { ActivityIndicator, Pressable, Text } from 'react-native'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost'
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 interface ButtonProps {
   title: string
@@ -32,12 +32,21 @@ const containerByVariant: Record<ButtonVariant, string> = {
   secondary:
     'items-center rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:border-border-dark dark:bg-surfaceMuted-dark',
   ghost: 'items-center px-4 py-3 active:opacity-70 disabled:opacity-40',
+  // Milestone 9: a full-weight destructive action (e.g. delete account) needs
+  // stronger visual weight than categories.tsx's plain danger-colored Text —
+  // a solid danger-colored button, same shape as primary.
+  danger: 'items-center rounded-xl bg-danger-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-danger-dark',
 }
 
 const textByVariant: Record<ButtonVariant, string> = {
   primary: 'font-semibold text-white dark:text-slate-900',
   secondary: 'font-semibold text-ink-light dark:text-ink-dark',
   ghost: 'text-sm font-semibold text-accent-light dark:text-accent-dark',
+  // danger.dark (#f87171) is a lighter red than danger.light — white text on
+  // it computes to ~2.8:1 contrast, below WCAG AA's 4.5:1 floor (mobile
+  // review finding, Milestone 9). Swaps to dark text in dark mode instead,
+  // the exact same text-color-flip pattern primary already uses.
+  danger: 'font-semibold text-white dark:text-slate-900',
 }
 
 export function Button({
@@ -66,9 +75,13 @@ export function Button({
               ? scheme === 'dark'
                 ? colors.surface.dark
                 : colors.surface.light
-              : scheme === 'dark'
-                ? colors.accent.dark
-                : colors.accent.light
+              : variant === 'danger'
+                ? scheme === 'dark'
+                  ? colors.ink.light
+                  : colors.surface.light
+                : scheme === 'dark'
+                  ? colors.accent.dark
+                  : colors.accent.light
           }
         />
       ) : (

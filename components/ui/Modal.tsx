@@ -28,7 +28,19 @@ export function Modal({
   loading = false,
 }: ModalProps) {
   return (
-    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    // onRequestClose fires on Android's hardware/gesture back button and is
+    // NOT covered by the Cancel button's own `disabled={loading}` below —
+    // omitted here while loading (RN simply leaves the back press
+    // unhandled) rather than unconditionally calling onCancel, which would
+    // dismiss the dialog while a destructive mutation is still in flight
+    // with nothing left on screen to show it (qa-adversarial-reviewer
+    // finding, Milestone 9).
+    <RNModal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={loading ? undefined : onCancel}
+    >
       <View className="flex-1 items-center justify-center bg-black/40 px-6">
         {/* accessibilityViewIsModal (iOS): scopes VoiceOver's virtual cursor
             to this content only, so swiping can't escape to whatever screen
@@ -49,7 +61,7 @@ export function Modal({
               title={confirmLabel}
               onPress={onConfirm}
               loading={loading}
-              variant={destructive ? 'primary' : 'secondary'}
+              variant={destructive ? 'danger' : 'secondary'}
             />
             <Button title={cancelLabel} onPress={onCancel} variant="ghost" disabled={loading} />
           </View>

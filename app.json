@@ -10,10 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ourmoney.app"
+      "bundleIdentifier": "com.ourmoney.app",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.ourmoney.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
