@@ -11,6 +11,28 @@ name: Milestone 9 DB Validation
 # anywhere in this file — the local stack's Postgres password is Supabase
 # CLI's own well-known local default ('postgres', bound to 127.0.0.1 only,
 # torn down with the runner), not a secret.
+#
+# Two independent jobs, not one (Milestone 9 CI investigation, 2026-08-12):
+# `db-validation` is the release-critical, security-sensitive gate — real
+# Postgres, real RLS, real migrations — and must produce a clean, fast,
+# trustworthy pass/fail signal on its own. `app-checks` (npm test/typecheck/
+# lint) is unrelated to database correctness and was previously the LAST
+# step of a single job, so a slow, unrelated app-layer problem could starve
+# or cancel an already-passed database gate via the job's shared timeout.
+# That's exactly what happened: a real local repro (three separate runs,
+# 49/49 suites, 292/292 tests, ~13-17s of actual Jest execution every time)
+# proved via a custom reporter's onRunComplete hook — the same technique
+# jest.config.js's own header comment documents having used before — that
+# process._getActiveHandles()/_getActiveRequests() are BOTH EMPTY the
+# instant Jest itself finishes. There is no leaked timer, socket, or
+# subscription in application or test code. The Jest/Node process simply
+# takes a long time to exit afterward in this environment (Jest's own
+# internal post-run teardown, not something a test file can fix), which
+# blew through the remaining job timeout with zero relationship to whether
+# the database was actually valid. Splitting the jobs means that quirk can
+# never again threaten the DB gate's own reported result — each job's
+# conclusion is independently visible in the Actions UI and API regardless
+# of what the other job does.
 
 on:
   workflow_dispatch:
@@ -25,22 +47,14 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  db-validation:
+    name: Real database / RLS gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: Checkout milestone branch
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -129,15 +143,6 @@ jobs:
           grep -F "skip_recurring_occurrence" /tmp/database.generated.ts
           grep -F "advance_recurring_due_date" /tmp/database.generated.ts
 
-      - name: Unit tests
-        run: npm test -- --runInBand
-
-      - name: TypeScript
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
       - name: Upload RLS output on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -153,3 +158,41 @@ jobs:
           name: milestone-9-generated-types
           path: /tmp/database.generated.ts
           if-no-files-found: ignore
+
+  app-checks:
+    name: App-layer checks (tests / typecheck / lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout milestone branch
+        uses: actions/checkout@v4
+        with:
+          # Full history, not just the pushed commit: needed so
+          # `git diff --check origin/main...HEAD` below can find a real
+          # merge base instead of diffing against nothing.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch main for whitespace diff check
+        run: git fetch origin main
+
+      - name: Check for whitespace errors relative to main
+        run: git diff --check origin/main...HEAD
+
+      - name: Unit tests
+        run: npm test -- --runInBand
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
