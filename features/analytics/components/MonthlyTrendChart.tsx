@@ -5,7 +5,9 @@
 import { Text, View } from 'react-native'
 import Svg, { G, Rect } from 'react-native-svg'
 import { useColorScheme } from 'nativewind'
+import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
+import { formatILS } from '@/lib/money/format'
 import type { MonthlyTrendPoint } from '../lib/monthlyTrend'
 
 interface MonthlyTrendChartProps {
@@ -19,6 +21,17 @@ const GROUP_GAP = 14
 
 export function MonthlyTrendChart({ points }: MonthlyTrendChartProps) {
   const { colorScheme: scheme } = useColorScheme()
+  const { t } = useTranslation()
+  // react-native-svg elements carry no accessibility semantics of their
+  // own — a screen reader gets nothing at all from the bars themselves.
+  // The wrapping View is marked accessible with a summary built from the
+  // same numbers the bars are drawn from (already-formatted ILS, so no
+  // duplicate formatting logic), and the SVG underneath is hidden so
+  // VoiceOver/TalkBack announces one meaningful sentence instead of
+  // silently skipping the whole chart.
+  const chartSummary = points
+    .map((p) => `${p.periodStart.slice(0, 7)}: ${t('dashboard.analytics.income')} ${formatILS(p.incomeAgorot)}, ${t('dashboard.analytics.expense')} ${formatILS(p.expenseAgorot)}`)
+    .join('. ')
   const incomeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const expenseColor = scheme === 'dark' ? colors.danger.dark : colors.danger.light
 
@@ -27,8 +40,13 @@ export function MonthlyTrendChart({ points }: MonthlyTrendChartProps) {
   const chartWidth = points.length * groupWidth + Math.max(0, points.length - 1) * GROUP_GAP
 
   return (
-    <View>
-      <Svg width={chartWidth} height={CHART_HEIGHT}>
+    <View accessible accessibilityLabel={chartSummary}>
+      <Svg
+        width={chartWidth}
+        height={CHART_HEIGHT}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
         {points.map((point, index) => {
           const groupX = index * (groupWidth + GROUP_GAP)
           const incomeHeight = (point.incomeAgorot / maxAgorot) * CHART_HEIGHT

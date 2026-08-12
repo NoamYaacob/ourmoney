@@ -246,6 +246,7 @@
     "totalAllocated": "סה״כ תוקצב",
     "totalSpent": "סה״כ הוצא",
     "categoriesTitle": "תקציב לפי קטגוריה",
+    "noCategories": "עדיין לא הוקצו קטגוריות לתקציב החודש.",
     "allocationLabel": "סכום תקציב",
     "saveAllocation": "שמירה",
     "addCategoryLabel": "הוספת קטגוריה לתקציב",
@@ -376,7 +377,9 @@
       "trendTitle": "מגמה חודשית",
       "breakdownTitle": "פילוח לפי קטגוריה",
       "topCategoriesTitle": "קטגוריות מובילות",
-      "empty": "אין מספיק נתונים להצגה."
+      "empty": "אין מספיק נתונים להצגה.",
+      "income": "הכנסות",
+      "expense": "הוצאות"
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"

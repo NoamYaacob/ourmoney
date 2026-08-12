@@ -23,8 +23,10 @@ import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { HIT_SLOP } from '@/constants/accessibility'
 import type { CategoryRuleField, CategoryRuleOperator } from '@/types/app'
 
 const FIELD_OPTIONS: CategoryRuleField[] = ['description', 'merchant_name']
@@ -62,12 +64,10 @@ export default function Categories() {
         {t('categories.customTitle')}
       </Text>
       {isCategoriesLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={2} />
       ) : (
         <Card>
-          {customCategories.length === 0 && (
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('categories.empty')}</Text>
-          )}
+          {customCategories.length === 0 && <EmptyState icon="🏷️" message={t('categories.empty')} />}
           {customCategories.map((category, index) => (
             <View key={category.id}>
               {index > 0 && (
@@ -88,6 +88,7 @@ export default function Categories() {
                   accessibilityRole="button"
                   accessibilityLabel={t('categories.deleteCategoryLabel', { name: category.name_he })}
                   accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
+                  hitSlop={HIT_SLOP}
                 >
                   <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
                 </Pressable>
@@ -124,12 +125,10 @@ export default function Categories() {
         {t('categories.rulesTitle')}
       </Text>
       {isRulesLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={2} />
       ) : (
         <Card>
-          {rules.length === 0 && (
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('categories.rules.empty')}</Text>
-          )}
+          {rules.length === 0 && <EmptyState icon="⚙️" message={t('categories.rules.empty')} />}
           {rules.map((rule, index) => {
             const category = categories.find((c) => c.id === rule.category_id)
             return (
@@ -157,6 +156,7 @@ export default function Categories() {
                       value: rule.value,
                     })}
                     accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
+                    hitSlop={HIT_SLOP}
                   >
                     <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
                   </Pressable>

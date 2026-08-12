@@ -14,8 +14,9 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
 import type { AccountType } from '@/types/app'
 
 const ACCOUNT_TYPE_OPTIONS: AccountType[] = ['checking', 'savings', 'credit_card', 'cash', 'investment', 'other']
@@ -56,14 +57,14 @@ export default function Accounts() {
       {error ? (
         <ErrorMessage message={t('accounts.errors.generic')} />
       ) : isLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={3} />
       ) : (
         <>
-          {accounts.length === 0 && (
-            <Text className="mb-4 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
-              {t('accounts.empty')}
-            </Text>
-          )}
+          {/* No actionLabel/onAction here — the persistent "Add account"
+              button below already covers it; a second identical CTA
+              stacked directly above it was confusing, not helpful
+              (mobile-expo-reviewer finding). */}
+          {accounts.length === 0 && <EmptyState icon="💳" message={t('accounts.empty')} />}
           {accounts.map((account) => (
             <Pressable
               key={account.id}

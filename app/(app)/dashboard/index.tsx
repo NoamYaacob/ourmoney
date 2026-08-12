@@ -23,6 +23,9 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { FAB } from '@/components/ui/FAB'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { HIT_SLOP } from '@/constants/accessibility'
 
 // Real MVP-2 dashboard, replacing the M1 placeholder. Every figure here is
 // either a direct query result or derived via lib/money — never a bare `0`
@@ -94,11 +97,11 @@ export default function Dashboard() {
       </View>
 
       <View className="mb-4 flex-row items-center justify-between">
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button">
+        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
           <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.prevMonth')}</Text>
         </Pressable>
         <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{periodStart.slice(0, 7)}</Text>
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button">
+        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
           <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.nextMonth')}</Text>
         </Pressable>
       </View>
@@ -127,30 +130,32 @@ export default function Dashboard() {
       <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.categoriesTitle')}
       </Text>
-      {!isProgressLoading && !progressError && (
+      {isProgressLoading ? (
+        <SkeletonList rows={3} />
+      ) : progressError ? (
+        <ErrorMessage message={t('dashboard.errors.generic')} />
+      ) : progress.length === 0 ? (
+        <EmptyState icon="🎯" message={t('dashboard.noBudget')} />
+      ) : (
         <Card>
-          {progress.length === 0 ? (
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.noBudget')}</Text>
-          ) : (
-            progress.map((category, index) => (
-              <View key={category.categoryId}>
-                {index > 0 && (
-                  <View className="my-2">
-                    <Divider />
-                  </View>
-                )}
-                <View className="mb-1 flex-row items-center justify-between">
-                  <Text className="text-sm text-ink-light dark:text-ink-dark">
-                    {category.categoryIcon} {category.categoryNameHe}
-                  </Text>
-                  <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                  </Text>
+          {progress.map((category, index) => (
+            <View key={category.categoryId}>
+              {index > 0 && (
+                <View className="my-2">
+                  <Divider />
                 </View>
-                <ProgressBar percent={category.percentSpent} />
+              )}
+              <View className="mb-1 flex-row items-center justify-between">
+                <Text className="text-sm text-ink-light dark:text-ink-dark">
+                  {category.categoryIcon} {category.categoryNameHe}
+                </Text>
+                <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                  {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
+                </Text>
               </View>
-            ))
-          )}
+              <ProgressBar percent={category.percentSpent} />
+            </View>
+          ))}
         </Card>
       )}
 
@@ -160,9 +165,14 @@ export default function Dashboard() {
       {transactionsError ? (
         <ErrorMessage message={t('dashboard.errors.generic')} />
       ) : isTransactionsLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={3} />
       ) : recentTransactions.length === 0 ? (
-        <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.noTransactions')}</Text>
+        <EmptyState
+          icon="🧾"
+          message={t('dashboard.noTransactions')}
+          actionLabel={t('transactions.addButton')}
+          onAction={() => router.push('/transactions/new')}
+        />
       ) : (
         <Card>
           {recentTransactions.map((txn, index) => (
@@ -189,7 +199,7 @@ export default function Dashboard() {
         {t('dashboard.analytics.trendTitle')}
       </Text>
       {isAnalyticsLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={1} rowClassName="h-40 w-full rounded-xl" />
       ) : (
         <Card>
           <MonthlyTrendChart points={monthlyTrendPoints} />
@@ -199,32 +209,34 @@ export default function Dashboard() {
       <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.breakdownTitle')}
       </Text>
-      {!isAnalyticsLoading && (
+      {isAnalyticsLoading ? (
+        <View className="items-center">
+          <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
+        </View>
+      ) : categoryBreakdown.length === 0 ? (
+        <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
+      ) : (
         <Card>
-          {categoryBreakdown.length === 0 ? (
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.analytics.empty')}</Text>
-          ) : (
-            <View className="items-center">
-              <CategoryDonutChart breakdown={categoryBreakdown} />
-            </View>
-          )}
+          <View className="items-center">
+            <CategoryDonutChart breakdown={categoryBreakdown} categoryNameById={categoryNameById} />
+          </View>
         </Card>
       )}
 
       <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.topCategoriesTitle')}
       </Text>
-      {!isAnalyticsLoading && (
+      {isAnalyticsLoading ? (
+        <SkeletonList rows={3} />
+      ) : topCategories.length === 0 ? (
+        <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
+      ) : (
         <Card>
-          {topCategories.length === 0 ? (
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.analytics.empty')}</Text>
-          ) : (
-            <TopCategoriesList
-              entries={topCategories}
-              categoryNameById={categoryNameById}
-              categoryIconById={categoryIconById}
-            />
-          )}
+          <TopCategoriesList
+            entries={topCategories}
+            categoryNameById={categoryNameById}
+            categoryIconById={categoryIconById}
+          />
         </Card>
       )}
 

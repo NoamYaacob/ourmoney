@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { SkeletonList } from '@/components/ui/SkeletonList'
 
 const APPEARANCE_OPTIONS: AppearancePreference[] = ['system', 'light', 'dark']
 
@@ -127,7 +128,7 @@ export default function Settings() {
             {membersError ? (
               <ErrorMessage message={t('household.errors.bug')} />
             ) : isMembersLoading ? (
-              <LoadingSpinner />
+              <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
             ) : (
               members.map((member) => (
                 <View key={member.userId} className="mb-2 flex-row items-center gap-2">

@@ -4,10 +4,13 @@
 
 import { View } from 'react-native'
 import Svg, { Circle } from 'react-native-svg'
+import { useTranslation } from 'react-i18next'
+import { formatILS } from '@/lib/money/format'
 import type { CategoryBreakdownEntry } from '../lib/categoryBreakdown'
 
 interface CategoryDonutChartProps {
   breakdown: CategoryBreakdownEntry[]
+  categoryNameById?: Record<string, string>
   size?: number
 }
 
@@ -17,16 +20,24 @@ interface CategoryDonutChartProps {
 // simplest and fully deterministic.
 const SEGMENT_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
 
-export function CategoryDonutChart({ breakdown, size = 140 }: CategoryDonutChartProps) {
+export function CategoryDonutChart({ breakdown, categoryNameById = {}, size = 140 }: CategoryDonutChartProps) {
+  const { t } = useTranslation()
   const radius = size / 2 - 10
   const circumference = 2 * Math.PI * radius
   const totalAgorot = breakdown.reduce((sum, entry) => sum + entry.spentAgorot, 0)
 
   let offsetSoFar = 0
 
+  // Same rationale as MonthlyTrendChart: a Circle-based ring has no
+  // accessibility semantics of its own, so the wrapping View carries a
+  // built summary and the Svg is hidden from the accessibility tree.
+  const chartSummary = breakdown
+    .map((entry) => `${categoryNameById[entry.categoryId] ?? entry.categoryId}: ${formatILS(entry.spentAgorot)}`)
+    .join('. ')
+
   return (
-    <View style={{ width: size, height: size }}>
-      <Svg width={size} height={size}>
+    <View accessible accessibilityLabel={chartSummary || t('dashboard.analytics.empty')} style={{ width: size, height: size }}>
+      <Svg width={size} height={size} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {totalAgorot <= 0 ? (
           <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#e2e8f0" strokeWidth={14} fill="none" />
         ) : (

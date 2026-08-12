@@ -10,8 +10,9 @@ import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Button } from '@/components/ui/Button'
 import { FAB } from '@/components/ui/FAB'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
 import type { Transaction } from '@/types/app'
 
 export default function Transactions() {
@@ -38,11 +39,14 @@ export default function Transactions() {
       {error ? (
         <ErrorMessage message={t('transactions.errors.generic')} />
       ) : isPageLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={5} />
       ) : transactions.length === 0 ? (
-        <Text className="text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
-          {t('transactions.empty')}
-        </Text>
+        <EmptyState
+          icon="🧾"
+          message={t('transactions.empty')}
+          actionLabel={t('transactions.addButton')}
+          onAction={() => router.push('/transactions/new')}
+        />
       ) : (
         <FlatList<Transaction>
           data={transactions}

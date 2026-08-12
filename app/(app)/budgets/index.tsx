@@ -21,8 +21,10 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { HIT_SLOP } from '@/constants/accessibility'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
 export default function Budgets() {
@@ -106,11 +108,11 @@ export default function Budgets() {
 
       {/* Month navigation */}
       <View className="mb-4 flex-row items-center justify-between">
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button">
+        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
           <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.prevMonth')}</Text>
         </Pressable>
         <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{periodStart.slice(0, 7)}</Text>
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button">
+        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
           <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.nextMonth')}</Text>
         </Pressable>
       </View>
@@ -118,7 +120,7 @@ export default function Budgets() {
       {error ? (
         <ErrorMessage message={t('budgets.errors.generic')} />
       ) : isLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={4} />
       ) : (
         <>
           {/* Overview */}
@@ -139,6 +141,7 @@ export default function Budgets() {
           <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.categoriesTitle')}
           </Text>
+          {progress.length === 0 && <EmptyState icon="🎯" message={t('budgets.noCategories')} />}
           {progress.map((category, index) => (
             <View key={category.categoryId}>
               {index > 0 && (
@@ -209,9 +212,9 @@ export default function Budgets() {
             {t('budgets.uncategorizedTitle')}
           </Text>
           {isUncategorizedLoading ? (
-            <LoadingSpinner />
+            <SkeletonList rows={3} />
           ) : uncategorized.length === 0 ? (
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.uncategorizedEmpty')}</Text>
+            <EmptyState icon="🎉" message={t('budgets.uncategorizedEmpty')} />
           ) : (
             uncategorized.map((txn, index) => (
               <View key={txn.id}>

@@ -17,8 +17,9 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 export default function Goals() {
   const { t } = useTranslation()
@@ -69,14 +70,13 @@ export default function Goals() {
       {error ? (
         <ErrorMessage message={t('savings.errors.generic')} />
       ) : isLoading || isGoalsLoading ? (
-        <LoadingSpinner />
+        <SkeletonList rows={3} />
       ) : (
         <>
-          {goals.length === 0 && (
-            <Text className="mb-4 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
-              {t('savings.empty')}
-            </Text>
-          )}
+          {/* No actionLabel/onAction — the persistent "Add goal" button
+              below already covers it (mobile-expo-reviewer finding, same
+              as accounts/index.tsx and recurring/index.tsx). */}
+          {goals.length === 0 && <EmptyState icon="🏆" message={t('savings.empty')} />}
           {goals.map((goal) => {
             const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
             return (
