@@ -11,6 +11,9 @@ import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
+// TEMPORARY — spinner-flash-on-tab-focus investigation. See
+// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
+import { diagLog } from '@/lib/debug/spinnerDiagnostics'
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const
 
@@ -26,8 +29,19 @@ export function useAuth() {
     staleTime: Infinity,
   })
 
+  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
+  useEffect(() => {
+    diagLog('useAuth query', {
+      status: query.status,
+      fetchStatus: query.fetchStatus,
+      hasSession: query.data !== undefined && query.data !== null,
+    })
+  }, [query.status, query.fetchStatus, query.data])
+
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
+      diagLog('onAuthStateChange', { event: _event, hasSession: session !== null })
       queryClient.setQueryData<Session | null>(SESSION_QUERY_KEY, session)
     })
     return () => data.subscription.unsubscribe()

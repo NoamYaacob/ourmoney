@@ -18,6 +18,9 @@ import { useTheme } from '../features/settings/hooks/useTheme'
 import { AppErrorBoundary } from '../components/ui/AppErrorBoundary'
 import { captureException, initCrashReporting } from '../lib/monitoring/crashReporting'
 import { hideSplashScreen, initSplashGate } from '../lib/monitoring/splashGate'
+// TEMPORARY — spinner-flash-on-tab-focus investigation. See
+// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
+import { diagLog } from '../lib/debug/spinnerDiagnostics'
 
 // Both run once at module load, before first render — Milestone 11 / ADR-033.
 // initSplashGate() calls SplashScreen.preventAutoHideAsync() (Expo's own
@@ -53,8 +56,22 @@ function AuthGate() {
   const { isLoading } = useAuthGuard()
   const { session } = useAuth()
   const { isLoading: isHouseholdLoading } = useHousehold(session?.user.id)
+  const showsSpinner = isLoading || (!!session && isHouseholdLoading)
 
-  if (isLoading || (!!session && isHouseholdLoading)) {
+  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Logs the
+  // final gate decision (what app/_layout.tsx's own condition below
+  // evaluates to) so it can be correlated against the per-query logs from
+  // useAuth/useAuthGuard/useHasHousehold/useHousehold/usePendingInvitationToken.
+  useEffect(() => {
+    diagLog('AuthGate', {
+      isLoading,
+      hasSession: !!session,
+      isHouseholdLoading,
+      showsSpinner,
+    })
+  }, [isLoading, session, isHouseholdLoading, showsSpinner])
+
+  if (showsSpinner) {
     return (
       <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
         <ActivityIndicator />
@@ -145,6 +162,27 @@ export default function RootLayout() {
           })
 
     void settle.finally(() => setRtlReady(true))
+  }, [])
+
+  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Web-only:
+  // document.visibilitychange / window focus/blur is the exact trigger
+  // reported for the spinner flash (switch tab away, switch back).
+  // Registered here, unconditionally and as early as possible (before the
+  // rtlReady gate below), so nothing during app bootstrap can be missed.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return
+    const onVisibilityChange = () =>
+      diagLog('document.visibilitychange', { visibilityState: document.visibilityState })
+    const onFocus = () => diagLog('window.focus', {})
+    const onBlur = () => diagLog('window.blur', {})
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+    }
   }, [])
 
   if (!rtlReady) return null
