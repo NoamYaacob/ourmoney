@@ -317,7 +317,7 @@ export type Database = {
       households: {
         Row: {
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: string
           id: string
           name: string
@@ -325,7 +325,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: string
           id?: string
           name: string
@@ -333,7 +333,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: string
           id?: string
           name?: string
@@ -348,7 +348,7 @@ export type Database = {
           expires_at: string
           household_id: string
           id: string
-          invited_by: string
+          invited_by: string | null
           status: string
           token: string
         }
@@ -358,7 +358,7 @@ export type Database = {
           expires_at?: string
           household_id: string
           id?: string
-          invited_by: string
+          invited_by?: string | null
           status?: string
           token?: string
         }
@@ -368,7 +368,7 @@ export type Database = {
           expires_at?: string
           household_id?: string
           id?: string
-          invited_by?: string
+          invited_by?: string | null
           status?: string
           token?: string
         }
@@ -418,7 +418,7 @@ export type Database = {
           amount_agorot: number
           category_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: string
           day_of_month: number | null
           description: string
@@ -435,7 +435,7 @@ export type Database = {
           amount_agorot: number
           category_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: string
           day_of_month?: number | null
           description: string
@@ -452,7 +452,7 @@ export type Database = {
           amount_agorot?: number
           category_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: string
           day_of_month?: number | null
           description?: string
@@ -493,7 +493,7 @@ export type Database = {
           account_id: string | null
           color: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           current_agorot: number
           household_id: string
           icon: string | null
@@ -508,7 +508,7 @@ export type Database = {
           account_id?: string | null
           color?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           current_agorot?: number
           household_id: string
           icon?: string | null
@@ -523,7 +523,7 @@ export type Database = {
           account_id?: string | null
           color?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           current_agorot?: number
           household_id?: string
           icon?: string | null
@@ -557,7 +557,7 @@ export type Database = {
           amount_agorot: number
           category_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: string
           description: string
           household_id: string
@@ -578,7 +578,7 @@ export type Database = {
           amount_agorot: number
           category_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: string
           description: string
           household_id: string
@@ -599,7 +599,7 @@ export type Database = {
           amount_agorot?: number
           category_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: string
           description?: string
           household_id?: string
@@ -695,6 +695,7 @@ export type Database = {
         Returns: Record<string, unknown>[]
       }
       dblink_is_busy: { Args: { "": string }; Returns: number }
+      delete_own_account: { Args: never; Returns: Json }
       generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
       is_household_member: { Args: { hid: string }; Returns: boolean }
