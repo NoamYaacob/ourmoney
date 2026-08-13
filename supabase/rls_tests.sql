@@ -3073,10 +3073,10 @@ BEGIN
   END IF;
 
   SELECT leave_household() INTO v_second;
-  IF v_second <> '{"ok": true, "household_deleted": false, "new_admin_id": null}'::jsonb THEN
-    RAISE EXCEPTION 'FAIL 8.11: expected a harmless idempotent no-op on the second call after a real leave, got %', v_second;
+  IF v_second <> '{"ok": false, "error": "not_a_member"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.11: expected a harmless repeated not_a_member on the second call after a real leave, got %', v_second;
   END IF;
-  PERFORM _pass('8.11', 'calling leave_household() again after a real leave is idempotent -- the second call is a clean no-op, not a repeated promotion/cascade attempt');
+  PERFORM _pass('8.11', 'calling leave_household() again after a real leave is idempotent -- the second call cleanly reports not_a_member (the caller now has zero household_members rows, the same top-of-function check 8.5 exercises), not a repeated promotion/cascade attempt');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_8_11;
