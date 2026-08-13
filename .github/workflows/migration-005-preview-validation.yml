@@ -41,6 +41,13 @@ name: Migration 005 Preview Validation
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - preview/iphone-local
+    paths:
+      - 'supabase/migrations/005_leave_household.sql'
+      - 'supabase/ci_verification/**'
+      - '.github/workflows/migration-005-preview-validation.yml'
 
 permissions:
   contents: read
