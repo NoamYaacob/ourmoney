@@ -178,7 +178,62 @@ jobs:
           psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection_post_reconciliation.txt
           psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rls_policy.sql 2>&1 | tee -a /tmp/schema_inspection_post_reconciliation.txt
 
-      - name: Upload Phase 1-3 output
+      - name: Phase 4 — migration list BEFORE repair
+        run: |
+          set -euo pipefail
+          supabase migration list 2>&1 | tee /tmp/migration_list_before_repair.txt
+          for v in 001 002 003 004 005; do
+            grep -qE "\`${v}\`[[:space:]]*\|[[:space:]]*\`${v}\`" /tmp/migration_list_before_repair.txt || { echo "ABORT: local $v not shown aligned with remote $v before repair"; exit 1; }
+          done
+          for v in 20260812143917 20260812144427 20260812144458 20260812144531; do
+            grep -qF "$v" /tmp/migration_list_before_repair.txt || { echo "ABORT: expected remote-only version $v not found before repair"; exit 1; }
+          done
+          echo "OK: 001-005 aligned, all 4 remote-only timestamp versions present, before repair."
+
+      - name: Phase 4 — repair the 4 obsolete remote-only versions as reverted
+        run: |
+          set -euo pipefail
+          supabase migration repair --status reverted \
+            20260812143917 20260812144427 20260812144458 20260812144531 \
+            --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee /tmp/migration_repair_output.txt
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: Phase 4 — migration list AFTER repair
+        run: |
+          set -euo pipefail
+          supabase migration list 2>&1 | tee /tmp/migration_list_after_repair.txt
+          for v in 001 002 003 004 005; do
+            grep -qE "\`${v}\`[[:space:]]*\|[[:space:]]*\`${v}\`" /tmp/migration_list_after_repair.txt || { echo "ABORT: local $v no longer shown aligned with remote $v after repair"; exit 1; }
+          done
+          echo "OK: 001-005 still aligned after repair."
+
+      - name: Phase 4 — prove db push --dry-run is now a TRUE no-op
+        run: |
+          set -euo pipefail
+          if ! supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" > /tmp/db_push_dry_run_after_repair.txt 2>&1; then
+            echo "STOP: supabase db push --dry-run failed/errored after repair — reporting, not applying anything."
+            cat /tmp/db_push_dry_run_after_repair.txt
+            exit 1
+          fi
+          cat /tmp/db_push_dry_run_after_repair.txt
+          if grep -qiE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE)\b' /tmp/db_push_dry_run_after_repair.txt; then
+            echo "STOP: dry-run output contains what looks like a schema-changing or data-changing statement — reporting, not applying anything."
+            exit 1
+          fi
+          echo "OK: db push --dry-run succeeded and proposes no schema-changing statement — true no-op."
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: "Phase 4 — post-check: schema/RLS unchanged after repair (read-only)"
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection_post_repair.txt
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rls_policy.sql 2>&1 | tee -a /tmp/schema_inspection_post_repair.txt
+
+      - name: Upload Phase 1-4 output
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -192,4 +247,9 @@ jobs:
             /tmp/migration_list_after.txt
             /tmp/db_push_dry_run.txt
             /tmp/schema_inspection_post_reconciliation.txt
+            /tmp/migration_list_before_repair.txt
+            /tmp/migration_repair_output.txt
+            /tmp/migration_list_after_repair.txt
+            /tmp/db_push_dry_run_after_repair.txt
+            /tmp/schema_inspection_post_repair.txt
           if-no-files-found: warn
