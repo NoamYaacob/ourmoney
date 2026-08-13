@@ -9,14 +9,27 @@ name: Migration 005 Preview Validation
 # validation of this one migration. It is workflow_dispatch-only (no push
 # trigger) so it never runs automatically — it must be deliberately invoked.
 #
+# CURRENT STATE (2026-08-13): inspection-only. The first real run against
+# this project revealed that its applied-migration history (four rows
+# under 2026-08-12 timestamp versions) does not correspond by version
+# string to any file in supabase/migrations/ — so "are 001-004 already
+# applied" cannot be answered by comparing version labels the way the rest
+# of this comment assumes. This run instead does read-only schema
+# inspection (tables/functions/policies actually present) so a human can
+# judge equivalence before any push is attempted. The push/RPC-verification/
+# RLS-verification/rls_tests.sql/concurrency/type-gen steps described below
+# are not currently wired into the job — they will be restored once that
+# judgment call is made.
+#
 # Safety properties:
 #   - Hard-aborts unless the Management API confirms the target project's
-#     display name is EXACTLY "OurMoney Preview" for the given ref, before
+#     display name is EXACTLY "OurMoney Preview." (trailing period —
+#     confirmed via the Management API itself) for the given ref, before
 #     any write happens.
 #   - Applies migration 005 via `supabase db push` (no --include-all), which
 #     only pushes migrations not yet recorded as applied — 001-004 are
 #     verified as already-applied first, and the push is expected to add
-#     only 005.
+#     only 005. [Not currently active — see CURRENT STATE above.]
 #   - All ad hoc SQL beyond the migration + supabase/rls_tests.sql's own
 #     main transaction is read-only verification or self-cleaning fixture
 #     data (explicit DELETEs in a trap, scoped to dedicated fixture IDs
@@ -102,28 +115,11 @@ jobs:
       - name: Link Supabase project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
-      - name: Migration status BEFORE push (expect 001-004 applied, 005 not yet)
+      - name: Migration status (informational only — see inspection step below)
         run: |
           set -euo pipefail
           supabase migration list | tee /tmp/migrations_before.txt
-          for v in 001 002 003 004; do
-            grep -q "$v" /tmp/migrations_before.txt || { echo "ABORT: migration $v not found as applied on the remote project"; exit 1; }
-          done
-          if grep -q "005" /tmp/migrations_before.txt; then
-            echo "ABORT: migration 005 already appears applied before push — stopping rather than assuming why."
-            exit 1
-          fi
-          echo "OK: 001-004 applied remotely, 005 not yet applied."
-
-      - name: Apply migration 005 (push only pending migrations)
-        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
-
-      - name: Migration status AFTER push (expect 005 now applied)
-        run: |
-          set -euo pipefail
-          supabase migration list | tee /tmp/migrations_after.txt
-          grep -q "005" /tmp/migrations_after.txt || { echo "FAIL: migration 005 not present after push"; exit 1; }
-          echo "OK: migration 005 now applied remotely."
+          echo "NOTE: this table is not used as a pass/fail gate in this run. A prior run showed the remote's applied-migration history uses timestamp versions with no corresponding local file, so 'is 001-004 applied' cannot be answered by string-matching this table. See the schema inspection step instead."
 
       - name: Discover a reachable direct SQL connection
         env:
@@ -158,110 +154,19 @@ jobs:
             echo "SQL_USER=${FOUND##*|}"
           } >> "$GITHUB_ENV"
 
-      - name: Verify leave_household() / delete_own_account() RPC security metadata
+      - name: Inspect remote schema (read-only — ground truth before deciding anything)
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rpc_metadata.sql
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection.txt
 
-      - name: Verify household_members_delete RLS policy text
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rls_policy.sql
-
-      - name: Run rls_tests.sql main transaction (fixtures + Groups 1-8, self-rolling-back)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          ROLLBACK_LINE=$(grep -n '^ROLLBACK;$' supabase/rls_tests.sql | head -1 | cut -d: -f1)
-          if [ -z "$ROLLBACK_LINE" ]; then
-            echo "ABORT: could not find the main transaction's closing ROLLBACK; in rls_tests.sql"
-            exit 1
-          fi
-          echo "Main transaction spans lines 1-$ROLLBACK_LINE"
-          sed -n "1,${ROLLBACK_LINE}p" supabase/rls_tests.sql > /tmp/rls_main.sql
-          tail -3 /tmp/rls_main.sql
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f /tmp/rls_main.sql 2>&1 | tee /tmp/rls_main_output.txt
-          grep -F "=== " /tmp/rls_main_output.txt | tail -1
-          grep -qF "ALL RLS TESTS PASSED" /tmp/rls_main_output.txt || { echo "FAIL: expected summary NOTICE not found in output"; exit 1; }
-
-      - name: True-concurrency check — two members leave the same household simultaneously
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          CONN="host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require"
-
-          cleanup() {
-            psql "$CONN" -v ON_ERROR_STOP=0 -f supabase/ci_verification/005_concurrency_cleanup.sql >/tmp/cleanup.log 2>&1 || true
-            cat /tmp/cleanup.log
-          }
-          trap cleanup EXIT
-
-          psql "$CONN" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_setup.sql
-
-          psql "$CONN" -t -A -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_call_a.sql > /tmp/call1.out 2>&1 &
-          PID1=$!
-
-          psql "$CONN" -t -A -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_call_b.sql > /tmp/call2.out 2>&1 &
-          PID2=$!
-
-          R1=0; R2=0
-          wait "$PID1" || R1=$?
-          wait "$PID2" || R2=$?
-
-          echo "--- call1 (user 070) output ---"; cat /tmp/call1.out
-          echo "--- call2 (user 071) output ---"; cat /tmp/call2.out
-
-          if [ "$R1" -ne 0 ] || [ "$R2" -ne 0 ]; then
-            echo "FAIL LEAVE.CONCURRENT.CI: one or both concurrent leave_household() calls errored (exit $R1 / $R2) — possible deadlock or unexpected exception"
-            exit 1
-          fi
-
-          grep -q '"ok": *true' /tmp/call1.out || { echo "FAIL LEAVE.CONCURRENT.CI: call1 did not report ok:true"; exit 1; }
-          grep -q '"ok": *true' /tmp/call2.out || { echo "FAIL LEAVE.CONCURRENT.CI: call2 did not report ok:true"; exit 1; }
-
-          psql "$CONN" -t -A -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_postcheck.sql > /tmp/post_check.out
-          echo "post-check (household_count|user_count): $(cat /tmp/post_check.out)"
-          HOUSEHOLD_COUNT=$(cut -d'|' -f1 /tmp/post_check.out)
-          USER_COUNT=$(cut -d'|' -f2 /tmp/post_check.out)
-
-          if [ "$HOUSEHOLD_COUNT" != "0" ]; then
-            echo "FAIL LEAVE.CONCURRENT.CI: household still exists after both members left"
-            exit 1
-          fi
-          if [ "$USER_COUNT" != "2" ]; then
-            echo "FAIL LEAVE.CONCURRENT.CI: expected both users' auth.users rows to survive, got count=$USER_COUNT"
-            exit 1
-          fi
-
-          echo "PASS LEAVE.CONCURRENT.CI: two concurrent leave_household() calls from two real, independently-connected psql sessions => no deadlock, both ok:true, household gone, both accounts survive"
-
-      - name: Generate database types from the live schema
-        run: supabase gen types typescript --project-id "$SUPABASE_PROJECT_REF" > /tmp/database.generated.ts
-
-      - name: Diff generated types against committed types/database.ts
-        run: |
-          set +e
-          diff -u types/database.ts /tmp/database.generated.ts > /tmp/types.diff
-          echo "diff exit code: $?"
-          set -e
-          wc -l /tmp/types.diff
-          head -100 /tmp/types.diff
-
-      - name: Upload generated types + diff
+      - name: Upload inspection output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: migration-005-preview-validation-output
           path: |
-            /tmp/database.generated.ts
-            /tmp/types.diff
             /tmp/migrations_before.txt
-            /tmp/migrations_after.txt
-            /tmp/rls_main_output.txt
+            /tmp/schema_inspection.txt
           if-no-files-found: warn
