@@ -13,6 +13,15 @@ module.exports = {
   theme: {
     extend: {
       colors,
+      // Responsive/desktop layout pass: named breakpoints matching the
+      // product spec's exact tiers (mobile <768, tablet 768-1199,
+      // desktop >=1200). Always paired with the `web:` platform variant at
+      // call sites (e.g. `web:tablet:max-w-[600px]`) so native/iPhone
+      // layout is untouched — these only take effect in a browser.
+      screens: {
+        tablet: '768px',
+        desktop: '1200px',
+      },
       // Design Phase 1 — a named type hierarchy, additive to Tailwind's
       // existing scale (text-sm/text-xs/etc. all still work; these are for
       // the specific roles the shell/dashboard redesign needs a deliberate

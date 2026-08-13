@@ -257,3 +257,29 @@ describe('Dashboard month navigation and budget summary', () => {
     expect(getByText(NO_TRANSACTIONS_MESSAGE)).toBeTruthy()
   })
 })
+
+// Responsive/desktop pass: below the hero, category budgets + recent
+// transactions form a 2/3 main column and analytics/insights a 1/3 sidebar
+// at the desktop breakpoint (see index.tsx's own comment). RNTL can't
+// evaluate real CSS media queries, so this asserts the structural thing
+// that matters — the `web:desktop:flex-row` grid wrapper genuinely
+// contains both sections, not a fake pixel/viewport assertion.
+describe('Dashboard responsive desktop layout', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('wraps the category budgets column and the analytics/insights column in the same desktop grid container', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const mainColumn = getByText(i18n.t('dashboard.categoriesTitle')).parent
+    const gridWrapper = mainColumn?.parent
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
+
+    const sidebarColumn = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent
+    // Both columns are direct children of the same grid wrapper.
+    expect(sidebarColumn?.parent).toBe(gridWrapper)
+  })
+})

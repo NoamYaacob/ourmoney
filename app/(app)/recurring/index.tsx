@@ -102,7 +102,7 @@ export default function Recurring() {
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="wide">
       <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('recurring.title')}</Text>
 
       {error ? (
@@ -115,12 +115,20 @@ export default function Recurring() {
               button below already covers it (mobile-expo-reviewer finding,
               same as accounts/index.tsx and goals/index.tsx). */}
           {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
+          {/* Responsive/desktop pass: a 2-column card grid once there's more
+              than one recurring item, desktop only — same calc()-free
+              pattern as accounts/index.tsx. */}
+          <View
+            className={
+              recurringTransactions.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined
+            }
+          >
           {recurringTransactions.map((item) => (
             <Pressable
               key={item.id}
               onPress={() => router.push(`/recurring/${item.id}`)}
               accessibilityRole="button"
-              className="mb-2"
+              className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
             >
               <Card>
                 <View className="flex-row items-center justify-between">
@@ -138,11 +146,12 @@ export default function Recurring() {
               </Card>
             </Pressable>
           ))}
+          </View>
         </>
       )}
 
       {isAdding ? (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
@@ -202,7 +211,7 @@ export default function Recurring() {
           <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
         </View>
       ) : (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Button title={t('recurring.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

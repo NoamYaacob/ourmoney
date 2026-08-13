@@ -215,9 +215,15 @@ export default function Settings() {
   }
 
   return (
-    <Screen>
+    <Screen width="wide">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('settings.title')}</Text>
 
+      {/* Responsive/desktop pass: profile+household in one column, the rest
+          (money management/appearance/security/account) in a second column
+          — desktop only (`web:desktop:flex-row`). Mobile/tablet stay a
+          single stacked column in the original order. */}
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-1">
       {/* Profile */}
       {isProfileLoading ? (
         <View className="mb-6">
@@ -386,7 +392,9 @@ export default function Settings() {
           variant="secondary"
         />
       </View>
+      </View>
 
+      <View className="web:desktop:flex-1">
       {/* Money management — Milestone 6, reached from Settings, not a tab */}
       <SettingsSection title={t('settings.financial.title')}>
         <SettingsRow iconName="wallet-outline" label={t('settings.financial.accounts')} onPress={() => router.push('/accounts')} />
@@ -450,6 +458,8 @@ export default function Settings() {
           destructive
         />
       </SettingsSection>
+      </View>
+      </View>
 
       <Modal
         visible={deleteConfirmVisible}

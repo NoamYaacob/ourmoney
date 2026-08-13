@@ -124,4 +124,16 @@ describe('NewTransaction (Add Transaction)', () => {
     await waitFor(() => expect(getByText('יש להזין סכום תקין')).toBeTruthy())
     expect(mockCreateMutate).not.toHaveBeenCalled()
   })
+
+  // Responsive/desktop pass: unlike the dashboard/list screens, this form
+  // must stay a narrow, centered column on desktop rather than stretching
+  // across a wide browser window (see new.tsx's `width="narrow"` prop).
+  it('keeps the form in the narrow content-width variant, not the wide dashboard/list one', async () => {
+    const { getByText } = await render(<NewTransaction />)
+
+    const scrollView = getByText('תנועה חדשה').parent?.parent
+    const contentClassName = scrollView?.props.contentContainerClassName as string
+    expect(contentClassName).toContain('max-w-[600px]')
+    expect(contentClassName).not.toContain('max-w-[1150px]')
+  })
 })

@@ -302,4 +302,27 @@ describe('Settings screen — household/profile management', () => {
     await fireEvent.press(getByText('קטגוריות וכללי סיווג'))
     expect(mockRouterPush).toHaveBeenCalledWith('/settings/categories')
   })
+
+  // Responsive/desktop pass: profile+household form one column, money
+  // management/appearance/security/account form a second — desktop only
+  // (see index.tsx's own comment). RNTL can't evaluate real CSS media
+  // queries, so this asserts the structural thing that matters — both
+  // columns are direct children of the same `web:desktop:flex-row` grid
+  // wrapper, not a fake pixel/viewport assertion.
+  it('groups profile/household and money-management/appearance/security/account into the same desktop grid container', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText } = await render(<Settings />)
+
+    const leftColumn = getByText('משק הבית').parent
+    const gridWrapper = leftColumn?.parent
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
+
+    // SettingsSection wraps its own title Text in an extra `mb-6` View, so
+    // the right column is one level further up than the left column's.
+    const rightColumn = getByText('ניהול כספים').parent?.parent
+    expect(rightColumn?.parent).toBe(gridWrapper)
+  })
 })

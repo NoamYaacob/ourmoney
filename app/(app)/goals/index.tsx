@@ -64,7 +64,7 @@ export default function Goals() {
   }
 
   return (
-    <Screen>
+    <Screen width="wide">
       <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('savings.title')}</Text>
 
       {error ? (
@@ -77,6 +77,10 @@ export default function Goals() {
               below already covers it (mobile-expo-reviewer finding, same
               as accounts/index.tsx and recurring/index.tsx). */}
           {goals.length === 0 && <EmptyState icon="🏆" message={t('savings.empty')} />}
+          {/* Responsive/desktop pass: a 2-column card grid once there's more
+              than one goal, desktop only — same calc()-free pattern as
+              accounts/index.tsx. */}
+          <View className={goals.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {goals.map((goal) => {
             const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
             return (
@@ -84,7 +88,7 @@ export default function Goals() {
                 key={goal.id}
                 onPress={() => router.push(`/goals/${goal.id}`)}
                 accessibilityRole="button"
-                className="mb-2"
+                className={goals.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
               >
                 <Card>
                   <View className="mb-1 flex-row items-center justify-between">
@@ -103,11 +107,12 @@ export default function Goals() {
               </Pressable>
             )
           })}
+          </View>
         </>
       )}
 
       {isAdding ? (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
           <Input
             label={t('savings.form.targetLabel')}
@@ -122,7 +127,7 @@ export default function Goals() {
           <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
         </View>
       ) : (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Button title={t('savings.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

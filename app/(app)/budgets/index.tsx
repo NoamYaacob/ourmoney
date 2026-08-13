@@ -139,7 +139,7 @@ export default function Budgets() {
   const addableCategories = categories.filter((c) => !progress.some((p) => p.categoryId === c.id))
 
   return (
-    <Screen>
+    <Screen width="wide">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
 
       <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
@@ -196,6 +196,12 @@ export default function Budgets() {
             </View>
           </Card>
 
+          {/* Responsive/desktop pass: category budgets and the uncategorized
+              queue sit side by side at desktop (`web:desktop:flex-row`);
+              mobile/tablet stay stacked in the original order (plain View
+              column default). */}
+          <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+          <View className="web:desktop:flex-1">
           {/* Per-category allocation editor + progress */}
           <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.categoriesTitle')}
@@ -297,7 +303,9 @@ export default function Budgets() {
               </Card>
             </View>
           )}
+          </View>
 
+          <View className="web:desktop:flex-1">
           {/* Uncategorized transactions queue */}
           <Text className="mb-2 mt-8 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}
@@ -376,6 +384,8 @@ export default function Budgets() {
               ))}
             </Card>
           )}
+          </View>
+          </View>
         </>
       )}
     </Screen>

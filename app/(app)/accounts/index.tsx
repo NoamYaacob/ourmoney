@@ -64,7 +64,7 @@ export default function Accounts() {
   }
 
   return (
-    <Screen>
+    <Screen width="wide">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('accounts.title')}</Text>
 
       {error ? (
@@ -78,12 +78,19 @@ export default function Accounts() {
               stacked directly above it was confusing, not helpful
               (mobile-expo-reviewer finding). */}
           {accounts.length === 0 && <EmptyState iconName="wallet-outline" message={t('accounts.empty')} compact />}
+          {/* Responsive/desktop pass: a 2-column card grid once there's more
+              than one account, desktop only. `w-[48%]` + `justify-between`
+              on a `flex-row flex-wrap` container is a calc()-free way to get
+              two even columns with a natural gap between them in Yoga/RN's
+              flexbox (there is no CSS Grid on native). Mobile/tablet keep
+              the original single-column list untouched. */}
+          <View className={accounts.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {accounts.map((account) => (
             <Pressable
               key={account.id}
               onPress={() => router.push(`/accounts/${account.id}`)}
               accessibilityRole="button"
-              className="mb-2"
+              className={accounts.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
             >
               <Card>
                 <View className="flex-row items-center gap-3">
@@ -118,37 +125,42 @@ export default function Accounts() {
               </Card>
             </Pressable>
           ))}
+          </View>
         </>
       )}
 
+      {/* Add-account form/button stay narrow even on a wide desktop
+          container — capped independently of the list above. */}
       {isAdding ? (
-        <Card>
-          <Input label={t('accounts.form.nameLabel')} value={name} onChangeText={setName} />
-          <Select
-            variant="row"
-            label={t('accounts.form.typeLabel')}
-            options={ACCOUNT_TYPE_OPTIONS.map((value) => ({
-              value,
-              label: t(`accounts.types.${value}`),
-              iconName: accountIconName(value),
-            }))}
-            value={type}
-            onChange={(value) => setType(value as AccountType)}
-            placeholder={t('accounts.form.typeLabel')}
-            sheetTitle={t('accounts.form.typeLabel')}
-            leadingIcon={
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                <Ionicons name={accountIconName(type)} size={17} color={iconColor} />
-              </View>
-            }
-          />
-          {createAccount.isError && <ErrorMessage message={t('accounts.errors.generic')} />}
-          <View className="mt-2">
-            <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
-          </View>
-        </Card>
+        <View className="web:desktop:max-w-[600px]">
+          <Card>
+            <Input label={t('accounts.form.nameLabel')} value={name} onChangeText={setName} />
+            <Select
+              variant="row"
+              label={t('accounts.form.typeLabel')}
+              options={ACCOUNT_TYPE_OPTIONS.map((value) => ({
+                value,
+                label: t(`accounts.types.${value}`),
+                iconName: accountIconName(value),
+              }))}
+              value={type}
+              onChange={(value) => setType(value as AccountType)}
+              placeholder={t('accounts.form.typeLabel')}
+              sheetTitle={t('accounts.form.typeLabel')}
+              leadingIcon={
+                <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                  <Ionicons name={accountIconName(type)} size={17} color={iconColor} />
+                </View>
+              }
+            />
+            {createAccount.isError && <ErrorMessage message={t('accounts.errors.generic')} />}
+            <View className="mt-2">
+              <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
+            </View>
+          </Card>
+        </View>
       ) : (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Button title={t('accounts.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

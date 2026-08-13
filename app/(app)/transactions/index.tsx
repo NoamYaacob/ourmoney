@@ -41,6 +41,7 @@ export default function Transactions() {
   return (
     <Screen
       scroll={false}
+      width="wide"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
       <View className="mb-6 flex-row items-center justify-between">

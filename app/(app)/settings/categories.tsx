@@ -87,9 +87,14 @@ export default function Categories() {
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
 
   return (
-    <Screen>
+    <Screen width="wide">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('categories.title')}</Text>
 
+      {/* Responsive/desktop pass: categories in one column, rules in a
+          second column — desktop only (`web:desktop:flex-row`). Mobile/
+          tablet stay a single stacked column in the original order. */}
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-1">
       <Text className="mb-2 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('categories.customTitle')}
       </Text>
@@ -206,7 +211,9 @@ export default function Categories() {
           />
         </Card>
       </View>
+      </View>
 
+      <View className="web:desktop:flex-1">
       <Text className="mb-2 mt-8 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('categories.rulesTitle')}
       </Text>
@@ -417,6 +424,8 @@ export default function Categories() {
           loading={applyRetroactively.isPending}
           onPress={() => applyRetroactively.mutate()}
         />
+      </View>
+      </View>
       </View>
     </Screen>
   )

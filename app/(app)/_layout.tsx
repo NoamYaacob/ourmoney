@@ -1,8 +1,9 @@
-import { Tabs } from 'expo-router'
-import { StyleSheet, Text, View, type ColorValue } from 'react-native'
+import { Tabs, useRouter, useSegments } from 'expo-router'
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, type ColorValue } from 'react-native'
 import { useColorScheme } from 'nativewind'
 import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
+import type { ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBiometricGuard } from '@/features/auth/hooks/useBiometricGuard'
 import { useAuth } from '@/features/auth/hooks/useAuth'
@@ -10,6 +11,62 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
 import { colors } from '@/constants/colors'
+
+const DESKTOP_BREAKPOINT = 1200
+
+interface RailDestination {
+  segment: string
+  href: '/dashboard' | '/transactions' | '/budgets' | '/settings'
+  labelKey: 'tabs.dashboard' | 'tabs.transactions' | 'tabs.budgets' | 'tabs.settings'
+  icon: ComponentProps<typeof Ionicons>['name']
+  iconActive: ComponentProps<typeof Ionicons>['name']
+}
+
+const RAIL_DESTINATIONS: RailDestination[] = [
+  { segment: 'dashboard', href: '/dashboard', labelKey: 'tabs.dashboard', icon: 'home-outline', iconActive: 'home' },
+  { segment: 'transactions', href: '/transactions', labelKey: 'tabs.transactions', icon: 'receipt-outline', iconActive: 'receipt' },
+  { segment: 'budgets', href: '/budgets', labelKey: 'tabs.budgets', icon: 'wallet-outline', iconActive: 'wallet' },
+  { segment: 'settings', href: '/settings', labelKey: 'tabs.settings', icon: 'settings-outline', iconActive: 'settings' },
+]
+
+// Responsive/desktop pass: replaces the bottom tab bar with a left/right
+// (RTL-aware) side rail at the `desktop` breakpoint on web only — same 4
+// destinations, no hidden routes exposed. Only ever mounted when
+// `Platform.OS === 'web'` (see AppLayout below), so it never renders under
+// jest-expo's default native platform and can't affect
+// `_layout.test.tsx`'s "exactly 4 tab buttons" assertion. `flex-row` (not
+// `flex-row-reverse`) auto-mirrors to the right edge under the app's forced
+// RTL flag, matching this codebase's established RTL convention.
+export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
+  const { t } = useTranslation()
+  const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
+  const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
+
+  return (
+    <View className="hidden web:desktop:flex w-[220px] shrink-0 border-e border-border-light bg-surface-light px-3 pt-8 dark:border-border-dark dark:bg-surface-dark">
+      {RAIL_DESTINATIONS.map((dest) => {
+        const focused = dest.segment === activeSegment
+        const color = focused ? activeColor : inactiveColor
+        return (
+          <Pressable
+            key={dest.segment}
+            onPress={() => router.push(dest.href)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: focused }}
+            className={`mb-1 flex-row items-center gap-3 rounded-control px-3 py-2.5 ${focused ? 'bg-surfaceMuted-light dark:bg-surfaceMuted-dark' : ''}`}
+          >
+            <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={22} />
+            <Text className={focused ? 'text-body font-semibold' : 'text-body font-normal'} style={{ color }}>
+              {t(dest.labelKey)}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
 
 // Design Phase 1: the active tab previously read only from the icon/label
 // tint swap, which is faint at a glance. Bolding the active label adds a
@@ -83,6 +140,20 @@ export default function AppLayout() {
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const backgroundColor = scheme === 'dark' ? colors.surface.dark : colors.surface.light
   const borderColor = scheme === 'dark' ? colors.border.dark : colors.border.light
+  // Responsive/desktop pass: `tabBarStyle` is a plain native style object,
+  // not a className, so hiding the bottom bar only at the desktop
+  // breakpoint needs an actual width read rather than a CSS media query —
+  // this is the one nav-shell decision that needs it (per the task brief's
+  // own fallback guidance), everything else in this pass stays CSS-driven.
+  // The DesktopSideRail's own visibility is still purely CSS
+  // (`hidden web:desktop:flex`); this value only controls the bottom bar.
+  const { width: windowWidth } = useWindowDimensions()
+  const isWeb = Platform.OS === 'web'
+  const isDesktopWeb = isWeb && windowWidth >= DESKTOP_BREAKPOINT
+  // segments[0] is the '(app)' route group; segments[1] is the tab root
+  // ('dashboard' | 'transactions' | 'budgets' | 'settings' | ...).
+  const segments = useSegments()
+  const activeSegment = segments[1] ?? ''
 
   return (
     <>
@@ -91,70 +162,85 @@ export default function AppLayout() {
         importantForAccessibility={isLocked ? 'no-hide-descendants' : 'auto'}
         accessibilityElementsHidden={isLocked}
       >
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-            tabBarActiveTintColor: activeColor,
-            tabBarInactiveTintColor: inactiveColor,
-            tabBarStyle: { backgroundColor, borderTopColor: borderColor },
-          }}
-        >
-          <Tabs.Screen
-            name="dashboard/index"
-            options={{
-              title: t('tabs.dashboard'),
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size} />
-              ),
-              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.dashboard')} focused={focused} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="transactions/index"
-            options={{
-              title: t('tabs.transactions'),
-              // receipt reads as "line-item money movements" — more coherent
-              // with the tab's actual content than the generic list glyph.
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color} size={size} />
-              ),
-              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.transactions')} focused={focused} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="budgets/index"
-            options={{
-              title: t('tabs.budgets'),
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons name={focused ? 'wallet' : 'wallet-outline'} color={color} size={size} />
-              ),
-              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.budgets')} focused={focused} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="settings/index"
-            options={{
-              title: t('tabs.settings'),
-              tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons name={focused ? 'settings' : 'settings-outline'} color={color} size={size} />
-              ),
-              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.settings')} focused={focused} color={color} />,
-            }}
-          />
-          {/* Every screen below is reached via router.push from Settings (or
-              from a list screen's own row), never as a tab — excluded from
-              the tab bar via href: null. See this file's own header comment. */}
-          <Tabs.Screen name="transactions/new" options={{ href: null }} />
-          <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
-          <Tabs.Screen name="transactions/import" options={{ href: null }} />
-          <Tabs.Screen name="accounts/index" options={{ href: null }} />
-          <Tabs.Screen name="accounts/[id]" options={{ href: null }} />
-          <Tabs.Screen name="goals/index" options={{ href: null }} />
-          <Tabs.Screen name="goals/[id]" options={{ href: null }} />
-          <Tabs.Screen name="recurring/index" options={{ href: null }} />
-          <Tabs.Screen name="recurring/[id]" options={{ href: null }} />
-          <Tabs.Screen name="settings/categories" options={{ href: null }} />
-        </Tabs>
+        {/* `web:flex-row` no-ops on native (Platform.OS !== 'web' never
+            matches the variant), so this wrapper is a plain flex:1 column —
+            byte-identical to the previous single View — everywhere except a
+            real web build. The side rail itself is only ever mounted when
+            Platform.OS === 'web', so native's render tree (and
+            `_layout.test.tsx`'s exactly-4-tab-buttons assertion, which runs
+            under jest-expo's default native platform) is completely
+            unaffected. */}
+        <View className="flex-1 web:flex-row">
+          {isWeb && <DesktopSideRail activeSegment={activeSegment} />}
+          <View className="flex-1">
+            <Tabs
+              screenOptions={{
+                headerShown: false,
+                tabBarActiveTintColor: activeColor,
+                tabBarInactiveTintColor: inactiveColor,
+                tabBarStyle: isDesktopWeb
+                  ? { display: 'none' }
+                  : { backgroundColor, borderTopColor: borderColor },
+              }}
+            >
+              <Tabs.Screen
+                name="dashboard/index"
+                options={{
+                  title: t('tabs.dashboard'),
+                  tabBarIcon: ({ color, size, focused }) => (
+                    <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size} />
+                  ),
+                  tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.dashboard')} focused={focused} color={color} />,
+                }}
+              />
+              <Tabs.Screen
+                name="transactions/index"
+                options={{
+                  title: t('tabs.transactions'),
+                  // receipt reads as "line-item money movements" — more coherent
+                  // with the tab's actual content than the generic list glyph.
+                  tabBarIcon: ({ color, size, focused }) => (
+                    <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color} size={size} />
+                  ),
+                  tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.transactions')} focused={focused} color={color} />,
+                }}
+              />
+              <Tabs.Screen
+                name="budgets/index"
+                options={{
+                  title: t('tabs.budgets'),
+                  tabBarIcon: ({ color, size, focused }) => (
+                    <Ionicons name={focused ? 'wallet' : 'wallet-outline'} color={color} size={size} />
+                  ),
+                  tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.budgets')} focused={focused} color={color} />,
+                }}
+              />
+              <Tabs.Screen
+                name="settings/index"
+                options={{
+                  title: t('tabs.settings'),
+                  tabBarIcon: ({ color, size, focused }) => (
+                    <Ionicons name={focused ? 'settings' : 'settings-outline'} color={color} size={size} />
+                  ),
+                  tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.settings')} focused={focused} color={color} />,
+                }}
+              />
+              {/* Every screen below is reached via router.push from Settings (or
+                  from a list screen's own row), never as a tab — excluded from
+                  the tab bar via href: null. See this file's own header comment. */}
+              <Tabs.Screen name="transactions/new" options={{ href: null }} />
+              <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
+              <Tabs.Screen name="transactions/import" options={{ href: null }} />
+              <Tabs.Screen name="accounts/index" options={{ href: null }} />
+              <Tabs.Screen name="accounts/[id]" options={{ href: null }} />
+              <Tabs.Screen name="goals/index" options={{ href: null }} />
+              <Tabs.Screen name="goals/[id]" options={{ href: null }} />
+              <Tabs.Screen name="recurring/index" options={{ href: null }} />
+              <Tabs.Screen name="recurring/[id]" options={{ href: null }} />
+              <Tabs.Screen name="settings/categories" options={{ href: null }} />
+            </Tabs>
+          </View>
+        </View>
       </View>
       {isLocked && (
         <BlurView intensity={80} pointerEvents="auto" accessibilityViewIsModal style={styles.overlay}>

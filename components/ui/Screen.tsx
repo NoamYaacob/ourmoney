@@ -7,6 +7,7 @@
 import type { ReactNode } from 'react'
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { CONTENT_WIDTH, type ContentWidth } from '@/constants/layout'
 
 interface ScreenProps {
   children: ReactNode
@@ -23,16 +24,29 @@ interface ScreenProps {
   // so it lines up with the centered column on web instead of drifting to
   // the true edge of a wide browser window.
   floatingAction?: ReactNode
+  // Responsive/desktop pass: which of the shared CONTENT_WIDTH tokens caps
+  // this screen's content on web tablet/desktop. Defaults to 'narrow' — the
+  // original single 560px clamp every screen had — so any call site that
+  // doesn't pass this prop keeps its exact current appearance. Mobile is
+  // always full width regardless of this prop.
+  width?: ContentWidth
 }
 
-export function Screen({ children, scroll = true, center = false, keyboardAvoiding = false, floatingAction }: ScreenProps) {
+export function Screen({
+  children,
+  scroll = true,
+  center = false,
+  keyboardAvoiding = false,
+  floatingAction,
+  width = 'narrow',
+}: ScreenProps) {
   // Design Phase 1: on native this is a no-op (web: variants only apply on
   // web), but on a wide browser window the app was stretching every screen
   // edge-to-edge like a desktop web app rather than the phone-shaped surface
   // it actually is. `web:mx-auto` centers a capped-width column instead —
   // applied here, once, so it covers every screen through the shared
   // primitive rather than each screen needing its own wrapper.
-  const widthClamp = 'w-full web:max-w-[560px] web:mx-auto'
+  const widthClamp = CONTENT_WIDTH[width]
   const content = scroll ? (
     <ScrollView
       contentContainerClassName={`${widthClamp} px-6 pb-10 pt-6${center ? ' grow justify-center' : ''}`}

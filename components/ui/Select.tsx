@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { DIALOG_WIDTH_CLASS } from '@/constants/layout'
 
 export interface SelectOption {
   value: string
@@ -101,7 +102,7 @@ export function Select({
       <Modal visible={isOpen} transparent animationType="slide" onRequestClose={() => setIsOpen(false)}>
         <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setIsOpen(false)}>
           {variant === 'row' ? (
-            <View className="max-h-[70%] w-full web:max-w-[560px] web:self-center rounded-t-2xl bg-surface-light dark:bg-surface-dark">
+            <View className={`max-h-[70%] w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light dark:bg-surface-dark`}>
               {/* Drag-handle affordance — this Modal is a plain RN Modal, not
                   a real gesture-driven bottom sheet, so there is nothing to
                   wire up here beyond the visual cue (no new library added). */}
@@ -141,7 +142,7 @@ export function Select({
               <SafeAreaView edges={['bottom']} />
             </View>
           ) : (
-            <View className="max-h-96 w-full web:max-w-[560px] web:self-center rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark">
+            <View className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark`}>
               <FlatList
                 data={options}
                 keyExtractor={(item) => item.value}

@@ -116,7 +116,10 @@ export default function Dashboard() {
   const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
 
   return (
-    <Screen floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}>
+    <Screen
+      width="wide"
+      floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
+    >
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
 
       <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
@@ -163,9 +166,17 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('dashboard.categoriesTitle')}
-      </Text>
+      {/* Responsive/desktop pass: below the hero, a 2/3 main column
+          (category budgets + recent transactions) and a 1/3 sidebar
+          (analytics/insights) — desktop only (`web:desktop:flex-row`).
+          Mobile and tablet stay a single stacked column, unchanged, since
+          the plain View default (flexDirection: column) already renders
+          these two wrappers one after another in source order. */}
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+        <View className="web:desktop:flex-[2]">
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.categoriesTitle')}
+          </Text>
       {isProgressLoading ? (
         <SkeletonList rows={3} />
       ) : progressError ? (
@@ -278,7 +289,9 @@ export default function Dashboard() {
           })}
         </Card>
       )}
+        </View>
 
+        <View className="web:desktop:flex-1">
       {analyticsError ? (
         <>
           <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
@@ -360,6 +373,8 @@ export default function Dashboard() {
           )}
         </>
       )}
+        </View>
+      </View>
     </Screen>
   )
 }

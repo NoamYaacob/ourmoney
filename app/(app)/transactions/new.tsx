@@ -122,7 +122,7 @@ export default function NewTransaction() {
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="narrow">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('transactions.form.title')}</Text>
 
       {isHouseholdLoading || isAccountsLoading || isCategoriesLoading ? (
