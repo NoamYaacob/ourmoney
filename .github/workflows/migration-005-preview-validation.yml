@@ -89,8 +89,8 @@ jobs:
               process.exit(1);
             }
             console.log('Found project:', JSON.stringify({ id: p.id, name: p.name, region: p.region, status: p.status }));
-            if (p.name !== 'OurMoney Preview') {
-              console.error('ABORT: project name is \"' + p.name + '\", expected exactly \"OurMoney Preview\". Refusing to proceed.');
+            if (p.name !== 'OurMoney Preview.') {
+              console.error('ABORT: project name is \"' + p.name + '\", expected exactly \"OurMoney Preview.\" (confirmed via the Management API on the first run of this workflow, which caught the trailing period). Refusing to proceed.');
               process.exit(1);
             }
             fs.appendFileSync(process.env.GITHUB_ENV, 'PROJECT_REGION=' + p.region + '\n');
