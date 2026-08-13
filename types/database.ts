@@ -699,6 +699,7 @@ export type Database = {
       generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
       is_household_member: { Args: { hid: string }; Returns: boolean }
+      leave_household: { Args: never; Returns: Json }
       save_budget_allocations: {
         Args: { p_allocations: Json; p_period_start: string }
         Returns: Json
