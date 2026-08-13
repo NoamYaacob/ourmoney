@@ -8,6 +8,7 @@ import { useColorScheme } from 'nativewind'
 import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
 import { formatILS } from '@/lib/money/format'
+import { formatMonthShortLabel } from '@/features/budgets/lib/budgetPeriod'
 import type { MonthlyTrendPoint } from '../lib/monthlyTrend'
 
 interface MonthlyTrendChartProps {
@@ -32,7 +33,10 @@ export function MonthlyTrendChart({ points }: MonthlyTrendChartProps) {
   const chartSummary = points
     .map((p) => `${p.periodStart.slice(0, 7)}: ${t('dashboard.analytics.income')} ${formatILS(p.incomeAgorot)}, ${t('dashboard.analytics.expense')} ${formatILS(p.expenseAgorot)}`)
     .join('. ')
-  const incomeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
+  // positive/danger — the same financial-meaning tokens used everywhere
+  // else a figure's sign matters (see constants/colors.ts). Not accent:
+  // accent is reserved for interactive elements, not a data readout.
+  const incomeColor = scheme === 'dark' ? colors.positive.dark : colors.positive.light
   const expenseColor = scheme === 'dark' ? colors.danger.dark : colors.danger.light
 
   const maxAgorot = Math.max(1, ...points.flatMap((p) => [p.incomeAgorot, p.expenseAgorot]))
@@ -80,8 +84,8 @@ export function MonthlyTrendChart({ points }: MonthlyTrendChartProps) {
       </View>
       <View className="mt-2 flex-row flex-wrap gap-3">
         {points.map((point) => (
-          <Text key={point.periodStart} className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-            {point.periodStart.slice(0, 7)}
+          <Text key={point.periodStart} className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+            {formatMonthShortLabel(point.periodStart)}
           </Text>
         ))}
       </View>

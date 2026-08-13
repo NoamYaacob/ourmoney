@@ -381,6 +381,8 @@
     "title": "לוח בקרה",
     "spent": "הוצא החודש",
     "remaining": "נותר",
+    "previousMonth": "חודש קודם",
+    "nextMonth": "חודש הבא",
     "categoriesTitle": "לפי קטגוריה",
     "noBudget": "עדיין לא הוגדר תקציב לחודש זה.",
     "recentTitle": "תנועות אחרונות",

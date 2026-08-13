@@ -20,14 +20,16 @@ interface EmptyStateProps {
 export function EmptyState({ icon, message, actionLabel, onAction }: EmptyStateProps) {
   return (
     <View className="items-center justify-center gap-3 px-6 py-8">
-      <Text
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        className="text-4xl"
-      >
-        {icon}
-      </Text>
-      <Text className="text-center text-sm text-inkMuted-light dark:text-inkMuted-dark">{message}</Text>
+      <View className="h-16 w-16 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+        <Text
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          className="text-3xl"
+        >
+          {icon}
+        </Text>
+      </View>
+      <Text className="text-center text-body text-inkMuted-light dark:text-inkMuted-dark">{message}</Text>
       {actionLabel && onAction && (
         <View className="mt-1 w-full max-w-xs">
           <Button title={actionLabel} onPress={onAction} variant="secondary" />

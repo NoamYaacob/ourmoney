@@ -7,7 +7,10 @@ interface ProgressBarProps {
 
 export function ProgressBar({ percent, overBudget = false }: ProgressBarProps) {
   const clamped = percent === null ? 0 : Math.min(100, Math.max(0, percent))
-  const barColor = overBudget || (percent ?? 0) >= 100 ? 'bg-danger-light dark:bg-danger-dark' : 'bg-accent-light dark:bg-accent-dark'
+  // `positive` is the financial-good token (under budget); `danger` only
+  // once a category is actually at/over its allocation. Not `accent` —
+  // accent is reserved for interactive elements, not a status readout.
+  const barColor = overBudget || (percent ?? 0) >= 100 ? 'bg-danger-light dark:bg-danger-dark' : 'bg-positive-light dark:bg-positive-dark'
 
   return (
     <View

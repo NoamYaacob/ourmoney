@@ -1,5 +1,13 @@
 import { describe, expect, it } from '@jest/globals'
-import { getCurrentMonthPeriodStart, getPeriodEnd, getPeriodStartForDate, localDateString, shiftMonth } from './budgetPeriod'
+import {
+  formatMonthLabel,
+  formatMonthShortLabel,
+  getCurrentMonthPeriodStart,
+  getPeriodEnd,
+  getPeriodStartForDate,
+  localDateString,
+  shiftMonth,
+} from './budgetPeriod'
 
 describe('localDateString', () => {
   it('formats a local date as YYYY-MM-DD, zero-padded', () => {
@@ -73,5 +81,27 @@ describe('shiftMonth', () => {
 
   it('rolls over a year backward', () => {
     expect(shiftMonth('2026-01-01', -1)).toBe('2025-12-01')
+  })
+})
+
+describe('formatMonthLabel', () => {
+  it('renders the full Hebrew month name and year for a periodStart', () => {
+    // The dashboard previously showed the raw periodStart ("2026-08"); this
+    // is the localized replacement (Design Phase 1).
+    expect(formatMonthLabel('2026-08-01')).toBe('אוגוסט 2026')
+  })
+
+  it('renders January correctly (month-index-off-by-one is the classic Date bug here)', () => {
+    expect(formatMonthLabel('2026-01-01')).toBe('ינואר 2026')
+  })
+
+  it('renders December correctly (year boundary)', () => {
+    expect(formatMonthLabel('2026-12-01')).toBe('דצמבר 2026')
+  })
+})
+
+describe('formatMonthShortLabel', () => {
+  it('renders an abbreviated Hebrew month name with no year, for chart axis labels', () => {
+    expect(formatMonthShortLabel('2026-08-01')).toBe('אוג׳')
   })
 })

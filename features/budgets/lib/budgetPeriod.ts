@@ -40,3 +40,24 @@ export function shiftMonth(periodStart: string, deltaMonths: number): string {
   const shifted = new Date(year!, month! - 1 + deltaMonths, 1)
   return getCurrentMonthPeriodStart(shifted)
 }
+
+// Localized "month year" label for a periodStart, e.g. "אוגוסט 2026" — the
+// display counterpart to the raw YYYY-MM-DD periodStart string, which is
+// for computation/query keys only and was never meant to reach the screen.
+// Mirrors lib/money/format.ts's module-level Intl formatter pattern (built
+// once, not per render/call).
+const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' })
+
+export function formatMonthLabel(periodStart: string): string {
+  const [year, month] = periodStart.split('-').map(Number)
+  return MONTH_LABEL_FORMATTER.format(new Date(year!, month! - 1, 1))
+}
+
+// Short form ("אוג׳") for space-constrained contexts like chart axis
+// labels, where 6+ full "month year" labels would overlap.
+const MONTH_SHORT_LABEL_FORMATTER = new Intl.DateTimeFormat('he-IL', { month: 'short' })
+
+export function formatMonthShortLabel(periodStart: string): string {
+  const [year, month] = periodStart.split('-').map(Number)
+  return MONTH_SHORT_LABEL_FORMATTER.format(new Date(year!, month! - 1, 1))
+}

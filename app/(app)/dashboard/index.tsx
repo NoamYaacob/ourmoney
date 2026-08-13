@@ -1,13 +1,15 @@
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePeriodStore } from '@/store/periodStore'
-import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
+import { formatMonthLabel, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 import { remainingAgorot } from '@/lib/money/arithmetic'
 import { formatILS } from '@/lib/money/format'
 import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
@@ -26,6 +28,8 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { HIT_SLOP } from '@/constants/accessibility'
+import { colors } from '@/constants/colors'
+import { useRTL } from '@/hooks/useRTL'
 
 // Real MVP-2 dashboard, replacing the M1 placeholder. Every figure here is
 // either a direct query result or derived via lib/money — never a bare `0`
@@ -33,6 +37,9 @@ import { HIT_SLOP } from '@/constants/accessibility'
 export default function Dashboard() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { flip } = useRTL()
+  const { colorScheme: scheme } = useColorScheme()
+  const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
@@ -100,19 +107,35 @@ export default function Dashboard() {
     )
   }
 
+  const overallPercent = totalAllocatedAgorot > 0 ? (totalSpentAgorot / totalAllocatedAgorot) * 100 : null
+  const remaining = remainingAgorot(totalAllocatedAgorot, totalSpentAgorot)
+  const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
+
   return (
     <Screen>
-      <View className="mb-4 flex-row items-center justify-between">
-        <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
-      </View>
+      <Text className="mb-4 text-title font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
 
-      <View className="mb-4 flex-row items-center justify-between">
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
-          <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.prevMonth')}</Text>
+      <View className="mb-5 flex-row items-center justify-between">
+        <Pressable
+          onPress={() => setPeriodStart(shiftMonth(periodStart, -1))}
+          accessibilityRole="button"
+          accessibilityLabel={t('dashboard.previousMonth')}
+          hitSlop={HIT_SLOP}
+          className="h-9 w-9 items-center justify-center rounded-full active:bg-surfaceMuted-light dark:active:bg-surfaceMuted-dark"
+        >
+          <Ionicons name={flip('chevron-back', 'chevron-forward')} size={20} color={iconColor} />
         </Pressable>
-        <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{periodStart.slice(0, 7)}</Text>
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
-          <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.nextMonth')}</Text>
+        <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">
+          {formatMonthLabel(periodStart)}
+        </Text>
+        <Pressable
+          onPress={() => setPeriodStart(shiftMonth(periodStart, 1))}
+          accessibilityRole="button"
+          accessibilityLabel={t('dashboard.nextMonth')}
+          hitSlop={HIT_SLOP}
+          className="h-9 w-9 items-center justify-center rounded-full active:bg-surfaceMuted-light dark:active:bg-surfaceMuted-dark"
+        >
+          <Ionicons name={flip('chevron-forward', 'chevron-back')} size={20} color={iconColor} />
         </Pressable>
       </View>
 
@@ -122,22 +145,24 @@ export default function Dashboard() {
         <LoadingSpinner />
       ) : (
         <Card>
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-            <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">
-              {formatILS(totalSpentAgorot)}
-            </Text>
+          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.remaining')}</Text>
+          <Text
+            className={`mt-1 text-display font-bold ${
+              isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
+            }`}
+          >
+            {formatILS(remaining)}
+          </Text>
+          <View className="mt-4">
+            <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
           </View>
-          <View className="mt-1 flex-row justify-between">
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.remaining')}</Text>
-            <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">
-              {formatILS(remainingAgorot(totalAllocatedAgorot, totalSpentAgorot))}
-            </Text>
-          </View>
+          <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+            {formatILS(totalSpentAgorot)} {t('dashboard.spent')}
+          </Text>
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.categoriesTitle')}
       </Text>
       {isProgressLoading ? (
@@ -151,15 +176,15 @@ export default function Dashboard() {
           {progress.map((category, index) => (
             <View key={category.categoryId}>
               {index > 0 && (
-                <View className="my-2">
+                <View className="my-3">
                   <Divider />
                 </View>
               )}
-              <View className="mb-1 flex-row items-center justify-between">
-                <Text className="text-sm text-ink-light dark:text-ink-dark">
+              <View className="mb-1.5 flex-row items-center justify-between">
+                <Text className="text-body text-ink-light dark:text-ink-dark">
                   {category.categoryIcon} {category.categoryNameHe}
                 </Text>
-                <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                   {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
                 </Text>
               </View>
@@ -169,7 +194,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.recentTitle')}
       </Text>
       {transactionsError ? (
@@ -188,14 +213,22 @@ export default function Dashboard() {
           {recentTransactions.map((txn, index) => (
             <View key={txn.id}>
               {index > 0 && (
-                <View className="my-2">
+                <View className="my-3">
                   <Divider />
                 </View>
               )}
               <Pressable onPress={() => router.push(`/transactions/${txn.id}`)} accessibilityRole="button">
                 <View className="flex-row items-center justify-between">
-                  <Text className="flex-1 text-sm text-ink-light dark:text-ink-dark">{txn.description}</Text>
-                  <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                    {txn.description}
+                  </Text>
+                  <Text
+                    className={`text-body font-medium ${
+                      txn.amount_agorot > 0
+                        ? 'text-positive-light dark:text-positive-dark'
+                        : 'text-ink-light dark:text-ink-dark'
+                    }`}
+                  >
                     {formatILS(txn.amount_agorot)}
                   </Text>
                 </View>
@@ -205,13 +238,13 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.trendTitle')}
       </Text>
       {analyticsError ? (
         <ErrorMessage message={t('dashboard.errors.generic')} />
       ) : isAnalyticsLoading ? (
-        <SkeletonList rows={1} rowClassName="h-40 w-full rounded-xl" />
+        <SkeletonList rows={1} rowClassName="h-40 w-full rounded-card" />
       ) : monthlyTrendIsEmpty ? (
         <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
       ) : (
@@ -220,7 +253,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.breakdownTitle')}
       </Text>
       {analyticsError ? (
@@ -239,7 +272,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.topCategoriesTitle')}
       </Text>
       {analyticsError ? (

@@ -39,26 +39,33 @@ interface ButtonProps {
   maxFontSizeMultiplier?: number
 }
 
+// Design Phase 1: primary moved from a raw bg-slate-900/100 (no relation to
+// the token system) to the brand accent — this is the one place the app's
+// single confident brand color should show up as a filled surface, not just
+// text/icons. rounded-control is the new shared radius token for pressable/
+// input-sized elements (see tailwind.config.js).
 const containerByVariant: Record<ButtonVariant, string> = {
-  primary: 'items-center rounded-xl bg-slate-900 px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-slate-100',
+  primary: 'items-center rounded-control bg-accent-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-accent-dark',
   secondary:
-    'items-center rounded-xl border border-border-light bg-surfaceMuted-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:border-border-dark dark:bg-surfaceMuted-dark',
-  ghost: 'items-center px-4 py-3 active:opacity-70 disabled:opacity-40',
+    'items-center rounded-control border border-border-light bg-surfaceMuted-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:border-border-dark dark:bg-surfaceMuted-dark',
+  ghost: 'items-center rounded-control px-4 py-3 active:opacity-70 disabled:opacity-40',
   // Milestone 9: a full-weight destructive action (e.g. delete account) needs
   // stronger visual weight than categories.tsx's plain danger-colored Text —
   // a solid danger-colored button, same shape as primary.
-  danger: 'items-center rounded-xl bg-danger-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-danger-dark',
+  danger: 'items-center rounded-control bg-danger-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-danger-dark',
 }
 
 const textByVariant: Record<ButtonVariant, string> = {
-  primary: 'font-semibold text-white dark:text-slate-900',
+  // accent.dark (#4fc9a8) is a bright teal, not a dark fill — white text on
+  // it would fail contrast, so dark mode flips to ink-toned text instead
+  // (script-verified 8.1:1, see constants/colors.ts's own audit).
+  primary: 'font-semibold text-white dark:text-ink-light',
   secondary: 'font-semibold text-ink-light dark:text-ink-dark',
   ghost: 'text-sm font-semibold text-accent-light dark:text-accent-dark',
-  // danger.dark (#f87171) is a lighter red than danger.light — white text on
-  // it computes to ~2.8:1 contrast, below WCAG AA's 4.5:1 floor (mobile
-  // review finding, Milestone 9). Swaps to dark text in dark mode instead,
-  // the exact same text-color-flip pattern primary already uses.
-  danger: 'font-semibold text-white dark:text-slate-900',
+  // danger.dark is a lighter red than danger.light — white text on it fails
+  // WCAG AA (mobile review finding, Milestone 9). Swaps to dark ink-toned
+  // text in dark mode instead, the same flip primary uses.
+  danger: 'font-semibold text-white dark:text-ink-light',
 }
 
 export function Button({
@@ -83,18 +90,19 @@ export function Button({
     >
       {loading ? (
         <ActivityIndicator
+          // Mirrors textByVariant: primary/danger fills are solid color, so
+          // the spinner is white in light mode and flips to ink.light in
+          // dark mode (same accent.dark/danger.dark contrast fix as the
+          // text). secondary/ghost have no filled background, so the
+          // spinner stays accent-colored regardless of variant.
           color={
-            variant === 'primary'
+            variant === 'primary' || variant === 'danger'
               ? scheme === 'dark'
-                ? colors.surface.dark
-                : colors.surface.light
-              : variant === 'danger'
-                ? scheme === 'dark'
-                  ? colors.ink.light
-                  : colors.surface.light
-                : scheme === 'dark'
-                  ? colors.accent.dark
-                  : colors.accent.light
+                ? colors.ink.light
+                : '#ffffff'
+              : scheme === 'dark'
+                ? colors.accent.dark
+                : colors.accent.light
           }
         />
       ) : (

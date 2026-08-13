@@ -4,7 +4,9 @@
 
 import { View } from 'react-native'
 import Svg, { Circle } from 'react-native-svg'
+import { useColorScheme } from 'nativewind'
 import { useTranslation } from 'react-i18next'
+import { colors } from '@/constants/colors'
 import { formatILS } from '@/lib/money/format'
 import type { CategoryBreakdownEntry } from '../lib/categoryBreakdown'
 
@@ -17,11 +19,18 @@ interface CategoryDonutChartProps {
 // A small, fixed palette cycled by index — categories don't currently carry
 // a chart-specific color (categories.color exists for other UI, but reusing
 // it here isn't required by the M7 spec), so a stable, distinct rotation is
-// simplest and fully deterministic.
-const SEGMENT_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
+// simplest and fully deterministic. Design Phase 1: replaced the generic
+// Tailwind-default rainbow (indigo/sky/emerald/amber/red/violet/pink/teal)
+// with a set built around the brand's own teal-green family, extended by
+// hue rather than by switching palettes entirely — reads as one considered
+// idea across `positive`/`accent` and this chart, not an unrelated rainbow
+// dropped on top of it.
+const SEGMENT_COLORS = ['#0f6b5c', '#237a4e', '#4a90a4', '#c98a3b', '#8a6fa8', '#b3432e', '#5b8c6e', '#3d6b8a']
 
 export function CategoryDonutChart({ breakdown, categoryNameById = {}, size = 140 }: CategoryDonutChartProps) {
   const { t } = useTranslation()
+  const { colorScheme: scheme } = useColorScheme()
+  const emptyRingColor = scheme === 'dark' ? colors.border.dark : colors.border.light
   const radius = size / 2 - 10
   const circumference = 2 * Math.PI * radius
   const totalAgorot = breakdown.reduce((sum, entry) => sum + entry.spentAgorot, 0)
@@ -46,7 +55,7 @@ export function CategoryDonutChart({ breakdown, categoryNameById = {}, size = 14
       <View testID="category-donut-chart-hidden-wrapper" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Svg testID="category-donut-chart-svg" width={size} height={size}>
           {totalAgorot <= 0 ? (
-            <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#e2e8f0" strokeWidth={14} fill="none" />
+            <Circle cx={size / 2} cy={size / 2} r={radius} stroke={emptyRingColor} strokeWidth={14} fill="none" />
           ) : (
             breakdown.map((entry, index) => {
               const fraction = entry.spentAgorot / totalAgorot

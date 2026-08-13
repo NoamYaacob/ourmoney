@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View, type ColorValue } from 'react-native'
 import { useColorScheme } from 'nativewind'
 import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
@@ -10,6 +10,26 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
 import { colors } from '@/constants/colors'
+
+// Design Phase 1: the active tab previously read only from the icon/label
+// tint swap, which is faint at a glance. Bolding the active label adds a
+// second, independent active-state cue (weight, not just hue) without
+// touching layout — labelStyle itself can't key off `focused`, so this
+// renders the label directly. A standalone named component (rather than a
+// factory returning an inline arrow function) so it has a display name for
+// React DevTools/lint, and so its identity is stable across AppLayout's
+// re-renders instead of being recreated as a new closure every time.
+function TabBarLabel({ title, focused, color }: { title: string; focused: boolean; color: ColorValue }) {
+  return (
+    <Text
+      className={focused ? 'text-caption font-semibold' : 'text-caption font-normal'}
+      style={{ color }}
+      maxFontSizeMultiplier={1.8}
+    >
+      {title}
+    </Text>
+  )
+}
 
 // Milestone 5's real tab bar (Dashboard/Transactions/Budgets/Settings),
 // replacing Milestone 1's single-screen Stack placeholder. The biometric
@@ -86,15 +106,19 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size} />
               ),
+              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.dashboard')} focused={focused} color={color} />,
             }}
           />
           <Tabs.Screen
             name="transactions/index"
             options={{
               title: t('tabs.transactions'),
+              // receipt reads as "line-item money movements" — more coherent
+              // with the tab's actual content than the generic list glyph.
               tabBarIcon: ({ color, size, focused }) => (
-                <Ionicons name={focused ? 'list' : 'list-outline'} color={color} size={size} />
+                <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color} size={size} />
               ),
+              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.transactions')} focused={focused} color={color} />,
             }}
           />
           <Tabs.Screen
@@ -104,6 +128,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <Ionicons name={focused ? 'wallet' : 'wallet-outline'} color={color} size={size} />
               ),
+              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.budgets')} focused={focused} color={color} />,
             }}
           />
           <Tabs.Screen
@@ -113,6 +138,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <Ionicons name={focused ? 'settings' : 'settings-outline'} color={color} size={size} />
               ),
+              tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.settings')} focused={focused} color={color} />,
             }}
           />
           {/* Every screen below is reached via router.push from Settings (or
@@ -132,8 +158,8 @@ export default function AppLayout() {
       </View>
       {isLocked && (
         <BlurView intensity={80} pointerEvents="auto" accessibilityViewIsModal style={styles.overlay}>
-          <View className="rounded-xl bg-surface-light/90 px-6 py-4 dark:bg-surface-dark/90">
-            <Text className="text-base text-ink-light dark:text-ink-dark">{t('auth.biometric.locked')}</Text>
+          <View className="rounded-card bg-surface-light/90 px-6 py-4 dark:bg-surface-dark/90">
+            <Text className="text-body text-ink-light dark:text-ink-dark">{t('auth.biometric.locked')}</Text>
           </View>
         </BlurView>
       )}

@@ -12,11 +12,13 @@
 // below dispatches on the presence of `periodEnd` to control each
 // independently, the same way import.test.tsx mocks
 // pickAndReadCsvFile per-test.
-import { afterEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { render } from '@testing-library/react-native'
-import '@/i18n'
+import i18n from '@/i18n'
 import Dashboard from './index'
 import type { TransactionFilters } from '@/features/transactions/hooks/useTransactions'
+import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
+import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -27,14 +29,18 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+const DEFAULT_BUDGET_PROGRESS = {
+  categories: [] as unknown[],
+  totalAllocatedAgorot: 0,
+  totalSpentAgorot: 0,
+  isLoading: false,
+  error: null as Error | null,
+}
+const mockUseBudgetProgress =
+  jest.fn<(householdId: string | null | undefined, periodStart: string | undefined) => typeof DEFAULT_BUDGET_PROGRESS>()
 jest.mock('@/features/budgets/hooks/useBudgetProgress', () => ({
-  useBudgetProgress: () => ({
-    categories: [],
-    totalAllocatedAgorot: 0,
-    totalSpentAgorot: 0,
-    isLoading: false,
-    error: null,
-  }),
+  useBudgetProgress: (householdId: string | null | undefined, periodStart: string | undefined) =>
+    mockUseBudgetProgress(householdId, periodStart),
 }))
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({ categories: [] }),
@@ -56,6 +62,21 @@ jest.mock('@/features/transactions/hooks/useTransactions', () => ({
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
 }))
+// Mockable colorScheme, defaulted to 'light' below — lets the light/dark
+// rendering test (Design Phase 1) flip it per-test without a real
+// Appearance/NativeWind runtime, same jest.fn-factory pattern as
+// mockUseBudgetProgress/mockUseTransactions above.
+const mockUseColorScheme = jest.fn<() => { colorScheme: 'light' | 'dark' }>()
+jest.mock('nativewind', () => ({
+  useColorScheme: () => mockUseColorScheme(),
+}))
+// Reset to the shared zero-state default before every test in this file, so
+// only the tests that actually need a populated budget/dark scheme have to
+// opt in — matches mockAnalytics' per-test override style below.
+beforeEach(() => {
+  mockUseBudgetProgress.mockReturnValue(DEFAULT_BUDGET_PROGRESS)
+  mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
+})
 
 const EMPTY_ANALYTICS_MESSAGE = 'אין מספיק נתונים להצגה.'
 const GENERIC_ERROR_MESSAGE = 'משהו השתבש. נסו שוב'
@@ -130,5 +151,97 @@ describe('Dashboard analytics section', () => {
     expect(getAllByText(GENERIC_ERROR_MESSAGE).length).toBeGreaterThanOrEqual(3)
     expect(queryByText(EMPTY_ANALYTICS_MESSAGE)).toBeNull()
     expect(queryByTestId('monthly-trend-chart-svg', { includeHiddenElements: true })).toBeNull()
+  })
+})
+
+// Design Phase 1 regression coverage: localized month label, and the
+// budget-summary/recent-transactions sections' empty vs. populated states
+// (the analytics describe block above only ever exercises the zero-budget
+// zero-transaction case, since that's not what it's testing).
+const CURRENT_MONTH_LABEL = formatMonthLabel(getCurrentMonthPeriodStart())
+const NO_BUDGET_MESSAGE = 'עדיין לא הוגדר תקציב לחודש זה.'
+const NO_TRANSACTIONS_MESSAGE = 'עדיין אין תנועות החודש.'
+
+describe('Dashboard month navigation and budget summary', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('shows the localized month label instead of the raw YYYY-MM periodStart', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText(CURRENT_MONTH_LABEL)).toBeTruthy()
+    // The raw periodStart's first 7 characters (e.g. "2026-08") must not
+    // appear anywhere as visible text — that was the pre-redesign default.
+    expect(queryByText(getCurrentMonthPeriodStart().slice(0, 7))).toBeNull()
+  })
+
+  it('shows both empty states when there is no budget and no transactions for the month', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText(NO_BUDGET_MESSAGE)).toBeTruthy()
+    expect(getByText(NO_TRANSACTIONS_MESSAGE)).toBeTruthy()
+  })
+
+  it('shows the remaining/spent figures and category progress once a budget and transactions exist', async () => {
+    mockUseBudgetProgress.mockReturnValue({
+      categories: [
+        {
+          categoryId: 'cat-1',
+          categoryNameHe: 'מכולת',
+          categoryIcon: '🛒',
+          allocatedAgorot: 100000,
+          spentAgorot: 40000,
+          remainingAgorot: 60000,
+          percentSpent: 40,
+        },
+      ],
+      totalAllocatedAgorot: 100000,
+      totalSpentAgorot: 40000,
+      isLoading: false,
+      error: null,
+    })
+    mockAnalytics({ transactions: [] })
+    mockUseTransactions.mockImplementationOnce((_householdId, filters) => {
+      if (filters?.periodEnd) return { transactions: [], isLoading: false, error: null }
+      return {
+        transactions: [
+          {
+            id: 'txn-1',
+            description: 'קפה',
+            amount_agorot: -1500,
+          },
+        ],
+        isLoading: false,
+        error: null,
+      }
+    })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText(formatILS(60000))).toBeTruthy() // remaining
+    expect(getByText(`${formatILS(40000)} ${i18n.t('dashboard.spent')}`)).toBeTruthy() // spent
+    expect(getByText('🛒 מכולת')).toBeTruthy()
+    expect(getByText('קפה')).toBeTruthy()
+    expect(queryByText(NO_BUDGET_MESSAGE)).toBeNull()
+    expect(queryByText(NO_TRANSACTIONS_MESSAGE)).toBeNull()
+  })
+
+  it('renders the same key content in dark color scheme as in light', async () => {
+    mockUseColorScheme.mockReturnValue({ colorScheme: 'dark' })
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    // Dark mode only swaps token values (see constants/colors.ts) — every
+    // NativeWind class carries both a light and a dark variant, so the same
+    // content must render regardless of which the tree resolves to.
+    expect(getByText(CURRENT_MONTH_LABEL)).toBeTruthy()
+    expect(getByText(NO_BUDGET_MESSAGE)).toBeTruthy()
+    expect(getByText(NO_TRANSACTIONS_MESSAGE)).toBeTruthy()
   })
 })

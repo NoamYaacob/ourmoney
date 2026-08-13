@@ -16,15 +16,22 @@ interface ScreenProps {
 }
 
 export function Screen({ children, scroll = true, center = false, keyboardAvoiding = false }: ScreenProps) {
+  // Design Phase 1: on native this is a no-op (web: variants only apply on
+  // web), but on a wide browser window the app was stretching every screen
+  // edge-to-edge like a desktop web app rather than the phone-shaped surface
+  // it actually is. `web:mx-auto` centers a capped-width column instead —
+  // applied here, once, so it covers every screen through the shared
+  // primitive rather than each screen needing its own wrapper.
+  const widthClamp = 'w-full web:max-w-[560px] web:mx-auto'
   const content = scroll ? (
     <ScrollView
-      contentContainerClassName={`px-6 pb-10 pt-6${center ? ' grow justify-center' : ''}`}
+      contentContainerClassName={`${widthClamp} px-6 pb-10 pt-6${center ? ' grow justify-center' : ''}`}
       keyboardShouldPersistTaps="handled"
     >
       {children}
     </ScrollView>
   ) : (
-    <View className={`flex-1 px-6 pt-6${center ? ' items-center justify-center' : ''}`}>{children}</View>
+    <View className={`${widthClamp} flex-1 px-6 pt-6${center ? ' items-center justify-center' : ''}`}>{children}</View>
   )
 
   const wrapped = keyboardAvoiding ? (
