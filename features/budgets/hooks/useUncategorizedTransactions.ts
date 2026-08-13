@@ -25,5 +25,13 @@ export function useUncategorizedTransactions(householdId: string | null | undefi
     enabled: !!householdId,
   })
 
-  return { uncategorized: query.data ?? [], isLoading: !!householdId && query.isPending }
+  return {
+    uncategorized: query.data ?? [],
+    isLoading: !!householdId && query.isPending,
+    // Exposed so callers can distinguish a genuinely empty queue from a
+    // failed fetch — data falls back to [] on error, which would otherwise
+    // render the same "all categorized" success state as a real empty
+    // queue (see app/(app)/budgets/index.tsx's uncategorizedError branch).
+    error: query.error,
+  }
 }

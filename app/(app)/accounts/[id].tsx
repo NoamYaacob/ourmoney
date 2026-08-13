@@ -5,15 +5,22 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useArchiveAccount } from '@/features/accounts/hooks/useArchiveAccount'
 import { useDeleteAccount } from '@/features/accounts/hooks/useDeleteAccount'
+import { useUpdateAccount } from '@/features/accounts/hooks/useUpdateAccount'
 import { mapAccountDeleteError } from '@/features/accounts/lib/mapAccountError'
 import { formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
+import type { AccountType } from '@/types/app'
+
+const ACCOUNT_TYPE_OPTIONS: AccountType[] = ['checking', 'savings', 'credit_card', 'cash', 'investment', 'other']
 
 export default function AccountDetail() {
   const { t } = useTranslation()
@@ -22,13 +29,29 @@ export default function AccountDetail() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { balances, isLoading: isBalancesLoading } = useAccountBalances(householdId)
   const archiveAccount = useArchiveAccount(householdId)
   const deleteAccount = useDeleteAccount(householdId)
+  const updateAccount = useUpdateAccount(householdId)
 
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const account = accounts.find((a) => a.id === id)
+
+  // Prefill the edit form once, when this account's data first loads —
+  // adjusted during rendering (React's documented pattern for this, not a
+  // useEffect) via a loaded-id guard, so it re-syncs only if the route's id
+  // itself changes, never on every render. Mirrors
+  // app/(app)/transactions/[id].tsx's identical pattern.
+  const [loadedAccountId, setLoadedAccountId] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [type, setType] = useState<AccountType>('cash')
+  if (account && account.id !== loadedAccountId) {
+    setLoadedAccountId(account.id)
+    setName(account.name)
+    setType(account.type as AccountType)
+  }
 
   // Folds in isHouseholdLoading — without it, a brief household-loading
   // window would fall straight through to the "account not found" state
@@ -49,12 +72,35 @@ export default function AccountDetail() {
     )
   }
 
+  function handleSave() {
+    if (!account || !name.trim() || updateAccount.isPending) return
+    updateAccount.mutate({ id: account.id, name: name.trim(), type })
+  }
+
   return (
-    <Screen>
-      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{account.name}</Text>
+    <Screen keyboardAvoiding>
+      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('accounts.detail.title')}</Text>
+      {/* account.balance_agorot is a dead column nothing ever updates
+          (features/accounts/lib/computeAccountBalances.ts's header) — the
+          balance shown here is computed live from transactions instead.
+          Blank while it loads rather than flashing ₪0 as if that were a
+          real computed answer. */}
       <Text className="mb-6 text-lg text-inkMuted-light dark:text-inkMuted-dark">
-        {formatILS(account.balance_agorot)}
+        {isBalancesLoading ? '' : formatILS(balances[account.id] ?? 0)}
       </Text>
+
+      <Input label={t('accounts.form.nameLabel')} value={name} onChangeText={setName} />
+      <Select
+        label={t('accounts.form.typeLabel')}
+        options={ACCOUNT_TYPE_OPTIONS.map((value) => ({ value, label: t(`accounts.types.${value}`) }))}
+        value={type}
+        onChange={(value) => setType(value as AccountType)}
+        placeholder={t('accounts.form.typeLabel')}
+      />
+      {updateAccount.isError && <ErrorMessage message={t('accounts.errors.generic')} />}
+      <View className="mb-3">
+        <Button title={t('accounts.detail.save')} onPress={handleSave} loading={updateAccount.isPending} />
+      </View>
 
       <Button
         title={account.is_active ? t('accounts.detail.archive') : t('accounts.detail.archived')}

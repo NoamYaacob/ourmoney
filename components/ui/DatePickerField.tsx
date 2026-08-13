@@ -43,6 +43,39 @@ export function DatePickerField({ label, value, onChange }: DatePickerFieldProps
           <Text className="text-ink-light dark:text-ink-dark">{value}</Text>
         </Pressable>
       )}
+      {/* Web: neither the iOS branch (isOpen defaults to false here — it's
+          gated on Platform.OS === 'ios' above) nor the Android branch (its
+          trigger Pressable is gated on Platform.OS === 'android') applies,
+          and @react-native-community/datetimepicker itself has no web
+          implementation — its platform-less fallback (src/datetimepicker.js)
+          renders null and only warns "DateTimePicker is not supported on:
+          web". So the picker never opened at all on web. Fixed with a real
+          native `<input type="date">` — react-native-web/Metro's web bundle
+          renders through react-dom, so this is an ordinary DOM element, not
+          an RN host component; it already speaks this component's own
+          YYYY-MM-DD convention natively (an `<input type="date">`'s
+          value/onChange is exactly that string, no Date object round-trip,
+          so this branch doesn't even touch the UTC-midnight footgun the
+          header comment above warns about). Always rendered (no open/closed
+          toggle needed) — the browser owns the trigger and the calendar
+          popup itself. iOS/Android behavior above is untouched. */}
+      {Platform.OS === 'web' && (
+        <input
+          type="date"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={label}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '12px 16px',
+            borderRadius: 12,
+            border: '1px solid #d1d5db',
+            fontSize: 16,
+            fontFamily: 'inherit',
+          }}
+        />
+      )}
       {isOpen && (
         <DateTimePicker
           value={dateValue}

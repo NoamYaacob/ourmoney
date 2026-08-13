@@ -69,7 +69,8 @@
       "include": "כלול בתקציב",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת תנועה",
-      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו.",
+      "deleteError": "מחיקת התנועה נכשלה. נסו שוב"
     }
   },
   "accounts": {
@@ -94,6 +95,8 @@
       "submit": "הוספת חשבון"
     },
     "detail": {
+      "title": "פרטי חשבון",
+      "save": "שמירה",
       "archive": "העברה לארכיון",
       "archived": "בארכיון",
       "delete": "מחיקה",
@@ -108,6 +111,9 @@
     "empty": "עדיין אין קטגוריות מותאמות אישית.",
     "delete": "מחיקה",
     "deleteCategoryLabel": "מחיקת קטגוריית {{name}}",
+    "edit": "עריכה",
+    "editCategoryLabel": "עריכת קטגוריית {{name}}",
+    "save": "שמירה",
     "rulesTitle": "כללי סיווג",
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
@@ -121,6 +127,7 @@
       "empty": "עדיין אין כללי סיווג.",
       "applyRetroactively": "החלת הכללים על תנועות קיימות",
       "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
+      "editRuleLabel": "עריכת כלל: {{field}} {{operator}} {{value}}",
       "field": {
         "description": "תיאור",
         "merchant_name": "בית עסק"
@@ -137,7 +144,8 @@
         "operatorLabel": "תנאי",
         "valueLabel": "ערך",
         "valuePlaceholder": "לדוגמה: שופרסל",
-        "submit": "הוספת כלל"
+        "submit": "הוספת כלל",
+        "editSubmit": "שמירת כלל"
       }
     }
   },
@@ -169,6 +177,8 @@
       }
     },
     "detail": {
+      "edit": "עריכה",
+      "save": "שמירה",
       "skip": "דילוג על החיוב הקרוב",
       "pause": "השהיה",
       "resume": "הפעלה מחדש",
@@ -196,6 +206,7 @@
       }
     },
     "detail": {
+      "save": "שמירה",
       "updateProgressLabel": "עדכון סכום נוכחי",
       "updateProgressSubmit": "עדכון",
       "delete": "מחיקה",
@@ -396,11 +407,42 @@
   },
   "settings": {
     "title": "הגדרות",
+    "profile": {
+      "editLabel": "עריכת שם תצוגה",
+      "nameLabel": "שם תצוגה",
+      "save": "שמירה",
+      "cancel": "ביטול",
+      "errors": {
+        "generic": "עדכון השם נכשל. נסו שוב"
+      }
+    },
     "household": {
       "title": "משק הבית",
       "membersTitle": "חברים",
       "roleAdmin": "מנהל/ת",
-      "roleMember": "חבר/ה"
+      "roleMember": "חבר/ה",
+      "renameLabel": "עריכת שם משק הבית",
+      "nameLabel": "שם משק הבית",
+      "save": "שמירה",
+      "cancel": "ביטול",
+      "renameErrors": {
+        "generic": "עדכון שם משק הבית נכשל. נסו שוב"
+      },
+      "removeMember": "הסרה",
+      "removeMemberLabel": "הסרת {{name}} ממשק הבית",
+      "removeMemberConfirmTitle": "הסרת חבר/ה ממשק הבית",
+      "removeMemberConfirmMessage": "{{name}} יוסר/תוסר ממשק הבית ולא יראה/תראה יותר את הנתונים המשותפים. אפשר להזמין שוב בהמשך.",
+      "removeMemberConfirmButton": "הסרה",
+      "removeMemberErrors": {
+        "generic": "הסרת החבר/ה נכשלה. נסו שוב"
+      },
+      "leave": "עזיבת משק הבית",
+      "leaveConfirmTitle": "עזיבת משק הבית",
+      "leaveConfirmMessage": "לאחר העזיבה לא תראו יותר את הנתונים המשותפים של משק הבית. החשבון שלכם לא יימחק.",
+      "leaveConfirmButton": "עזיבה",
+      "leaveErrors": {
+        "generic": "עזיבת משק הבית נכשלה. נסו שוב"
+      }
     },
     "invite": {
       "button": "הזמנת בן/בת זוג",

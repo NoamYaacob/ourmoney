@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
+import { useUpdateSavingsGoal } from '@/features/savings/hooks/useUpdateSavingsGoal'
 import { useUpdateSavingsGoalProgress } from '@/features/savings/hooks/useUpdateSavingsGoalProgress'
 import { useDeleteSavingsGoal } from '@/features/savings/hooks/useDeleteSavingsGoal'
 import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
@@ -24,14 +25,31 @@ export default function GoalDetail() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { goals, isLoading: isGoalsLoading } = useSavingsGoals(householdId)
+  const updateGoal = useUpdateSavingsGoal(householdId)
   const updateProgress = useUpdateSavingsGoalProgress(householdId)
   const deleteGoal = useDeleteSavingsGoal(householdId)
+
+  const [nameText, setNameText] = useState('')
+  const [targetText, setTargetText] = useState('')
+  const [editValidationError, setEditValidationError] = useState<string | null>(null)
 
   const [progressText, setProgressText] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
 
   const goal = goals.find((g) => g.id === id)
+
+  // Prefill the edit form once, when this goal's data first loads — same
+  // loaded-id guard pattern as app/(app)/transactions/[id].tsx (adjusted
+  // during rendering rather than via useEffect), so it re-syncs only if the
+  // route's id itself changes, never clobbering an in-progress edit on a
+  // background refetch.
+  const [loadedGoalId, setLoadedGoalId] = useState<string | null>(null)
+  if (goal && goal.id !== loadedGoalId) {
+    setLoadedGoalId(goal.id)
+    setNameText(goal.name)
+    setTargetText(String(goal.target_agorot / 100))
+  }
 
   if (isHouseholdLoading || isGoalsLoading) {
     return (
@@ -50,6 +68,23 @@ export default function GoalDetail() {
   }
 
   const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+
+  function handleSaveEdit() {
+    if (!householdId || !goal || updateGoal.isPending) return
+    setEditValidationError(null)
+
+    if (!nameText.trim()) {
+      setEditValidationError(t('savings.form.errors.missingName'))
+      return
+    }
+    const parsed = agorotFromILS(targetText)
+    if (!parsed.ok || parsed.agorot === null) {
+      setEditValidationError(t(`transactions.form.errors.amount.${parsed.error ?? 'invalid'}`))
+      return
+    }
+
+    updateGoal.mutate({ id: goal.id, name: nameText.trim(), targetAgorot: parsed.agorot })
+  }
 
   function handleUpdateProgress() {
     if (!householdId || !goal || updateProgress.isPending) return
@@ -76,8 +111,20 @@ export default function GoalDetail() {
 
   return (
     <Screen keyboardAvoiding>
-      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{goal.name}</Text>
-      <Text className="mb-2 text-lg text-inkMuted-light dark:text-inkMuted-dark">
+      <Input label={t('savings.form.nameLabel')} value={nameText} onChangeText={setNameText} placeholder={t('savings.form.namePlaceholder')} />
+      <Input
+        label={t('savings.form.targetLabel')}
+        value={targetText}
+        onChangeText={setTargetText}
+        placeholder={t('transactions.form.amountPlaceholder')}
+        keyboardType="decimal-pad"
+      />
+      {(editValidationError || updateGoal.isError) && (
+        <ErrorMessage message={editValidationError ?? t('savings.errors.generic')} />
+      )}
+      <Button title={t('savings.detail.save')} onPress={handleSaveEdit} loading={updateGoal.isPending} />
+
+      <Text className="mb-2 mt-6 text-lg text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
       </Text>
       <View className="mb-6">

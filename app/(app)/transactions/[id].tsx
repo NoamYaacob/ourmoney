@@ -26,7 +26,7 @@ export default function TransactionDetail() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuth()
-  const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  const { householdId, role, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
   const { transaction, isLoading } = useTransaction(id)
@@ -37,6 +37,8 @@ export default function TransactionDetail() {
   const [amountText, setAmountText] = useState('')
   const [isIncome, setIsIncome] = useState(false)
   const [description, setDescription] = useState('')
+  const [merchantName, setMerchantName] = useState('')
+  const [isShared, setIsShared] = useState(true)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -52,6 +54,8 @@ export default function TransactionDetail() {
     setAmountText(String(Math.abs(transaction.amount_agorot) / 100))
     setIsIncome(transaction.amount_agorot > 0)
     setDescription(transaction.description)
+    setMerchantName(transaction.merchant_name ?? '')
+    setIsShared(transaction.is_shared)
     setCategoryId(transaction.category_id)
     setAccountId(transaction.account_id)
   }
@@ -98,10 +102,17 @@ export default function TransactionDetail() {
         categoryId,
         amountAgorot: signedAmountAgorot(parsed.agorot, isIncome),
         description: description.trim(),
+        merchantName: merchantName.trim() || null,
+        isShared,
       },
       { onSuccess: () => router.back() }
     )
   }
+
+  // transactions_delete RLS restricts hard delete to household admins
+  // (useDeleteTransaction.ts's own header comment) — hiding the button for
+  // non-admins avoids offering an action that would always fail server-side.
+  const canDelete = role === 'admin'
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
@@ -119,6 +130,12 @@ export default function TransactionDetail() {
 
       <Input label={t('transactions.form.amountLabel')} value={amountText} onChangeText={setAmountText} keyboardType="decimal-pad" />
       <Input label={t('transactions.form.descriptionLabel')} value={description} onChangeText={setDescription} />
+      <Input
+        label={t('transactions.form.merchantLabel')}
+        value={merchantName}
+        onChangeText={setMerchantName}
+        placeholder={t('transactions.form.merchantPlaceholder')}
+      />
       <Select
         label={t('transactions.form.accountLabel')}
         options={accountOptions}
@@ -133,6 +150,14 @@ export default function TransactionDetail() {
         onChange={setCategoryId}
         placeholder={t('transactions.form.categoryPlaceholder')}
       />
+
+      <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+        {t('transactions.form.sharedLabel')}
+      </Text>
+      <View className="mb-4 flex-row gap-2">
+        <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
+        <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
+      </View>
 
       {(validationError || updateTransaction.isError) && (
         <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
@@ -155,36 +180,42 @@ export default function TransactionDetail() {
         />
       </View>
 
-      <View className="mt-3">
-        <Button
-          title={t('transactions.detail.delete')}
-          variant="ghost"
-          onPress={() => setConfirmDeleteVisible(true)}
-        />
-      </View>
+      {canDelete && (
+        <View className="mt-3">
+          <Button
+            title={t('transactions.detail.delete')}
+            variant="ghost"
+            onPress={() => setConfirmDeleteVisible(true)}
+          />
+        </View>
+      )}
+
+      {deleteTransaction.isError && <ErrorMessage message={t('transactions.detail.deleteError')} />}
 
       <Text className="mt-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(transaction.amount_agorot)}
       </Text>
 
-      <Modal
-        visible={confirmDeleteVisible}
-        title={t('transactions.detail.deleteConfirmTitle')}
-        message={t('transactions.detail.deleteConfirmMessage')}
-        confirmLabel={t('transactions.detail.delete')}
-        cancelLabel={t('common.cancel')}
-        destructive
-        loading={deleteTransaction.isPending}
-        onCancel={() => setConfirmDeleteVisible(false)}
-        onConfirm={() =>
-          deleteTransaction.mutate(transaction.id, {
-            onSuccess: () => {
-              setConfirmDeleteVisible(false)
-              router.back()
-            },
-          })
-        }
-      />
+      {canDelete && (
+        <Modal
+          visible={confirmDeleteVisible}
+          title={t('transactions.detail.deleteConfirmTitle')}
+          message={t('transactions.detail.deleteConfirmMessage')}
+          confirmLabel={t('transactions.detail.delete')}
+          cancelLabel={t('common.cancel')}
+          destructive
+          loading={deleteTransaction.isPending}
+          onCancel={() => setConfirmDeleteVisible(false)}
+          onConfirm={() =>
+            deleteTransaction.mutate(transaction.id, {
+              onSuccess: () => {
+                setConfirmDeleteVisible(false)
+                router.back()
+              },
+            })
+          }
+        />
+      )}
     </Screen>
   )
 }

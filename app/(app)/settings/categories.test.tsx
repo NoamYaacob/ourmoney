@@ -1,0 +1,133 @@
+// Regression tests for two confirmed gaps found during the functional
+// completeness audit:
+//   1. Category edit was completely missing — create+delete only, no way
+//      to rename a custom category once created, even though
+//      categories_update's RLS already supports it.
+//   2. Rule edit was completely missing — same shape, category_rules_update
+//      RLS already supports it but nothing in the UI called it.
+// Follows this repo's established screen-test conventions
+// (app/(app)/transactions/import.test.tsx, app/(app)/transactions/[id].test.tsx):
+// mock expo-router, mock every Supabase-backed hook, mock @expo/vector-icons
+// to dodge the expo-asset hoisting gap, use await render/fireEvent, and
+// import '@/i18n' for real Hebrew strings.
+import { describe, expect, it, jest } from '@jest/globals'
+import { fireEvent, render } from '@testing-library/react-native'
+import '@/i18n'
+import Categories from './categories'
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ back: jest.fn() }),
+}))
+// Avoids a deep, environment-specific import chain
+// (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
+// test verifies — same rationale as other screen tests in this repo
+// (components/ui/Select.tsx renders an Ionicons chevron).
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: () => null,
+}))
+jest.mock('@/features/auth/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { id: 'user-1' } }),
+}))
+jest.mock('@/features/household/hooks/useHousehold', () => ({
+  useHousehold: () => ({ householdId: 'household-1', role: 'admin', isLoading: false }),
+}))
+
+const CATEGORIES = [
+  { id: 'cat-system', household_id: null, name_he: 'מזון', icon: '🍔', is_system: true, is_active: true },
+  { id: 'cat-1', household_id: 'household-1', name_he: 'תחביבים', icon: '🎨', is_system: false, is_active: true },
+]
+jest.mock('@/features/categories/hooks/useCategories', () => ({
+  useCategories: () => ({ categories: CATEGORIES, isLoading: false }),
+}))
+
+const mockCreateCategoryMutate = jest.fn()
+jest.mock('@/features/categories/hooks/useCreateCategory', () => ({
+  useCreateCategory: () => ({ mutate: mockCreateCategoryMutate, isPending: false, isError: false }),
+}))
+
+const mockUpdateCategoryMutate = jest.fn()
+jest.mock('@/features/categories/hooks/useUpdateCategory', () => ({
+  useUpdateCategory: () => ({ mutate: mockUpdateCategoryMutate, isPending: false, isError: false }),
+}))
+
+const mockDeleteCategoryMutate = jest.fn()
+jest.mock('@/features/categories/hooks/useDeleteCategory', () => ({
+  useDeleteCategory: () => ({ mutate: mockDeleteCategoryMutate, isPending: false, isError: false }),
+}))
+
+const RULES = [
+  { id: 'rule-1', household_id: 'household-1', category_id: 'cat-1', field: 'description', operator: 'contains', value: 'קפה', is_case_sensitive: false, sort_order: 0, is_active: true },
+]
+jest.mock('@/features/categories/hooks/useCategoryRules', () => ({
+  useCategoryRules: () => ({ rules: RULES, isLoading: false }),
+}))
+
+const mockCreateRuleMutate = jest.fn()
+jest.mock('@/features/categories/hooks/useCreateCategoryRule', () => ({
+  useCreateCategoryRule: () => ({ mutate: mockCreateRuleMutate, isPending: false, isError: false }),
+}))
+
+const mockUpdateRuleMutate = jest.fn()
+jest.mock('@/features/categories/hooks/useUpdateCategoryRule', () => ({
+  useUpdateCategoryRule: () => ({ mutate: mockUpdateRuleMutate, isPending: false, isError: false }),
+}))
+
+const mockDeleteRuleMutate = jest.fn()
+jest.mock('@/features/categories/hooks/useDeleteCategoryRule', () => ({
+  useDeleteCategoryRule: () => ({ mutate: mockDeleteRuleMutate, isPending: false, isError: false }),
+}))
+
+jest.mock('@/features/categories/hooks/useApplyRulesRetroactively', () => ({
+  useApplyRulesRetroactively: () => ({ mutate: jest.fn(), isPending: false }),
+}))
+
+describe('Categories settings screen', () => {
+  it('shows an edit affordance on a custom category row and saves the renamed value via useUpdateCategory', async () => {
+    mockUpdateCategoryMutate.mockClear()
+    const { getByText, getByLabelText, getByDisplayValue } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('עריכת קטגוריית תחביבים'))
+
+    const input = getByDisplayValue('תחביבים')
+    await fireEvent.changeText(input, 'תחביבים ואומנות')
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateCategoryMutate).toHaveBeenCalledWith(
+      { id: 'cat-1', nameHe: 'תחביבים ואומנות' },
+      expect.anything()
+    )
+  })
+
+  it('cancels category edit without calling useUpdateCategory', async () => {
+    mockUpdateCategoryMutate.mockClear()
+    const { getByText, getByLabelText, queryByDisplayValue } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('עריכת קטגוריית תחביבים'))
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockUpdateCategoryMutate).not.toHaveBeenCalled()
+    expect(queryByDisplayValue('תחביבים')).toBeNull()
+  })
+
+  it('shows an edit affordance on a rule row and saves the edited value via useUpdateCategoryRule, preserving the prefilled category/field/operator', async () => {
+    mockUpdateRuleMutate.mockClear()
+    const { getByText, getByLabelText, getByDisplayValue } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('עריכת כלל: תיאור מכיל קפה'))
+
+    const valueInput = getByDisplayValue('קפה')
+    await fireEvent.changeText(valueInput, 'קפה ומאפים')
+    await fireEvent.press(getByText('שמירת כלל'))
+
+    expect(mockUpdateRuleMutate).toHaveBeenCalledWith(
+      {
+        id: 'rule-1',
+        categoryId: 'cat-1',
+        field: 'description',
+        operator: 'contains',
+        value: 'קפה ומאפים',
+      },
+      expect.anything()
+    )
+  })
+})

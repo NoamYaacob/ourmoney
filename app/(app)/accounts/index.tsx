@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useCreateAccount } from '@/features/accounts/hooks/useCreateAccount'
 import { formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
@@ -27,6 +28,7 @@ export default function Accounts() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading, error } = useAccounts(householdId)
+  const { balances, isLoading: isBalancesLoading } = useAccountBalances(householdId)
   // Folds in isHouseholdLoading (mobile-expo-reviewer finding — see
   // dashboard/index.tsx's identical comment for why this matters).
   const isLoading = isHouseholdLoading || isAccountsLoading
@@ -74,9 +76,24 @@ export default function Accounts() {
             >
               <Card>
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{account.name}</Text>
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{account.name}</Text>
+                    {!account.is_active && (
+                      <View className="rounded-full border border-border-light bg-surface-light px-2 py-0.5 dark:border-border-dark dark:bg-surface-dark">
+                        <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                          {t('accounts.detail.archived')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {/* account.balance_agorot is a dead column nothing ever
+                      updates — the balance shown here is computed live from
+                      transactions instead (see
+                      features/accounts/lib/computeAccountBalances.ts).
+                      Blank while it loads rather than flashing ₪0 as if
+                      that were a real computed answer. */}
                   <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(account.balance_agorot)}
+                    {isBalancesLoading ? '' : formatILS(balances[account.id] ?? 0)}
                   </Text>
                 </View>
               </Card>

@@ -57,7 +57,11 @@ export default function Dashboard() {
   // to lib/cache/clearHouseholdScopedQueries.ts was needed for this).
   const last6MonthStarts = Array.from({ length: 6 }, (_, i) => shiftMonth(periodStart, -(5 - i)))
   const analyticsWindowStart = last6MonthStarts[0] as string
-  const { transactions: analyticsTransactions, isLoading: isAnalyticsLoading } = useTransactions(householdId, {
+  const {
+    transactions: analyticsTransactions,
+    isLoading: isAnalyticsLoading,
+    error: analyticsError,
+  } = useTransactions(householdId, {
     periodStart: analyticsWindowStart,
     periodEnd: periodStart,
   })
@@ -75,6 +79,12 @@ export default function Dashboard() {
   const monthlyTrendPoints = computeMonthlyTrend(analyticsInput, last6MonthStarts)
   const categoryBreakdown = computeCategoryBreakdown(analyticsInput, periodStart)
   const topCategories = computeTopCategories(categoryBreakdown, 5)
+  // Same "no data" convention as categoryBreakdown/topCategories below
+  // (an empty derived array) — a trend made entirely of zero-value points
+  // is the monthly-trend equivalent of an empty breakdown array, since
+  // computeMonthlyTrend always returns one point per month regardless of
+  // whether any transaction fell in it.
+  const monthlyTrendIsEmpty = monthlyTrendPoints.every((p) => p.incomeAgorot === 0 && p.expenseAgorot === 0)
 
   // Fail-safe display: while useHousehold is still resolving (a real
   // network round trip on every cold start), householdId is null and every
@@ -198,8 +208,12 @@ export default function Dashboard() {
       <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.trendTitle')}
       </Text>
-      {isAnalyticsLoading ? (
+      {analyticsError ? (
+        <ErrorMessage message={t('dashboard.errors.generic')} />
+      ) : isAnalyticsLoading ? (
         <SkeletonList rows={1} rowClassName="h-40 w-full rounded-xl" />
+      ) : monthlyTrendIsEmpty ? (
+        <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
       ) : (
         <Card>
           <MonthlyTrendChart points={monthlyTrendPoints} />
@@ -209,7 +223,9 @@ export default function Dashboard() {
       <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.breakdownTitle')}
       </Text>
-      {isAnalyticsLoading ? (
+      {analyticsError ? (
+        <ErrorMessage message={t('dashboard.errors.generic')} />
+      ) : isAnalyticsLoading ? (
         <View className="items-center">
           <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
         </View>
@@ -226,7 +242,9 @@ export default function Dashboard() {
       <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('dashboard.analytics.topCategoriesTitle')}
       </Text>
-      {isAnalyticsLoading ? (
+      {analyticsError ? (
+        <ErrorMessage message={t('dashboard.errors.generic')} />
+      ) : isAnalyticsLoading ? (
         <SkeletonList rows={3} />
       ) : topCategories.length === 0 ? (
         <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />

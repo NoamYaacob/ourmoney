@@ -4,16 +4,25 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
+import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useUpdateRecurringTransaction } from '@/features/recurring/hooks/useUpdateRecurringTransaction'
 import { useSkipRecurringOccurrence } from '@/features/recurring/hooks/useSkipRecurringOccurrence'
 import { useDeleteRecurringTransaction } from '@/features/recurring/hooks/useDeleteRecurringTransaction'
-import { formatILS } from '@/lib/money/format'
+import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
+import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
+import type { RecurringFrequency } from '@/types/app'
+
+const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
 
 export default function RecurringDetail() {
   const { t } = useTranslation()
@@ -21,6 +30,8 @@ export default function RecurringDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const { recurringTransactions, isLoading: isRecurringLoading } = useRecurringTransactions(householdId)
   const updateRecurring = useUpdateRecurringTransaction(householdId)
   const skipOccurrence = useSkipRecurringOccurrence(householdId)
@@ -29,9 +40,23 @@ export default function RecurringDetail() {
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
+  const [isEditing, setIsEditing] = useState(false)
+  const [amountText, setAmountText] = useState('')
+  const [isIncome, setIsIncome] = useState(false)
+  const [description, setDescription] = useState('')
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
+  const [editError, setEditError] = useState<string | null>(null)
+
   const item = recurringTransactions.find((r) => r.id === id)
 
-  if (isHouseholdLoading || isRecurringLoading) {
+  // Folds in isHouseholdLoading/isAccountsLoading/isCategoriesLoading: the
+  // account/category Select pickers in the edit form below are gated on
+  // householdId, so without this the pickers would briefly render with zero
+  // options while those queries are still resolving (same reasoning as
+  // transactions/[id].tsx's identical guard).
+  if (isHouseholdLoading || isAccountsLoading || isCategoriesLoading || isRecurringLoading) {
     return (
       <Screen center>
         <LoadingSpinner />
@@ -47,8 +72,58 @@ export default function RecurringDetail() {
     )
   }
 
+  function startEditing() {
+    if (!item) return
+    setEditError(null)
+    setAmountText(String(Math.abs(item.amount_agorot) / 100))
+    setIsIncome(item.amount_agorot > 0)
+    setDescription(item.description)
+    setAccountId(item.account_id)
+    setCategoryId(item.category_id)
+    setFrequency(item.frequency)
+    setIsEditing(true)
+  }
+
+  function handleSave() {
+    if (updateRecurring.isPending || !item) return
+    setEditError(null)
+
+    if (!accountId) {
+      setEditError(t('recurring.form.errors.missingAccount'))
+      return
+    }
+    if (!description.trim()) {
+      setEditError(t('recurring.form.errors.missingDescription'))
+      return
+    }
+    const parsed = agorotFromILS(amountText)
+    if (!parsed.ok || parsed.agorot === null) {
+      setEditError(t(`transactions.form.errors.amount.${parsed.error ?? 'invalid'}`))
+      return
+    }
+
+    updateRecurring.mutate(
+      {
+        id: item.id,
+        accountId,
+        categoryId,
+        amountAgorot: signedAmountAgorot(parsed.agorot, isIncome),
+        description: description.trim(),
+        frequency,
+      },
+      {
+        onSuccess: () => setIsEditing(false),
+        onError: () => setEditError(t('recurring.errors.generic')),
+      }
+    )
+  }
+
+  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
+  const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
+
   return (
-    <Screen>
+    <Screen keyboardAvoiding>
       <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{item.description}</Text>
       <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(item.amount_agorot)}
@@ -57,36 +132,109 @@ export default function RecurringDetail() {
         {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
       </Text>
 
-      <Button
-        title={t('recurring.detail.skip')}
-        variant="secondary"
-        loading={skipOccurrence.isPending}
-        onPress={() => {
-          setActionError(null)
-          skipOccurrence.mutate(item.id, { onError: () => setActionError(t('recurring.errors.generic')) })
-        }}
-      />
+      {isEditing ? (
+        <View className="mb-2">
+          <View className="mb-4 flex-row gap-2">
+            <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
+            <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
+          </View>
 
-      <View className="mt-3">
-        <Button
-          title={item.is_active ? t('recurring.detail.pause') : t('recurring.detail.resume')}
-          variant="secondary"
-          loading={updateRecurring.isPending}
-          onPress={() => {
-            setActionError(null)
-            updateRecurring.mutate(
-              { id: item.id, isActive: !item.is_active },
-              { onError: () => setActionError(t('recurring.errors.generic')) }
-            )
-          }}
-        />
-      </View>
+          <Input
+            label={t('transactions.form.amountLabel')}
+            value={amountText}
+            onChangeText={setAmountText}
+            placeholder={t('transactions.form.amountPlaceholder')}
+            keyboardType="decimal-pad"
+          />
+          <Input
+            label={t('transactions.form.descriptionLabel')}
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t('transactions.form.descriptionPlaceholder')}
+          />
+          <Select
+            label={t('transactions.form.accountLabel')}
+            options={accountOptions}
+            value={accountId}
+            onChange={setAccountId}
+            placeholder={t('transactions.form.accountPlaceholder')}
+          />
+          <Select
+            label={t('transactions.form.categoryLabel')}
+            options={categoryOptions}
+            value={categoryId}
+            onChange={setCategoryId}
+            placeholder={t('transactions.form.categoryPlaceholder')}
+          />
+          <Select
+            label={t('recurring.form.frequencyLabel')}
+            options={frequencyOptions}
+            value={frequency}
+            onChange={(value) => setFrequency(value as RecurringFrequency)}
+            placeholder={t('recurring.form.frequencyLabel')}
+          />
 
-      <View className="mt-3">
-        <Button title={t('recurring.detail.delete')} variant="ghost" onPress={() => setConfirmDeleteVisible(true)} />
-      </View>
+          {(editError || updateRecurring.isError) && (
+            <ErrorMessage message={editError ?? t('recurring.errors.generic')} />
+          )}
 
-      {actionError && <ErrorMessage message={actionError} />}
+          <Button title={t('recurring.detail.save')} onPress={handleSave} loading={updateRecurring.isPending} />
+          <View className="mt-3">
+            <Button
+              title={t('common.cancel')}
+              variant="secondary"
+              disabled={updateRecurring.isPending}
+              onPress={() => {
+                setEditError(null)
+                setIsEditing(false)
+              }}
+            />
+          </View>
+        </View>
+      ) : (
+        <>
+          <View className="mb-3">
+            <Button title={t('recurring.detail.edit')} variant="secondary" onPress={startEditing} />
+          </View>
+
+          {item.is_active && (
+            <Button
+              title={t('recurring.detail.skip')}
+              variant="secondary"
+              loading={skipOccurrence.isPending}
+              onPress={() => {
+                setActionError(null)
+                skipOccurrence.mutate(item.id, { onError: () => setActionError(t('recurring.errors.generic')) })
+              }}
+            />
+          )}
+
+          <View className="mt-3">
+            <Button
+              title={item.is_active ? t('recurring.detail.pause') : t('recurring.detail.resume')}
+              variant="secondary"
+              loading={updateRecurring.isPending}
+              onPress={() => {
+                setActionError(null)
+                updateRecurring.mutate(
+                  { id: item.id, isActive: !item.is_active },
+                  { onError: () => setActionError(t('recurring.errors.generic')) }
+                )
+              }}
+            />
+          </View>
+
+          <View className="mt-3">
+            <Button
+              title={t('recurring.detail.delete')}
+              variant="ghost"
+              onPress={() => setConfirmDeleteVisible(true)}
+            />
+          </View>
+
+          {actionError && <ErrorMessage message={actionError} />}
+        </>
+      )}
 
       <Modal
         visible={confirmDeleteVisible}

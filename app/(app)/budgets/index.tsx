@@ -46,7 +46,11 @@ export default function Budgets() {
   // dashboard/index.tsx's identical comment for why this matters).
   const isLoading = isHouseholdLoading || isProgressLoading
   const saveAllocations = useSaveBudgetAllocations(householdId)
-  const { uncategorized, isLoading: isUncategorizedLoading } = useUncategorizedTransactions(householdId)
+  const {
+    uncategorized,
+    isLoading: isUncategorizedLoading,
+    error: uncategorizedError,
+  } = useUncategorizedTransactions(householdId)
   const updateTransaction = useUpdateTransaction(householdId)
 
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
@@ -55,6 +59,20 @@ export default function Budgets() {
   const [isPreparingSave, setIsPreparingSave] = useState(false)
   const [assigningTxnId, setAssigningTxnId] = useState<string | null>(null)
   const [assignCategoryId, setAssignCategoryId] = useState<string | null>(null)
+
+  // The edit form is keyed off editingCategoryId matching a category from
+  // THIS month's `progress` list. Navigating the month without clearing it
+  // (e.g. via the prev/next buttons below) leaves a stale id that matches
+  // nothing in the new month's list — the edit form silently vanishes, but
+  // the "add category" Select stays hidden too (it's gated on
+  // editingCategoryId === null), leaving the user unable to add or edit any
+  // allocation until they save or happen to tap a same-id category. Clearing
+  // both whenever the displayed month changes closes that gap.
+  function handleMonthChange(nextPeriodStart: string) {
+    setPeriodStart(nextPeriodStart)
+    setEditingCategoryId(null)
+    setEditingAmount('')
+  }
 
   // save_budget_allocations() uses true-replace semantics (D3): the payload
   // IS the full desired set for the month, and anything omitted from it
@@ -108,11 +126,11 @@ export default function Budgets() {
 
       {/* Month navigation */}
       <View className="mb-4 flex-row items-center justify-between">
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
+        <Pressable onPress={() => handleMonthChange(shiftMonth(periodStart, -1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
           <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.prevMonth')}</Text>
         </Pressable>
         <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{periodStart.slice(0, 7)}</Text>
-        <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
+        <Pressable onPress={() => handleMonthChange(shiftMonth(periodStart, 1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
           <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.nextMonth')}</Text>
         </Pressable>
       </View>
@@ -211,7 +229,9 @@ export default function Budgets() {
           <Text className="mb-2 mt-8 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}
           </Text>
-          {isUncategorizedLoading ? (
+          {uncategorizedError ? (
+            <ErrorMessage message={t('budgets.errors.generic')} />
+          ) : isUncategorizedLoading ? (
             <SkeletonList rows={3} />
           ) : uncategorized.length === 0 ? (
             <EmptyState icon="🎉" message={t('budgets.uncategorizedEmpty')} />

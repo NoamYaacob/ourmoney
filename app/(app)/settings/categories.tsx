@@ -12,9 +12,11 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useCreateCategory } from '@/features/categories/hooks/useCreateCategory'
+import { useUpdateCategory } from '@/features/categories/hooks/useUpdateCategory'
 import { useDeleteCategory } from '@/features/categories/hooks/useDeleteCategory'
 import { useCategoryRules } from '@/features/categories/hooks/useCategoryRules'
 import { useCreateCategoryRule } from '@/features/categories/hooks/useCreateCategoryRule'
+import { useUpdateCategoryRule } from '@/features/categories/hooks/useUpdateCategoryRule'
 import { useDeleteCategoryRule } from '@/features/categories/hooks/useDeleteCategoryRule'
 import { useApplyRulesRetroactively } from '@/features/categories/hooks/useApplyRulesRetroactively'
 import { Screen } from '@/components/ui/Screen'
@@ -38,6 +40,7 @@ export default function Categories() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { categories, isLoading: isCategoriesLoadingRaw } = useCategories(householdId)
   const createCategory = useCreateCategory(householdId)
+  const updateCategory = useUpdateCategory(householdId)
   const deleteCategory = useDeleteCategory(householdId)
   const { rules, isLoading: isRulesLoadingRaw } = useCategoryRules(householdId)
   // Fold in isHouseholdLoading (mobile-expo-reviewer finding — see
@@ -45,6 +48,7 @@ export default function Categories() {
   const isCategoriesLoading = isHouseholdLoading || isCategoriesLoadingRaw
   const isRulesLoading = isHouseholdLoading || isRulesLoadingRaw
   const createRule = useCreateCategoryRule(householdId)
+  const updateRule = useUpdateCategoryRule(householdId)
   const deleteRule = useDeleteCategoryRule(householdId)
   const applyRetroactively = useApplyRulesRetroactively(householdId)
 
@@ -53,6 +57,18 @@ export default function Categories() {
   const [ruleField, setRuleField] = useState<CategoryRuleField>('description')
   const [ruleOperator, setRuleOperator] = useState<CategoryRuleOperator>('contains')
   const [ruleValue, setRuleValue] = useState('')
+
+  // Inline edit affordances: one row at a time, mirroring the delete
+  // button's own inline (no navigation, no modal) interaction pattern
+  // already established on this screen.
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editCategoryName, setEditCategoryName] = useState('')
+
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [editRuleCategoryId, setEditRuleCategoryId] = useState<string | null>(null)
+  const [editRuleField, setEditRuleField] = useState<CategoryRuleField>('description')
+  const [editRuleOperator, setEditRuleOperator] = useState<CategoryRuleOperator>('contains')
+  const [editRuleValue, setEditRuleValue] = useState('')
 
   const customCategories = categories.filter((c) => !c.is_system)
 
@@ -75,24 +91,72 @@ export default function Categories() {
                   <Divider />
                 </View>
               )}
-              <View className="flex-row items-center justify-between">
-                <Text className="text-base text-ink-light dark:text-ink-dark">
-                  {category.icon} {category.name_he}
-                </Text>
-                <Pressable
-                  onPress={() => {
-                    if (deleteCategory.isPending) return
-                    deleteCategory.mutate(category.id)
-                  }}
-                  disabled={deleteCategory.isPending}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('categories.deleteCategoryLabel', { name: category.name_he })}
-                  accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
-                  hitSlop={HIT_SLOP}
-                >
-                  <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
-                </Pressable>
-              </View>
+              {editingCategoryId === category.id ? (
+                <View>
+                  <Input
+                    label={t('categories.form.nameLabel')}
+                    value={editCategoryName}
+                    onChangeText={setEditCategoryName}
+                    placeholder={t('categories.form.namePlaceholder')}
+                  />
+                  {updateCategory.isError && <ErrorMessage message={t('categories.errors.generic')} />}
+                  <View className="flex-row gap-2">
+                    <View className="flex-1">
+                      <Button
+                        title={t('categories.save')}
+                        variant="secondary"
+                        loading={updateCategory.isPending}
+                        onPress={() => {
+                          if (!editCategoryName.trim() || updateCategory.isPending) return
+                          updateCategory.mutate(
+                            { id: category.id, nameHe: editCategoryName.trim() },
+                            { onSuccess: () => setEditingCategoryId(null) }
+                          )
+                        }}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Button
+                        title={t('common.cancel')}
+                        variant="ghost"
+                        onPress={() => setEditingCategoryId(null)}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-base text-ink-light dark:text-ink-dark">
+                    {category.icon} {category.name_he}
+                  </Text>
+                  <View className="flex-row items-center gap-4">
+                    <Pressable
+                      onPress={() => {
+                        setEditingCategoryId(category.id)
+                        setEditCategoryName(category.name_he)
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('categories.editCategoryLabel', { name: category.name_he })}
+                      hitSlop={HIT_SLOP}
+                    >
+                      <Text className="text-sm text-accent-light dark:text-accent-dark">{t('categories.edit')}</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        if (deleteCategory.isPending) return
+                        deleteCategory.mutate(category.id)
+                      }}
+                      disabled={deleteCategory.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('categories.deleteCategoryLabel', { name: category.name_he })}
+                      accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
+                      hitSlop={HIT_SLOP}
+                    >
+                      <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
             </View>
           ))}
         </Card>
@@ -138,29 +202,107 @@ export default function Categories() {
                     <Divider />
                   </View>
                 )}
-                <View className="flex-row items-center justify-between">
-                  <Text className="flex-1 text-sm text-ink-light dark:text-ink-dark">
-                    {t(`categories.rules.field.${rule.field}`)} {t(`categories.rules.operator.${rule.operator}`)}{' '}
-                    &quot;{rule.value}&quot; → {category?.icon} {category?.name_he}
-                  </Text>
-                  <Pressable
-                    onPress={() => {
-                      if (deleteRule.isPending) return
-                      deleteRule.mutate(rule.id)
-                    }}
-                    disabled={deleteRule.isPending}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('categories.rules.deleteRuleLabel', {
-                      field: t(`categories.rules.field.${rule.field}`),
-                      operator: t(`categories.rules.operator.${rule.operator}`),
-                      value: rule.value,
-                    })}
-                    accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
-                    hitSlop={HIT_SLOP}
-                  >
-                    <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
-                  </Pressable>
-                </View>
+                {editingRuleId === rule.id ? (
+                  <View>
+                    <Select
+                      label={t('categories.rules.form.categoryLabel')}
+                      options={categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))}
+                      value={editRuleCategoryId}
+                      onChange={setEditRuleCategoryId}
+                      placeholder={t('categories.rules.form.categoryPlaceholder')}
+                    />
+                    <Select
+                      label={t('categories.rules.form.fieldLabel')}
+                      options={FIELD_OPTIONS.map((value) => ({ value, label: t(`categories.rules.field.${value}`) }))}
+                      value={editRuleField}
+                      onChange={(value) => setEditRuleField(value as CategoryRuleField)}
+                      placeholder={t('categories.rules.form.fieldLabel')}
+                    />
+                    <Select
+                      label={t('categories.rules.form.operatorLabel')}
+                      options={OPERATOR_OPTIONS.map((value) => ({ value, label: t(`categories.rules.operator.${value}`) }))}
+                      value={editRuleOperator}
+                      onChange={(value) => setEditRuleOperator(value as CategoryRuleOperator)}
+                      placeholder={t('categories.rules.form.operatorLabel')}
+                    />
+                    <Input
+                      label={t('categories.rules.form.valueLabel')}
+                      value={editRuleValue}
+                      onChangeText={setEditRuleValue}
+                      placeholder={t('categories.rules.form.valuePlaceholder')}
+                    />
+                    {updateRule.isError && <ErrorMessage message={t('categories.errors.generic')} />}
+                    <View className="flex-row gap-2">
+                      <View className="flex-1">
+                        <Button
+                          title={t('categories.rules.form.editSubmit')}
+                          variant="secondary"
+                          loading={updateRule.isPending}
+                          onPress={() => {
+                            if (!editRuleCategoryId || !editRuleValue.trim() || updateRule.isPending) return
+                            updateRule.mutate(
+                              {
+                                id: rule.id,
+                                categoryId: editRuleCategoryId,
+                                field: editRuleField,
+                                operator: editRuleOperator,
+                                value: editRuleValue.trim(),
+                              },
+                              { onSuccess: () => setEditingRuleId(null) }
+                            )
+                          }}
+                        />
+                      </View>
+                      <View className="flex-1">
+                        <Button title={t('common.cancel')} variant="ghost" onPress={() => setEditingRuleId(null)} />
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View className="flex-row items-center justify-between">
+                    <Text className="flex-1 text-sm text-ink-light dark:text-ink-dark">
+                      {t(`categories.rules.field.${rule.field}`)} {t(`categories.rules.operator.${rule.operator}`)}{' '}
+                      &quot;{rule.value}&quot; → {category?.icon} {category?.name_he}
+                    </Text>
+                    <View className="flex-row items-center gap-4">
+                      <Pressable
+                        onPress={() => {
+                          setEditingRuleId(rule.id)
+                          setEditRuleCategoryId(rule.category_id)
+                          setEditRuleField(rule.field)
+                          setEditRuleOperator(rule.operator)
+                          setEditRuleValue(rule.value)
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('categories.rules.editRuleLabel', {
+                          field: t(`categories.rules.field.${rule.field}`),
+                          operator: t(`categories.rules.operator.${rule.operator}`),
+                          value: rule.value,
+                        })}
+                        hitSlop={HIT_SLOP}
+                      >
+                        <Text className="text-sm text-accent-light dark:text-accent-dark">{t('categories.edit')}</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          if (deleteRule.isPending) return
+                          deleteRule.mutate(rule.id)
+                        }}
+                        disabled={deleteRule.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('categories.rules.deleteRuleLabel', {
+                          field: t(`categories.rules.field.${rule.field}`),
+                          operator: t(`categories.rules.operator.${rule.operator}`),
+                          value: rule.value,
+                        })}
+                        accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
+                        hitSlop={HIT_SLOP}
+                      >
+                        <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
               </View>
             )
           })}
