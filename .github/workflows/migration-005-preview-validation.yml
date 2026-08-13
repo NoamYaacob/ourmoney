@@ -200,7 +200,8 @@ jobs:
           tail -3 /tmp/rls_main.sql
           psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f /tmp/rls_main.sql 2>&1 | tee /tmp/rls_main_output.txt
           grep -F "=== " /tmp/rls_main_output.txt | tail -1
-          grep -qF "ALL RLS TESTS PASSED" /tmp/rls_main_output.txt || { echo "FAIL: expected summary NOTICE not found in output"; exit 1; }
+          grep -qE '=== [0-9]+ tests passed \(' /tmp/rls_main_output.txt || { echo "FAIL: expected summary NOTICE not found in output"; exit 1; }
+          grep -q 'ERROR:' /tmp/rls_main_output.txt && { echo "FAIL: an ERROR line was present in the output despite ON_ERROR_STOP"; exit 1; } || true
 
       - name: True-concurrency check — two members leave the same household simultaneously
         env:
