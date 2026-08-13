@@ -40,14 +40,20 @@ BEGIN
   RAISE NOTICE 'OK: no anon/PUBLIC EXECUTE grants on leave_household/delete_own_account';
 END $$;
 
+-- Grantees minus the function's owner (the owner always appears once the
+-- ACL is materialized by any REVOKE/GRANT — that's normal Postgres
+-- behavior reflecting implicit owner privilege, not an extra grant we
+-- issued, so it's excluded here rather than asserting an exact-match
+-- allowlist that would break on it).
 DO $$
 DECLARE v_grantees TEXT;
 BEGIN
   SELECT string_agg(DISTINCT grantee, ',') INTO v_grantees
   FROM information_schema.role_routine_grants
-  WHERE routine_schema = 'public' AND routine_name = 'leave_household';
+  WHERE routine_schema = 'public' AND routine_name = 'leave_household'
+    AND grantee <> (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'leave_household');
   IF v_grantees IS DISTINCT FROM 'authenticated' THEN
-    RAISE EXCEPTION 'FAIL: leave_household grantees are [%], expected exactly authenticated', v_grantees;
+    RAISE EXCEPTION 'FAIL: leave_household non-owner grantees are [%], expected exactly authenticated', v_grantees;
   END IF;
-  RAISE NOTICE 'OK: leave_household granted to authenticated only';
+  RAISE NOTICE 'OK: leave_household granted to authenticated only (besides its owner)';
 END $$;
