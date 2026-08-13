@@ -33,13 +33,18 @@ jest.mock('@/features/transactions/hooks/useTransactions', () => ({
 }))
 
 describe('Transactions list', () => {
-  it('shows the empty state with an add-transaction CTA when there are no transactions', async () => {
+  it('shows the empty message and exactly one add-transaction CTA (the floating action, not a duplicate button)', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
-    const { getByText } = await render(<Transactions />)
+    const { getByText, getByLabelText, queryAllByText } = await render(<Transactions />)
 
     expect(getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')).toBeTruthy()
-    expect(getByText('הוספת תנועה')).toBeTruthy()
+    // Phase 3.1: the empty state's own actionLabel button was removed — the
+    // screen's floatingAction FAB is the one "add transaction" CTA now, so
+    // its accessible label is the only place this text should appear (no
+    // visible "הוספת תנועה" Text/Button left in the empty-state itself).
+    expect(getByLabelText('הוספת תנועה')).toBeTruthy()
+    expect(queryAllByText('הוספת תנועה')).toHaveLength(0)
   })
 
   it('renders a populated row with description, category name, and a positive-colored income amount', async () => {

@@ -26,7 +26,14 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           mirrors automatically: "₪" (first JSX child) lands on the visual
           right and the digits to its left, matching how formatILS's own
           Intl('he-IL') currency formatting already reads elsewhere in the
-          app (symbol before the amount). */}
+          app (symbol before the amount).
+          Phase 3.1: the TextInput keeps a min-width so short/empty values
+          still have a comfortable, stable tap target, but its text is
+          right-aligned (not centered) within that box — center-aligning a
+          short value inside a wide fixed box left visible dead air between
+          "₪" and the first digit. Right-aligning pins the digits flush
+          against the symbol regardless of how many are typed, with any
+          extra width growing away from it (left) instead of around it. */}
       <View className="flex-row items-center gap-1">
         <Text className="text-display font-bold text-ink-light dark:text-ink-dark">₪</Text>
         <TextInput
@@ -37,7 +44,7 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           keyboardType="decimal-pad"
           accessibilityLabel={label}
           className="min-w-[90px] text-display font-bold text-ink-light dark:text-ink-dark"
-          style={{ textAlign: 'center' }}
+          style={{ textAlign: 'right' }}
         />
       </View>
     </View>

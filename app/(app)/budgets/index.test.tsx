@@ -7,7 +7,7 @@
 //      got stuck unable to add/edit any allocation for the new month.
 //   2. Uncategorized-transactions fetch errors were silently hidden: the
 //      hook's data falls back to [] on error, which rendered the exact same
-//      "🎉 all categorized" success EmptyState as a genuinely empty queue.
+//      "all categorized" success EmptyState as a genuinely empty queue.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
@@ -131,7 +131,7 @@ describe('Budgets', () => {
     mockUncategorizedError = null
     const { getByText, queryByText } = await render(<Budgets />)
 
-    expect(getByText('כל התנועות מסווגות 🎉')).toBeTruthy()
+    expect(getByText('כל התנועות מסווגות')).toBeTruthy()
     expect(queryByText('משהו השתבש. נסו שוב')).toBeNull()
   })
 
@@ -141,7 +141,7 @@ describe('Budgets', () => {
     const { getByText, queryByText } = await render(<Budgets />)
 
     expect(getByText('משהו השתבש. נסו שוב')).toBeTruthy()
-    expect(queryByText('כל התנועות מסווגות 🎉')).toBeNull()
+    expect(queryByText('כל התנועות מסווגות')).toBeNull()
   })
 
   // Design Phase 3 coverage: the hero summary card, the localized month

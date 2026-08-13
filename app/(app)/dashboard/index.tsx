@@ -117,7 +117,7 @@ export default function Dashboard() {
 
   return (
     <Screen floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}>
-      <Text className="mb-4 text-title font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
 
       <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
@@ -231,12 +231,11 @@ export default function Dashboard() {
       ) : isTransactionsLoading ? (
         <SkeletonList rows={3} />
       ) : recentTransactions.length === 0 ? (
-        <EmptyState
-          iconName="receipt-outline"
-          message={t('dashboard.noTransactions')}
-          actionLabel={t('transactions.addButton')}
-          onAction={() => router.push('/transactions/new')}
-        />
+        // Phase 3.1: no actionLabel here — the screen's own floatingAction
+        // FAB already does the identical "add a transaction" action, and
+        // showing both was a redundant, competing CTA in the same empty
+        // state (also compacted, matching the other Dashboard sections).
+        <EmptyState iconName="receipt-outline" message={t('dashboard.noTransactions')} compact />
       ) : (
         <Card>
           {recentTransactions.map((txn, index) => {

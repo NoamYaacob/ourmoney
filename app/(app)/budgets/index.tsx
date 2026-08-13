@@ -140,7 +140,7 @@ export default function Budgets() {
 
   return (
     <Screen>
-      <Text className="mb-4 text-title font-bold text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
 
       <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
 

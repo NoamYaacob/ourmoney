@@ -43,7 +43,7 @@ export default function Transactions() {
       scroll={false}
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <View className="mb-4 flex-row items-center justify-between">
+      <View className="mb-6 flex-row items-center justify-between">
         <Text className="text-title font-bold text-ink-light dark:text-ink-dark">{t('transactions.title')}</Text>
         {/* Design Phase 3: a small secondary link, not a Button — this is a
             utility action, not a peer of the primary "add transaction"
@@ -66,13 +66,18 @@ export default function Transactions() {
       ) : isPageLoading ? (
         <SkeletonList rows={5} />
       ) : transactions.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <EmptyState
-            iconName="receipt-outline"
-            message={t('transactions.empty')}
-            actionLabel={t('transactions.addButton')}
-            onAction={() => router.push('/transactions/new')}
-          />
+        // Phase 3.1: two changes from Phase 3 — dropped the actionLabel
+        // button (the screen's own floatingAction FAB already does the
+        // identical "add a transaction" action, so showing both was a
+        // redundant, competing CTA), and swapped full-height
+        // (flex-1/justify-center) vertical centering for a fixed top
+        // offset. On an iPhone-sized viewport flex-1 centering looked
+        // natural, but on a tall desktop/web window it stretched the
+        // empty state to the exact vertical middle of a very tall column,
+        // reading as a huge void above and below a tiny message — this
+        // keeps it horizontally centered and near the top instead.
+        <View className="items-center pt-10">
+          <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
         </View>
       ) : (
         <FlatList<Transaction>
