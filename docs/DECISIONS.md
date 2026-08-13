@@ -1375,6 +1375,155 @@ own header comment for the full implementation detail.
 
 ---
 
+## ADR-034
+### Leave household: admin succession without account deletion
+
+**Status:** Accepted — closes the gap [ADR-032](#adr-032) named as deferred future work
+
+**Context.** ADR-032 built `delete_own_account()` with real admin-succession and sole-member-cascade
+logic, but deliberately did not build a "leave household without deleting your account" flow — the
+existing `household_members_delete` RLS policy (migration 001) already technically permitted a raw
+self-removal (`user_id = auth.uid()`), but with none of ADR-032's safety logic: an admin using that raw
+path in a multi-member household would leave it with zero admins, permanently unable to rename itself,
+remove members, or hard-delete shared data (no admin-promotion mechanism exists outside an audited
+`SECURITY DEFINER` function, per [ADR-022](#adr-022)). A prior functional-completeness pass (see the
+Functional Completeness Pass session history) shipped the safe subset of that raw path — a member
+leaving, or an admin removing a *non-admin* member — gated entirely client-side, and explicitly did not
+give an admin any way to leave a household they don't want to delete their account from. This ADR
+closes that gap, exactly as ADR-032 anticipated: *"routing a voluntary leave through the same
+succession/cascade logic `delete_own_account()` uses is a reasonable future addition."*
+
+**Decision.**
+
+1. **Reuse, don't reinvent.** `leave_household()` (migration 005) is structurally `delete_own_account()`
+   with one line of logic removed: it never issues `DELETE FROM auth.users`. Every other decision —
+   admin succession via longest-tenured remaining member, sole-member household cascade, attribution-FK
+   nulling — is identical, for the same reasons ADR-032 gives for each.
+2. **Sole member leaving deletes the household, not the account.** An unreachable, member-less household
+   is exactly the same permanent RLS-orphaned row ADR-032's decision 2 exists to prevent, and a plain
+   "leave" can produce that state exactly as easily as account deletion can. The caller's own account is
+   untouched — they simply have no household anymore, same as a fresh signup. This was the one place
+   real ambiguity existed (blocking the action entirely, rather than cascading, was the conservative
+   alternative), resolved in favor of the cascade because ADR-032 already names this exact mechanism
+   ("the same succession/cascade logic") as the intended shape of this feature, not a novel invention.
+3. **Attribution nulling is required for a reason `delete_own_account()` doesn't have.** There, nulling
+   `created_by`/`payer_id`/etc. is arguably defensive — the FK's `ON DELETE SET NULL` (migration 004)
+   would achieve the same result once `auth.users` is deleted regardless. Here, `auth.users` is never
+   touched, so that automatic path never fires. Without the explicit nulling, a departed member's
+   `created_by` would still point at a real, existing user — but one no longer present in
+   `household_members` for this household, which is exactly the condition
+   `transactions_update`/`recurring_update`/`savings_goals_update`'s `WITH CHECK` (migration 004 Part 2)
+   already treats as unauthorized for a future edit by a remaining member. Skipping the nulling here
+   would silently freeze every row the departed member ever created, the identical bug migration 004
+   fixed, reached through a different door.
+4. **Admin self-leave is intentionally still not built.** A single-member-of-two admin leaving is fully
+   safe (covered above). An admin leaving a household where they are the admin and other members
+   remain is *also* safe — decision 1 handles it via succession. The one case that remains genuinely out
+   of scope: nothing in this ADR changes — an admin was never blocked from leaving a multi-member
+   household by this feature; succession makes it safe. (Earlier drafts of this feature's scoping
+   considered blocking admin self-leave entirely; that concern turned out to be about the sole-member
+   case only, resolved by decision 2 above, not about the multi-member case, which succession already
+   makes safe — recorded here so a future reader doesn't reintroduce a block that isn't needed.)
+5. **CORRECTED during `database-security-reviewer` review of this migration: the succession SELECT must
+   lock its candidate row, and the raw member-removal RLS policy must exclude admin rows.** The first
+   draft of decision 1 assumed reusing `delete_own_account()`'s succession block verbatim was sufficient
+   ("reuse, don't reinvent"). It was not — and the same defect existed identically in the already-shipped
+   `delete_own_account()` (migration 004), not just the new function. Two independent findings, both
+   fixed in migration 005 rather than deferred:
+   - **CRITICAL — zero-admin race.** The succession block issued `SELECT user_id ... ORDER BY joined_at
+     ASC LIMIT 1` (no row lock) followed by a separate `UPDATE ... WHERE user_id = v_new_admin_id`, with
+     no check that the `UPDATE` actually touched a row. The `72702` advisory lock (mechanism below)
+     serializes calls to `leave_household()`/`delete_own_account()` against each other, but does nothing
+     against `useRemoveHouseholdMember`'s raw, unlocked `household_members` `DELETE` — which the original
+     header comment for this migration claimed "can never race this function's succession logic" because
+     it "only ever targets a non-admin row." That reasoning is false: the succession *candidate* selected
+     by the `ORDER BY joined_at ASC LIMIT 1` is itself a non-admin row, and is exactly the row that raw
+     path is permitted to target. If it commits its `DELETE` between the `SELECT` and the `UPDATE`, the
+     `UPDATE` silently affects zero rows, `leave_household()` still returns `{ok: true, new_admin_id: X}`,
+     and the household is left with zero admins permanently — unable to rename itself, manage members, or
+     do anything gated on `is_household_admin()`. **Fix:** the candidate `SELECT` now takes
+     `FOR UPDATE`, and the code branches on `IF FOUND` — if the locked candidate vanished before the lock
+     was acquired, standard Postgres `SELECT ... FOR UPDATE ... ORDER BY ... LIMIT 1` semantics continue
+     scanning to the next-ordered candidate to satisfy `LIMIT 1` (no explicit retry loop needed); if truly
+     no candidate remains, `v_new_admin_id` is correctly set to `NULL` instead of silently misreporting a
+     promotion that didn't happen. Applied to **both** `leave_household()` (Part 1) and, via
+     `CREATE OR REPLACE FUNCTION` (migrations are immutable history — a shipped migration is never
+     edited), `delete_own_account()` (Part 2), since the identical unlocked-SELECT pattern in migration
+     004 had the identical defect.
+   - **HIGH — RLS bypass of succession entirely.** Independent of the race above, the migration 001
+     `household_members_delete` policy's `user_id = auth.uid()` clause let an admin self-delete their own
+     row via a raw authenticated REST call with no succession logic at all — bypassing both
+     `leave_household()` and `delete_own_account()` outright, guaranteed zero-admin outcome, no race
+     required. **Fix (Part 3):** the policy is tightened to
+     `(user_id = auth.uid() AND role <> 'admin') OR (is_household_admin(household_id) AND user_id <>
+     auth.uid())` — an admin can no longer delete their own row through any path except the two
+     `SECURITY DEFINER` functions, which bypass RLS for their own writes.
+
+**Mechanism.** Same security posture as `delete_own_account()`: zero parameters, `SECURITY DEFINER`
+(role promotion has no client-writable path, ADR-022), fixed `search_path`, `EXECUTE` revoked from
+`PUBLIC`/`anon`, granted only to `authenticated`. **Lock class is deliberately shared with
+`delete_own_account()`** (`72702`, not a new namespace) — both functions protect the identical resource
+(a consistent `household_members` view for a given household, for succession/cascade purposes), so a
+concurrent `leave_household()` and `delete_own_account()` call for the *same* household must serialize
+against each other, not merely against calls to the same function; a distinct lock class would let both
+read pre-lock state and disagree about who the successor is. Proven by the `LEAVE.CONCURRENT` test
+(`supabase/rls_tests.sql`) for two concurrent `leave_household()` calls; the cross-function race (one
+member calling `leave_household()` while another calls `delete_own_account()` for the same household at
+the same instant) is covered by the shared lock class itself but has no dedicated dblink test in this
+migration — accepted, since both individual functions' concurrency behavior is separately proven, and
+the lock-sharing argument is a structural guarantee, not a probabilistic one.
+
+The `72702` lock alone does **not** close decision 5's CRITICAL finding — it only serializes calls to
+these two functions against each other, never against the client's separate, unlocked
+`useRemoveHouseholdMember` raw `DELETE`. That race is closed by the succession candidate's `FOR UPDATE`
+row lock instead (a genuinely different mechanism from the advisory lock, deliberately narrower — it
+locks one `household_members` row, not the whole household). Proven deterministically by test 8.13
+(`supabase/rls_tests.sql`): the would-be successor is deleted before `leave_household()` is called, and
+the next-ordered candidate is promoted instead. Decision 5's HIGH finding (RLS bypass) is proven by test
+8.12: an admin's raw self-`DELETE` against `household_members` now affects zero rows. Neither test needs
+dblink — both are deterministic (SELECT/DELETE ordering within one transaction), unlike
+`LEAVE.CONCURRENT`, which needs two genuinely simultaneous connections to prove the advisory lock itself.
+
+**Rationale.**
+- A new, separate lock namespace was the tempting default (matching `create_household`/
+  `accept_invitation`'s pattern of "different resource, different namespace") but would have been wrong
+  here — those two functions protect a genuinely different resource (per-user membership *existence*,
+  keyed on `user_id`) from what `delete_own_account()`/`leave_household()` protect (a household's
+  membership *consistency*, keyed on `household_id`). Sharing the lock class is the correct
+  generalization of the existing pattern, not an exception to it.
+- Blocking sole-admin leave outright (rather than cascading) was considered and rejected: ADR-032
+  already commits this codebase to "leave reuses the same succession/cascade logic," and a block would
+  mean two different, undocumented behaviors for what is conceptually the same action (leaving a
+  household you're the only member of) depending on whether it happens via account deletion or via a
+  plain leave — worse, not safer.
+
+**Consequences.**
+- The client's `useRemoveHouseholdMember` hook (raw `household_members` `DELETE`, gated to non-admin
+  targets/self-as-member only) is unchanged and still used for "admin removes a non-admin member" — that
+  case was already fully safe under the raw RLS policy and needs no succession logic. Only the
+  Settings "leave household" affordance is rewired to call `leave_household()`, and is now shown to
+  admins too (previously hidden for any admin, since the raw path had no succession logic to make that
+  safe).
+- Decision 5's fix also changed `delete_own_account()`'s behavior (migration 004's function, re-created
+  in migration 005 Part 2): its succession block now carries the same `FOR UPDATE`/`IF FOUND` guard. This
+  is a bugfix to already-shipped logic, not a new decision — `delete_own_account()`'s own ADR-032
+  decisions are unchanged; only its robustness against the same concurrent-raw-DELETE race is improved.
+- **Needs live verification**, same standing caveat as every schema-touching migration in this project
+  where the DB gate could not actually run in the authoring environment (no Docker/Supabase available):
+  that `LEAVE.CONCURRENT` actually passes against a live Postgres, and that the shared-lock-class
+  argument above holds in practice, not just in the SQL as written. Tests 8.12 and 8.13 (decision 5's
+  fixes) are deterministic and were checked for logical correctness by both `database-security-reviewer`
+  and manual trace-through, but — like every SQL test in this project's authoring environment — were not
+  executed against a live Postgres, since none was available.
+
+**Related:** [ADR-032](#adr-032) (the account-deletion decisions this migration reuses in full),
+[ADR-022](#adr-022) (no role-change policy — the reason both functions must be `SECURITY DEFINER`),
+[ADR-006](#adr-006) (household as the core entity, never assume exactly two members). See
+`docs/DATABASE_SCHEMA.md`'s Migration 005 section and `supabase/migrations/005_leave_household.sql`'s
+own header for the full implementation detail.
+
+---
+
 ## Release versioning convention
 
 Not an ADR (no architectural reversal is at stake) — documented here, alongside the ADRs, because no

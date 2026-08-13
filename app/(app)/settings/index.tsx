@@ -14,6 +14,7 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMembers'
 import { useUpdateHousehold } from '@/features/household/hooks/useUpdateHousehold'
 import { useRemoveHouseholdMember } from '@/features/household/hooks/useRemoveHouseholdMember'
+import { useLeaveHousehold } from '@/features/household/hooks/useLeaveHousehold'
 import { useCreateInvitation } from '@/features/household/hooks/useCreateInvitation'
 import { buildInviteShareMessage } from '@/features/household/lib/inviteLink'
 import { useTheme } from '@/features/settings/hooks/useTheme'
@@ -99,14 +100,17 @@ export default function Settings() {
     updateHousehold.mutate(trimmed, { onSuccess: () => setIsRenamingHousehold(false) })
   }
 
-  // Remove member (Fix 2, admin-only, non-admin target only) and leave
-  // household (Fix 3, member-only, self-targeted) share the same underlying
-  // delete mutation — see useRemoveHouseholdMember.ts's header comment for
-  // why both are safe subsets of household_members_delete's RLS policy, and
-  // why an admin never reaches either path here (self-leave for an admin
-  // needs real succession logic this hook does not provide — deferred, see
-  // useRemoveHouseholdMember.ts).
+  // Remove member (admin-only, non-admin target only) stays on the raw
+  // household_members_delete path — see useRemoveHouseholdMember.ts's
+  // header comment for why that case needs no succession logic and is safe
+  // as-is. Leave household now goes through leave_household() (migration
+  // 005) instead: a real SECURITY DEFINER RPC with the same admin-
+  // succession / sole-member-cascade logic as delete_own_account(), so —
+  // unlike before — an admin can safely leave a multi-member household too
+  // (the RPC promotes the longest-tenured remaining member first). See
+  // docs/DECISIONS.md ADR-034.
   const removeMember = useRemoveHouseholdMember(householdId)
+  const leaveHousehold = useLeaveHousehold()
   const [removeMemberTarget, setRemoveMemberTarget] = useState<HouseholdMemberWithProfile | null>(null)
   const [removeMemberError, setRemoveMemberError] = useState<string | null>(null)
   const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false)
@@ -129,21 +133,44 @@ export default function Settings() {
     )
   }
 
+  // Distinguishes the one leave outcome that needs a stronger warning:
+  // leave_household() (migration 005) deletes the household outright when
+  // the caller is its sole member (ADR-034, same decision as
+  // delete_own_account()'s sole-member branch) — the caller's own account
+  // is never touched either way, but "leaving" a household you're alone in
+  // means its data goes away too, not just your own membership.
+  //
+  // Deliberately derived from isMembersLoading, not just members.length:
+  // useHouseholdMembers.ts defaults `members` to [] while its own query is
+  // still pending, which would otherwise make isSoleMember read false for
+  // an actually-sole-member household during that window — showing the
+  // weaker multi-member confirm copy right before an action that's about
+  // to delete the whole household (qa-adversarial-reviewer finding). The
+  // Leave button itself is gated on the same flag below, so it simply
+  // isn't shown at all until the real member count is known.
+  const isSoleMember = !isMembersLoading && members.length === 1
+
+  // Same synchronous double-tap guard as handleConfirmDelete just above —
+  // see that function's comment for why isPending alone isn't enough for
+  // an irreversible action (qa-adversarial-reviewer finding, carried over
+  // from Milestone 9's identical account-deletion guard).
+  const isLeavingRef = useRef(false)
+
   function handleConfirmLeaveHousehold() {
-    if (!householdId || !user?.id || removeMember.isPending) return
-    removeMember.mutate(
-      { householdId, userId: user.id },
-      {
-        onSuccess: () => {
-          setLeaveConfirmVisible(false)
-          setLeaveError(null)
-        },
-        onError: () => {
-          setLeaveConfirmVisible(false)
-          setLeaveError(t('settings.household.leaveErrors.generic'))
-        },
-      }
-    )
+    if (isLeavingRef.current || leaveHousehold.isPending) return
+    isLeavingRef.current = true
+    leaveHousehold.mutate(undefined, {
+      onSuccess: () => {
+        isLeavingRef.current = false
+        setLeaveConfirmVisible(false)
+        setLeaveError(null)
+      },
+      onError: () => {
+        isLeavingRef.current = false
+        setLeaveConfirmVisible(false)
+        setLeaveError(t('settings.household.leaveErrors.generic'))
+      },
+    })
   }
   // deleteAccount.isPending only updates after a real render — TanStack
   // Query's notifyManager batches mutation-state notifications via a real
@@ -297,10 +324,12 @@ export default function Settings() {
                   <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
                     {member.role === 'admin' ? t('settings.household.roleAdmin') : t('settings.household.roleMember')}
                   </Text>
-                  {/* Fix 2: admin removing a MEMBER row only — never shown
-                      for an admin row, and never shown to a non-admin viewer.
-                      See useRemoveHouseholdMember.ts for why this is a safe
-                      subset of household_members_delete's RLS policy. */}
+                  {/* Admin removing a MEMBER row only — never shown for an
+                      admin row, and never shown to a non-admin viewer. See
+                      useRemoveHouseholdMember.ts for why this is a safe
+                      subset of household_members_delete's RLS policy;
+                      unlike leave, this case never needs succession logic
+                      since it can never remove the household's one admin. */}
                   {role === 'admin' && member.role !== 'admin' && (
                     <Button
                       title={t('settings.household.removeMember')}
@@ -314,11 +343,18 @@ export default function Settings() {
                 </View>
               ))
             )}
-            {/* Fix 3: leave household — MEMBER (non-admin) self-removal
-                only. An admin leaving needs real succession logic this hook
-                does not provide (see useRemoveHouseholdMember.ts); no leave
-                affordance is ever shown to an admin. */}
-            {role === 'member' && (
+            {/* Leave household — available to both roles now that
+                leave_household() (migration 005) handles admin succession
+                server-side; an admin leaving a multi-member household no
+                longer needs to be blocked, only a sole member/admin leaving
+                needs a clearer warning (see isSoleMember above, and the
+                distinct confirm message it selects) since that specific
+                case deletes the household itself, not just the caller's
+                membership. Also gated on !isMembersLoading — showing this
+                before the real member count is known is exactly the window
+                where isSoleMember could read stale/wrong (see its own
+                comment above). */}
+            {!isMembersLoading && (role === 'admin' || role === 'member') && (
               <View className="mt-3">
                 {leaveError && <ErrorMessage message={leaveError} />}
                 <Button
@@ -453,13 +489,17 @@ export default function Settings() {
       <Modal
         visible={leaveConfirmVisible}
         title={t('settings.household.leaveConfirmTitle')}
-        message={t('settings.household.leaveConfirmMessage')}
+        message={
+          isSoleMember
+            ? t('settings.household.leaveConfirmMessageSoleMember')
+            : t('settings.household.leaveConfirmMessage')
+        }
         confirmLabel={t('settings.household.leaveConfirmButton')}
         cancelLabel={t('common.cancel')}
         onConfirm={handleConfirmLeaveHousehold}
         onCancel={() => setLeaveConfirmVisible(false)}
         destructive
-        loading={removeMember.isPending}
+        loading={leaveHousehold.isPending}
       />
     </Screen>
   )

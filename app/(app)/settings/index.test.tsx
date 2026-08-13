@@ -45,6 +45,11 @@ jest.mock('@/features/household/hooks/useRemoveHouseholdMember', () => ({
   useRemoveHouseholdMember: () => ({ mutate: mockRemoveMemberMutate, isPending: false, isError: false }),
 }))
 
+const mockLeaveHouseholdMutate = jest.fn()
+jest.mock('@/features/household/hooks/useLeaveHousehold', () => ({
+  useLeaveHousehold: () => ({ mutate: mockLeaveHouseholdMutate, isPending: false, isError: false }),
+}))
+
 jest.mock('@/features/household/hooks/useCreateInvitation', () => ({
   useCreateInvitation: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }))
@@ -190,7 +195,7 @@ describe('Settings screen — household/profile management', () => {
     expect(queryByText('הסרה')).toBeNull()
   })
 
-  it('shows the leave-household button for a member (self), and calls the remove mutation self-targeted on confirm', async () => {
+  it('shows the leave-household button for a member (self), and calls the safe leave_household RPC on confirm', async () => {
     setHousehold('member')
     setMembers([OTHER_ADMIN, SELF_AS_MEMBER])
     mockUseProfile.mockReturnValue({ displayName: 'Yossi Cohen', avatarUrl: null, isLoading: false })
@@ -198,25 +203,52 @@ describe('Settings screen — household/profile management', () => {
     const { getByText } = await render(<Settings />)
 
     await fireEvent.press(getByText('עזיבת משק הבית'))
-    await waitFor(() => expect(getByText('עזיבה')).toBeTruthy())
+    await waitFor(() => expect(getByText('לאחר העזיבה לא תראו יותר את הנתונים המשותפים של משק הבית. החשבון שלכם לא יימחק.')).toBeTruthy())
     await fireEvent.press(getByText('עזיבה'))
 
-    await waitFor(() =>
-      expect(mockRemoveMemberMutate).toHaveBeenCalledWith(
-        { householdId: 'household-1', userId: 'user-1' },
-        expect.anything()
-      )
-    )
+    await waitFor(() => expect(mockLeaveHouseholdMutate).toHaveBeenCalledWith(undefined, expect.anything()))
+    // Never falls back to the old admin-unsafe raw-remove path.
+    expect(mockRemoveMemberMutate).not.toHaveBeenCalled()
   })
 
-  it('never shows the leave-household button for an admin', async () => {
+  // Migration 005 / ADR-034: an admin can now leave a multi-member household
+  // safely (the RPC promotes the longest-tenured remaining member first),
+  // so the button is no longer hidden for admins the way it used to be
+  // under the old, succession-unaware raw-remove path.
+  it('shows the leave-household button for an admin too, and calls the same safe RPC on confirm', async () => {
     setHousehold('admin')
     setMembers([ADMIN_MEMBER, OTHER_MEMBER])
     mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
 
-    const { queryByText } = await render(<Settings />)
+    const { getByText } = await render(<Settings />)
 
-    expect(queryByText('עזיבת משק הבית')).toBeNull()
+    await fireEvent.press(getByText('עזיבת משק הבית'))
+    await waitFor(() => expect(getByText('לאחר העזיבה לא תראו יותר את הנתונים המשותפים של משק הבית. החשבון שלכם לא יימחק.')).toBeTruthy())
+    await fireEvent.press(getByText('עזיבה'))
+
+    await waitFor(() => expect(mockLeaveHouseholdMutate).toHaveBeenCalledWith(undefined, expect.anything()))
+  })
+
+  // Migration 005's sole-member branch deletes the household itself (same
+  // decision as delete_own_account()'s sole-member cascade, ADR-034) — the
+  // confirm dialog must say so plainly rather than showing the "others keep
+  // seeing the shared data" copy, which would be misleading with no one
+  // else in the household to keep seeing anything.
+  it('warns about household deletion (not just the multi-member copy) when the sole member leaves', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText, queryByText } = await render(<Settings />)
+
+    await fireEvent.press(getByText('עזיבת משק הבית'))
+
+    await waitFor(() =>
+      expect(
+        getByText('אתם החבר/ה היחיד/ה במשק הבית. עזיבה תמחק את משק הבית ואת כל הנתונים שבו. החשבון שלכם לא יימחק ותוכלו ליצור או להצטרף למשק בית חדש.')
+      ).toBeTruthy()
+    )
+    expect(queryByText('לאחר העזיבה לא תראו יותר את הנתונים המשותפים של משק הבית. החשבון שלכם לא יימחק.')).toBeNull()
   })
 
   it('edits and saves the display name', async () => {

@@ -919,6 +919,159 @@ GRANT EXECUTE ON FUNCTION delete_own_account() TO authenticated;
 
 ---
 
+### Migration 005 — Leave household
+
+No new tables. Closes the gap ADR-032 named as deferred future work: `leave_household()` reuses
+`delete_own_account()`'s admin-succession and sole-member cascade decisions verbatim, extended to the
+one way this action differs — the caller's own `auth.users` row is never touched. Three parts, not one
+— a database-security-reviewer pass during authoring found a critical concurrency gap in the
+admin-succession logic (shared with the already-shipped `delete_own_account()`) and a high-severity RLS
+gap letting an admin bypass both succession-aware functions entirely; both are fixed in this same
+migration rather than deferred, since leaving Phase A's stated goal ("prevent concurrent leaving from
+producing zero admins") unmet was not acceptable. See ADR-034 for the full narrative.
+
+```sql
+-- Part 1
+CREATE OR REPLACE FUNCTION leave_household()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user_id            UUID := auth.uid();
+  v_household_id       UUID;
+  v_role               TEXT;
+  v_other_member_count INT;
+  v_new_admin_id       UUID;
+  v_household_deleted  BOOLEAN := FALSE;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'unauthenticated');
+  END IF;
+
+  SELECT household_id INTO v_household_id
+  FROM household_members WHERE user_id = v_user_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'not_a_member');
+  END IF;
+
+  -- Same lock CLASS (72702) as delete_own_account() — deliberately shared,
+  -- not a new namespace: both functions protect the identical resource (a
+  -- consistent household_members view for succession/cascade purposes), so
+  -- they must contend on the same key to actually serialize against each
+  -- other.
+  PERFORM pg_advisory_xact_lock(72702, hashtext(v_household_id::text));
+
+  SELECT role INTO v_role
+  FROM household_members WHERE household_id = v_household_id AND user_id = v_user_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', true, 'household_deleted', false, 'new_admin_id', NULL);
+  END IF;
+
+  SELECT COUNT(*) INTO v_other_member_count
+  FROM household_members WHERE household_id = v_household_id AND user_id <> v_user_id;
+
+  IF v_other_member_count = 0 THEN
+    DELETE FROM households WHERE id = v_household_id;
+    v_household_deleted := TRUE;
+  ELSE
+    IF v_role = 'admin' THEN
+      -- FOR UPDATE: closes a critical race the advisory lock alone does
+      -- NOT cover — see this section's design notes below.
+      SELECT user_id INTO v_new_admin_id
+      FROM household_members
+      WHERE household_id = v_household_id AND user_id <> v_user_id
+      ORDER BY joined_at ASC LIMIT 1
+      FOR UPDATE;
+
+      IF FOUND THEN
+        UPDATE household_members SET role = 'admin'
+        WHERE household_id = v_household_id AND user_id = v_new_admin_id;
+      ELSE
+        v_new_admin_id := NULL;
+      END IF;
+    END IF;
+
+    UPDATE households SET created_by = NULL WHERE id = v_household_id AND created_by = v_user_id;
+    UPDATE invitations SET invited_by = NULL WHERE household_id = v_household_id AND invited_by = v_user_id;
+    UPDATE accounts SET owner_id = NULL WHERE household_id = v_household_id AND owner_id = v_user_id;
+    UPDATE transactions SET payer_id = NULL WHERE household_id = v_household_id AND payer_id = v_user_id;
+    UPDATE transactions SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+    UPDATE recurring_transactions SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+    UPDATE savings_goals SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+
+    DELETE FROM household_members WHERE household_id = v_household_id AND user_id = v_user_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true, 'household_deleted', v_household_deleted, 'new_admin_id', v_new_admin_id
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION leave_household() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION leave_household() TO authenticated;
+
+-- Part 2: delete_own_account() (migration 004) re-created with the
+-- identical FOR UPDATE fix — the same unlocked SELECT-then-UPDATE shape
+-- existed there first. See that migration/ADR-032 for everything else;
+-- unchanged otherwise.
+
+-- Part 3: household_members_delete tightened so an admin can no longer
+-- self-remove via the raw policy — only through the two functions above.
+DROP POLICY "household_members_delete" ON household_members;
+CREATE POLICY "household_members_delete" ON household_members
+  FOR DELETE TO authenticated
+  USING (
+    (user_id = auth.uid() AND role <> 'admin')
+    OR (is_household_admin(household_id) AND user_id <> auth.uid())
+  );
+```
+
+**Design notes**
+
+- **Zero parameters, deliberately.** Same structural property as `delete_own_account()` — the only
+  membership this function can ever affect is `auth.uid()`'s own.
+- **Sole-member decision.** A sole member leaving deletes the household outright, exactly like
+  `delete_own_account()`'s sole-member branch — an unreachable, member-less household would be the same
+  permanent RLS-orphaned row that decision exists to prevent. This was explicitly anticipated, not
+  invented: ADR-032 names "routing a voluntary leave through the same succession/cascade logic
+  `delete_own_account()` uses" as the intended shape of this exact future addition.
+- **Attribution nulling is required here for a different reason than in `delete_own_account()`.** There,
+  nulling is defensive/explicit (the FK's `ON DELETE SET NULL` would achieve the same result once
+  `auth.users` is deleted). Here, `auth.users` is never touched, so that automatic path never fires —
+  without the explicit `UPDATE`s, a departed member's `created_by`/`payer_id` would still point at a
+  real user, but one no longer in `household_members` for this household, which is exactly what
+  `transactions_update`/`recurring_update`/`savings_goals_update`'s `WITH CHECK` (migration 004 Part 2)
+  already treats as unauthorized for a future edit — the same permanently-frozen-row bug migration 004
+  fixed, reachable through a different door if this function didn't null the same columns.
+- **Lock class is shared with `delete_own_account()` on purpose.** Both functions protect the identical
+  resource (a consistent view of a household's membership for succession/cascade decisions), so a
+  concurrent `leave_household()` and `delete_own_account()` call for the *same* household must serialize
+  against each other, not just against calls to the same function — which requires the same lock class,
+  not a new one.
+- **CORRECTED, not just "known, accepted": the advisory lock does NOT cover a race against the client's
+  unlocked "remove member" `DELETE`.** An earlier draft of this migration claimed that raw `DELETE`
+  "can never race this function's succession logic" because it only targets non-admin rows — that
+  reasoning was wrong: the succession *candidate* selected by decision 2 is itself a non-admin row, so
+  it is exactly the kind of row that `DELETE` can target. If it removes the selected candidate between
+  this function's `SELECT` and its `UPDATE`, the promotion silently becomes a 0-row no-op — the function
+  would report a successful promotion that never happened, leaving the household with zero admins,
+  permanently (only a departing admin's own leave/delete ever triggers promotion). Fixed by adding
+  `FOR UPDATE` to the candidate `SELECT`: it blocks until any concurrent `DELETE` on that row resolves,
+  and Postgres re-evaluates row visibility afterward — a vanished candidate is skipped in favor of the
+  next-longest-tenured one still present, rather than silently "promoted" as a ghost. Applied to
+  `delete_own_account()` too (Part 2), which had the identical gap. `household_members_delete` is also
+  tightened (Part 3) so an admin cannot bypass both functions' succession logic entirely via a raw
+  self-`DELETE` on their own row — closing a second, more direct path to the same zero-admin outcome
+  that ADR-032/ADR-034 had both previously characterized as merely "latent, not live." See ADR-034's
+  Consequences for the full narrative and the test coverage this added (8.12, 8.13).
+
+---
+
 ## Row-Level Security Policies
 
 ### profiles
@@ -1421,6 +1574,27 @@ row-level assertions.
 | 7.11 | User with no household deletes | only their own `auth.users`/`profiles` rows are affected |
 | 7.12 | Idempotency | calling the function twice in a row is a clean no-op the second time |
 | DELETE_ACCOUNT.CONCURRENT | Two members of the same household call concurrently (isolated dblink section, true concurrency) | no deadlock, both calls succeed, household and both users end up fully gone regardless of call order |
+
+### Group 8 — `leave_household()` (migration 005)
+
+| # | Test | Expected |
+|---|---|---|
+| 8.1 | Fixed `search_path` | `pg_proc.proconfig` contains `search_path=public, pg_temp` |
+| 8.2 | Grants | `information_schema.role_routine_grants` shows `authenticated` only |
+| 8.3 | Caller is `anon` | `EXECUTE` denied |
+| 8.4 | No `sub` claim | `{ok: false, error: 'unauthenticated'}` |
+| 8.5 | Authenticated caller with no household | `{ok: false, error: 'not_a_member'}` |
+| 8.6 | Regular member (User B) leaves, Household 1 continues | household preserved, User A's role unchanged, B's own `auth.users`/`profile` rows survive, B's personal account `owner_id` and transaction `created_by` nulled |
+| 8.7 | Leave-path D2-widening regression check | a remaining member can still `UPDATE` a transaction whose `created_by` is now `NULL` (same regression 7.6 covers for the delete-account path) |
+| 8.8 | Admin (User A) leaves, Household 1 continues | User B auto-promoted to admin, `households.created_by` nulled, User A's own `auth.users` row survives |
+| 8.9 | Post-succession capability check | the newly-promoted admin can immediately exercise an admin-only policy (`households_update`) |
+| 8.10 | Sole member (User C, Household 2) leaves | Household 2 and every row that belonged to it (accounts/categories/category_rules/transactions/recurring_transactions/budgets/budget_allocations/savings_goals/invitations/membership) are gone, but User C's own `auth.users` and `profiles` rows survive intact — the key assertion distinguishing this from 7.10 |
+| 8.11 | Genuine idempotency | User B actually leaves, then calls `leave_household()` again — second call is a clean `{ok:true}` no-op, not a repeated promotion/cascade attempt |
+| 8.12 | Admin raw self-DELETE rejected (Part 3 of this migration) | an admin attempting `DELETE FROM household_members` on their own row directly (bypassing `leave_household()`/`delete_own_account()`) affects 0 rows — RLS-rejected |
+| 8.13 | Succession-candidate `FOR UPDATE` fix | when the longest-tenured candidate no longer exists (simulated deterministically, not a live race), the next candidate still present is correctly promoted instead of a false/failed promotion |
+| LEAVE.CONCURRENT | Two members of the same household call concurrently (isolated dblink section, true concurrency) | no deadlock, both calls succeed, household fully gone, **both users' accounts survive intact** regardless of call order |
+
+**Known gap, stated rather than silently left uncovered:** none of the tests above (or `DELETE_ACCOUNT.CONCURRENT`) exercise the *actual* true-concurrency shape of the critical finding 8.13 fixes — a real second transaction (the client's raw "admin removes a member" `DELETE`, which takes no lock) committing between this function's `SELECT`/`FOR UPDATE` and its promotion `UPDATE`. 8.13 proves the logic deterministically; the live locking/timing behavior needs a real database to verify (see migration 005's own `NEEDS LIVE VERIFICATION` note).
 
 ---
 

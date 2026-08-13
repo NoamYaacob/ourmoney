@@ -24,6 +24,11 @@
 -- shared-data preservation, the D2-widening regression it introduces and
 -- fixes in the same migration, idempotency, and the DELETE_ACCOUNT.CONCURRENT
 -- true-concurrency test (isolated section, same reason as 5.9 below).
+-- Migration 005 adds Group 8 (leave_household()): the same admin-succession
+-- and sole-member-cascade coverage as Group 7, extended to the caller's own
+-- account surviving in every branch, plus the LEAVE.CONCURRENT
+-- true-concurrency test (isolated section, same reason as 5.9/
+-- DELETE_ACCOUNT.CONCURRENT).
 --
 -- Design: every test impersonates a role via `SET LOCAL role` +
 -- `SET LOCAL request.jwt.claims` (the technique DATABASE_SCHEMA.md
@@ -2763,6 +2768,396 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_7_12;
 
+-- ============================================================================
+-- Group 8 — leave_household() (migration 005)
+-- ============================================================================
+-- Covers the same three decisions as Group 7 (admin succession, sole-member
+-- cascade, attribution nulling), extended to the one way this action
+-- differs from delete_own_account(): the caller's own auth.users row is
+-- never touched. True concurrency (two members of the same household both
+-- calling leave_household() at once) is covered separately near the end of
+-- this file, in the isolated dblink section, for the same reason 5.9 and
+-- DELETE_ACCOUNT.CONCURRENT live there.
+
+-- 8.1: fixed search_path
+DO $$
+DECLARE v_config TEXT[];
+BEGIN
+  SELECT proconfig INTO v_config FROM pg_proc WHERE proname = 'leave_household' AND pronamespace = 'public'::regnamespace;
+  IF v_config IS NULL OR NOT ('search_path=public, pg_temp' = ANY (v_config)) THEN
+    RAISE EXCEPTION 'FAIL 8.1: leave_household search_path not fixed, got %', v_config;
+  END IF;
+  PERFORM _pass('8.1', 'leave_household has a fixed search_path');
+END $$;
+
+-- 8.2: grants — authenticated only, via information_schema
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'leave_household' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 8.2: leave_household is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('8.2', 'leave_household grants exclude anon and PUBLIC');
+END $$;
+
+-- 8.3: grants — call as anon => EXECUTE denied
+SAVEPOINT sp_8_3;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM leave_household();
+    RAISE EXCEPTION 'FAIL 8.3: anon was able to call leave_household';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('8.3', 'anon cannot EXECUTE leave_household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_3;
+
+-- 8.4: requires auth — call with no sub claim.
+SAVEPOINT sp_8_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "unauthenticated"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.4: expected unauthenticated, got %', v_result;
+  END IF;
+  PERFORM _pass('8.4', 'a call with no sub claim is rejected as unauthenticated');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_4;
+
+-- 8.5: authenticated caller with no household at all => not_a_member,
+-- distinct from unauthenticated (7.4's equivalent for delete_own_account
+-- has no such case, since a user with no household still has an account to
+-- delete — leave_household needs this new error case because "leave" is
+-- meaningless with no membership to leave).
+SAVEPOINT sp_8_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "not_a_member"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.5: expected not_a_member, got %', v_result;
+  END IF;
+  PERFORM _pass('8.5', 'a user with no household gets not_a_member, not an unhandled error');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_5;
+
+-- 8.6: regular member (User B) leaves Household 1. Household continues, no
+-- admin change, B's own attribution nulled, B's personal account converts
+-- to household-owned, B's auth.users row is untouched (unlike 7.5's
+-- delete_own_account equivalent). Same local fixture pattern as 7.5: a
+-- B-created transaction/personal account is inserted first (as B, so D2.6's
+-- created_by = auth.uid() check is satisfied) so the nulling is observable.
+SAVEPOINT sp_8_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO accounts (id, household_id, owner_id, name, type)
+  VALUES ('5a000000-0000-0000-0000-0000000000b2', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'ארנק אישי של B (8.6)', 'cash');
+  INSERT INTO transactions (id, household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+  VALUES ('5f000000-0000-0000-0000-0000000000b2', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -800, 'קניה של B (8.6)', '2026-08-08', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+END $$;
+RESET role;
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'household_deleted')::boolean OR v_result->'new_admin_id' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.6: expected {ok:true, household_deleted:false, new_admin_id:null} for a regular member, got %', v_result;
+  END IF;
+  PERFORM _pass('8.6', 'a regular member leaving does not delete or promote anything in the household');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_role TEXT; v_owner UUID; v_created_by UUID; v_user_exists BOOLEAN; v_still_member BOOLEAN; v_household_exists BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') INTO v_user_exists;
+  IF NOT v_user_exists THEN RAISE EXCEPTION 'FAIL 8.6: User B''s auth.users row was deleted -- leave must never delete the account'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') INTO v_still_member;
+  IF v_still_member THEN RAISE EXCEPTION 'FAIL 8.6: User B''s household_members row still exists'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM households WHERE id = '11111111-1111-1111-1111-111111111111') INTO v_household_exists;
+  IF NOT v_household_exists THEN RAISE EXCEPTION 'FAIL 8.6: Household 1 was deleted despite User A remaining'; END IF;
+
+  SELECT role INTO v_role FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  IF v_role <> 'admin' THEN RAISE EXCEPTION 'FAIL 8.6: User A''s role changed to %, expected unchanged admin', v_role; END IF;
+
+  SELECT owner_id INTO v_owner FROM accounts WHERE id = '5a000000-0000-0000-0000-0000000000b2';
+  IF v_owner IS NOT NULL THEN RAISE EXCEPTION 'FAIL 8.6: B''s personal account owner_id was not nulled, got %', v_owner; END IF;
+
+  SELECT created_by INTO v_created_by FROM transactions WHERE id = '5f000000-0000-0000-0000-0000000000b2';
+  IF v_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 8.6: B''s transaction created_by was not nulled, got %', v_created_by; END IF;
+
+  PERFORM _pass('8.6', 'B keeps their account but is removed from the household; B''s personal account and transaction attribution are nulled/converted, not left dangling');
+END $$;
+
+-- 8.7 (D2.NULL, leave path): a remaining household member can still UPDATE
+-- a transaction whose created_by was just nulled by 8.6 -- the same
+-- migration-004-Part-2 regression, now proven for the leave path too, not
+-- only the delete-account path (7.6 already covers the latter).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE transactions SET description = 'עודכן על ידי A אחרי עזיבת B' WHERE id = '5f000000-0000-0000-0000-0000000000b2';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 8.7: expected the remaining member to be able to UPDATE a transaction with a NULL created_by, %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('8.7', 'a remaining household member can still UPDATE a transaction whose creator has left (created_by IS NULL)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_6;
+
+-- 8.8: household admin (User A) leaves Household 1 (User B remains).
+-- Household continues, B is auto-promoted to admin, A's attribution is
+-- nulled, A's auth.users row is untouched.
+SAVEPOINT sp_8_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean
+     OR (v_result->>'household_deleted')::boolean
+     OR v_result->>'new_admin_id' <> 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+  THEN
+    RAISE EXCEPTION 'FAIL 8.8: expected household preserved with User B promoted, got %', v_result;
+  END IF;
+  PERFORM _pass('8.8', 'an admin leaving a multi-member household auto-promotes the longest-tenured remaining member');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_role TEXT; v_household_created_by UUID; v_user_exists BOOLEAN; v_still_member BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') INTO v_user_exists;
+  IF NOT v_user_exists THEN RAISE EXCEPTION 'FAIL 8.8: User A''s auth.users row was deleted -- leave must never delete the account'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') INTO v_still_member;
+  IF v_still_member THEN RAISE EXCEPTION 'FAIL 8.8: User A''s household_members row still exists'; END IF;
+
+  SELECT role INTO v_role FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  IF v_role <> 'admin' THEN RAISE EXCEPTION 'FAIL 8.8: User B''s role is %, expected admin after succession', v_role; END IF;
+
+  SELECT created_by INTO v_household_created_by FROM households WHERE id = '11111111-1111-1111-1111-111111111111';
+  IF v_household_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 8.8: households.created_by was not nulled, got %', v_household_created_by; END IF;
+
+  PERFORM _pass('8.8', 'the departed admin keeps their account, loses membership, and their attribution is nulled on households.created_by');
+END $$;
+
+-- 8.9: the newly-promoted admin (User B) can now exercise an admin-only
+-- capability, proving the SECURITY DEFINER role UPDATE actually took
+-- effect for authorization purposes (mirrors 7.9 for the leave path).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE households SET name = 'שם חדש אחרי עזיבת מנהל' WHERE id = '11111111-1111-1111-1111-111111111111';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 8.9: expected the newly-promoted admin to be able to rename the household, %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('8.9', 'the auto-promoted member can immediately exercise admin-only RLS policies (households_update)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_8;
+
+-- 8.10: sole member (User C, Household 2) leaves. The entire household and
+-- every row that belonged to it must be gone -- but, unlike 7.10's
+-- delete_own_account equivalent, User C's own account must survive intact.
+SAVEPOINT sp_8_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'household_deleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL 8.10: expected {ok:true, household_deleted:true} for the sole member of Household 2, got %', v_result;
+  END IF;
+  PERFORM _pass('8.10', 'the sole member of a household leaving reports household_deleted:true');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_user_exists BOOLEAN; v_profile_exists BOOLEAN;
+BEGIN
+  IF EXISTS (SELECT 1 FROM households WHERE id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 row still exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM household_members WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 still has membership rows';
+  END IF;
+  IF EXISTS (SELECT 1 FROM accounts WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 accounts were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM transactions WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 transactions were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 recurring_transactions were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM budgets WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 budgets were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM budget_allocations WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 budget_allocations were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 savings_goals were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM category_rules WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 category_rules were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM categories WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2''s custom category was not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM invitations WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 invitations were not cascade-deleted';
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'cccccccc-cccc-cccc-cccc-cccccccccccc') INTO v_user_exists;
+  IF NOT v_user_exists THEN
+    RAISE EXCEPTION 'FAIL 8.10: User C''s auth.users row was deleted -- leaving a sole-member household must never delete the account';
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM profiles WHERE id = 'cccccccc-cccc-cccc-cccc-cccccccccccc') INTO v_profile_exists;
+  IF NOT v_profile_exists THEN
+    RAISE EXCEPTION 'FAIL 8.10: User C''s profile row was deleted -- leaving must never delete the account';
+  END IF;
+
+  PERFORM _pass('8.10', 'a sole member leaving cascades the entire household (accounts/categories/category_rules/transactions/recurring_transactions/budgets/budget_allocations/savings_goals/invitations/membership), while User C''s own auth.users and profile rows survive untouched');
+END $$;
+ROLLBACK TO SAVEPOINT sp_8_10;
+
+-- 8.11: genuine idempotency -- a user who actually left, calling
+-- leave_household() again with the same (now stale) session, gets a
+-- harmless repeated not_a_member, not an error and not a second attempt at
+-- promotion/cascade. (database-security-reviewer finding: an earlier
+-- version of this test used a user who was NEVER a member at all, which
+-- only exercises the top-of-function NOT FOUND check, not a real repeat
+-- call after a real leave -- this version does the real thing.) User B
+-- leaves Household 1 first (regular member, no succession involved, kept
+-- separate from the admin-succession tests above via its own savepoint).
+SAVEPOINT sp_8_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_first JSONB; v_second JSONB;
+BEGIN
+  SELECT leave_household() INTO v_first;
+  IF NOT (v_first->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 8.11: expected the first (real) leave to succeed, got %', v_first;
+  END IF;
+
+  SELECT leave_household() INTO v_second;
+  IF v_second <> '{"ok": true, "household_deleted": false, "new_admin_id": null}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.11: expected a harmless idempotent no-op on the second call after a real leave, got %', v_second;
+  END IF;
+  PERFORM _pass('8.11', 'calling leave_household() again after a real leave is idempotent -- the second call is a clean no-op, not a repeated promotion/cascade attempt');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_11;
+
+-- 8.12 (HIGH finding, database-security-reviewer): household_members_delete
+-- (tightened by this migration's Part 3) rejects an admin's raw self-DELETE
+-- -- the exact bypass that let an admin skip both succession-aware
+-- functions entirely before this migration. User A (Household 1's admin)
+-- attempts the raw path leave_household() itself uses internally; RLS must
+-- reject it (0 rows affected, not an error -- DELETE matching zero visible
+-- rows is not a Postgres error, it is how RLS silently hides an
+-- unauthorized row from a statement that would otherwise have matched it).
+SAVEPOINT sp_8_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_still_admin BOOLEAN;
+BEGIN
+  DELETE FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 8.12: expected the admin''s raw self-DELETE to affect 0 rows (RLS-rejected), affected %', v_rows;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM household_members
+    WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND role = 'admin'
+  ) INTO v_still_admin;
+  IF NOT v_still_admin THEN
+    RAISE EXCEPTION 'FAIL 8.12: User A''s admin membership row is gone -- the raw self-DELETE bypass was not actually closed';
+  END IF;
+
+  PERFORM _pass('8.12', 'an admin cannot self-remove via the raw household_members_delete policy -- only leave_household()/delete_own_account() can remove an admin''s own row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_12;
+
+-- 8.13 (CRITICAL finding, database-security-reviewer): the FOR UPDATE fix
+-- on the succession-candidate SELECT correctly skips a vanished top
+-- candidate and promotes the next-longest-tenured one still present,
+-- rather than silently reporting a promotion that never happened.
+-- Deterministic, not a race -- simulates "the selected candidate was
+-- already removed by a concurrent unlocked action" by removing User B
+-- (Household 1's longest-tenured non-admin member, who
+-- ORDER BY joined_at ASC would otherwise select) before User A leaves,
+-- leaving User F (inserted here, joined after B) as the only remaining
+-- candidate. Proves the logic fix; the true concurrent-transaction timing
+-- this bug actually manifests through is NOT covered here or anywhere else
+-- in this file -- see migration 005's own header for why, and its
+-- NEEDS LIVE VERIFICATION note.
+SAVEPOINT sp_8_13;
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000060', 'authenticated', 'authenticated', 'user-f@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"User F"}', NOW(), NOW(), '', '', '', '');
+INSERT INTO household_members (household_id, user_id, role, joined_at) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'f0000000-0000-0000-0000-000000000060', 'member', NOW() + INTERVAL '1 day');
+DELETE FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean
+     OR (v_result->>'household_deleted')::boolean
+     OR v_result->>'new_admin_id' <> 'f0000000-0000-0000-0000-000000000060'
+  THEN
+    RAISE EXCEPTION 'FAIL 8.13: expected User F (the only remaining candidate, since B is already gone) promoted, got %', v_result;
+  END IF;
+  PERFORM _pass('8.13', 'when the longest-tenured candidate no longer exists, the FOR UPDATE select correctly promotes the next candidate still present, instead of failing or reporting a false promotion');
+END $$;
+RESET role;
+-- Rolls back the fixture INSERTs above too (User F, their membership row,
+-- and User B's removal) -- no separate cleanup needed, same as every other
+-- SAVEPOINT-scoped test in this file.
+ROLLBACK TO SAVEPOINT sp_8_13;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -2869,7 +3264,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT) ===', v_total;
 END $$;
 
 ROLLBACK;
@@ -3186,4 +3581,93 @@ DELETE FROM household_members WHERE household_id = '66666666-6666-6666-6666-6666
 DELETE FROM households WHERE id = '66666666-6666-6666-6666-666666666666';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000040', 'f0000000-0000-0000-0000-000000000041');
 
-DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + DELETE_ACCOUNT.CONCURRENT) ==='; END $$;
+-- ============================================================================
+-- Test LEAVE.CONCURRENT — true concurrency: the two members of a 2-person
+-- household both call leave_household() at the same moment. Migration 005
+-- — same scenario and same fix (a single pg_advisory_xact_lock keyed on
+-- household_id, SHARED with delete_own_account()'s class 72702 — see the
+-- migration's header for why that sharing is required, not incidental) as
+-- DELETE_ACCOUNT.CONCURRENT above, but proving the leave path specifically:
+-- User 50 is admin, User 51 is a plain member — whichever call wins the
+-- lock first promotes the other to admin (decision 2) and removes itself;
+-- the second call then re-reads AFTER acquiring the lock, sees itself as
+-- the sole remaining (now-admin) member, and deletes the household outright
+-- (decision 3) — exercising both decision branches in one race, exactly
+-- like DELETE_ACCOUNT.CONCURRENT, but the critical extra assertion here is
+-- that BOTH users' auth.users rows survive: leave must never delete an
+-- account, concurrently or otherwise.
+-- ============================================================================
+
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000050', 'authenticated', 'authenticated', 'leave-race-1@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Leave Race 1"}', NOW(), NOW(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000051', 'authenticated', 'authenticated', 'leave-race-2@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Leave Race 2"}', NOW(), NOW(), '', '', '', '');
+
+INSERT INTO households (id, name, created_by) VALUES
+  ('55555555-5555-5555-5555-555555555555', 'בית מרוץ עזיבה', 'f0000000-0000-0000-0000-000000000050');
+
+INSERT INTO household_members (household_id, user_id, role) VALUES
+  ('55555555-5555-5555-5555-555555555555', 'f0000000-0000-0000-0000-000000000050', 'admin'),
+  ('55555555-5555-5555-5555-555555555555', 'f0000000-0000-0000-0000-000000000051', 'member');
+
+DO $$
+DECLARE
+  v_r1 JSONB;
+  v_r2 JSONB;
+  v_household_exists BOOLEAN;
+  v_user1_exists BOOLEAN;
+  v_user2_exists BOOLEAN;
+  v_ok_count INT;
+BEGIN
+  PERFORM dblink_connect('conn1', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+  PERFORM dblink_connect('conn2', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+
+  PERFORM dblink_exec('conn1', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn1', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000050","role":"authenticated"}'$q$);
+  PERFORM dblink_exec('conn2', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn2', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000051","role":"authenticated"}'$q$);
+
+  -- Dispatch both calls asynchronously before collecting either result, so
+  -- they race on the advisory lock exactly as they would in production.
+  PERFORM dblink_send_query('conn1', $q$SELECT leave_household()$q$);
+  PERFORM dblink_send_query('conn2', $q$SELECT leave_household()$q$);
+
+  SELECT res INTO v_r1 FROM dblink_get_result('conn1') AS t(res JSONB);
+  SELECT res INTO v_r2 FROM dblink_get_result('conn2') AS t(res JSONB);
+  PERFORM dblink_get_result('conn1'); -- drain end-of-results marker
+  PERFORM dblink_get_result('conn2');
+
+  PERFORM dblink_disconnect('conn1');
+  PERFORM dblink_disconnect('conn2');
+
+  SELECT (CASE WHEN (v_r1->>'ok')::boolean THEN 1 ELSE 0 END) + (CASE WHEN (v_r2->>'ok')::boolean THEN 1 ELSE 0 END) INTO v_ok_count;
+  IF v_ok_count <> 2 THEN
+    RAISE EXCEPTION 'FAIL LEAVE.CONCURRENT: expected both concurrent calls to succeed cleanly (no deadlock), got % successes (r1=%, r2=%)', v_ok_count, v_r1, v_r2;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM households WHERE id = '55555555-5555-5555-5555-555555555555') INTO v_household_exists;
+  IF v_household_exists THEN
+    RAISE EXCEPTION 'FAIL LEAVE.CONCURRENT: household still exists after both members left (r1=%, r2=%)', v_r1, v_r2;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'f0000000-0000-0000-0000-000000000050') INTO v_user1_exists;
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'f0000000-0000-0000-0000-000000000051') INTO v_user2_exists;
+  IF NOT v_user1_exists OR NOT v_user2_exists THEN
+    RAISE EXCEPTION 'FAIL LEAVE.CONCURRENT: expected both users'' auth.users rows to survive (leave must never delete an account), got user1=%, user2=%', v_user1_exists, v_user2_exists;
+  END IF;
+
+  RAISE NOTICE 'PASS LEAVE.CONCURRENT: two concurrent leave_household() calls from the two members of the same household => no deadlock, both succeed, household fully gone, both users'' accounts survive intact (r1=%, r2=%)', v_r1, v_r2;
+END $$;
+
+-- Cleanup — real DELETEs, in case any assertion above failed partway and
+-- left something behind (the happy path already leaves no household/
+-- membership rows to clean — only the two auth.users rows this section
+-- created, which the happy path deliberately leaves intact).
+DELETE FROM household_members WHERE household_id = '55555555-5555-5555-5555-555555555555';
+DELETE FROM households WHERE id = '55555555-5555-5555-5555-555555555555';
+DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000050', 'f0000000-0000-0000-0000-000000000051');
+
+DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + DELETE_ACCOUNT.CONCURRENT + LEAVE.CONCURRENT) ==='; END $$;

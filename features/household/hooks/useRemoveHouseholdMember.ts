@@ -1,25 +1,22 @@
-// A single plain DELETE on household_members, deliberately shared by two
-// screen affordances that both reduce to the same row-level operation under
-// household_members_delete's RLS policy (migration 001):
-//   - an admin removing a MEMBER row ("remove member" in Settings)
-//   - a MEMBER removing their OWN row ("leave household" in Settings)
-// household_members_delete permits `is_household_admin(household_id) OR
-// user_id = auth.uid()` — both call sites above are safe subsets of that
-// policy specifically BECAUSE there is exactly one admin per household
-// (PROJECT_SPEC.md): removing a non-admin member, or a non-admin member
-// removing themselves, can never leave a household with zero admins.
+// A plain DELETE on household_members, used only for "admin removes a
+// MEMBER row" in Settings — a safe subset of household_members_delete's
+// RLS policy specifically BECAUSE there is exactly one admin per household
+// (PROJECT_SPEC.md): removing a non-admin member can never leave a
+// household with zero admins, so this needs no succession logic.
 //
-// Deliberately NOT wired for an admin to remove/leave as themselves — that
-// would need real admin-succession logic (the kind delete_own_account's RPC
-// has, migration 004) that this raw DELETE does not provide. The Settings
-// screen gates both affordances so an admin never reaches this hook via
-// self-targeting; see that screen's own comment for the exact gating.
+// "Leave household" (self-removal) no longer uses this hook — as of
+// migration 005, it goes through leave_household(), a SECURITY DEFINER RPC
+// with real admin-succession/sole-member-cascade logic, and that
+// migration's Part 3 tightened household_members_delete itself so an
+// admin's own row can no longer be deleted via this raw path at all (only
+// through leave_household()/delete_own_account(), both of which bypass RLS
+// entirely for their own writes). See features/household/hooks/
+// useLeaveHousehold.ts and docs/DECISIONS.md ADR-034.
 //
 // Cache invalidation here is deliberately narrow (household_members list
-// only). For the self-leave case, useHasHousehold.ts's existing D9
-// revocation-detection polling already owns clearing household-scoped
-// financial caches and routing back to onboarding once it observes the
-// caller's own membership row is gone — not duplicated here.
+// only) — this hook only ever removes a row belonging to someone OTHER
+// than the caller, so there is no "own membership gone" case for it to
+// handle; useLeaveHousehold.ts owns that for the leave path instead.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
