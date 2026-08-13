@@ -129,6 +129,9 @@ jobs:
           set -euo pipefail
           psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_003_dump_statements.sql > /tmp/history_statements.csv
           wc -l /tmp/history_statements.csv
+          echo "===BEGIN-STATEMENTS-CSV==="
+          cat /tmp/history_statements.csv
+          echo "===END-STATEMENTS-CSV==="
 
       - name: Upload Phase 1 output
         if: always()
