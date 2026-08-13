@@ -47,4 +47,15 @@ describe('decodeCsvBytes', () => {
     expect(result.detectedEncoding).toBe('utf-8')
     expect(result.text).toBe(text)
   })
+
+  // A BOM is an unambiguous UTF-8 declaration — genuinely malformed content
+  // after one (e.g. a truncated/corrupted upload, or a non-UTF-8 file with a
+  // stray BOM-like prefix) must be reported as an error, never silently
+  // reinterpreted as Windows-1255. The caller (handlePickFile in
+  // app/(app)/transactions/import.tsx) turns this throw into a visible file
+  // error, never a silent/partial import.
+  it('throws for bytes that are invalid UTF-8 immediately after a BOM', () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0xe0, 0xe1, 0xe2])
+    expect(() => decodeCsvBytes(bytes)).toThrow('csv_invalid_utf8_after_bom')
+  })
 })

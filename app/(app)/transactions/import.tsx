@@ -72,6 +72,14 @@ export default function TransactionsImport() {
       if (!picked) return // user cancelled
       const decoded = decodeCsvBytes(picked.bytes)
       const parsed = parseCsv(decoded.text)
+      // An empty file (or one with no parseable header row at all) has no
+      // columns to map — proceeding to the map step would show a
+      // column-less screen with no way forward. Report it as a file error
+      // instead of a silent dead end.
+      if (parsed.headers.length === 0) {
+        setPickError(t('import.errors.emptyFile'))
+        return
+      }
       setFileName(picked.name)
       setDetectedEncoding(decoded.detectedEncoding)
       setHeaders(parsed.headers)
@@ -189,6 +197,7 @@ export default function TransactionsImport() {
                 {COLUMN_ROLES.map((role) => (
                   <Chip
                     key={role}
+                    testID={`import-column-role-${index}-${role}`}
                     label={t(`import.columnRole.${role}`)}
                     selected={(columnMapping[index] ?? 'ignore') === role}
                     onPress={() => setColumnMapping((m) => ({ ...m, [index]: role }))}

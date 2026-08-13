@@ -236,6 +236,7 @@
     "backToTransactions": "חזרה לתנועות",
     "errors": {
       "readFailed": "קריאת הקובץ נכשלה. נסו שוב",
+      "emptyFile": "הקובץ ריק או שלא נמצאו בו עמודות. בחרו קובץ CSV אחר",
       "partialFailure": "יובאו {{succeeded}} מתוך {{total}} תנועות. חלק מהשורות נכשלו."
     }
   },
