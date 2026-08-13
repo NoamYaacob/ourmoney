@@ -37,36 +37,44 @@ export function CategoryDonutChart({ breakdown, categoryNameById = {}, size = 14
 
   return (
     <View accessible accessibilityLabel={chartSummary || t('dashboard.analytics.empty')} style={{ width: size, height: size }}>
-      <Svg width={size} height={size} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {totalAgorot <= 0 ? (
-          <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#e2e8f0" strokeWidth={14} fill="none" />
-        ) : (
-          breakdown.map((entry, index) => {
-            const fraction = entry.spentAgorot / totalAgorot
-            const dashLength = fraction * circumference
-            const dashOffset = -offsetSoFar
-            offsetSoFar += dashLength
-            return (
-              <Circle
-                key={entry.categoryId}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                stroke={SEGMENT_COLORS[index % SEGMENT_COLORS.length]}
-                strokeWidth={14}
-                fill="none"
-                strokeDasharray={`${dashLength} ${circumference - dashLength}`}
-                strokeDashoffset={dashOffset}
-                // Segments are drawn starting from the top (12 o'clock),
-                // rotating clockwise — a plain -90deg rotation around the
-                // circle's own center achieves that regardless of RTL.
-                rotation={-90}
-                origin={`${size / 2}, ${size / 2}`}
-              />
-            )
-          })
-        )}
-      </Svg>
+      {/* accessibilityElementsHidden/importantForAccessibility live on this
+          wrapping View, not on <Svg> itself — see MonthlyTrendChart.tsx's
+          matching comment for why: react-native-svg's web shape forwards
+          every prop straight to the DOM with no allowlist, unlike
+          react-native-web's View, which silently drops RN-only props it
+          doesn't recognize. */}
+      <View testID="category-donut-chart-hidden-wrapper" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Svg testID="category-donut-chart-svg" width={size} height={size}>
+          {totalAgorot <= 0 ? (
+            <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#e2e8f0" strokeWidth={14} fill="none" />
+          ) : (
+            breakdown.map((entry, index) => {
+              const fraction = entry.spentAgorot / totalAgorot
+              const dashLength = fraction * circumference
+              const dashOffset = -offsetSoFar
+              offsetSoFar += dashLength
+              return (
+                <Circle
+                  key={entry.categoryId}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={radius}
+                  stroke={SEGMENT_COLORS[index % SEGMENT_COLORS.length]}
+                  strokeWidth={14}
+                  fill="none"
+                  strokeDasharray={`${dashLength} ${circumference - dashLength}`}
+                  strokeDashoffset={dashOffset}
+                  // Segments are drawn starting from the top (12 o'clock),
+                  // rotating clockwise — a plain -90deg rotation around the
+                  // circle's own center achieves that regardless of RTL.
+                  rotation={-90}
+                  origin={`${size / 2}, ${size / 2}`}
+                />
+              )
+            })
+          )}
+        </Svg>
+      </View>
     </View>
   )
 }

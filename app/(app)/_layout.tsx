@@ -23,6 +23,19 @@ import { colors } from '@/constants/colors'
 // flexDirection:'row' layout, auto-mirrored under a forced RTL flag exactly
 // like every other flex-row in this app (verified in Milestone 0).
 //
+// Expo Router auto-registers every route FILE physically present under this
+// directory as a tab unless that route explicitly opts out via
+// `options={{ href: null }}` — confirmed root cause of a reported bug: every
+// non-tab screen below (accounts, goals, recurring, settings/categories,
+// and every transactions/* screen except the list) was leaking into the tab
+// bar as an extra, unlabeled, raw-route-name tab. Each of those screens'
+// own file header already documented the intent ("reached from Settings,
+// not a tab" — accounts/index.tsx, goals/index.tsx, recurring/index.tsx,
+// settings/categories.tsx); this was a missing exclusion, not a design
+// change. `href: null` removes a route from the tab bar (and from the
+// header back-button's "up" target) while leaving it fully reachable via
+// router.push/router.replace exactly as it already was.
+//
 // useColorScheme is imported from 'nativewind', NOT 'react-native' — see
 // components/ui/Button.tsx's header comment for why.
 //
@@ -102,6 +115,19 @@ export default function AppLayout() {
               ),
             }}
           />
+          {/* Every screen below is reached via router.push from Settings (or
+              from a list screen's own row), never as a tab — excluded from
+              the tab bar via href: null. See this file's own header comment. */}
+          <Tabs.Screen name="transactions/new" options={{ href: null }} />
+          <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
+          <Tabs.Screen name="transactions/import" options={{ href: null }} />
+          <Tabs.Screen name="accounts/index" options={{ href: null }} />
+          <Tabs.Screen name="accounts/[id]" options={{ href: null }} />
+          <Tabs.Screen name="goals/index" options={{ href: null }} />
+          <Tabs.Screen name="goals/[id]" options={{ href: null }} />
+          <Tabs.Screen name="recurring/index" options={{ href: null }} />
+          <Tabs.Screen name="recurring/[id]" options={{ href: null }} />
+          <Tabs.Screen name="settings/categories" options={{ href: null }} />
         </Tabs>
       </View>
       {isLocked && (

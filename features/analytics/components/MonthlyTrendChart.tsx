@@ -41,38 +41,43 @@ export function MonthlyTrendChart({ points }: MonthlyTrendChartProps) {
 
   return (
     <View accessible accessibilityLabel={chartSummary}>
-      <Svg
-        width={chartWidth}
-        height={CHART_HEIGHT}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        {points.map((point, index) => {
-          const groupX = index * (groupWidth + GROUP_GAP)
-          const incomeHeight = (point.incomeAgorot / maxAgorot) * CHART_HEIGHT
-          const expenseHeight = (point.expenseAgorot / maxAgorot) * CHART_HEIGHT
-          return (
-            <G key={point.periodStart}>
-              <Rect
-                x={groupX}
-                y={CHART_HEIGHT - incomeHeight}
-                width={BAR_WIDTH}
-                height={incomeHeight}
-                fill={incomeColor}
-                rx={2}
-              />
-              <Rect
-                x={groupX + BAR_WIDTH + BAR_GAP}
-                y={CHART_HEIGHT - expenseHeight}
-                width={BAR_WIDTH}
-                height={expenseHeight}
-                fill={expenseColor}
-                rx={2}
-              />
-            </G>
-          )
-        })}
-      </Svg>
+      {/* accessibilityElementsHidden/importantForAccessibility live on this
+          wrapping View, not on <Svg> itself: react-native-svg's web shape
+          forwards every prop straight to the DOM with no allowlist (unlike
+          react-native-web's View, which silently drops RN-only props it
+          doesn't recognize), so setting them on <Svg> produced a React DOM
+          warning on web with zero actual effect there. A View ancestor
+          hides the same descendant subtree from the native accessibility
+          tree — identical native behavior, no web warning. */}
+      <View testID="monthly-trend-chart-hidden-wrapper" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Svg testID="monthly-trend-chart-svg" width={chartWidth} height={CHART_HEIGHT}>
+          {points.map((point, index) => {
+            const groupX = index * (groupWidth + GROUP_GAP)
+            const incomeHeight = (point.incomeAgorot / maxAgorot) * CHART_HEIGHT
+            const expenseHeight = (point.expenseAgorot / maxAgorot) * CHART_HEIGHT
+            return (
+              <G key={point.periodStart}>
+                <Rect
+                  x={groupX}
+                  y={CHART_HEIGHT - incomeHeight}
+                  width={BAR_WIDTH}
+                  height={incomeHeight}
+                  fill={incomeColor}
+                  rx={2}
+                />
+                <Rect
+                  x={groupX + BAR_WIDTH + BAR_GAP}
+                  y={CHART_HEIGHT - expenseHeight}
+                  width={BAR_WIDTH}
+                  height={expenseHeight}
+                  fill={expenseColor}
+                  rx={2}
+                />
+              </G>
+            )
+          })}
+        </Svg>
+      </View>
       <View className="mt-2 flex-row flex-wrap gap-3">
         {points.map((point) => (
           <Text key={point.periodStart} className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
