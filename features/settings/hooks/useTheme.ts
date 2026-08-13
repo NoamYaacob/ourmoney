@@ -23,7 +23,7 @@
 // paint, closing the gap between "preference resolved" and "NativeWind
 // applied it."
 
-import { useEffect, useLayoutEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { colorScheme, useColorScheme as useNativeWindColorScheme } from 'nativewind'
 import {
@@ -32,34 +32,15 @@ import {
   writeAppearancePreference,
   type AppearancePreference,
 } from '../lib/appearancePreference'
-// TEMPORARY — spinner-flash-on-tab-focus investigation. See
-// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-import { diagLog } from '@/lib/debug/spinnerDiagnostics'
 
 export function useTheme() {
   const queryClient = useQueryClient()
-  const query = useQuery({
+  const { data: preference, isLoading } = useQuery({
     queryKey: appearancePreferenceQueryKey,
     queryFn: readAppearancePreference,
     staleTime: Infinity,
   })
-  const { data: preference, isLoading } = query
   const { colorScheme: resolvedTheme } = useNativeWindColorScheme()
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
-  useEffect(() => {
-    diagLog('useTheme mount', {})
-    return () => diagLog('useTheme unmount', {})
-  }, [])
-
-  useEffect(() => {
-    diagLog('useTheme query', {
-      status: query.status,
-      fetchStatus: query.fetchStatus,
-      hasData: query.data !== undefined,
-      dataUpdatedAt: query.dataUpdatedAt,
-    })
-  }, [query.status, query.fetchStatus, query.data, query.dataUpdatedAt])
 
   useLayoutEffect(() => {
     if (preference) colorScheme.set(preference)

@@ -15,9 +15,7 @@ import { QueryClient, focusManager } from '@tanstack/react-query'
 // AuthGate's isLoading gate depends on — which is indistinguishable, from
 // AuthGate's perspective, from a genuine cold start: every gated query goes
 // back to isPending:true until it refetches, flashing the root spinner on
-// and off for as long as Fast Refresh keeps re-triggering (the reported
-// Web Preview bug — "the entire screen disappears and the root centered
-// ActivityIndicator appears briefly," repeating continuously).
+// and off for as long as Fast Refresh keeps re-triggering.
 //
 // Caching the instance on globalThis survives module re-evaluation (this
 // module's own top-level binding does not). A real cold start or a
@@ -29,21 +27,7 @@ declare global {
   // ambient global scope inside a `declare global` block.
   // eslint-disable-next-line no-var
   var __ourMoneyQueryClient: QueryClient | undefined
-  // TEMPORARY — spinner-flash-on-tab-focus investigation. See
-  // lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-  // A plain counter, incremented only when a client is actually
-  // constructed (never when the globalThis-cached one above is reused) —
-  // exposes no data, just proves whether tab-focus-return is genuinely
-  // constructing a fresh client (module re-evaluation with globalThis
-  // intact — Fast Refresh) versus something else entirely (globalThis
-  // itself would be wiped by a true page reload, so this would read back
-  // as 1 either way in that case — cross-check against the page lifecycle
-  // event log for that distinction).
-  // eslint-disable-next-line no-var
-  var __ourMoneyQueryClientConstructCount: number | undefined
 }
-
-const isReusingExistingClient = !!globalThis.__ourMoneyQueryClient
 
 export const queryClient =
   globalThis.__ourMoneyQueryClient ??
@@ -55,15 +39,6 @@ export const queryClient =
       },
     },
   })
-
-if (!isReusingExistingClient) {
-  globalThis.__ourMoneyQueryClientConstructCount = (globalThis.__ourMoneyQueryClientConstructCount ?? 0) + 1
-}
-
-// TEMPORARY — spinner-flash-on-tab-focus investigation. See
-// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-// Read by app/_layout.tsx to log alongside RootLayout's own mount.
-export const queryClientDiagnosticInstanceId = globalThis.__ourMoneyQueryClientConstructCount ?? 0
 
 if (!globalThis.__ourMoneyQueryClient) {
   globalThis.__ourMoneyQueryClient = queryClient

@@ -13,12 +13,8 @@
 // must never be read as "still loading" in that state — callers pass
 // `enabled` explicitly rather than this hook guessing session state itself.
 
-import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pendingInvitationTokenQueryKey, readPendingInvitationToken } from '../lib/pendingInvitationToken'
-// TEMPORARY — spinner-flash-on-tab-focus investigation. See
-// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-import { diagLog } from '@/lib/debug/spinnerDiagnostics'
 
 export function usePendingInvitationToken(enabled: boolean) {
   const query = useQuery({
@@ -27,15 +23,6 @@ export function usePendingInvitationToken(enabled: boolean) {
     enabled,
     staleTime: Infinity,
   })
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
-  useEffect(() => {
-    diagLog('usePendingInvitationToken query', {
-      status: query.status,
-      fetchStatus: query.fetchStatus,
-      hasToken: query.data !== undefined && query.data !== null,
-    })
-  }, [query.status, query.fetchStatus, query.data])
 
   return {
     token: enabled ? (query.data ?? null) : null,

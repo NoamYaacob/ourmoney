@@ -35,9 +35,6 @@ import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 import { clearHouseholdScopedQueries } from '@/lib/cache/clearHouseholdScopedQueries'
-// TEMPORARY — spinner-flash-on-tab-focus investigation. See
-// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-import { diagLog } from '@/lib/debug/spinnerDiagnostics'
 
 const D9_REVOCATION_CHECK_INTERVAL_MS = 60_000
 
@@ -64,19 +61,8 @@ export function useHasHousehold(userId: string | undefined) {
     refetchInterval: D9_REVOCATION_CHECK_INTERVAL_MS,
   })
 
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
-  useEffect(() => {
-    diagLog('useHasHousehold query', {
-      status: query.status,
-      fetchStatus: query.fetchStatus,
-      hasHousehold: query.data === undefined ? 'undefined' : query.data,
-    })
-  }, [query.status, query.fetchStatus, query.data])
-
   useEffect(() => {
     if (previousHasHouseholdRef.current === true && query.data === false) {
-      // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
-      diagLog('useHasHousehold D9 clear triggered', { previous: true, next: false })
       clearHouseholdScopedQueries(queryClient)
     }
     previousHasHouseholdRef.current = query.data

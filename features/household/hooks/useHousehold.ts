@@ -17,9 +17,6 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 import { useHouseholdStore } from '@/store/householdStore'
 import type { Household } from '@/types/app'
-// TEMPORARY — spinner-flash-on-tab-focus investigation. See
-// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-import { diagLog } from '@/lib/debug/spinnerDiagnostics'
 
 export function householdQueryKey(userId: string | undefined) {
   return ['household', 'current', userId] as const
@@ -55,15 +52,6 @@ export function useHousehold(userId: string | undefined) {
     }
     if (query.data) setHouseholdId(query.data.household_id)
   }, [userId, query.data, setHouseholdId])
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
-  useEffect(() => {
-    diagLog('useHousehold query', {
-      status: query.status,
-      fetchStatus: query.fetchStatus,
-      hasData: query.data !== undefined && query.data !== null,
-    })
-  }, [query.status, query.fetchStatus, query.data])
 
   return {
     householdId: query.data?.household_id ?? null,

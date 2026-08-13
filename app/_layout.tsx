@@ -10,7 +10,7 @@ import { Slot } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { queryClient, queryClientDiagnosticInstanceId } from '../lib/queryClient'
+import { queryClient } from '../lib/queryClient'
 import { useAuth } from '../features/auth/hooks/useAuth'
 import { useAuthGuard } from '../features/auth/hooks/useAuthGuard'
 import { useHousehold } from '../features/household/hooks/useHousehold'
@@ -18,9 +18,6 @@ import { useTheme } from '../features/settings/hooks/useTheme'
 import { AppErrorBoundary } from '../components/ui/AppErrorBoundary'
 import { captureException, initCrashReporting } from '../lib/monitoring/crashReporting'
 import { hideSplashScreen, initSplashGate } from '../lib/monitoring/splashGate'
-// TEMPORARY — spinner-flash-on-tab-focus investigation. See
-// lib/debug/spinnerDiagnostics.ts's header comment; remove alongside it.
-import { diagLog } from '../lib/debug/spinnerDiagnostics'
 
 // Both run once at module load, before first render — Milestone 11 / ADR-033.
 // initSplashGate() calls SplashScreen.preventAutoHideAsync() (Expo's own
@@ -33,33 +30,6 @@ import { diagLog } from '../lib/debug/spinnerDiagnostics'
 // try/catch) — but ordering it second is a free extra safety margin.
 initSplashGate()
 initCrashReporting()
-
-// TEMPORARY diagnostic (module top-level — runs once per module
-// evaluation, see lib/debug/spinnerDiagnostics.ts). This line re-appearing
-// in the log after a tab switch is itself the direct answer to "is this
-// module graph re-evaluating on tab return" — a plain top-level `const`/
-// function body only re-runs if the module itself is re-executed (Fast
-// Refresh) or the page reloads (in which case globalThis-backed counters
-// like queryClientDiagnosticInstanceId also reset to 1).
-diagLog('app/_layout.tsx module evaluated', { queryClientInstanceId: queryClientDiagnosticInstanceId })
-
-// TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Web-only
-// browser page lifecycle events, registered at module top level (not
-// inside a component effect) so nothing is missed regardless of exactly
-// when React's first commit happens relative to these firing. `persisted`
-// on pageshow/pagehide distinguishes a bfcache restore (page state kept,
-// persisted:true) from a genuine fresh load/reload (persisted:false or no
-// pageshow at all, just a plain `load`).
-if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  window.addEventListener('load', () => diagLog('window.load', {}))
-  window.addEventListener('pageshow', (event) =>
-    diagLog('window.pageshow', { persisted: (event as PageTransitionEvent).persisted })
-  )
-  window.addEventListener('pagehide', (event) =>
-    diagLog('window.pagehide', { persisted: (event as PageTransitionEvent).persisted })
-  )
-  window.addEventListener('beforeunload', () => diagLog('window.beforeunload', {}))
-}
 
 // The auth guard's own loading state (session restore + household check) is
 // rendered here, not inside individual screens — see ARCHITECTURE.md § Auth
@@ -83,32 +53,8 @@ function AuthGate() {
   const { isLoading } = useAuthGuard()
   const { session } = useAuth()
   const { isLoading: isHouseholdLoading } = useHousehold(session?.user.id)
-  const showsSpinner = isLoading || (!!session && isHouseholdLoading)
 
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Explicit
-  // mount/unmount, separate from the state-transition log below — proves
-  // whether this subtree is genuinely being torn down and remounted (e.g.
-  // as a side effect of ThemeGate re-entering its own loading branch, which
-  // would unmount everything nested inside it, including this).
-  useEffect(() => {
-    diagLog('AuthGate mount', {})
-    return () => diagLog('AuthGate unmount', {})
-  }, [])
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Logs the
-  // final gate decision (what app/_layout.tsx's own condition below
-  // evaluates to) so it can be correlated against the per-query logs from
-  // useAuth/useAuthGuard/useHasHousehold/useHousehold/usePendingInvitationToken.
-  useEffect(() => {
-    diagLog('AuthGate', {
-      isLoading,
-      hasSession: !!session,
-      isHouseholdLoading,
-      showsSpinner,
-    })
-  }, [isLoading, session, isHouseholdLoading, showsSpinner])
-
-  if (showsSpinner) {
+  if (isLoading || (!!session && isHouseholdLoading)) {
     return (
       <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
         <ActivityIndicator />
@@ -152,22 +98,7 @@ function SplashReadySignal({ children }: { children: ReactNode }) {
 // gates into one boolean, leaves the already-reviewed M1 RTL bootstrap
 // completely untouched.
 function ThemeGate({ children }: { children: ReactNode }) {
-  const { theme, isLoading, preference } = useTheme()
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts.
-  useEffect(() => {
-    diagLog('ThemeGate mount', {})
-    return () => diagLog('ThemeGate unmount', {})
-  }, [])
-
-  useEffect(() => {
-    diagLog('ThemeGate state', {
-      isLoading,
-      preference,
-      resolvedTheme: theme,
-      showsSpinner: isLoading,
-    })
-  }, [isLoading, preference, theme])
+  const { theme, isLoading } = useTheme()
 
   if (isLoading) {
     return (
@@ -188,15 +119,6 @@ function ThemeGate({ children }: { children: ReactNode }) {
 // RTL bootstrap — see ARCHITECTURE.md § RTL Implementation.
 export default function RootLayout() {
   const [rtlReady, setRtlReady] = useState(I18nManager.isRTL)
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Explicit
-  // mount/unmount of the whole tree's root component, plus the QueryClient
-  // instance ID it's about to hand to <QueryClientProvider> below — the
-  // direct answer to "is the root tree genuinely remounting."
-  useEffect(() => {
-    diagLog('RootLayout mount', { queryClientInstanceId: queryClientDiagnosticInstanceId })
-    return () => diagLog('RootLayout unmount', {})
-  }, [])
 
   useEffect(() => {
     // Already RTL — the useState initializer above already reflects it.
@@ -223,27 +145,6 @@ export default function RootLayout() {
           })
 
     void settle.finally(() => setRtlReady(true))
-  }, [])
-
-  // TEMPORARY diagnostic — see lib/debug/spinnerDiagnostics.ts. Web-only:
-  // document.visibilitychange / window focus/blur is the exact trigger
-  // reported for the spinner flash (switch tab away, switch back).
-  // Registered here, unconditionally and as early as possible (before the
-  // rtlReady gate below), so nothing during app bootstrap can be missed.
-  useEffect(() => {
-    if (Platform.OS !== 'web') return
-    const onVisibilityChange = () =>
-      diagLog('document.visibilitychange', { visibilityState: document.visibilityState })
-    const onFocus = () => diagLog('window.focus', {})
-    const onBlur = () => diagLog('window.blur', {})
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('focus', onFocus)
-    window.addEventListener('blur', onBlur)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener('blur', onBlur)
-    }
   }, [])
 
   if (!rtlReady) return null
