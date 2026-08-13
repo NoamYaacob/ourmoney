@@ -115,11 +115,28 @@ jobs:
           set -euo pipefail
           psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_001_table_structure.sql 2>&1 | tee /tmp/history_structure.txt
 
-      - name: Upload structure output
+      - name: Phase 1b — read exact row metadata (read-only)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_002_read_rows.sql 2>&1 | tee /tmp/history_rows.txt
+
+      - name: Phase 1c — dump full statements content for content-level comparison (read-only)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_003_dump_statements.sql > /tmp/history_statements.csv
+          wc -l /tmp/history_statements.csv
+
+      - name: Upload Phase 1 output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: migration-history-reconciliation-output
           path: |
             /tmp/history_structure.txt
+            /tmp/history_rows.txt
+            /tmp/history_statements.csv
           if-no-files-found: warn
