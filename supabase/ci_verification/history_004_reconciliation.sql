@@ -459,7 +459,8 @@ $mig001body$],
   'history-reconciliation-backfill',
   NULL,
   NULL
-);
+)
+ON CONFLICT (version) DO NOTHING;
 
 INSERT INTO supabase_migrations.schema_migrations (version, statements, name, created_by, idempotency_key, rollback)
 VALUES (
@@ -1242,7 +1243,8 @@ $mig002body$],
   'history-reconciliation-backfill',
   NULL,
   NULL
-);
+)
+ON CONFLICT (version) DO NOTHING;
 
 INSERT INTO supabase_migrations.schema_migrations (version, statements, name, created_by, idempotency_key, rollback)
 VALUES (
@@ -1524,7 +1526,8 @@ $mig003body$],
   'history-reconciliation-backfill',
   NULL,
   NULL
-);
+)
+ON CONFLICT (version) DO NOTHING;
 
 INSERT INTO supabase_migrations.schema_migrations (version, statements, name, created_by, idempotency_key, rollback)
 VALUES (
@@ -1914,7 +1917,8 @@ $mig004body$],
   'history-reconciliation-backfill',
   NULL,
   NULL
-);
+)
+ON CONFLICT (version) DO NOTHING;
 
 INSERT INTO supabase_migrations.schema_migrations (version, statements, name, created_by, idempotency_key, rollback)
 VALUES (
@@ -2357,6 +2361,7 @@ $mig005body$],
   'history-reconciliation-backfill',
   NULL,
   NULL
-);
+)
+ON CONFLICT (version) DO NOTHING;
 
 COMMIT;

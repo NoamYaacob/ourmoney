@@ -75,6 +75,9 @@ jobs:
       - name: Install Supabase CLI
         run: npm install -g supabase
 
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
       - name: Discover a reachable direct SQL connection
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
