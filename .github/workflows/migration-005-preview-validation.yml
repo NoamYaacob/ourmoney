@@ -61,6 +61,7 @@ on:
     paths:
       - 'supabase/migrations/005_leave_household.sql'
       - 'supabase/ci_verification/**'
+      - 'supabase/rls_tests.sql'
       - '.github/workflows/migration-005-preview-validation.yml'
 
 permissions:
