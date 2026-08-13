@@ -7,6 +7,13 @@
 // to today," with no explicit requirement for arbitrary-date entry, and no
 // date-picker dependency is installed in this project yet — adding one is a
 // scope decision left for a future milestone rather than assumed here.
+//
+// Design Phase 2: information hierarchy only — every field, every piece of
+// validation, and the submit call are unchanged from Phase 1. Amount is now
+// a dedicated hero entry (AmountField) instead of a plain labeled input;
+// expense/income and personal/shared are SegmentedControls instead of Chip
+// pairs; account/category use Select's 'row' variant with an icon instead
+// of a boxed dropdown-style trigger with an emoji baked into the label.
 
 import { useState } from 'react'
 import { Text, View } from 'react-native'
@@ -21,13 +28,22 @@ import { useCreateTransaction } from '@/features/transactions/hooks/useCreateTra
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { accountIconName } from '@/features/accounts/lib/accountIcon'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { AmountField } from '@/features/transactions/components/AmountField'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { Chip } from '@/components/ui/Chip'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { Card } from '@/components/ui/Card'
+import { Divider } from '@/components/ui/Divider'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
 
 export default function NewTransaction() {
   const { t } = useTranslation()
@@ -38,6 +54,8 @@ export default function NewTransaction() {
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const createTransaction = useCreateTransaction(householdId)
+  const { colorScheme: scheme } = useColorScheme()
+  const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
   // accountId/payerId are "overrides": null means "no explicit user choice
   // yet, fall back to the sensible default computed at render time" (the
@@ -55,6 +73,8 @@ export default function NewTransaction() {
 
   const accountId = accountIdOverride ?? accounts[0]?.id ?? null
   const payerId = payerIdOverride ?? user?.id ?? null
+  const selectedAccount = accounts.find((a) => a.id === accountId)
+  const selectedCategory = categories.find((c) => c.id === categoryId)
 
   function handleCategoryChange(nextCategoryId: string) {
     setCategoryId(nextCategoryId)
@@ -97,31 +117,35 @@ export default function NewTransaction() {
     )
   }
 
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
-  const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
+  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
   return (
     <Screen keyboardAvoiding>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">
-        {t('transactions.form.title')}
-      </Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('transactions.form.title')}</Text>
 
       {isHouseholdLoading || isAccountsLoading || isCategoriesLoading ? (
         <LoadingSpinner />
       ) : (
         <>
-          <View className="mb-4 flex-row gap-2">
-            <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
-            <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
+          <View className="mb-5">
+            <SegmentedControl
+              accessibilityLabel={t('transactions.form.title')}
+              options={[
+                { value: 'expense', label: t('transactions.form.expense'), tint: 'ink' },
+                { value: 'income', label: t('transactions.form.income'), tint: 'positive' },
+              ]}
+              value={isIncome ? 'income' : 'expense'}
+              onChange={(v) => setIsIncome(v === 'income')}
+            />
           </View>
 
-          <Input
+          <AmountField
             label={t('transactions.form.amountLabel')}
             value={amountText}
             onChangeText={setAmountText}
             placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
           />
 
           <Input
@@ -138,30 +162,49 @@ export default function NewTransaction() {
             placeholder={t('transactions.form.merchantPlaceholder')}
           />
 
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
-
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={handleCategoryChange}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
+          <View className="mb-4 mt-2">
+            <Card>
+              <Select
+                variant="row"
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+                sheetTitle={t('transactions.form.accountLabel')}
+                leadingIcon={
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                    <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                  </View>
+                }
+              />
+              <Divider />
+              <Select
+                variant="row"
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={handleCategoryChange}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+                sheetTitle={t('transactions.form.categorySheetTitle')}
+                leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
+              />
+            </Card>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.form.sharedLabel')}
           </Text>
-          <View className="mb-1 flex-row gap-2">
-            <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
-            <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
-          </View>
-          <Text className="mb-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+          <SegmentedControl
+            accessibilityLabel={t('transactions.form.sharedLabel')}
+            options={[
+              { value: 'shared', label: t('transactions.form.shared') },
+              { value: 'personal', label: t('transactions.form.personal') },
+            ]}
+            value={isShared ? 'shared' : 'personal'}
+            onChange={(v) => setIsShared(v === 'shared')}
+          />
+          <Text className="mb-4 mt-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.form.sharedHint')}
           </Text>
 
@@ -179,7 +222,7 @@ export default function NewTransaction() {
             <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
           )}
 
-          <View className="mt-2">
+          <View className="mt-4">
             <Button
               title={t('transactions.form.submit')}
               onPress={handleSubmit}

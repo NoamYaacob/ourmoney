@@ -1,15 +1,14 @@
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
-import { Ionicons } from '@expo/vector-icons'
-import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePeriodStore } from '@/store/periodStore'
-import { formatMonthLabel, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
+import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
+import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { remainingAgorot } from '@/lib/money/arithmetic'
 import { formatILS } from '@/lib/money/format'
 import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
@@ -18,6 +17,7 @@ import { computeTopCategories } from '@/features/analytics/lib/topCategories'
 import { MonthlyTrendChart } from '@/features/analytics/components/MonthlyTrendChart'
 import { CategoryDonutChart } from '@/features/analytics/components/CategoryDonutChart'
 import { TopCategoriesList } from '@/features/analytics/components/TopCategoriesList'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -27,9 +27,6 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { HIT_SLOP } from '@/constants/accessibility'
-import { colors } from '@/constants/colors'
-import { useRTL } from '@/hooks/useRTL'
 
 // Real MVP-2 dashboard, replacing the M1 placeholder. Every figure here is
 // either a direct query result or derived via lib/money — never a bare `0`
@@ -37,9 +34,6 @@ import { useRTL } from '@/hooks/useRTL'
 export default function Dashboard() {
   const { t } = useTranslation()
   const router = useRouter()
-  const { flip } = useRTL()
-  const { colorScheme: scheme } = useColorScheme()
-  const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
@@ -92,6 +86,16 @@ export default function Dashboard() {
   // computeMonthlyTrend always returns one point per month regardless of
   // whether any transaction fell in it.
   const monthlyTrendIsEmpty = monthlyTrendPoints.every((p) => p.incomeAgorot === 0 && p.expenseAgorot === 0)
+  // Design Phase 2: when there is genuinely nothing to show yet, the three
+  // analytics sections used to each reserve their own chart-sized empty
+  // block — three near-identical "not enough data" messages stacked one
+  // after another. Collapsed into a single compact state instead (item 4).
+  // Still per-section correct: if only some are empty (e.g. the 6-month
+  // trend has an older month's data but the current month has none), each
+  // section falls through to its own normal empty/populated rendering below
+  // exactly as in Phase 1 — only the realistic "brand new household" case
+  // of all three empty at once gets the combined treatment.
+  const analyticsAllEmpty = monthlyTrendIsEmpty && categoryBreakdown.length === 0 && topCategories.length === 0
 
   // Fail-safe display: while useHousehold is still resolving (a real
   // network round trip on every cold start), householdId is null and every
@@ -112,32 +116,10 @@ export default function Dashboard() {
   const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
 
   return (
-    <Screen>
+    <Screen floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}>
       <Text className="mb-4 text-title font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
 
-      <View className="mb-5 flex-row items-center justify-between">
-        <Pressable
-          onPress={() => setPeriodStart(shiftMonth(periodStart, -1))}
-          accessibilityRole="button"
-          accessibilityLabel={t('dashboard.previousMonth')}
-          hitSlop={HIT_SLOP}
-          className="h-9 w-9 items-center justify-center rounded-full active:bg-surfaceMuted-light dark:active:bg-surfaceMuted-dark"
-        >
-          <Ionicons name={flip('chevron-back', 'chevron-forward')} size={20} color={iconColor} />
-        </Pressable>
-        <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">
-          {formatMonthLabel(periodStart)}
-        </Text>
-        <Pressable
-          onPress={() => setPeriodStart(shiftMonth(periodStart, 1))}
-          accessibilityRole="button"
-          accessibilityLabel={t('dashboard.nextMonth')}
-          hitSlop={HIT_SLOP}
-          className="h-9 w-9 items-center justify-center rounded-full active:bg-surfaceMuted-light dark:active:bg-surfaceMuted-dark"
-        >
-          <Ionicons name={flip('chevron-forward', 'chevron-back')} size={20} color={iconColor} />
-        </Pressable>
-      </View>
+      <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
       {progressError ? (
         <ErrorMessage message={t('dashboard.errors.generic')} />
@@ -153,12 +135,31 @@ export default function Dashboard() {
           >
             {formatILS(remaining)}
           </Text>
+
           <View className="mt-4">
             <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
           </View>
-          <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-            {formatILS(totalSpentAgorot)} {t('dashboard.spent')}
-          </Text>
+          {overallPercent !== null && (
+            <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('dashboard.percentUsed', { percent: Math.round(overallPercent) })}
+            </Text>
+          )}
+
+          <View className="mt-4 flex-row items-center">
+            <View className="flex-1">
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
+              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                {formatILS(totalSpentAgorot)}
+              </Text>
+            </View>
+            <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
+            <View className="flex-1">
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.ofBudget')}</Text>
+              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                {formatILS(totalAllocatedAgorot)}
+              </Text>
+            </View>
+          </View>
         </Card>
       )}
 
@@ -170,58 +171,99 @@ export default function Dashboard() {
       ) : progressError ? (
         <ErrorMessage message={t('dashboard.errors.generic')} />
       ) : progress.length === 0 ? (
-        <EmptyState icon="🎯" message={t('dashboard.noBudget')} />
+        <EmptyState iconName="pie-chart-outline" message={t('dashboard.noBudget')} compact />
       ) : (
         <Card>
-          {progress.map((category, index) => (
-            <View key={category.categoryId}>
-              {index > 0 && (
-                <View className="my-3">
-                  <Divider />
+          {progress.map((category, index) => {
+            const categoryOverBudget = category.remainingAgorot < 0
+            return (
+              <View key={category.categoryId}>
+                {index > 0 && (
+                  <View className="my-3">
+                    <Divider />
+                  </View>
+                )}
+                <View className="flex-row items-start gap-3">
+                  <CategoryIcon icon={category.categoryIcon} size="sm" />
+                  <View className="flex-1">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                        {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
+                      </Text>
+                    </View>
+                    <View className="mt-1.5">
+                      <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
+                    </View>
+                    <Text
+                      className={`mt-1 text-caption ${
+                        categoryOverBudget
+                          ? 'text-danger-light dark:text-danger-dark'
+                          : 'text-positive-light dark:text-positive-dark'
+                      }`}
+                    >
+                      {categoryOverBudget
+                        ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
+                        : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
+                    </Text>
+                  </View>
                 </View>
-              )}
-              <View className="mb-1.5 flex-row items-center justify-between">
-                <Text className="text-body text-ink-light dark:text-ink-dark">
-                  {category.categoryIcon} {category.categoryNameHe}
-                </Text>
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                </Text>
               </View>
-              <ProgressBar percent={category.percentSpent} />
-            </View>
-          ))}
+            )
+          })}
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('dashboard.recentTitle')}
-      </Text>
+      <View className="mb-2 mt-6 flex-row items-center justify-between">
+        <Text className="text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          {t('dashboard.recentTitle')}
+        </Text>
+        {recentTransactions.length > 0 && (
+          <Pressable onPress={() => router.push('/transactions')} accessibilityRole="button">
+            <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+              {t('dashboard.viewAll')}
+            </Text>
+          </Pressable>
+        )}
+      </View>
       {transactionsError ? (
         <ErrorMessage message={t('dashboard.errors.generic')} />
       ) : isTransactionsLoading ? (
         <SkeletonList rows={3} />
       ) : recentTransactions.length === 0 ? (
         <EmptyState
-          icon="🧾"
+          iconName="receipt-outline"
           message={t('dashboard.noTransactions')}
           actionLabel={t('transactions.addButton')}
           onAction={() => router.push('/transactions/new')}
         />
       ) : (
         <Card>
-          {recentTransactions.map((txn, index) => (
-            <View key={txn.id}>
-              {index > 0 && (
-                <View className="my-3">
-                  <Divider />
-                </View>
-              )}
-              <Pressable onPress={() => router.push(`/transactions/${txn.id}`)} accessibilityRole="button">
-                <View className="flex-row items-center justify-between">
-                  <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                    {txn.description}
-                  </Text>
+          {recentTransactions.map((txn, index) => {
+            const categoryName = txn.category_id ? categoryNameById[txn.category_id] : undefined
+            return (
+              <View key={txn.id}>
+                {index > 0 && (
+                  <View className="my-3">
+                    <Divider />
+                  </View>
+                )}
+                <Pressable
+                  onPress={() => router.push(`/transactions/${txn.id}`)}
+                  accessibilityRole="button"
+                  className="flex-row items-center gap-3"
+                >
+                  <CategoryIcon icon={txn.category_id ? categoryIconById[txn.category_id] : undefined} size="sm" />
+                  <View className="flex-1">
+                    <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {txn.description}
+                    </Text>
+                    {categoryName && (
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                        {categoryName}
+                      </Text>
+                    )}
+                  </View>
                   <Text
                     className={`text-body font-medium ${
                       txn.amount_agorot > 0
@@ -231,67 +273,94 @@ export default function Dashboard() {
                   >
                     {formatILS(txn.amount_agorot)}
                   </Text>
-                </View>
-              </Pressable>
-            </View>
-          ))}
+                </Pressable>
+              </View>
+            )
+          })}
         </Card>
       )}
 
-      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('dashboard.analytics.trendTitle')}
-      </Text>
       {analyticsError ? (
-        <ErrorMessage message={t('dashboard.errors.generic')} />
+        <>
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.trendTitle')}
+          </Text>
+          <ErrorMessage message={t('dashboard.errors.generic')} />
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.breakdownTitle')}
+          </Text>
+          <ErrorMessage message={t('dashboard.errors.generic')} />
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.topCategoriesTitle')}
+          </Text>
+          <ErrorMessage message={t('dashboard.errors.generic')} />
+        </>
       ) : isAnalyticsLoading ? (
-        <SkeletonList rows={1} rowClassName="h-40 w-full rounded-card" />
-      ) : monthlyTrendIsEmpty ? (
-        <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
-      ) : (
-        <Card>
-          <MonthlyTrendChart points={monthlyTrendPoints} />
-        </Card>
-      )}
-
-      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('dashboard.analytics.breakdownTitle')}
-      </Text>
-      {analyticsError ? (
-        <ErrorMessage message={t('dashboard.errors.generic')} />
-      ) : isAnalyticsLoading ? (
-        <View className="items-center">
-          <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
-        </View>
-      ) : categoryBreakdown.length === 0 ? (
-        <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
-      ) : (
-        <Card>
+        <>
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.trendTitle')}
+          </Text>
+          <SkeletonList rows={1} rowClassName="h-40 w-full rounded-card" />
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.breakdownTitle')}
+          </Text>
           <View className="items-center">
-            <CategoryDonutChart breakdown={categoryBreakdown} categoryNameById={categoryNameById} />
+            <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
           </View>
-        </Card>
-      )}
-
-      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('dashboard.analytics.topCategoriesTitle')}
-      </Text>
-      {analyticsError ? (
-        <ErrorMessage message={t('dashboard.errors.generic')} />
-      ) : isAnalyticsLoading ? (
-        <SkeletonList rows={3} />
-      ) : topCategories.length === 0 ? (
-        <EmptyState icon="📊" message={t('dashboard.analytics.empty')} />
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.topCategoriesTitle')}
+          </Text>
+          <SkeletonList rows={3} />
+        </>
+      ) : analyticsAllEmpty ? (
+        <>
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.insightsTitle')}
+          </Text>
+          <EmptyState iconName="sparkles-outline" message={t('dashboard.analytics.insightsEmpty')} compact />
+        </>
       ) : (
-        <Card>
-          <TopCategoriesList
-            entries={topCategories}
-            categoryNameById={categoryNameById}
-            categoryIconById={categoryIconById}
-          />
-        </Card>
-      )}
+        <>
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.trendTitle')}
+          </Text>
+          {monthlyTrendIsEmpty ? (
+            <EmptyState iconName="bar-chart-outline" message={t('dashboard.analytics.empty')} compact />
+          ) : (
+            <Card>
+              <MonthlyTrendChart points={monthlyTrendPoints} />
+            </Card>
+          )}
 
-      <FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.breakdownTitle')}
+          </Text>
+          {categoryBreakdown.length === 0 ? (
+            <EmptyState iconName="pie-chart-outline" message={t('dashboard.analytics.empty')} compact />
+          ) : (
+            <Card>
+              <View className="items-center">
+                <CategoryDonutChart breakdown={categoryBreakdown} categoryNameById={categoryNameById} />
+              </View>
+            </Card>
+          )}
+
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.analytics.topCategoriesTitle')}
+          </Text>
+          {topCategories.length === 0 ? (
+            <EmptyState iconName="pie-chart-outline" message={t('dashboard.analytics.empty')} compact />
+          ) : (
+            <Card>
+              <TopCategoriesList
+                entries={topCategories}
+                categoryNameById={categoryNameById}
+                categoryIconById={categoryIconById}
+              />
+            </Card>
+          )}
+        </>
+      )}
     </Screen>
   )
 }

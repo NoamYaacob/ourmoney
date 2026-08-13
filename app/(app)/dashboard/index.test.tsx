@@ -102,17 +102,19 @@ describe('Dashboard analytics section', () => {
     jest.clearAllMocks()
   })
 
-  it('shows the analytics empty state for the monthly trend chart when the 6-month window has zero transactions', async () => {
+  it('shows one combined compact insights state when the 6-month window has zero transactions, not three chart-sized empty blocks', async () => {
     mockAnalytics({ transactions: [] })
 
-    const { getAllByText, queryByTestId } = await render(<Dashboard />)
+    const { getByText, queryByText, queryByTestId } = await render(<Dashboard />)
 
-    // The donut/top-categories sections right next to it are legitimately
-    // empty too in this fixture (zero transactions), so the same shared
-    // "אין מספיק נתונים להצגה." message is expected to appear for all
-    // three analytics sections, not just the trend chart alone — the
-    // trend-chart-specific assertion is the SVG's absence below.
-    expect(getAllByText(EMPTY_ANALYTICS_MESSAGE).length).toBeGreaterThanOrEqual(1)
+    // Design Phase 2: the three separate per-section "not enough data"
+    // messages collapsed into a single compact insights state (item 4) —
+    // the old per-section headings/messages must not appear alongside it.
+    expect(getByText(i18n.t('dashboard.analytics.insightsTitle'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.analytics.insightsEmpty'))).toBeTruthy()
+    expect(queryByText(i18n.t('dashboard.analytics.trendTitle'))).toBeNull()
+    expect(queryByText(i18n.t('dashboard.analytics.breakdownTitle'))).toBeNull()
+    expect(queryByText(i18n.t('dashboard.analytics.topCategoriesTitle'))).toBeNull()
     // The chart's own hidden wrapper marks it accessibilityElementsHidden
     // (MonthlyTrendChart.test.tsx's convention), so it must be looked up
     // with includeHiddenElements to be found at all when it IS rendered.
@@ -221,12 +223,22 @@ describe('Dashboard month navigation and budget summary', () => {
       }
     })
 
-    const { getByText, queryByText } = await render(<Dashboard />)
+    const { getByText, getAllByText, queryByText } = await render(<Dashboard />)
 
     expect(getByText(formatILS(60000))).toBeTruthy() // remaining
-    expect(getByText(`${formatILS(40000)} ${i18n.t('dashboard.spent')}`)).toBeTruthy() // spent
-    expect(getByText('🛒 מכולת')).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.spent'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.ofBudget'))).toBeTruthy()
+    expect(getByText(formatILS(100000))).toBeTruthy() // out of budget total
+    expect(getByText(i18n.t('dashboard.percentUsed', { percent: 40 }))).toBeTruthy()
+    // formatILS(40000) is rendered twice — once as the hero's standalone
+    // "spent" figure, once inside the category row's "spent / allocated"
+    // combined string — getAllByText covers both without over-asserting
+    // which one is which.
+    expect(getAllByText(formatILS(40000), { exact: false }).length).toBeGreaterThanOrEqual(1)
+    expect(getByText('מכולת')).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.categoryRemaining', { amount: formatILS(60000) }))).toBeTruthy()
     expect(getByText('קפה')).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.viewAll'))).toBeTruthy()
     expect(queryByText(NO_BUDGET_MESSAGE)).toBeNull()
     expect(queryByText(NO_TRANSACTIONS_MESSAGE)).toBeNull()
   })

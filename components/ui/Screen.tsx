@@ -13,9 +13,19 @@ interface ScreenProps {
   scroll?: boolean
   center?: boolean
   keyboardAvoiding?: boolean
+  // Design Phase 2: a FAB (or similar floating control) rendered as an
+  // ordinary child was scrolling away with the rest of the page — position:
+  // 'absolute' inside a ScrollView positions relative to the *content*
+  // container, which grows to fit all the scrollable content, not the
+  // viewport. Rendering it here instead, as a sibling of the ScrollView,
+  // anchors it to the SafeAreaView's own bounds so it actually stays fixed
+  // above the tab bar. Wrapped in the same width clamp as the content below
+  // so it lines up with the centered column on web instead of drifting to
+  // the true edge of a wide browser window.
+  floatingAction?: ReactNode
 }
 
-export function Screen({ children, scroll = true, center = false, keyboardAvoiding = false }: ScreenProps) {
+export function Screen({ children, scroll = true, center = false, keyboardAvoiding = false, floatingAction }: ScreenProps) {
   // Design Phase 1: on native this is a no-op (web: variants only apply on
   // web), but on a wide browser window the app was stretching every screen
   // edge-to-edge like a desktop web app rather than the phone-shaped surface
@@ -45,6 +55,11 @@ export function Screen({ children, scroll = true, center = false, keyboardAvoidi
   return (
     <SafeAreaView className="flex-1 bg-surface-light dark:bg-surface-dark" edges={['top', 'bottom']}>
       {wrapped}
+      {floatingAction && (
+        <View pointerEvents="box-none" className={`${widthClamp} absolute inset-x-0 bottom-0 self-center`}>
+          {floatingAction}
+        </View>
+      )}
     </SafeAreaView>
   )
 }

@@ -20,7 +20,11 @@ module.exports = {
       // per screen). fontWeight is applied separately via font-semibold/
       // font-bold, matching the rest of this codebase's existing convention.
       fontSize: {
-        display: ['34px', { lineHeight: '40px' }], // one hero figure per screen (e.g. remaining budget)
+        // Design Phase 2: bumped from 34/40 — the one figure this renders
+        // (Dashboard's "remaining this month") needed to visually dominate
+        // the screen, and this token has exactly one call site (the
+        // Dashboard hero), so raising it here doesn't ripple anywhere else.
+        display: ['40px', { lineHeight: '46px' }], // one hero figure per screen (e.g. remaining budget)
         title: ['22px', { lineHeight: '28px' }], // screen title
         heading: ['15px', { lineHeight: '20px' }], // section header, paired with font-semibold
         body: ['15px', { lineHeight: '22px' }], // default reading text
