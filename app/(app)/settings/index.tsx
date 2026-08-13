@@ -29,6 +29,9 @@ import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { SkeletonList } from '@/components/ui/SkeletonList'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { SettingsSection } from '@/components/ui/SettingsSection'
+import { SettingsRow } from '@/components/ui/SettingsRow'
 import type { HouseholdMemberWithProfile } from '@/types/app'
 
 const APPEARANCE_OPTIONS: AppearancePreference[] = ['system', 'light', 'dark']
@@ -213,7 +216,7 @@ export default function Settings() {
 
   return (
     <Screen>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('settings.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('settings.title')}</Text>
 
       {/* Profile */}
       {isProfileLoading ? (
@@ -221,7 +224,7 @@ export default function Settings() {
           <LoadingSpinner />
         </View>
       ) : isEditingProfile ? (
-        <View className="mb-6">
+        <Card>
           <Input
             label={t('settings.profile.nameLabel')}
             value={profileNameDraft}
@@ -243,20 +246,22 @@ export default function Settings() {
               disabled={updateProfile.isPending}
             />
           </View>
-        </View>
+        </Card>
       ) : (
-        <View className="mb-6 flex-row items-center gap-3">
-          <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={56} />
-          <View className="flex-1">
-            <Text className="text-lg font-semibold text-ink-light dark:text-ink-dark">{displayName}</Text>
-            <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{user?.email}</Text>
+        <Card>
+          <View className="flex-row items-center gap-3">
+            <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={56} />
+            <View className="flex-1">
+              <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">{displayName}</Text>
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{user?.email}</Text>
+            </View>
+            <Button title={t('settings.profile.editLabel')} variant="ghost" onPress={handleStartEditProfile} />
           </View>
-          <Button title={t('settings.profile.editLabel')} variant="ghost" onPress={handleStartEditProfile} />
-        </View>
+        </Card>
       )}
 
       {/* Household */}
-      <Text className="mb-2 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('settings.household.title')}
       </Text>
       <Card>
@@ -292,7 +297,7 @@ export default function Settings() {
               </View>
             ) : (
               <View className="flex-row items-center justify-between">
-                <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{household?.name}</Text>
+                <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{household?.name}</Text>
                 {/* Admin-only (Fix 1) — households_update's RLS
                     (is_household_admin(id)) is the real gate; `role` here
                     just avoids showing a control the backend would reject. */}
@@ -308,7 +313,7 @@ export default function Settings() {
             <View className="my-3">
               <Divider />
             </View>
-            <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+            <Text className="mb-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
               {t('settings.household.membersTitle')}
             </Text>
             {removeMemberError && <ErrorMessage message={removeMemberError} />}
@@ -320,8 +325,8 @@ export default function Settings() {
               members.map((member) => (
                 <View key={member.userId} className="mb-2 flex-row items-center gap-2">
                   <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size={28} />
-                  <Text className="flex-1 text-sm text-ink-light dark:text-ink-dark">{member.displayName}</Text>
-                  <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{member.displayName}</Text>
+                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {member.role === 'admin' ? t('settings.household.roleAdmin') : t('settings.household.roleMember')}
                   </Text>
                   {/* Admin removing a MEMBER row only — never shown for an
@@ -382,81 +387,69 @@ export default function Settings() {
         />
       </View>
 
-      {/* Financial — Milestone 6, reached from Settings, not a tab */}
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('settings.financial.title')}
-      </Text>
-      <View className="gap-2">
-        <Button title={t('settings.financial.accounts')} variant="secondary" onPress={() => router.push('/accounts')} />
-        <Button
-          title={t('settings.financial.categories')}
-          variant="secondary"
+      {/* Money management — Milestone 6, reached from Settings, not a tab */}
+      <SettingsSection title={t('settings.financial.title')}>
+        <SettingsRow iconName="wallet-outline" label={t('settings.financial.accounts')} onPress={() => router.push('/accounts')} />
+        <SettingsRow
+          iconName="pricetag-outline"
+          label={t('settings.financial.categories')}
           onPress={() => router.push('/settings/categories')}
         />
-        <Button
-          title={t('settings.financial.recurring')}
-          variant="secondary"
-          onPress={() => router.push('/recurring')}
-        />
-        <Button title={t('settings.financial.goals')} variant="secondary" onPress={() => router.push('/goals')} />
-      </View>
+        <SettingsRow iconName="repeat-outline" label={t('settings.financial.recurring')} onPress={() => router.push('/recurring')} />
+        <SettingsRow iconName="flag-outline" label={t('settings.financial.goals')} onPress={() => router.push('/goals')} />
+      </SettingsSection>
 
       {/* Appearance */}
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('settings.appearance.title')}
       </Text>
-      <View className="flex-row gap-2">
-        {APPEARANCE_OPTIONS.map((option) => (
-          <Button
-            key={option}
-            title={
-              option === 'system' ? t('appearance.system') : option === 'light' ? t('theme.light') : t('theme.dark')
-            }
-            onPress={() => void setPreference(option)}
-            variant={preference === option ? 'primary' : 'secondary'}
-            selected={preference === option}
-          />
-        ))}
+      <View className="mb-6">
+        <SegmentedControl
+          accessibilityLabel={t('settings.appearance.title')}
+          options={APPEARANCE_OPTIONS.map((option) => ({
+            value: option,
+            label: option === 'system' ? t('appearance.system') : option === 'light' ? t('theme.light') : t('theme.dark'),
+          }))}
+          value={preference}
+          onChange={(next) => void setPreference(next)}
+        />
       </View>
 
       {/* Security */}
-      <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-        {t('settings.security.title')}
-      </Text>
-      <Card>
-        <View className="flex-row items-center justify-between">
-          <Text className="text-base text-ink-light dark:text-ink-dark">{t('settings.security.biometricToggle')}</Text>
-          <Switch
-            value={biometric.enabled}
-            onValueChange={biometric.setEnabled}
-            disabled={biometric.isLoading}
-            accessibilityLabel={t('settings.security.biometricToggle')}
-            trackColor={{
-              false: scheme === 'dark' ? colors.border.dark : colors.border.light,
-              true: scheme === 'dark' ? colors.accent.dark : colors.accent.light,
-            }}
-          />
-        </View>
-      </Card>
-
-      {/* Sign out */}
-      <View className="mt-6">
-        <Button title={t('settings.signOut')} onPress={() => signOut.mutate()} variant="secondary" />
-      </View>
-
-      {/* Delete account — store compliance requirement (PROJECT_SPEC.md
-          § Settings). Destructive by construction: danger-styled trigger,
-          explicit confirmation modal, disabled while pending so a
-          double-tap can't fire two concurrent deletions. */}
-      <View className="mt-3">
-        {deleteAccount.isError && <ErrorMessage message={t('settings.deleteAccount.errors.generic')} />}
-        <Button
-          title={t('settings.deleteAccount.button')}
-          onPress={() => setDeleteConfirmVisible(true)}
-          variant="danger"
-          disabled={deleteAccount.isPending}
+      <SettingsSection title={t('settings.security.title')}>
+        <SettingsRow
+          iconName="finger-print-outline"
+          label={t('settings.security.biometricToggle')}
+          trailing={
+            <Switch
+              value={biometric.enabled}
+              onValueChange={biometric.setEnabled}
+              disabled={biometric.isLoading}
+              accessibilityLabel={t('settings.security.biometricToggle')}
+              trackColor={{
+                false: scheme === 'dark' ? colors.border.dark : colors.border.light,
+                true: scheme === 'dark' ? colors.accent.dark : colors.accent.light,
+              }}
+            />
+          }
         />
-      </View>
+      </SettingsSection>
+
+      {/* Account — sign out / delete. Delete is destructive by construction:
+          danger-styled row, explicit confirmation modal, disabled while
+          pending so a double-tap can't fire two concurrent deletions (store
+          compliance requirement, PROJECT_SPEC.md § Settings). */}
+      {deleteAccount.isError && <ErrorMessage message={t('settings.deleteAccount.errors.generic')} />}
+      <SettingsSection title={t('settings.account.title')}>
+        <SettingsRow iconName="log-out-outline" label={t('settings.signOut')} onPress={() => signOut.mutate()} />
+        <SettingsRow
+          iconName="trash-outline"
+          label={t('settings.deleteAccount.button')}
+          onPress={() => setDeleteConfirmVisible(true)}
+          disabled={deleteAccount.isPending}
+          destructive
+        />
+      </SettingsSection>
 
       <Modal
         visible={deleteConfirmVisible}

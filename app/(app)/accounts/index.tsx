@@ -1,15 +1,24 @@
 // Reached from Settings, not a tab (docs/ARCHITECTURE.md).
+//
+// Design Phase 3: visual language aligned with Dashboard/Add Transaction —
+// account-type icon per row (accountIcon.ts, Phase 2), Select's 'row'
+// variant + polished sheet for the type picker, Ionicon empty state. Every
+// hook call and mutation payload below is unchanged from Phase 1.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useCreateAccount } from '@/features/accounts/hooks/useCreateAccount'
+import { accountIconName } from '@/features/accounts/lib/accountIcon'
 import { formatILS } from '@/lib/money/format'
+import { colors } from '@/constants/colors'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -25,6 +34,8 @@ const ACCOUNT_TYPE_OPTIONS: AccountType[] = ['checking', 'savings', 'credit_card
 export default function Accounts() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading, error } = useAccounts(householdId)
@@ -54,7 +65,7 @@ export default function Accounts() {
 
   return (
     <Screen>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('accounts.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('accounts.title')}</Text>
 
       {error ? (
         <ErrorMessage message={t('accounts.errors.generic')} />
@@ -66,7 +77,7 @@ export default function Accounts() {
               button below already covers it; a second identical CTA
               stacked directly above it was confusing, not helpful
               (mobile-expo-reviewer finding). */}
-          {accounts.length === 0 && <EmptyState icon="💳" message={t('accounts.empty')} />}
+          {accounts.length === 0 && <EmptyState iconName="wallet-outline" message={t('accounts.empty')} compact />}
           {accounts.map((account) => (
             <Pressable
               key={account.id}
@@ -75,16 +86,24 @@ export default function Accounts() {
               className="mb-2"
             >
               <Card>
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{account.name}</Text>
-                    {!account.is_active && (
-                      <View className="rounded-full border border-border-light bg-surface-light px-2 py-0.5 dark:border-border-dark dark:bg-surface-dark">
-                        <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                          {t('accounts.detail.archived')}
-                        </Text>
-                      </View>
-                    )}
+                <View className="flex-row items-center gap-3">
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                    <Ionicons name={accountIconName(account.type)} size={17} color={iconColor} />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{account.name}</Text>
+                      {!account.is_active && (
+                        <View className="rounded-full border border-border-light bg-surface-light px-2 py-0.5 dark:border-border-dark dark:bg-surface-dark">
+                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                            {t('accounts.detail.archived')}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                      {t(`accounts.types.${account.type}`)}
+                    </Text>
                   </View>
                   {/* account.balance_agorot is a dead column nothing ever
                       updates — the balance shown here is computed live from
@@ -92,7 +111,7 @@ export default function Accounts() {
                       features/accounts/lib/computeAccountBalances.ts).
                       Blank while it loads rather than flashing ₪0 as if
                       that were a real computed answer. */}
-                  <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="text-body text-inkMuted-light dark:text-inkMuted-dark">
                     {isBalancesLoading ? '' : formatILS(balances[account.id] ?? 0)}
                   </Text>
                 </View>
@@ -103,18 +122,31 @@ export default function Accounts() {
       )}
 
       {isAdding ? (
-        <View className="mt-4">
+        <Card>
           <Input label={t('accounts.form.nameLabel')} value={name} onChangeText={setName} />
           <Select
+            variant="row"
             label={t('accounts.form.typeLabel')}
-            options={ACCOUNT_TYPE_OPTIONS.map((value) => ({ value, label: t(`accounts.types.${value}`) }))}
+            options={ACCOUNT_TYPE_OPTIONS.map((value) => ({
+              value,
+              label: t(`accounts.types.${value}`),
+              iconName: accountIconName(value),
+            }))}
             value={type}
             onChange={(value) => setType(value as AccountType)}
             placeholder={t('accounts.form.typeLabel')}
+            sheetTitle={t('accounts.form.typeLabel')}
+            leadingIcon={
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                <Ionicons name={accountIconName(type)} size={17} color={iconColor} />
+              </View>
+            }
           />
           {createAccount.isError && <ErrorMessage message={t('accounts.errors.generic')} />}
-          <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
-        </View>
+          <View className="mt-2">
+            <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
+          </View>
+        </Card>
       ) : (
         <View className="mt-4">
           <Button title={t('accounts.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />

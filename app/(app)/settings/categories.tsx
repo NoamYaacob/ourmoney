@@ -4,10 +4,18 @@
 // Also hosts category rules: every rule visible/editable in-app, and a
 // mis-categorized transaction should lead back to the rule that caused it
 // (ADR-027) — this list is that surface.
+//
+// Design Phase 3: category rows use CategoryIcon instead of raw emoji, rule
+// rows read as an "IF / THEN" sentence instead of one dense line, and the
+// category-target Select in both forms gets an icon per option. Every hook
+// call, mutation payload, and inline-edit state machine below is unchanged
+// from Phase 1 — presentation only.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useCategories } from '@/features/categories/hooks/useCategories'
@@ -19,6 +27,9 @@ import { useCreateCategoryRule } from '@/features/categories/hooks/useCreateCate
 import { useUpdateCategoryRule } from '@/features/categories/hooks/useUpdateCategoryRule'
 import { useDeleteCategoryRule } from '@/features/categories/hooks/useDeleteCategoryRule'
 import { useApplyRulesRetroactively } from '@/features/categories/hooks/useApplyRulesRetroactively'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { colors } from '@/constants/colors'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -36,6 +47,8 @@ const OPERATOR_OPTIONS: CategoryRuleOperator[] = ['contains', 'equals', 'starts_
 
 export default function Categories() {
   const { t } = useTranslation()
+  const { colorScheme: scheme } = useColorScheme()
+  const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { categories, isLoading: isCategoriesLoadingRaw } = useCategories(householdId)
@@ -71,23 +84,25 @@ export default function Categories() {
   const [editRuleValue, setEditRuleValue] = useState('')
 
   const customCategories = categories.filter((c) => !c.is_system)
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
 
   return (
     <Screen>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('categories.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('categories.title')}</Text>
 
-      <Text className="mb-2 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('categories.customTitle')}
       </Text>
       {isCategoriesLoading ? (
         <SkeletonList rows={2} />
+      ) : customCategories.length === 0 ? (
+        <EmptyState iconName="pricetag-outline" message={t('categories.empty')} compact />
       ) : (
         <Card>
-          {customCategories.length === 0 && <EmptyState icon="🏷️" message={t('categories.empty')} />}
           {customCategories.map((category, index) => (
             <View key={category.id}>
               {index > 0 && (
-                <View className="my-2">
+                <View className="my-3">
                   <Divider />
                 </View>
               )}
@@ -126,9 +141,10 @@ export default function Categories() {
                 </View>
               ) : (
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-base text-ink-light dark:text-ink-dark">
-                    {category.icon} {category.name_he}
-                  </Text>
+                  <View className="flex-1 flex-row items-center gap-3">
+                    <CategoryIcon icon={category.icon} size="sm" />
+                    <Text className="text-body text-ink-light dark:text-ink-dark">{category.name_he}</Text>
+                  </View>
                   <View className="flex-row items-center gap-4">
                     <Pressable
                       onPress={() => {
@@ -139,7 +155,9 @@ export default function Categories() {
                       accessibilityLabel={t('categories.editCategoryLabel', { name: category.name_he })}
                       hitSlop={HIT_SLOP}
                     >
-                      <Text className="text-sm text-accent-light dark:text-accent-dark">{t('categories.edit')}</Text>
+                      <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                        {t('categories.edit')}
+                      </Text>
                     </Pressable>
                     <Pressable
                       onPress={() => {
@@ -152,7 +170,9 @@ export default function Categories() {
                       accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
                       hitSlop={HIT_SLOP}
                     >
-                      <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
+                      <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">
+                        {t('categories.delete')}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
@@ -164,60 +184,68 @@ export default function Categories() {
       {deleteCategory.isError && <ErrorMessage message={t('categories.errors.generic')} />}
 
       <View className="mt-3">
-        <Input
-          label={t('categories.form.nameLabel')}
-          value={newCategoryName}
-          onChangeText={setNewCategoryName}
-          placeholder={t('categories.form.namePlaceholder')}
-        />
-        {createCategory.isError && <ErrorMessage message={t('categories.errors.generic')} />}
-        <Button
-          title={t('categories.form.submit')}
-          variant="secondary"
-          loading={createCategory.isPending}
-          onPress={() => {
-            if (!householdId || !newCategoryName.trim() || createCategory.isPending) return
-            createCategory.mutate(
-              { householdId, nameHe: newCategoryName.trim() },
-              { onSuccess: () => setNewCategoryName('') }
-            )
-          }}
-        />
+        <Card>
+          <Input
+            label={t('categories.form.nameLabel')}
+            value={newCategoryName}
+            onChangeText={setNewCategoryName}
+            placeholder={t('categories.form.namePlaceholder')}
+          />
+          {createCategory.isError && <ErrorMessage message={t('categories.errors.generic')} />}
+          <Button
+            title={t('categories.form.submit')}
+            variant="secondary"
+            loading={createCategory.isPending}
+            onPress={() => {
+              if (!householdId || !newCategoryName.trim() || createCategory.isPending) return
+              createCategory.mutate(
+                { householdId, nameHe: newCategoryName.trim() },
+                { onSuccess: () => setNewCategoryName('') }
+              )
+            }}
+          />
+        </Card>
       </View>
 
-      <Text className="mb-2 mt-8 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      <Text className="mb-2 mt-8 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('categories.rulesTitle')}
       </Text>
       {isRulesLoading ? (
         <SkeletonList rows={2} />
+      ) : rules.length === 0 ? (
+        <EmptyState iconName="funnel-outline" message={t('categories.rules.empty')} compact />
       ) : (
         <Card>
-          {rules.length === 0 && <EmptyState icon="⚙️" message={t('categories.rules.empty')} />}
           {rules.map((rule, index) => {
             const category = categories.find((c) => c.id === rule.category_id)
             return (
               <View key={rule.id}>
                 {index > 0 && (
-                  <View className="my-2">
+                  <View className="my-3">
                     <Divider />
                   </View>
                 )}
                 {editingRuleId === rule.id ? (
                   <View>
                     <Select
+                      variant="row"
                       label={t('categories.rules.form.categoryLabel')}
-                      options={categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))}
+                      options={categoryOptions}
                       value={editRuleCategoryId}
                       onChange={setEditRuleCategoryId}
                       placeholder={t('categories.rules.form.categoryPlaceholder')}
+                      sheetTitle={t('categories.rules.form.categoryLabel')}
+                      leadingIcon={<CategoryIcon icon={categories.find((c) => c.id === editRuleCategoryId)?.icon} size="sm" />}
                     />
-                    <Select
-                      label={t('categories.rules.form.fieldLabel')}
-                      options={FIELD_OPTIONS.map((value) => ({ value, label: t(`categories.rules.field.${value}`) }))}
-                      value={editRuleField}
-                      onChange={(value) => setEditRuleField(value as CategoryRuleField)}
-                      placeholder={t('categories.rules.form.fieldLabel')}
-                    />
+                    <View className="mt-3">
+                      <Select
+                        label={t('categories.rules.form.fieldLabel')}
+                        options={FIELD_OPTIONS.map((value) => ({ value, label: t(`categories.rules.field.${value}`) }))}
+                        value={editRuleField}
+                        onChange={(value) => setEditRuleField(value as CategoryRuleField)}
+                        placeholder={t('categories.rules.form.fieldLabel')}
+                      />
+                    </View>
                     <Select
                       label={t('categories.rules.form.operatorLabel')}
                       options={OPERATOR_OPTIONS.map((value) => ({ value, label: t(`categories.rules.operator.${value}`) }))}
@@ -259,11 +287,25 @@ export default function Categories() {
                     </View>
                   </View>
                 ) : (
-                  <View className="flex-row items-center justify-between">
-                    <Text className="flex-1 text-sm text-ink-light dark:text-ink-dark">
-                      {t(`categories.rules.field.${rule.field}`)} {t(`categories.rules.operator.${rule.operator}`)}{' '}
-                      &quot;{rule.value}&quot; → {category?.icon} {category?.name_he}
-                    </Text>
+                  <View className="flex-row items-start justify-between">
+                    <View className="flex-1">
+                      <View className="flex-row flex-wrap items-baseline gap-1.5">
+                        <Text className="text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+                          {t('categories.rules.ifLabel')}
+                        </Text>
+                        <Text className="text-body text-ink-light dark:text-ink-dark">
+                          {t(`categories.rules.field.${rule.field}`)} {t(`categories.rules.operator.${rule.operator}`)} &quot;
+                          {rule.value}&quot;
+                        </Text>
+                      </View>
+                      <View className="mt-1.5 flex-row items-center gap-1.5">
+                        <Text className="text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+                          {t('categories.rules.thenLabel')}
+                        </Text>
+                        <CategoryIcon icon={category?.icon} size="sm" />
+                        <Text className="text-body text-ink-light dark:text-ink-dark">{category?.name_he}</Text>
+                      </View>
+                    </View>
                     <View className="flex-row items-center gap-4">
                       <Pressable
                         onPress={() => {
@@ -281,7 +323,9 @@ export default function Categories() {
                         })}
                         hitSlop={HIT_SLOP}
                       >
-                        <Text className="text-sm text-accent-light dark:text-accent-dark">{t('categories.edit')}</Text>
+                        <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                          {t('categories.edit')}
+                        </Text>
                       </Pressable>
                       <Pressable
                         onPress={() => {
@@ -298,7 +342,9 @@ export default function Categories() {
                         accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
                         hitSlop={HIT_SLOP}
                       >
-                        <Text className="text-sm text-danger-light dark:text-danger-dark">{t('categories.delete')}</Text>
+                        <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">
+                          {t('categories.delete')}
+                        </Text>
                       </Pressable>
                     </View>
                   </View>
@@ -311,46 +357,57 @@ export default function Categories() {
       {deleteRule.isError && <ErrorMessage message={t('categories.errors.generic')} />}
 
       <View className="mt-3">
-        <Select
-          label={t('categories.rules.form.categoryLabel')}
-          options={categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))}
-          value={ruleCategoryId}
-          onChange={setRuleCategoryId}
-          placeholder={t('categories.rules.form.categoryPlaceholder')}
-        />
-        <Select
-          label={t('categories.rules.form.fieldLabel')}
-          options={FIELD_OPTIONS.map((value) => ({ value, label: t(`categories.rules.field.${value}`) }))}
-          value={ruleField}
-          onChange={(value) => setRuleField(value as CategoryRuleField)}
-          placeholder={t('categories.rules.form.fieldLabel')}
-        />
-        <Select
-          label={t('categories.rules.form.operatorLabel')}
-          options={OPERATOR_OPTIONS.map((value) => ({ value, label: t(`categories.rules.operator.${value}`) }))}
-          value={ruleOperator}
-          onChange={(value) => setRuleOperator(value as CategoryRuleOperator)}
-          placeholder={t('categories.rules.form.operatorLabel')}
-        />
-        <Input
-          label={t('categories.rules.form.valueLabel')}
-          value={ruleValue}
-          onChangeText={setRuleValue}
-          placeholder={t('categories.rules.form.valuePlaceholder')}
-        />
-        {createRule.isError && <ErrorMessage message={t('categories.errors.generic')} />}
-        <Button
-          title={t('categories.rules.form.submit')}
-          variant="secondary"
-          loading={createRule.isPending}
-          onPress={() => {
-            if (!householdId || !ruleCategoryId || !ruleValue.trim() || createRule.isPending) return
-            createRule.mutate(
-              { householdId, categoryId: ruleCategoryId, field: ruleField, operator: ruleOperator, value: ruleValue.trim() },
-              { onSuccess: () => setRuleValue('') }
-            )
-          }}
-        />
+        <Card>
+          <Select
+            variant="row"
+            label={t('categories.rules.form.categoryLabel')}
+            options={categoryOptions}
+            value={ruleCategoryId}
+            onChange={setRuleCategoryId}
+            placeholder={t('categories.rules.form.categoryPlaceholder')}
+            sheetTitle={t('categories.rules.form.categoryLabel')}
+            leadingIcon={
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                <Ionicons name="pricetag-outline" size={17} color={accentColor} />
+              </View>
+            }
+          />
+          <View className="mt-3">
+            <Select
+              label={t('categories.rules.form.fieldLabel')}
+              options={FIELD_OPTIONS.map((value) => ({ value, label: t(`categories.rules.field.${value}`) }))}
+              value={ruleField}
+              onChange={(value) => setRuleField(value as CategoryRuleField)}
+              placeholder={t('categories.rules.form.fieldLabel')}
+            />
+          </View>
+          <Select
+            label={t('categories.rules.form.operatorLabel')}
+            options={OPERATOR_OPTIONS.map((value) => ({ value, label: t(`categories.rules.operator.${value}`) }))}
+            value={ruleOperator}
+            onChange={(value) => setRuleOperator(value as CategoryRuleOperator)}
+            placeholder={t('categories.rules.form.operatorLabel')}
+          />
+          <Input
+            label={t('categories.rules.form.valueLabel')}
+            value={ruleValue}
+            onChangeText={setRuleValue}
+            placeholder={t('categories.rules.form.valuePlaceholder')}
+          />
+          {createRule.isError && <ErrorMessage message={t('categories.errors.generic')} />}
+          <Button
+            title={t('categories.rules.form.submit')}
+            variant="secondary"
+            loading={createRule.isPending}
+            onPress={() => {
+              if (!householdId || !ruleCategoryId || !ruleValue.trim() || createRule.isPending) return
+              createRule.mutate(
+                { householdId, categoryId: ruleCategoryId, field: ruleField, operator: ruleOperator, value: ruleValue.trim() },
+                { onSuccess: () => setRuleValue('') }
+              )
+            }}
+          />
+        </Card>
       </View>
 
       <View className="mt-6">

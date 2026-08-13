@@ -127,6 +127,8 @@
     "rules": {
       "empty": "עדיין אין כללי סיווג.",
       "applyRetroactively": "החלת הכללים על תנועות קיימות",
+      "ifLabel": "אם",
+      "thenLabel": "אז",
       "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
       "editRuleLabel": "עריכת כלל: {{field}} {{operator}} {{value}}",
       "field": {
@@ -254,10 +256,8 @@
   },
   "budgets": {
     "title": "תקציבים",
-    "prevMonth": "◀ חודש קודם",
-    "nextMonth": "חודש הבא ▶",
     "totalAllocated": "סה״כ תוקצב",
-    "totalSpent": "סה״כ הוצא",
+    "remaining": "נותר",
     "categoriesTitle": "תקציב לפי קטגוריה",
     "noCategories": "עדיין לא הוקצו קטגוריות לתקציב החודש.",
     "allocationLabel": "סכום תקציב",
@@ -472,6 +472,9 @@
     "security": {
       "title": "אבטחה",
       "biometricToggle": "נעילה ביומטרית"
+    },
+    "account": {
+      "title": "חשבון"
     },
     "signOut": "התנתקות",
     "deleteAccount": {

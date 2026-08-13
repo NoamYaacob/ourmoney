@@ -10,7 +10,7 @@
 // mock expo-router, mock every Supabase-backed hook, mock @expo/vector-icons
 // to dodge the expo-asset hoisting gap, use await render/fireEvent, and
 // import '@/i18n' for real Hebrew strings.
-import { describe, expect, it, jest } from '@jest/globals'
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Categories from './categories'
@@ -36,8 +36,9 @@ const CATEGORIES = [
   { id: 'cat-system', household_id: null, name_he: 'מזון', icon: '🍔', is_system: true, is_active: true },
   { id: 'cat-1', household_id: 'household-1', name_he: 'תחביבים', icon: '🎨', is_system: false, is_active: true },
 ]
+const mockUseCategories = jest.fn()
 jest.mock('@/features/categories/hooks/useCategories', () => ({
-  useCategories: () => ({ categories: CATEGORIES, isLoading: false }),
+  useCategories: () => mockUseCategories(),
 }))
 
 const mockCreateCategoryMutate = jest.fn()
@@ -58,8 +59,9 @@ jest.mock('@/features/categories/hooks/useDeleteCategory', () => ({
 const RULES = [
   { id: 'rule-1', household_id: 'household-1', category_id: 'cat-1', field: 'description', operator: 'contains', value: 'קפה', is_case_sensitive: false, sort_order: 0, is_active: true },
 ]
+const mockUseCategoryRules = jest.fn()
 jest.mock('@/features/categories/hooks/useCategoryRules', () => ({
-  useCategoryRules: () => ({ rules: RULES, isLoading: false }),
+  useCategoryRules: () => mockUseCategoryRules(),
 }))
 
 const mockCreateRuleMutate = jest.fn()
@@ -82,6 +84,11 @@ jest.mock('@/features/categories/hooks/useApplyRulesRetroactively', () => ({
 }))
 
 describe('Categories settings screen', () => {
+  beforeEach(() => {
+    mockUseCategories.mockReturnValue({ categories: CATEGORIES, isLoading: false })
+    mockUseCategoryRules.mockReturnValue({ rules: RULES, isLoading: false })
+  })
+
   it('shows an edit affordance on a custom category row and saves the renamed value via useUpdateCategory', async () => {
     mockUpdateCategoryMutate.mockClear()
     const { getByText, getByLabelText, getByDisplayValue } = await render(<Categories />)
@@ -129,5 +136,37 @@ describe('Categories settings screen', () => {
       },
       expect.anything()
     )
+  })
+
+  // Design Phase 3: the emoji-badge empty states (🏷️ / ⚙️) moved to
+  // Ionicons via EmptyState's iconName — this only verifies the message
+  // text still renders when there's nothing to show, not the icon itself.
+  it('shows the custom-categories empty state when there are no custom categories', async () => {
+    mockUseCategories.mockReturnValue({
+      categories: CATEGORIES.filter((c) => c.is_system),
+      isLoading: false,
+    })
+
+    const { getByText } = await render(<Categories />)
+
+    expect(getByText('עדיין אין קטגוריות מותאמות אישית.')).toBeTruthy()
+  })
+
+  it('shows the rules empty state when there are no classification rules', async () => {
+    mockUseCategoryRules.mockReturnValue({ rules: [], isLoading: false })
+
+    const { getByText } = await render(<Categories />)
+
+    expect(getByText('עדיין אין כללי סיווג.')).toBeTruthy()
+  })
+
+  it('reads a rule row as an IF/THEN sentence naming the target category', async () => {
+    const { getByText, getAllByText } = await render(<Categories />)
+
+    expect(getByText('אם')).toBeTruthy()
+    expect(getByText('אז')).toBeTruthy()
+    // "תחביבים" appears twice: the custom-categories list row, and the
+    // rule's own "THEN" target-category name — both are expected.
+    expect(getAllByText('תחביבים').length).toBeGreaterThanOrEqual(2)
   })
 })

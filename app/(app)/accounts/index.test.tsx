@@ -6,8 +6,8 @@
 //      live-computed balance instead.
 //   2. Archived accounts (is_active: false) rendered identically to active
 //      ones — no visual marker distinguishing them in the list.
-import { describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import { formatILS } from '@/lib/money/format'
 import Accounts from './index'
@@ -28,8 +28,9 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+const mockCreateAccountMutate = jest.fn()
 jest.mock('@/features/accounts/hooks/useCreateAccount', () => ({
-  useCreateAccount: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  useCreateAccount: () => ({ mutate: mockCreateAccountMutate, isPending: false, isError: false }),
 }))
 
 const ACTIVE_ACCOUNT = {
@@ -46,18 +47,20 @@ const ARCHIVED_ACCOUNT = {
   is_active: false,
   balance_agorot: 0,
 }
+const mockUseAccounts = jest.fn()
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
-  useAccounts: () => ({
-    accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT],
-    isLoading: false,
-    error: null,
-  }),
+  useAccounts: () => mockUseAccounts(),
 }))
 jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: { 'acct-1': 543200 }, isLoading: false }),
 }))
 
 describe('Accounts list', () => {
+  beforeEach(() => {
+    mockCreateAccountMutate.mockClear()
+    mockUseAccounts.mockReturnValue({ accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT], isLoading: false, error: null })
+  })
+
   it('shows the live computed balance for an account, not the dead balance_agorot column', async () => {
     const { getByText } = await render(<Accounts />)
     expect(getByText(formatILS(543200))).toBeTruthy()
@@ -74,5 +77,43 @@ describe('Accounts list', () => {
     // Two accounts are rendered (one active, one archived); exactly one
     // "archived" badge must appear, proving the active account gets none.
     expect(getAllByText('בארכיון').length).toBe(1)
+  })
+
+  // Design Phase 3 coverage: the empty state and the add-account flow
+  // (name validation + type selection via the polished bottom sheet)
+  // weren't covered before this phase.
+  it('shows the empty state (and still offers the persistent add-account CTA) when there are no accounts', async () => {
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Accounts />)
+
+    expect(getByText('עדיין אין חשבונות.')).toBeTruthy()
+    expect(getByText('הוספת חשבון')).toBeTruthy()
+  })
+
+  it('does not submit when the account name is blank', async () => {
+    const { getByText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
+  })
+
+  it('creates an account with the selected type from the type picker sheet', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'קופת חיסכון')
+
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('השקעות'))
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(mockCreateAccountMutate).toHaveBeenCalledWith(
+      { householdId: 'household-1', name: 'קופת חיסכון', type: 'investment' },
+      expect.anything()
+    )
   })
 })

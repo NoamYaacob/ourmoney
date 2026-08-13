@@ -1,19 +1,32 @@
 // One screen for M6 (D4) — monthly overview, per-category allocation
 // editor, and the uncategorized-transactions queue. Category rules live in
 // settings/categories.tsx alongside category management itself.
+//
+// Design Phase 3: visual language brought in line with Dashboard/Add
+// Transaction (Phase 1/2) — MonthNavigator instead of a hand-rolled prev/
+// next row, a hero summary card, CategoryIcon instead of raw emoji, one
+// enclosing Card per list (Divider-separated rows) instead of one bordered
+// Card per row. Every hook call, mutation payload, and state-clearing
+// behavior below is unchanged from Phase 1 — this is presentation only.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useSaveBudgetAllocations } from '@/features/budgets/hooks/useSaveBudgetAllocations'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
-import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
+import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
+import { spentPercent } from '@/lib/money/arithmetic'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { colors } from '@/constants/colors'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -24,12 +37,13 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { HIT_SLOP } from '@/constants/accessibility'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
 export default function Budgets() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { colorScheme: scheme } = useColorScheme()
+  const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { categories } = useCategories(householdId)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
@@ -120,20 +134,15 @@ export default function Budgets() {
     )
   }
 
+  const overallPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot)
+  const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
+  const addableCategories = categories.filter((c) => !progress.some((p) => p.categoryId === c.id))
+
   return (
     <Screen>
-      <Text className="mb-4 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
+      <Text className="mb-4 text-title font-bold text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
 
-      {/* Month navigation */}
-      <View className="mb-4 flex-row items-center justify-between">
-        <Pressable onPress={() => handleMonthChange(shiftMonth(periodStart, -1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
-          <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.prevMonth')}</Text>
-        </Pressable>
-        <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{periodStart.slice(0, 7)}</Text>
-        <Pressable onPress={() => handleMonthChange(shiftMonth(periodStart, 1))} accessibilityRole="button" hitSlop={HIT_SLOP}>
-          <Text className="text-base text-accent-light dark:text-accent-dark">{t('budgets.nextMonth')}</Text>
-        </Pressable>
-      </View>
+      <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
 
       {error ? (
         <ErrorMessage message={t('budgets.errors.generic')} />
@@ -141,92 +150,156 @@ export default function Budgets() {
         <SkeletonList rows={4} />
       ) : (
         <>
-          {/* Overview */}
+          {/* Overview — same visual language as Dashboard's hero (Card +
+              hero figure + progress + two-stat row), but the hero figure
+              here is the planned budget itself, not "remaining": this
+              screen's job is reviewing/setting the plan, not just
+              monitoring it, so the two screens read as related, not
+              identical. */}
           <Card>
-            <View className="flex-row justify-between">
-              <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.totalAllocated')}</Text>
-              <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
-                {formatILS(totalAllocatedAgorot)}
-              </Text>
-            </View>
-            <View className="mt-1 flex-row justify-between">
-              <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.totalSpent')}</Text>
-              <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">{formatILS(totalSpentAgorot)}</Text>
+            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('budgets.totalAllocated')}
+            </Text>
+            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark">
+              {formatILS(totalAllocatedAgorot)}
+            </Text>
+
+            {overallPercent !== null && (
+              <>
+                <View className="mt-4">
+                  <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
+                </View>
+                <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('dashboard.percentUsed', { percent: overallPercent })}
+                </Text>
+              </>
+            )}
+
+            <View className="mt-4 flex-row items-center">
+              <View className="flex-1">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
+                <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                  {formatILS(totalSpentAgorot)}
+                </Text>
+              </View>
+              <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
+              <View className="flex-1">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.remaining')}</Text>
+                <Text
+                  className={`mt-0.5 text-heading font-semibold ${
+                    isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
+                  }`}
+                >
+                  {formatILS(totalAllocatedAgorot - totalSpentAgorot)}
+                </Text>
+              </View>
             </View>
           </Card>
 
           {/* Per-category allocation editor + progress */}
-          <Text className="mb-2 mt-6 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.categoriesTitle')}
           </Text>
-          {progress.length === 0 && <EmptyState icon="🎯" message={t('budgets.noCategories')} />}
-          {progress.map((category, index) => (
-            <View key={category.categoryId}>
-              {index > 0 && (
-                <View className="my-2">
-                  <Divider />
-                </View>
-              )}
-              <Pressable
-                onPress={() => {
-                  setEditingCategoryId(category.categoryId)
-                  setEditingAmount(String(category.allocatedAgorot / 100))
-                }}
-                accessibilityRole="button"
-              >
-                <Card>
-                  <View className="mb-2 flex-row items-center justify-between">
-                    <Text className="text-base text-ink-light dark:text-ink-dark">
-                      {category.categoryIcon} {category.categoryNameHe}
-                    </Text>
-                    <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
-                      {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                    </Text>
+          {progress.length === 0 ? (
+            <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} compact />
+          ) : (
+            <Card>
+              {progress.map((category, index) => {
+                const categoryOverBudget = category.remainingAgorot < 0
+                return (
+                  <View key={category.categoryId}>
+                    {index > 0 && (
+                      <View className="my-3">
+                        <Divider />
+                      </View>
+                    )}
+                    <Pressable
+                      onPress={() => {
+                        setEditingCategoryId(category.categoryId)
+                        setEditingAmount(String(category.allocatedAgorot / 100))
+                      }}
+                      accessibilityRole="button"
+                      className="flex-row items-start gap-3"
+                    >
+                      <CategoryIcon icon={category.categoryIcon} size="sm" />
+                      <View className="flex-1">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
+                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                            {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
+                          </Text>
+                        </View>
+                        <View className="mt-1.5">
+                          <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
+                        </View>
+                        <Text
+                          className={`mt-1 text-caption ${
+                            categoryOverBudget
+                              ? 'text-danger-light dark:text-danger-dark'
+                              : 'text-positive-light dark:text-positive-dark'
+                          }`}
+                        >
+                          {categoryOverBudget
+                            ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
+                            : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
+                        </Text>
+                      </View>
+                    </Pressable>
+                    {editingCategoryId === category.categoryId && (
+                      <View className="mt-3 ps-11">
+                        <Input
+                          label={t('budgets.allocationLabel')}
+                          value={editingAmount}
+                          onChangeText={setEditingAmount}
+                          keyboardType="decimal-pad"
+                        />
+                        {saveError && <ErrorMessage message={saveError} />}
+                        <Button
+                          title={t('budgets.saveAllocation')}
+                          loading={isPreparingSave || saveAllocations.isPending}
+                          onPress={() => {
+                            if (isPreparingSave || saveAllocations.isPending) return
+                            void handleSaveAllocation(category.categoryId)
+                          }}
+                        />
+                      </View>
+                    )}
                   </View>
-                  <ProgressBar percent={category.percentSpent} />
-                </Card>
-              </Pressable>
-              {editingCategoryId === category.categoryId && (
-                <View className="mt-2">
-                  <Input
-                    label={t('budgets.allocationLabel')}
-                    value={editingAmount}
-                    onChangeText={setEditingAmount}
-                    keyboardType="decimal-pad"
-                  />
-                  {saveError && <ErrorMessage message={saveError} />}
-                  <Button
-                    title={t('budgets.saveAllocation')}
-                    loading={isPreparingSave || saveAllocations.isPending}
-                    onPress={() => {
-                      if (isPreparingSave || saveAllocations.isPending) return
-                      void handleSaveAllocation(category.categoryId)
-                    }}
-                  />
-                </View>
-              )}
-            </View>
-          ))}
+                )
+              })}
+            </Card>
+          )}
 
-          {editingCategoryId === null && (
+          {editingCategoryId === null && addableCategories.length > 0 && (
             <View className="mt-3">
-              <Select
-                label={t('budgets.addCategoryLabel')}
-                options={categories
-                  .filter((c) => !progress.some((p) => p.categoryId === c.id))
-                  .map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))}
-                value={null}
-                onChange={(value) => {
-                  setEditingCategoryId(value)
-                  setEditingAmount('')
-                }}
-                placeholder={t('budgets.addCategoryPlaceholder')}
-              />
+              <Card>
+                <Select
+                  variant="row"
+                  label={t('budgets.addCategoryLabel')}
+                  options={addableCategories.map((c) => ({
+                    value: c.id,
+                    label: c.name_he,
+                    iconName: categoryIconName(c.icon),
+                  }))}
+                  value={null}
+                  onChange={(value) => {
+                    setEditingCategoryId(value)
+                    setEditingAmount('')
+                  }}
+                  placeholder={t('budgets.addCategoryPlaceholder')}
+                  sheetTitle={t('budgets.addCategoryLabel')}
+                  leadingIcon={
+                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                      <Ionicons name="add-circle-outline" size={18} color={accentColor} />
+                    </View>
+                  }
+                />
+              </Card>
             </View>
           )}
 
           {/* Uncategorized transactions queue */}
-          <Text className="mb-2 mt-8 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          <Text className="mb-2 mt-8 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}
           </Text>
           {uncategorizedError ? (
@@ -234,58 +307,74 @@ export default function Budgets() {
           ) : isUncategorizedLoading ? (
             <SkeletonList rows={3} />
           ) : uncategorized.length === 0 ? (
-            <EmptyState icon="🎉" message={t('budgets.uncategorizedEmpty')} />
+            <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} compact />
           ) : (
-            uncategorized.map((txn, index) => (
-              <View key={txn.id}>
-                {index > 0 && (
-                  <View className="my-2">
-                    <Divider />
-                  </View>
-                )}
-                <Card>
+            <Card>
+              {uncategorized.map((txn, index) => (
+                <View key={txn.id}>
+                  {index > 0 && (
+                    <View className="my-3">
+                      <Divider />
+                    </View>
+                  )}
                   <View className="flex-row items-center justify-between">
-                    <Text className="flex-1 text-sm text-ink-light dark:text-ink-dark">{txn.description}</Text>
-                    <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {txn.description}
+                    </Text>
+                    <Text className="text-body text-inkMuted-light dark:text-inkMuted-dark">
                       {formatILS(txn.amount_agorot)}
                     </Text>
                   </View>
                   {assigningTxnId === txn.id ? (
                     <View className="mt-2">
                       <Select
+                        variant="row"
                         label={t('budgets.assignCategoryLabel')}
-                        options={categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))}
+                        options={categories.map((c) => ({
+                          value: c.id,
+                          label: c.name_he,
+                          iconName: categoryIconName(c.icon),
+                        }))}
                         value={assignCategoryId}
                         onChange={setAssignCategoryId}
                         placeholder={t('budgets.assignCategoryLabel')}
+                        sheetTitle={t('budgets.assignCategoryLabel')}
+                        leadingIcon={
+                          <CategoryIcon
+                            icon={categories.find((c) => c.id === assignCategoryId)?.icon}
+                            size="sm"
+                          />
+                        }
                       />
-                      <Button
-                        title={t('budgets.assignCategorySubmit')}
-                        loading={updateTransaction.isPending}
-                        onPress={() => {
-                          if (!assignCategoryId || !householdId) return
-                          updateTransaction.mutate(
-                            { id: txn.id, householdId, categoryId: assignCategoryId },
-                            {
-                              onSuccess: () => {
-                                setAssigningTxnId(null)
-                                setAssignCategoryId(null)
-                              },
-                            }
-                          )
-                        }}
-                      />
+                      <View className="mt-2">
+                        <Button
+                          title={t('budgets.assignCategorySubmit')}
+                          loading={updateTransaction.isPending}
+                          onPress={() => {
+                            if (!assignCategoryId || !householdId) return
+                            updateTransaction.mutate(
+                              { id: txn.id, householdId, categoryId: assignCategoryId },
+                              {
+                                onSuccess: () => {
+                                  setAssigningTxnId(null)
+                                  setAssignCategoryId(null)
+                                },
+                              }
+                            )
+                          }}
+                        />
+                      </View>
                     </View>
                   ) : (
                     <Pressable onPress={() => setAssigningTxnId(txn.id)} accessibilityRole="button">
-                      <Text className="mt-2 text-sm text-accent-light dark:text-accent-dark">
+                      <Text className="mt-2 text-caption font-medium text-accent-light dark:text-accent-dark">
                         {t('budgets.assignCategoryButton')}
                       </Text>
                     </Pressable>
                   )}
-                </Card>
-              </View>
-            ))
+                </View>
+              ))}
+            </Card>
           )}
         </>
       )}

@@ -101,7 +101,7 @@ export function Select({
       <Modal visible={isOpen} transparent animationType="slide" onRequestClose={() => setIsOpen(false)}>
         <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setIsOpen(false)}>
           {variant === 'row' ? (
-            <View className="max-h-[70%] rounded-t-2xl bg-surface-light dark:bg-surface-dark">
+            <View className="max-h-[70%] w-full web:max-w-[560px] web:self-center rounded-t-2xl bg-surface-light dark:bg-surface-dark">
               {/* Drag-handle affordance — this Modal is a plain RN Modal, not
                   a real gesture-driven bottom sheet, so there is nothing to
                   wire up here beyond the visual cue (no new library added). */}
@@ -141,7 +141,7 @@ export function Select({
               <SafeAreaView edges={['bottom']} />
             </View>
           ) : (
-            <View className="max-h-96 rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark">
+            <View className="max-h-96 w-full web:max-w-[560px] web:self-center rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark">
               <FlatList
                 data={options}
                 keyExtractor={(item) => item.value}
@@ -152,9 +152,15 @@ export function Select({
                       setIsOpen(false)
                     }}
                     accessibilityRole="button"
-                    className="flex-row items-center justify-between border-b border-border-light py-3 dark:border-border-dark"
+                    accessibilityState={{ selected: item.value === value }}
+                    className="flex-row items-center gap-3 border-b border-border-light py-3 dark:border-border-dark"
                   >
-                    <Text className="text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
+                    {item.iconName && (
+                      <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                        <Ionicons name={item.iconName} size={16} color={mutedColor} />
+                      </View>
+                    )}
+                    <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
                     {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
                   </Pressable>
                 )}

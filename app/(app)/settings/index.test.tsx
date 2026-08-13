@@ -15,8 +15,9 @@ import '@/i18n'
 import Settings from './index'
 import type { HouseholdMemberWithProfile, HouseholdRole } from '@/types/app'
 
+const mockRouterPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockRouterPush }),
 }))
 jest.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'light' }),
@@ -77,8 +78,9 @@ jest.mock('@/features/auth/hooks/useSignOut', () => ({
 jest.mock('@/features/auth/hooks/useDeleteUserAccount', () => ({
   useDeleteUserAccount: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }))
+const mockSetPreference = jest.fn()
 jest.mock('@/features/settings/hooks/useTheme', () => ({
-  useTheme: () => ({ preference: 'system', setPreference: jest.fn() }),
+  useTheme: () => ({ preference: 'system', setPreference: mockSetPreference }),
 }))
 
 function setHousehold(role: HouseholdRole | null) {
@@ -264,5 +266,40 @@ describe('Settings screen — household/profile management', () => {
     await fireEvent.press(getByText('שמירה'))
 
     await waitFor(() => expect(mockUpdateProfileMutate).toHaveBeenCalledWith('Dana Levi', expect.anything()))
+  })
+
+  // Design Phase 3: Appearance moved from three separate Buttons to a
+  // SegmentedControl. useTheme is mocked at 'system'; pressing the "light"
+  // segment must call setPreference with the new value, not toggle some
+  // local-only state — the segmented control is a controlled display of
+  // whatever useTheme reports, exactly like the three-Button row it
+  // replaced.
+  it('calls setPreference when a different appearance option is selected', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText } = await render(<Settings />)
+
+    await fireEvent.press(getByText('מצב בהיר'))
+
+    expect(mockSetPreference).toHaveBeenCalledWith('light')
+  })
+
+  // Design Phase 3: the "Money management" section replaced four
+  // full-width secondary Buttons with SettingsRow navigation rows — the
+  // destination routes must still be wired identically.
+  it('still navigates to Accounts and Categories from the Money management section', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText } = await render(<Settings />)
+
+    await fireEvent.press(getByText('חשבונות'))
+    expect(mockRouterPush).toHaveBeenCalledWith('/accounts')
+
+    await fireEvent.press(getByText('קטגוריות וכללי סיווג'))
+    expect(mockRouterPush).toHaveBeenCalledWith('/settings/categories')
   })
 })
