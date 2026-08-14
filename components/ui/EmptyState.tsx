@@ -34,10 +34,21 @@ interface EmptyStateProps {
 export function EmptyState({ icon, iconName, message, actionLabel, onAction, compact = false }: EmptyStateProps) {
   const { colorScheme: scheme } = useColorScheme()
   const glyphColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
-  const badgeSize = compact ? 'h-11 w-11' : 'h-16 w-16'
+  // Desktop polish pass: `compact` empty states are embedded inside an
+  // already-scrolling/bounded desktop panel or a dedicated desktop empty-
+  // state card — a `web:desktop:` size bump keeps them from reading as a
+  // shrunken mobile element inside a much roomier desktop container. Mobile
+  // (unprefixed classes) is pixel-identical to before.
+  const badgeSize = compact ? 'h-11 w-11 web:desktop:h-14 web:desktop:w-14' : 'h-16 w-16'
 
   return (
-    <View className={compact ? 'items-center justify-center gap-2 px-6 py-4' : 'items-center justify-center gap-3 px-6 py-8'}>
+    <View
+      className={
+        compact
+          ? 'items-center justify-center gap-2 px-6 py-4 web:desktop:gap-3 web:desktop:py-6'
+          : 'items-center justify-center gap-3 px-6 py-8'
+      }
+    >
       <View className={`${badgeSize} items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark`}>
         {iconName ? (
           <Ionicons
@@ -57,7 +68,11 @@ export function EmptyState({ icon, iconName, message, actionLabel, onAction, com
           </Text>
         )}
       </View>
-      <Text className="text-center text-body text-inkMuted-light dark:text-inkMuted-dark">{message}</Text>
+      <Text
+        className={`text-center text-body text-inkMuted-light dark:text-inkMuted-dark ${compact ? 'web:desktop:text-[16px]' : ''}`}
+      >
+        {message}
+      </Text>
       {actionLabel && onAction && (
         <View className="mt-1 w-full max-w-xs">
           <Button title={actionLabel} onPress={onAction} variant="secondary" />

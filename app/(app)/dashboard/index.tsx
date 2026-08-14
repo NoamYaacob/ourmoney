@@ -27,6 +27,10 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+
+const DESKTOP_PANEL = `web:desktop:min-h-[360px] ${DESKTOP_PANEL_CLASS}`
 
 // Real MVP-2 dashboard, replacing the M1 placeholder. Every figure here is
 // either a direct query result or derived via lib/money — never a bare `0`
@@ -120,7 +124,19 @@ export default function Dashboard() {
       width="wide"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('dashboard.title')}</Text>
+      <View className="mb-6 web:desktop:mb-8">
+        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+          {t('dashboard.title')}
+        </Text>
+        {/* Desktop polish pass: a short descriptive subtitle only at desktop
+            — on a phone-width screen the title alone is enough context
+            directly above a MonthNavigator; on a wide desktop page the bare
+            title alone read as sparse next to the amount of open space
+            around it. */}
+        <Text className="mt-1 hidden text-caption text-inkMuted-light dark:text-inkMuted-dark web:desktop:flex">
+          {t('dashboard.subtitle')}
+        </Text>
+      </View>
 
       <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
@@ -129,17 +145,23 @@ export default function Dashboard() {
       ) : isProgressLoading ? (
         <LoadingSpinner />
       ) : (
-        <Card>
+        // Desktop polish pass: extra padding + a larger hero figure at
+        // desktop only (unprefixed classes are pixel-identical to before —
+        // mobile is untouched). A single hero figure reads fine at phone
+        // width, but the same card only using p-4 on a wide desktop page
+        // looked like a mobile card stretched wide rather than a deliberate
+        // desktop KPI panel.
+        <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
           <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.remaining')}</Text>
           <Text
-            className={`mt-1 text-display font-bold ${
+            className={`mt-1 text-display font-bold web:desktop:text-[52px] web:desktop:leading-[58px] ${
               isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
             }`}
           >
             {formatILS(remaining)}
           </Text>
 
-          <View className="mt-4">
+          <View className="mt-4 web:desktop:mt-6">
             <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
           </View>
           {overallPercent !== null && (
@@ -148,17 +170,17 @@ export default function Dashboard() {
             </Text>
           )}
 
-          <View className="mt-4 flex-row items-center">
+          <View className="mt-4 web:desktop:mt-6 flex-row items-center">
             <View className="flex-1">
               <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
                 {formatILS(totalSpentAgorot)}
               </Text>
             </View>
             <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
             <View className="flex-1">
               <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.ofBudget')}</Text>
-              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
                 {formatILS(totalAllocatedAgorot)}
               </Text>
             </View>
@@ -166,250 +188,196 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Desktop polish pass: each lower section now renders as its own
-          bordered panel (see below), which already reads as clearly
-          grouped away from the hero — a plain spacer replaces the earlier
-          standalone divider line, which looked redundant stacked directly
-          above a panel's own top border. Desktop-only; mobile/tablet
-          spacing is untouched. */}
       <View className="hidden web:desktop:mt-6 web:desktop:flex" />
 
-      {/* Responsive/desktop pass: below the hero, a 2/3 main column
-          (category budgets + recent transactions) and a 1/3 sidebar
-          (analytics/insights) — desktop only (`web:desktop:flex-row-reverse`,
-          see _layout.tsx's DesktopSideRail comment for why `-reverse` is
-          needed on web). Reversing keeps source/DOM order as [main,
-          sidebar] (primary content announced first) while visually placing
-          the primary column on the right and the sidebar on the left — the
-          correct RTL reading order. Mobile and tablet stay a single stacked
-          column, unchanged, since the plain View default (flexDirection:
-          column) already renders these two wrappers one after another in
-          source order. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
-        <View className="web:desktop:flex-[2]">
-          {/* Desktop polish pass: each section below becomes its own bounded
-              panel (border + surface tone, existing tokens only) at desktop
-              — a real-browser visual check found the lower Dashboard
-              reading as loosely related content floating on a large blank
-              canvas when data is sparse. Mobile/tablet keep the original
-              unwrapped heading + Card/EmptyState layout exactly as before
-              (`web:desktop:` scoped).
-              Debugging pass (real-browser regression): the panel's fill
-              was originally `bg-surface-light/dark` — the SAME token as
-              the Screen's own root background (see Screen.tsx's
-              SafeAreaView) — so it had zero contrast against the page and
-              only the 1px hairline border was left to notice, which read
-              as "not rendering." `bg-surfaceMuted-light/dark` is the
-              established, visually-distinct "card surface" tone Card.tsx
-              already uses everywhere else. Confirmed via a real headless-
-              browser measurement: the old fill computed to
-              rgb(250,248,242), byte-identical to the Screen root's
-              computed background — not a media-query/cascade failure, a
-              wrong color token. */}
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
-          <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.categoriesTitle')}
-          </Text>
-      {isProgressLoading ? (
-        <SkeletonList rows={3} />
-      ) : progressError ? (
-        <ErrorMessage message={t('dashboard.errors.generic')} />
-      ) : progress.length === 0 ? (
-        <EmptyState iconName="pie-chart-outline" message={t('dashboard.noBudget')} compact />
-      ) : (
-        <Card>
-          {progress.map((category, index) => {
-            const categoryOverBudget = category.remainingAgorot < 0
-            return (
-              <View key={category.categoryId}>
-                {index > 0 && (
-                  <View className="my-3">
-                    <Divider />
-                  </View>
-                )}
-                <View className="flex-row items-start gap-3">
-                  <CategoryIcon icon={category.categoryIcon} size="sm" />
-                  <View className="flex-1">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
-                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                        {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                      </Text>
+      {/* Desktop polish pass: three equally-weighted columns — לפי קטגוריה /
+          תנועות אחרונות / תובנות החודש — replacing the previous 2/3-main +
+          1/3-sidebar split, where the sidebar alone held all three analytics
+          sub-sections stacked under separate headers while the main column
+          held two unrelated sections stacked together. A real-browser visual
+          review found that lopsided and cluttered; three balanced panels
+          read as one coherent dashboard grid instead. `web:desktop:flex-row-
+          reverse` (see _layout.tsx's DesktopSideRail comment for why
+          `-reverse` is needed on web) keeps DOM/source order [categories,
+          recent, insights] — categories (primary) lands rightmost, insights
+          (secondary) leftmost. Mobile/tablet stay a single stacked column,
+          unchanged. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
+        <View className="web:desktop:flex-1">
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader icon="pie-chart-outline" title={t('dashboard.categoriesTitle')} />
+            {isProgressLoading ? (
+              <SkeletonList rows={3} />
+            ) : progressError ? (
+              <ErrorMessage message={t('dashboard.errors.generic')} />
+            ) : progress.length === 0 ? (
+              <EmptyState iconName="pie-chart-outline" message={t('dashboard.noBudget')} compact />
+            ) : (
+              <Card>
+                {progress.map((category, index) => {
+                  const categoryOverBudget = category.remainingAgorot < 0
+                  return (
+                    <View key={category.categoryId}>
+                      {index > 0 && (
+                        <View className="my-3">
+                          <Divider />
+                        </View>
+                      )}
+                      <View className="flex-row items-start gap-3">
+                        <CategoryIcon icon={category.categoryIcon} size="sm" />
+                        <View className="flex-1">
+                          <View className="flex-row items-center justify-between">
+                            <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
+                            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                              {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
+                            </Text>
+                          </View>
+                          <View className="mt-1.5">
+                            <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
+                          </View>
+                          <Text
+                            className={`mt-1 text-caption ${
+                              categoryOverBudget
+                                ? 'text-danger-light dark:text-danger-dark'
+                                : 'text-positive-light dark:text-positive-dark'
+                            }`}
+                          >
+                            {categoryOverBudget
+                              ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
+                              : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                    <View className="mt-1.5">
-                      <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
-                    </View>
-                    <Text
-                      className={`mt-1 text-caption ${
-                        categoryOverBudget
-                          ? 'text-danger-light dark:text-danger-dark'
-                          : 'text-positive-light dark:text-positive-dark'
-                      }`}
-                    >
-                      {categoryOverBudget
-                        ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
-                        : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )
-          })}
-        </Card>
-      )}
-          </View>
-
-          <View className="web:desktop:mt-4 web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
-      <View className="mb-2 mt-6 web:desktop:mt-0 flex-row items-center justify-between">
-        <Text className="text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-          {t('dashboard.recentTitle')}
-        </Text>
-        {recentTransactions.length > 0 && (
-          <Pressable onPress={() => router.push('/transactions')} accessibilityRole="button">
-            <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
-              {t('dashboard.viewAll')}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-      {transactionsError ? (
-        <ErrorMessage message={t('dashboard.errors.generic')} />
-      ) : isTransactionsLoading ? (
-        <SkeletonList rows={3} />
-      ) : recentTransactions.length === 0 ? (
-        // Phase 3.1: no actionLabel here — the screen's own floatingAction
-        // FAB already does the identical "add a transaction" action, and
-        // showing both was a redundant, competing CTA in the same empty
-        // state (also compacted, matching the other Dashboard sections).
-        <EmptyState iconName="receipt-outline" message={t('dashboard.noTransactions')} compact />
-      ) : (
-        <Card>
-          {recentTransactions.map((txn, index) => {
-            const categoryName = txn.category_id ? categoryNameById[txn.category_id] : undefined
-            return (
-              <View key={txn.id}>
-                {index > 0 && (
-                  <View className="my-3">
-                    <Divider />
-                  </View>
-                )}
-                <Pressable
-                  onPress={() => router.push(`/transactions/${txn.id}`)}
-                  accessibilityRole="button"
-                  className="flex-row items-center gap-3"
-                >
-                  <CategoryIcon icon={txn.category_id ? categoryIconById[txn.category_id] : undefined} size="sm" />
-                  <View className="flex-1">
-                    <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {txn.description}
-                    </Text>
-                    {categoryName && (
-                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                        {categoryName}
-                      </Text>
-                    )}
-                  </View>
-                  <Text
-                    className={`text-body font-medium ${
-                      txn.amount_agorot > 0
-                        ? 'text-positive-light dark:text-positive-dark'
-                        : 'text-ink-light dark:text-ink-dark'
-                    }`}
-                  >
-                    {formatILS(txn.amount_agorot)}
-                  </Text>
-                </Pressable>
-              </View>
-            )
-          })}
-        </Card>
-      )}
+                  )
+                })}
+              </Card>
+            )}
           </View>
         </View>
 
         <View className="web:desktop:flex-1">
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
-      {analyticsError ? (
-        <>
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.trendTitle')}
-          </Text>
-          <ErrorMessage message={t('dashboard.errors.generic')} />
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.breakdownTitle')}
-          </Text>
-          <ErrorMessage message={t('dashboard.errors.generic')} />
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.topCategoriesTitle')}
-          </Text>
-          <ErrorMessage message={t('dashboard.errors.generic')} />
-        </>
-      ) : isAnalyticsLoading ? (
-        <>
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.trendTitle')}
-          </Text>
-          <SkeletonList rows={1} rowClassName="h-40 w-full rounded-card" />
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.breakdownTitle')}
-          </Text>
-          <View className="items-center">
-            <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader
+              icon="receipt-outline"
+              title={t('dashboard.recentTitle')}
+              action={
+                recentTransactions.length > 0 && (
+                  <Pressable onPress={() => router.push('/transactions')} accessibilityRole="button">
+                    <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                      {t('dashboard.viewAll')}
+                    </Text>
+                  </Pressable>
+                )
+              }
+            />
+            {transactionsError ? (
+              <ErrorMessage message={t('dashboard.errors.generic')} />
+            ) : isTransactionsLoading ? (
+              <SkeletonList rows={3} />
+            ) : recentTransactions.length === 0 ? (
+              // Phase 3.1: no actionLabel here — the screen's own
+              // floatingAction FAB already does the identical "add a
+              // transaction" action, and showing both was a redundant,
+              // competing CTA in the same empty state.
+              <EmptyState iconName="receipt-outline" message={t('dashboard.noTransactions')} compact />
+            ) : (
+              <Card>
+                {recentTransactions.map((txn, index) => {
+                  const categoryName = txn.category_id ? categoryNameById[txn.category_id] : undefined
+                  return (
+                    <View key={txn.id}>
+                      {index > 0 && (
+                        <View className="my-3">
+                          <Divider />
+                        </View>
+                      )}
+                      <Pressable
+                        onPress={() => router.push(`/transactions/${txn.id}`)}
+                        accessibilityRole="button"
+                        className="flex-row items-center gap-3"
+                      >
+                        <CategoryIcon icon={txn.category_id ? categoryIconById[txn.category_id] : undefined} size="sm" />
+                        <View className="flex-1">
+                          <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                            {txn.description}
+                          </Text>
+                          {categoryName && (
+                            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                              {categoryName}
+                            </Text>
+                          )}
+                        </View>
+                        <Text
+                          className={`text-body font-medium ${
+                            txn.amount_agorot > 0
+                              ? 'text-positive-light dark:text-positive-dark'
+                              : 'text-ink-light dark:text-ink-dark'
+                          }`}
+                        >
+                          {formatILS(txn.amount_agorot)}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )
+                })}
+              </Card>
+            )}
           </View>
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.topCategoriesTitle')}
-          </Text>
-          <SkeletonList rows={3} />
-        </>
-      ) : analyticsAllEmpty ? (
-        <>
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.insightsTitle')}
-          </Text>
-          <EmptyState iconName="sparkles-outline" message={t('dashboard.analytics.insightsEmpty')} compact />
-        </>
-      ) : (
-        <>
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.trendTitle')}
-          </Text>
-          {monthlyTrendIsEmpty ? (
-            <EmptyState iconName="bar-chart-outline" message={t('dashboard.analytics.empty')} compact />
-          ) : (
-            <Card>
-              <MonthlyTrendChart points={monthlyTrendPoints} />
-            </Card>
-          )}
+        </View>
 
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.breakdownTitle')}
-          </Text>
-          {categoryBreakdown.length === 0 ? (
-            <EmptyState iconName="pie-chart-outline" message={t('dashboard.analytics.empty')} compact />
-          ) : (
-            <Card>
-              <View className="items-center">
-                <CategoryDonutChart breakdown={categoryBreakdown} categoryNameById={categoryNameById} />
-              </View>
-            </Card>
-          )}
+        <View className="web:desktop:flex-1">
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader icon="sparkles-outline" title={t('dashboard.analytics.insightsTitle')} />
+            {analyticsError ? (
+              <ErrorMessage message={t('dashboard.errors.generic')} />
+            ) : isAnalyticsLoading ? (
+              <>
+                <View className="items-center">
+                  <SkeletonList rows={1} rowClassName="h-36 w-36 rounded-full" />
+                </View>
+                <View className="mt-4">
+                  <SkeletonList rows={3} />
+                </View>
+              </>
+            ) : analyticsAllEmpty ? (
+              <EmptyState iconName="sparkles-outline" message={t('dashboard.analytics.insightsEmpty')} compact />
+            ) : (
+              <>
+                {/* Consolidated under the one "תובנות החודש" header above
+                    (Design Phase 2 originally gave breakdown/top-categories/
+                    trend each their own full sub-header inside this same
+                    column) — donut + ranked list side by side at desktop,
+                    trend chart beneath. Every section still falls through to
+                    its own empty state independently when only that one is
+                    empty, same as before. */}
+                {categoryBreakdown.length === 0 ? (
+                  <EmptyState iconName="pie-chart-outline" message={t('dashboard.analytics.empty')} compact />
+                ) : (
+                  <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-5">
+                    <CategoryDonutChart breakdown={categoryBreakdown} categoryNameById={categoryNameById} size={104} />
+                    <View className="mt-4 web:desktop:mt-0 web:desktop:flex-1">
+                      <TopCategoriesList
+                        entries={topCategories}
+                        categoryNameById={categoryNameById}
+                        categoryIconById={categoryIconById}
+                      />
+                    </View>
+                  </View>
+                )}
 
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.analytics.topCategoriesTitle')}
-          </Text>
-          {topCategories.length === 0 ? (
-            <EmptyState iconName="pie-chart-outline" message={t('dashboard.analytics.empty')} compact />
-          ) : (
-            <Card>
-              <TopCategoriesList
-                entries={topCategories}
-                categoryNameById={categoryNameById}
-                categoryIconById={categoryIconById}
-              />
-            </Card>
-          )}
-        </>
-      )}
+                <View className="mt-5 web:desktop:mt-6">
+                  <Text className="mb-2 text-caption font-medium text-inkMuted-light dark:text-inkMuted-dark">
+                    {t('dashboard.analytics.trendTitle')}
+                  </Text>
+                  {monthlyTrendIsEmpty ? (
+                    <EmptyState iconName="bar-chart-outline" message={t('dashboard.analytics.empty')} compact />
+                  ) : (
+                    <MonthlyTrendChart points={monthlyTrendPoints} />
+                  )}
+                </View>
+              </>
+            )}
           </View>
         </View>
       </View>

@@ -20,7 +20,7 @@ export function TopCategoriesList({ entries, categoryNameById, categoryIconById 
               <Divider />
             </View>
           )}
-          <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center gap-3 web:flex-row-reverse">
             <CategoryIcon icon={categoryIconById[entry.categoryId]} size="sm" />
             <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">
               {categoryNameById[entry.categoryId] ?? ''}

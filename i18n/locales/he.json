@@ -380,6 +380,7 @@
   },
   "dashboard": {
     "title": "לוח בקרה",
+    "subtitle": "סקירה חודשית של המצב הפיננסי המשותף",
     "spent": "הוצא",
     "ofBudget": "מתוך תקציב",
     "percentUsed": "{{percent}}% מהתקציב נוצל",

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router'
 import { useColorScheme } from 'nativewind'
 import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useUpdateProfile } from '@/features/auth/hooks/useUpdateProfile'
@@ -216,7 +217,9 @@ export default function Settings() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('settings.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('settings.title')}
+      </Text>
 
       {/* Responsive/desktop pass: profile+household in one column, the rest
           (money management/appearance/security/account) in a second column
@@ -226,9 +229,20 @@ export default function Settings() {
           (primary content announced first) while visually placing
           profile+household on the right and the secondary column on the
           left — the correct RTL reading order. Mobile/tablet stay a single
-          stacked column in the original order. */}
+          stacked column in the original order.
+          Desktop polish pass (round 2): each column previously reflowed the
+          exact same unbounded mobile sections side by side — a real-browser
+          visual review found this read as "two independent mobile columns
+          placed next to each other," not one desktop settings page. Each
+          column now gets one shared bounded panel (`DESKTOP_PANEL_CLASS` —
+          the same border/radius/fill token as Dashboard/Budgets' panels)
+          instead of floating loose in the grid; the existing per-section
+          headings inside each column (Household, financial nav, Appearance,
+          Security, Account) still do the sub-grouping, so no new heading was
+          added — just a shared boundary around each column's content. */}
       <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
+      <View className={DESKTOP_PANEL_CLASS}>
       {/* Profile */}
       {isProfileLoading ? (
         <View className="mb-6">
@@ -260,7 +274,7 @@ export default function Settings() {
         </Card>
       ) : (
         <Card>
-          <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center gap-3 web:flex-row-reverse">
             <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={56} />
             <View className="flex-1">
               <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">{displayName}</Text>
@@ -307,7 +321,7 @@ export default function Settings() {
                 </View>
               </View>
             ) : (
-              <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center justify-between web:flex-row-reverse">
                 <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{household?.name}</Text>
                 {/* Admin-only (Fix 1) — households_update's RLS
                     (is_household_admin(id)) is the real gate; `role` here
@@ -334,7 +348,7 @@ export default function Settings() {
               <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
             ) : (
               members.map((member) => (
-                <View key={member.userId} className="mb-2 flex-row items-center gap-2">
+                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row-reverse">
                   <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size={28} />
                   <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{member.displayName}</Text>
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -398,8 +412,10 @@ export default function Settings() {
         />
       </View>
       </View>
+      </View>
 
       <View className="web:desktop:flex-1">
+      <View className={DESKTOP_PANEL_CLASS}>
       {/* Money management — Milestone 6, reached from Settings, not a tab */}
       <SettingsSection title={t('settings.financial.title')}>
         <SettingsRow iconName="wallet-outline" label={t('settings.financial.accounts')} onPress={() => router.push('/accounts')} />
@@ -463,6 +479,7 @@ export default function Settings() {
           destructive
         />
       </SettingsSection>
+      </View>
       </View>
       </View>
 

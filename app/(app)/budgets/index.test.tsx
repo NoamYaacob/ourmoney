@@ -16,6 +16,17 @@ import { usePeriodStore } from '@/store/periodStore'
 import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 
+// Climbs from a section's title up to its panel wrapper by matching the
+// panel's own marker class, rather than a fixed number of `.parent` hops —
+// resilient to the DesktopPanelHeader's icon-chip + title nesting.
+function climbToPanel(textNode: any) {
+  let current = textNode
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:min-h-[300px]')) {
+    current = current.parent
+  }
+  return current
+}
+
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
 // test verifies — same rationale as other screen tests in this repo
@@ -129,9 +140,13 @@ describe('Budgets', () => {
   it('shows the genuine empty state when the uncategorized queue really is empty', async () => {
     mockUncategorized = []
     mockUncategorizedError = null
-    const { getByText, queryByText } = await render(<Budgets />)
+    const { getAllByText, queryByText } = await render(<Budgets />)
 
-    expect(getByText('כל התנועות מסווגות')).toBeTruthy()
+    // Desktop polish pass: `compact` has no responsive variant, so this
+    // empty state now renders twice (a compact mobile copy and a full-size
+    // desktop copy, toggled by CSS RNTL can't evaluate) — both legitimately
+    // exist in the tree at once.
+    expect(getAllByText('כל התנועות מסווגות').length).toBe(2)
     expect(queryByText('משהו השתבש. נסו שוב')).toBeNull()
   })
 
@@ -181,9 +196,9 @@ describe('Budgets', () => {
       totalSpentAgorot: 0,
     })
 
-    const { getByText } = await render(<Budgets />)
+    const { getAllByText } = await render(<Budgets />)
 
-    expect(getByText('עדיין לא הוקצו קטגוריות לתקציב החודש.')).toBeTruthy()
+    expect(getAllByText('עדיין לא הוקצו קטגוריות לתקציב החודש.').length).toBe(2)
   })
 
   // Desktop polish pass: category budgets and the uncategorized-transactions
@@ -196,13 +211,12 @@ describe('Budgets', () => {
   it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
-    // Text -> desktop bounded panel -> flex-1 column -> grid wrapper.
-    const categoriesColumn = getByText('תקציב לפי קטגוריה').parent?.parent
-    const gridWrapper = categoriesColumn?.parent
+    const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
+    const gridWrapper = categoriesPanel?.parent?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
 
-    const uncategorizedColumn = getByText('תנועות ללא קטגוריה').parent?.parent
-    expect(uncategorizedColumn?.parent).toBe(gridWrapper)
+    const uncategorizedPanel = climbToPanel(getByText('תנועות ללא קטגוריה'))
+    expect(uncategorizedPanel?.parent?.parent).toBe(gridWrapper)
   })
 
   // Desktop polish pass: with the category-budgets side often fuller than
@@ -212,11 +226,8 @@ describe('Budgets', () => {
   it('gives both the category-budgets and uncategorized columns their own bounded desktop panel', async () => {
     const { getByText } = await render(<Budgets />)
 
-    const categoriesPanel = getByText('תקציב לפי קטגוריה').parent
-    expect(categoriesPanel?.props.className as string).toContain('web:desktop:border')
-
-    const uncategorizedPanel = getByText('תנועות ללא קטגוריה').parent
-    expect(uncategorizedPanel?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:border')
   })
 
   // Debugging pass (real-browser regression): see dashboard/index.test.tsx's
@@ -228,8 +239,7 @@ describe('Budgets', () => {
   it('fills each desktop panel with the visually-distinct surfaceMuted tone, not the same tone as the page background', async () => {
     const { getByText } = await render(<Budgets />)
 
-    const categoriesPanel = getByText('תקציב לפי קטגוריה').parent
-    const className = categoriesPanel?.props.className as string
+    const className = climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string
     expect(className).toContain('web:desktop:bg-surfaceMuted-light')
     expect(className).toContain('dark:web:desktop:bg-surfaceMuted-dark')
     expect(className).not.toContain('web:desktop:bg-surface-light')
@@ -244,10 +254,7 @@ describe('Budgets', () => {
   it('gives both desktop panels a shared minimum height so neither collapses next to a fuller sibling', async () => {
     const { getByText } = await render(<Budgets />)
 
-    const categoriesPanel = getByText('תקציב לפי קטגוריה').parent
-    expect(categoriesPanel?.props.className as string).toContain('web:desktop:min-h-[280px]')
-
-    const uncategorizedPanel = getByText('תנועות ללא קטגוריה').parent
-    expect(uncategorizedPanel?.props.className as string).toContain('web:desktop:min-h-[280px]')
+    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
+    expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
   })
 })

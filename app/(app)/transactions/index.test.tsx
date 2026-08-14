@@ -32,13 +32,29 @@ jest.mock('@/features/transactions/hooks/useTransactions', () => ({
   useTransactions: () => mockUseTransactions(),
 }))
 
+// Climbs from a node up to the nearest ancestor whose className contains
+// `marker`, rather than a fixed number of `.parent` hops — resilient to the
+// exact wrapper nesting between the queried text and the element under test.
+function climbTo(node: any, marker: string) {
+  let current = node
+  while (current && !((current.props?.className as string | undefined) ?? '').includes(marker)) {
+    current = current.parent
+  }
+  return current
+}
+
 describe('Transactions list', () => {
   it('shows the empty message and exactly one add-transaction CTA (the floating action, not a duplicate button)', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
-    const { getByText, getByLabelText, queryAllByText } = await render(<Transactions />)
+    const { getAllByText, getByLabelText, queryAllByText } = await render(<Transactions />)
 
-    expect(getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')).toBeTruthy()
+    // Desktop polish pass (round 2): the empty state now renders twice —
+    // a compact mobile version and a full-size desktop version, toggled by
+    // `web:desktop:hidden` / `hidden web:desktop:flex` wrappers RNTL can't
+    // evaluate as real CSS — so both copies of the message legitimately
+    // exist in the tree at once.
+    expect(getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').length).toBe(2)
     // Phase 3.1: the empty state's own actionLabel button was removed — the
     // screen's floatingAction FAB is the one "add transaction" CTA now, so
     // its accessible label is the only place this text should appear (no
@@ -47,57 +63,55 @@ describe('Transactions list', () => {
     expect(queryAllByText('הוספת תנועה')).toHaveLength(0)
   })
 
-  // Desktop polish pass: a real-browser visual check found the empty state
-  // floating in an "enormous unused whitespace" on a wide desktop window —
-  // this gives it a deliberate, moderately-sized bounded region (same
-  // border/surface tokens as Card, capped width, not vertically centered
-  // against the viewport) at the desktop breakpoint only. Mobile keeps the
-  // exact original "items-center pt-10" box (asserted by absence of the
-  // desktop-only classes making any mobile-visible difference — none of the
-  // `web:desktop:` classes apply off that breakpoint).
-  it('gives the desktop empty state a bounded, non-oversized region instead of floating on a huge blank page', async () => {
+  // Desktop polish pass (round 2): a real-browser visual check at a
+  // realistic ~900px viewport height found the earlier "bounded region
+  // near the top" treatment still read as a small card floating in mostly
+  // empty page — `web:desktop:flex-1 web:desktop:justify-center` claims
+  // the column's remaining vertical space (Screen's own content column is
+  // already `flex-1`, see Screen.tsx) and centers the card within it
+  // instead of leaving that space as dead canvas below a top-anchored box.
+  // Mobile keeps the exact original unscoped "items-center pt-10" box —
+  // asserted below by confirming the bare (non-`web:desktop:`-prefixed)
+  // tokens contain no `flex-1`/`justify-center` of their own.
+  it("gives the desktop empty state the column's remaining space, centered, instead of a small top-anchored box", async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
-    const { getByText } = await render(<Transactions />)
+    const { getAllByText } = await render(<Transactions />)
 
-    const boundedRegion = getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').parent?.parent
-    const className = boundedRegion?.props.className as string
-    expect(className).toContain('items-center')
-    expect(className).not.toContain('flex-1')
-    expect(className).not.toContain('justify-center')
-    expect(className).toContain('web:desktop:max-w-[640px]')
-    expect(className).toContain('web:desktop:rounded-card')
-    expect(className).toContain('web:desktop:border')
+    const card = climbTo(getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')[0], 'max-w-[520px]')
+    const cardClassName = card?.props.className as string
+    expect(cardClassName).toContain('web:desktop:max-w-[520px]')
+    expect(cardClassName).toContain('web:desktop:rounded-card')
+    expect(cardClassName).toContain('web:desktop:border')
+
+    const outerBox = card?.parent
+    const outerTokens = ((outerBox?.props.className as string) ?? '').split(/\s+/)
+    expect(outerTokens).toContain('items-center')
+    expect(outerTokens).toContain('pt-10')
+    expect(outerTokens).not.toContain('flex-1')
+    expect(outerTokens).not.toContain('justify-center')
+    expect(outerTokens).toContain('web:desktop:flex-1')
+    expect(outerTokens).toContain('web:desktop:justify-center')
   })
 
-  // Debugging pass (real-browser regression): an earlier attempt used
-  // `web:desktop:items-end` here, which was confirmed (via a real headless-
-  // browser getBoundingClientRect() measurement) to leave the box floating
-  // left-of-center instead of anchored right — `align-items` governs how
-  // THIS box's own children align inside it, not how the box itself
-  // positions within its parent (the Screen's plain flex-1 column, which
-  // defaults to `align-items: stretch`). `align-self` (Tailwind
-  // `self-end`) is the correct property for "how does this element sit in
-  // its parent" — confirmed by the same real-browser measurement moving
-  // the box flush against the wide content column's right edge. This test
-  // guards the actual root cause (the right CSS property on the box, not
-  // just "some right-ish-sounding class exists") — `items-center` must
-  // stay so the empty state's own icon+message still center inside the
-  // box, and `items-end` must NOT reappear as a regression.
-  it('anchors the desktop empty state to the right edge via align-self, not align-items', async () => {
+  // Desktop polish pass (round 2): `compact` has no responsive variant, so
+  // the desktop card renders a second, full-size EmptyState instead of
+  // reusing the mobile compact one — guards that each variant is correctly
+  // shown/hidden per breakpoint rather than both showing at once on either.
+  it('shows the compact empty state only off desktop, and the full-size one only at desktop', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
-    const { getByText } = await render(<Transactions />)
+    const { getAllByText } = await render(<Transactions />)
 
-    const boundedRegion = getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').parent?.parent
-    const className = boundedRegion?.props.className as string
-    expect(className).toContain('web:desktop:self-end')
-    expect(className).not.toContain('web:desktop:items-end')
-    expect(className).not.toContain('mx-auto')
-    // The box's own children (the EmptyState icon+message) must still be
-    // centered horizontally inside it — unaffected by how the box itself
-    // is positioned within its parent.
-    expect(className).toContain('items-center')
+    const [mobileMessage, desktopMessage] = getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')
+    const mobileWrapper = climbTo(mobileMessage, 'web:desktop:hidden')
+    const desktopWrapper = climbTo(desktopMessage, 'web:desktop:flex')
+    const mobileTokens = ((mobileWrapper?.props.className as string) ?? '').split(/\s+/)
+    const desktopTokens = ((desktopWrapper?.props.className as string) ?? '').split(/\s+/)
+    expect(mobileTokens).toContain('web:desktop:hidden')
+    expect(mobileTokens).not.toContain('hidden')
+    expect(desktopTokens).toContain('hidden')
+    expect(desktopTokens).toContain('web:desktop:flex')
   })
 
   it('renders a populated row with description, category name, and a positive-colored income amount', async () => {

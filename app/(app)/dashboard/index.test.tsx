@@ -141,16 +141,17 @@ describe('Dashboard analytics section', () => {
     expect(getByTestId('monthly-trend-chart-svg', { includeHiddenElements: true })).toBeTruthy()
   })
 
-  it('shows an error message for every analytics section when the analytics query fails, instead of a false empty state', async () => {
+  it('shows an error message for the insights panel when the analytics query fails, instead of a false empty state', async () => {
     mockAnalytics({ error: new Error('network down') })
 
     const { getAllByText, queryByText, queryByTestId } = await render(<Dashboard />)
 
-    // All three analytics sections (trend, breakdown, top categories) share
-    // this one query — a failure must surface on all three, matching how
-    // progressError/transactionsError are already checked independently in
-    // the budget-summary and recent-transactions sections above.
-    expect(getAllByText(GENERIC_ERROR_MESSAGE).length).toBeGreaterThanOrEqual(3)
+    // Desktop polish pass: the three analytics sub-sections (trend,
+    // breakdown, top categories) were consolidated under one "תובנות
+    // החודש" panel header — they still share this one query, but a
+    // failure now surfaces as the panel's single ErrorMessage instead of
+    // three near-identical ones.
+    expect(getAllByText(GENERIC_ERROR_MESSAGE).length).toBe(1)
     expect(queryByText(EMPTY_ANALYTICS_MESSAGE)).toBeNull()
     expect(queryByTestId('monthly-trend-chart-svg', { includeHiddenElements: true })).toBeNull()
   })
@@ -258,50 +259,64 @@ describe('Dashboard month navigation and budget summary', () => {
   })
 })
 
-// Responsive/desktop pass: below the hero, category budgets + recent
-// transactions form a 2/3 main column and analytics/insights a 1/3 sidebar
-// at the desktop breakpoint (see index.tsx's own comment). RNTL can't
-// evaluate real CSS media queries, so this asserts the structural thing
-// that matters — the `web:desktop:flex-row-reverse` grid wrapper genuinely
-// contains both sections, not a fake pixel/viewport assertion.
+// Desktop polish pass: below the hero, three equally-weighted columns —
+// category budgets, recent transactions, and insights — replaced the
+// previous 2/3-main + 1/3-sidebar split. RNTL can't evaluate real CSS media
+// queries, so this asserts the structural thing that matters — the
+// `web:desktop:flex-row-reverse` grid wrapper genuinely contains all three
+// panels, each independently bounded — not a fake pixel/viewport assertion.
+// Climbs from a section's title up to its panel wrapper by matching the
+// panel's own marker class, rather than a fixed number of `.parent` hops —
+// resilient to the exact header markup (icon chip + title row) nested
+// inside it.
+function climbToPanel(textNode: any) {
+  let current = textNode
+  while (current && !(current.props?.className ?? '').includes('web:desktop:min-h-[360px]')) {
+    current = current.parent
+  }
+  return current
+}
+
 describe('Dashboard responsive desktop layout', () => {
   afterEach(() => {
     jest.clearAllMocks()
   })
 
-  it('wraps the category budgets column and the analytics/insights column in the same desktop grid container', async () => {
+  it('wraps the category budgets, recent transactions, and insights panels in the same desktop grid container', async () => {
     mockAnalytics({ transactions: [] })
 
     const { getByText } = await render(<Dashboard />)
 
-    // Text -> desktop bounded panel -> flex-[2] main column -> grid wrapper.
-    const mainColumn = getByText(i18n.t('dashboard.categoriesTitle')).parent?.parent
-    const gridWrapper = mainColumn?.parent
+    const categoriesPanel = climbToPanel(getByText(i18n.t('dashboard.categoriesTitle')))
+    const gridWrapper = categoriesPanel?.parent?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
 
-    // Text -> desktop bounded panel -> flex-1 sidebar column.
-    const sidebarColumn = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent?.parent
-    // Both columns are direct children of the same grid wrapper.
-    expect(sidebarColumn?.parent).toBe(gridWrapper)
+    const insightsPanel = climbToPanel(getByText(i18n.t('dashboard.analytics.insightsTitle')))
+    // All three columns are direct children of the same grid wrapper.
+    expect(insightsPanel?.parent?.parent).toBe(gridWrapper)
+
+    const recentPanel = climbToPanel(getByText(i18n.t('dashboard.recentTitle')))
+    expect(recentPanel?.parent?.parent).toBe(gridWrapper)
   })
 
   // Desktop polish pass regression: a real-browser visual check found this
-  // grid rendering left-to-right (main column on the left) — wrong for an
-  // RTL app, where the primary column (main) should read on the right and
-  // the secondary column (sidebar) on the left. `flex-row-reverse` keeps
-  // source order [main, sidebar] (so a screen reader still reaches the
-  // primary content first) while flipping only the visual position.
+  // grid rendering left-to-right (categories column on the left) — wrong
+  // for an RTL app, where the primary column (categories) should read on
+  // the right. `flex-row-reverse` keeps source order [categories, recent,
+  // insights] (so a screen reader still reaches the primary content first)
+  // while flipping only the visual position.
   it('uses flex-row-reverse (not plain flex-row) so the primary column reads on the right in RTL', async () => {
     mockAnalytics({ transactions: [] })
 
     const { getByText } = await render(<Dashboard />)
 
-    const gridWrapper = getByText(i18n.t('dashboard.categoriesTitle')).parent?.parent?.parent
+    const categoriesPanel = climbToPanel(getByText(i18n.t('dashboard.categoriesTitle')))
+    const gridWrapper = categoriesPanel?.parent?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
   })
 
   // Desktop polish pass: each lower section (category budgets, recent
-  // transactions, analytics/insights) is now its own bordered panel at
+  // transactions, analytics/insights) is its own bordered panel at
   // desktop, so the page reads as clearly grouped sections rather than
   // loosely related content on a large blank canvas — see index.tsx's own
   // comment. Asserts the structural fact (the panel class reaches each
@@ -311,14 +326,11 @@ describe('Dashboard responsive desktop layout', () => {
 
     const { getByText } = await render(<Dashboard />)
 
-    const categoriesPanel = getByText(i18n.t('dashboard.categoriesTitle')).parent
-    expect(categoriesPanel?.props.className as string).toContain('web:desktop:border')
-
-    const recentPanel = getByText(i18n.t('dashboard.recentTitle')).parent?.parent
-    expect(recentPanel?.props.className as string).toContain('web:desktop:border')
-
-    const insightsPanel = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent
-    expect(insightsPanel?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText(i18n.t('dashboard.categoriesTitle')))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText(i18n.t('dashboard.recentTitle')))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText(i18n.t('dashboard.analytics.insightsTitle')))?.props.className as string).toContain(
+      'web:desktop:border'
+    )
   })
 
   // Debugging pass (real-browser regression): an earlier attempt filled
@@ -336,11 +348,26 @@ describe('Dashboard responsive desktop layout', () => {
 
     const { getByText } = await render(<Dashboard />)
 
-    const categoriesPanel = getByText(i18n.t('dashboard.categoriesTitle')).parent
-    const className = categoriesPanel?.props.className as string
+    const className = climbToPanel(getByText(i18n.t('dashboard.categoriesTitle')))?.props.className as string
     expect(className).toContain('web:desktop:bg-surfaceMuted-light')
     expect(className).toContain('dark:web:desktop:bg-surfaceMuted-dark')
     expect(className).not.toContain('web:desktop:bg-surface-light')
     expect(className).not.toContain('web:desktop:bg-surface-dark')
+  })
+
+  // Desktop polish pass: each panel's header now carries a small accent-
+  // tinted icon chip next to its title (visual hierarchy touch) — desktop
+  // only, so it never shows on the mobile stacked layout.
+  it('scopes each panel header icon chip to desktop only', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const titleRow = getByText(i18n.t('dashboard.categoriesTitle')).parent
+    const iconChip = titleRow?.children.find(
+      (child) => typeof child !== 'string' && (child.props.className as string | undefined)?.includes('rounded-full')
+    )
+    expect((iconChip as { props: { className: string } } | undefined)?.props.className).toContain('web:desktop:flex')
+    expect((iconChip as { props: { className: string } } | undefined)?.props.className).toContain('hidden')
   })
 })

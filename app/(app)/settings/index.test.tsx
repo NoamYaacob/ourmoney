@@ -15,6 +15,18 @@ import '@/i18n'
 import Settings from './index'
 import type { HouseholdMemberWithProfile, HouseholdRole } from '@/types/app'
 
+// Climbs from a title up to its shared desktop panel wrapper by matching
+// the panel's own marker class, rather than a fixed number of `.parent`
+// hops — resilient to the exact nesting (SettingsSection's own `mb-6`
+// wrapper, this screen's panel) between the queried text and the panel.
+function climbToPanel(textNode: any) {
+  let current = textNode
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:rounded-card')) {
+    current = current.parent
+  }
+  return current
+}
+
 const mockRouterPush = jest.fn()
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockRouterPush }),
@@ -316,15 +328,17 @@ describe('Settings screen — household/profile management', () => {
 
     const { getByText } = await render(<Settings />)
 
-    const primaryColumn = getByText('משק הבית').parent
-    const gridWrapper = primaryColumn?.parent
+    // Climbs to the shared bounded-panel wrapper (DESKTOP_PANEL_CLASS, the
+    // same token Dashboard/Budgets' panels use) each column now has, rather
+    // than a fixed number of `.parent` hops — resilient to exactly how many
+    // wrapper Views (SettingsSection's own `mb-6`, this panel) sit between
+    // the queried title and the grid.
+    const primaryPanel = climbToPanel(getByText('משק הבית'))
+    const gridWrapper = primaryPanel?.parent?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
 
-    // SettingsSection wraps its own title Text in an extra `mb-6` View, so
-    // the secondary column is one level further up than the primary
-    // column's.
-    const secondaryColumn = getByText('ניהול כספים').parent?.parent
-    expect(secondaryColumn?.parent).toBe(gridWrapper)
+    const secondaryPanel = climbToPanel(getByText('ניהול כספים'))
+    expect(secondaryPanel?.parent?.parent).toBe(gridWrapper)
   })
 
   // Desktop polish pass regression: a real-browser visual check found the
@@ -341,7 +355,25 @@ describe('Settings screen — household/profile management', () => {
 
     const { getByText } = await render(<Settings />)
 
-    const gridWrapper = getByText('משק הבית').parent?.parent
+    const panel = climbToPanel(getByText('משק הבית'))
+    const gridWrapper = panel?.parent?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+  })
+
+  // Desktop polish pass (round 2): each column previously reflowed the same
+  // unbounded mobile sections side by side with no shared boundary — a
+  // real-browser visual review found this read as two independent mobile
+  // columns rather than one desktop settings page. Each column now shares
+  // one bounded panel treatment (the same token Dashboard/Budgets' panels
+  // use), rather than each sub-section floating loose in the grid.
+  it('wraps each column in a shared bounded desktop panel, not loose floating sections', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText } = await render(<Settings />)
+
+    expect(climbToPanel(getByText('משק הבית'))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText('ניהול כספים'))?.props.className as string).toContain('web:desktop:border')
   })
 })

@@ -45,7 +45,9 @@ export default function Transactions() {
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
       <View className="mb-6 flex-row items-center justify-between web:flex-row-reverse">
-        <Text className="text-title font-bold text-ink-light dark:text-ink-dark">{t('transactions.title')}</Text>
+        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+          {t('transactions.title')}
+        </Text>
         {/* Design Phase 3: a small secondary link, not a Button — this is a
             utility action, not a peer of the primary "add transaction"
             flow, and shouldn't visually compete with the screen title. Same
@@ -67,50 +69,39 @@ export default function Transactions() {
       ) : isPageLoading ? (
         <SkeletonList rows={5} />
       ) : transactions.length === 0 ? (
-        // Phase 3.1: two changes from Phase 3 — dropped the actionLabel
-        // button (the screen's own floatingAction FAB already does the
-        // identical "add a transaction" action, so showing both was a
-        // redundant, competing CTA), and swapped full-height
-        // (flex-1/justify-center) vertical centering for a fixed top
-        // offset. On an iPhone-sized viewport flex-1 centering looked
-        // natural, but on a tall desktop/web window it stretched the
-        // empty state to the exact vertical middle of a very tall column,
-        // reading as a huge void above and below a tiny message — this
-        // keeps it horizontally centered and near the top instead.
+        // Phase 3.1: dropped the actionLabel button — the screen's own
+        // floatingAction FAB already does the identical "add a
+        // transaction" action, so showing both was a redundant, competing
+        // CTA.
         //
-        // Desktop polish pass: still not vertically centered against the
-        // viewport (unchanged from the above) — but on a wide desktop
-        // window the compact message alone, floating with nothing but
-        // blank canvas around it, still read as an "enormous empty area"
-        // once visually reviewed in a real browser. `web:desktop:` classes
-        // give it a deliberate, moderately-sized bounded region right below
-        // the header instead — same Card surface/border tokens used
-        // everywhere else in this app, not a new design system. Mobile is
-        // untouched: none of the `web:desktop:` classes apply there, so
-        // this is the exact same "items-center pt-10" box as before.
-        //
-        // Debugging pass (real-browser regression): the previous attempt
-        // added `web:desktop:items-end` to THIS element — but `align-items`
-        // governs how THIS box's own CHILDREN align inside it, not how the
-        // box itself is positioned within ITS parent (the Screen's plain
-        // `flex-1` column, which never set `align-items` and so defaults to
-        // `stretch`). A `max-w-[640px]`-clamped child under a `stretch`
-        // parent isn't repositioned by `stretch` (it only affects sizing of
-        // `auto`-width children) and falls back to `flex-start` — the
-        // physical left edge on this LTR-computed web document (see
-        // _layout.tsx's DesktopSideRail comment) — which is exactly the
-        // reported bug: the box floating left-of-center instead of anchored
-        // right. Confirmed both the bug and the fix with a real headless-
-        // browser measurement (`getBoundingClientRect()`), not just reading
-        // the compiled CSS: `items-end` left the box at
-        // {left:169,right:809} in a 1440px viewport; `self-end` — which
-        // sets `align-self` on the box itself, the correct property for
-        // "how does THIS element sit within its parent" — moved it to
-        // {left:631,right:1271}, flush against the wide content column's
-        // right edge. `items-center` (mobile default, unscoped) is kept
-        // so the empty-state's own icon+message still center inside the box.
-        <View className="items-center pt-10 web:desktop:mt-2 web:desktop:w-full web:desktop:max-w-[640px] web:desktop:self-end web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:pb-10 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
-          <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
+        // Desktop polish pass (round 2): a real-browser visual review
+        // found the previous desktop treatment — a `self-end`-anchored,
+        // modestly-sized box near the top — still read as "a small card
+        // floating in a huge blank page," especially at typical ~900px
+        // viewport heights. `web:desktop:flex-1 web:desktop:justify-center`
+        // (Screen's own content column is already a `flex-1` column, see
+        // Screen.tsx) makes this box claim the remaining vertical space
+        // below the header and centers its content within it — the
+        // available space is used deliberately instead of left as dead
+        // canvas beneath a small anchored box. Mobile is untouched: without
+        // `web:desktop:`, it stays the exact original unscoped "items-center
+        // pt-10" box (flex-1/justify-center was deliberately rejected for
+        // mobile in an earlier pass — see the dedicated regression test
+        // below for why that choice is guarded, not reintroduced here).
+        <View className="items-center pt-10 web:desktop:flex-1 web:desktop:justify-center web:desktop:pt-0">
+          <View className="web:desktop:w-full web:desktop:max-w-[520px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+            {/* Two EmptyState renders, not one — `compact` is a single
+                fixed prop with no responsive variant, and desktop's roomier
+                card calls for the larger icon/spacing `compact={false}`
+                already gives every other full-size empty state in this app,
+                while mobile keeps the exact original compact treatment. */}
+            <View className="web:desktop:hidden">
+              <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
+            </View>
+            <View className="hidden web:desktop:flex">
+              <EmptyState iconName="receipt-outline" message={t('transactions.empty')} />
+            </View>
+          </View>
         </View>
       ) : (
         <FlatList<Transaction>

@@ -37,7 +37,11 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
+
+const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
 
 export default function Budgets() {
   const { t } = useTranslation()
@@ -140,7 +144,9 @@ export default function Budgets() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('budgets.title')}
+      </Text>
 
       <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
 
@@ -156,17 +162,17 @@ export default function Budgets() {
               screen's job is reviewing/setting the plan, not just
               monitoring it, so the two screens read as related, not
               identical. */}
-          <Card>
+          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
             <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
               {t('budgets.totalAllocated')}
             </Text>
-            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark">
+            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[52px] web:desktop:leading-[58px]">
               {formatILS(totalAllocatedAgorot)}
             </Text>
 
             {overallPercent !== null && (
               <>
-                <View className="mt-4">
+                <View className="mt-4 web:desktop:mt-6">
                   <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
                 </View>
                 <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -175,10 +181,10 @@ export default function Budgets() {
               </>
             )}
 
-            <View className="mt-4 flex-row items-center">
+            <View className="mt-4 web:desktop:mt-6 flex-row items-center">
               <View className="flex-1">
                 <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-                <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
                   {formatILS(totalSpentAgorot)}
                 </Text>
               </View>
@@ -186,7 +192,7 @@ export default function Budgets() {
               <View className="flex-1">
                 <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.remaining')}</Text>
                 <Text
-                  className={`mt-0.5 text-heading font-semibold ${
+                  className={`mt-0.5 text-heading font-semibold web:desktop:text-[19px] ${
                     isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
                   }`}
                 >
@@ -226,18 +232,27 @@ export default function Budgets() {
               comment for the real-browser measurement that found this.
               `bg-surfaceMuted-light/dark` is the established, visually-
               distinct card tone used everywhere else.
-              Both panels also share a `min-h-[280px]` desktop floor: with
+              Both panels also share a desktop min-height floor: with
               `items-start` siblings that size to their own content, a short
               category list next to a longer uncategorized queue (or vice
               versa) otherwise left the shorter panel reading as an awkward
               sliver rather than a deliberate region. */}
-          <View className="web:desktop:min-h-[280px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+          <View className={DESKTOP_PANEL}>
           {/* Per-category allocation editor + progress */}
-          <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('budgets.categoriesTitle')}
-          </Text>
+          <DesktopPanelHeader icon="pie-chart-outline" title={t('budgets.categoriesTitle')} />
           {progress.length === 0 ? (
-            <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} compact />
+            <>
+              {/* Desktop polish pass: `compact` has no responsive variant —
+                  a bigger, non-compact EmptyState at desktop keeps a
+                  min-height panel from reading as an oversized empty box
+                  around a tiny icon. Mobile keeps the original compact one. */}
+              <View className="web:desktop:hidden">
+                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} compact />
+              </View>
+              <View className="hidden web:desktop:flex">
+                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} />
+              </View>
+            </>
           ) : (
             <Card>
               {progress.map((category, index) => {
@@ -345,17 +360,22 @@ export default function Budgets() {
               beside it — so it reads as an intentional secondary panel
               instead of nearly-empty space next to a fuller primary
               column, even when the queue itself is empty. */}
-          <View className="web:desktop:min-h-[280px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+          <View className={DESKTOP_PANEL}>
           {/* Uncategorized transactions queue */}
-          <Text className="mb-2 mt-8 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-            {t('budgets.uncategorizedTitle')}
-          </Text>
+          <DesktopPanelHeader icon="receipt-outline" title={t('budgets.uncategorizedTitle')} />
           {uncategorizedError ? (
             <ErrorMessage message={t('budgets.errors.generic')} />
           ) : isUncategorizedLoading ? (
             <SkeletonList rows={3} />
           ) : uncategorized.length === 0 ? (
-            <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} compact />
+            <>
+              <View className="web:desktop:hidden">
+                <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} compact />
+              </View>
+              <View className="hidden web:desktop:flex">
+                <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} />
+              </View>
+            </>
           ) : (
             <Card>
               {uncategorized.map((txn, index) => (
@@ -365,7 +385,7 @@ export default function Budgets() {
                       <Divider />
                     </View>
                   )}
-                  <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center justify-between web:flex-row-reverse">
                     <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                       {txn.description}
                     </Text>
