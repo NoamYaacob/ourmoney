@@ -166,13 +166,26 @@ export default function Dashboard() {
         </Card>
       )}
 
+      {/* Desktop polish pass: a subtle divider groups the hero away from
+          the grid below it, instead of the two areas reading as loosely
+          related blocks floating on a large desktop canvas. Desktop-only
+          (`hidden web:desktop:flex`) — mobile/tablet spacing is untouched. */}
+      <View className="hidden web:desktop:mb-1 web:desktop:mt-6 web:desktop:flex">
+        <Divider />
+      </View>
+
       {/* Responsive/desktop pass: below the hero, a 2/3 main column
           (category budgets + recent transactions) and a 1/3 sidebar
-          (analytics/insights) — desktop only (`web:desktop:flex-row`).
-          Mobile and tablet stay a single stacked column, unchanged, since
-          the plain View default (flexDirection: column) already renders
-          these two wrappers one after another in source order. */}
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+          (analytics/insights) — desktop only (`web:desktop:flex-row-reverse`,
+          see _layout.tsx's DesktopSideRail comment for why `-reverse` is
+          needed on web). Reversing keeps source/DOM order as [main,
+          sidebar] (primary content announced first) while visually placing
+          the primary column on the right and the sidebar on the left — the
+          correct RTL reading order. Mobile and tablet stay a single stacked
+          column, unchanged, since the plain View default (flexDirection:
+          column) already renders these two wrappers one after another in
+          source order. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
         <View className="web:desktop:flex-[2]">
           <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('dashboard.categoriesTitle')}

@@ -77,7 +77,18 @@ export default function Transactions() {
         // empty state to the exact vertical middle of a very tall column,
         // reading as a huge void above and below a tiny message — this
         // keeps it horizontally centered and near the top instead.
-        <View className="items-center pt-10">
+        //
+        // Desktop polish pass: still not vertically centered against the
+        // viewport (unchanged from the above) — but on a wide desktop
+        // window the compact message alone, floating with nothing but
+        // blank canvas around it, still read as an "enormous empty area"
+        // once visually reviewed in a real browser. `web:desktop:` classes
+        // give it a deliberate, moderately-sized bounded region right below
+        // the header instead — same Card surface/border tokens used
+        // everywhere else in this app, not a new design system. Mobile is
+        // untouched: none of the `web:desktop:` classes apply there, so
+        // this is the exact same "items-center pt-10" box as before.
+        <View className="items-center pt-10 web:desktop:mx-auto web:desktop:mt-2 web:desktop:w-full web:desktop:max-w-[640px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:pb-10 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
         </View>
       ) : (

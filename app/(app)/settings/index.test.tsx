@@ -307,8 +307,8 @@ describe('Settings screen — household/profile management', () => {
   // management/appearance/security/account form a second — desktop only
   // (see index.tsx's own comment). RNTL can't evaluate real CSS media
   // queries, so this asserts the structural thing that matters — both
-  // columns are direct children of the same `web:desktop:flex-row` grid
-  // wrapper, not a fake pixel/viewport assertion.
+  // columns are direct children of the same `web:desktop:flex-row-reverse`
+  // grid wrapper, not a fake pixel/viewport assertion.
   it('groups profile/household and money-management/appearance/security/account into the same desktop grid container', async () => {
     setHousehold('admin')
     setMembers([ADMIN_MEMBER])
@@ -316,13 +316,32 @@ describe('Settings screen — household/profile management', () => {
 
     const { getByText } = await render(<Settings />)
 
-    const leftColumn = getByText('משק הבית').parent
-    const gridWrapper = leftColumn?.parent
+    const primaryColumn = getByText('משק הבית').parent
+    const gridWrapper = primaryColumn?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
 
     // SettingsSection wraps its own title Text in an extra `mb-6` View, so
-    // the right column is one level further up than the left column's.
-    const rightColumn = getByText('ניהול כספים').parent?.parent
-    expect(rightColumn?.parent).toBe(gridWrapper)
+    // the secondary column is one level further up than the primary
+    // column's.
+    const secondaryColumn = getByText('ניהול כספים').parent?.parent
+    expect(secondaryColumn?.parent).toBe(gridWrapper)
+  })
+
+  // Desktop polish pass regression: a real-browser visual check found the
+  // desktop nav rail rendering on the wrong side for this RTL app, caused
+  // by plain `flex-row` not auto-mirroring on web — the same fix
+  // (`flex-row-reverse`) was applied to every desktop 2-column grid,
+  // including this one, so profile+household (source-order-first, the
+  // primary column) reads on the right and money-management/etc. on the
+  // left, per RTL reading order.
+  it('uses flex-row-reverse (not plain flex-row) so profile/household reads on the right in RTL', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText } = await render(<Settings />)
+
+    const gridWrapper = getByText('משק הבית').parent?.parent
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
   })
 })

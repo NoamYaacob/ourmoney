@@ -185,4 +185,22 @@ describe('Budgets', () => {
 
     expect(getByText('עדיין לא הוקצו קטגוריות לתקציב החודש.')).toBeTruthy()
   })
+
+  // Desktop polish pass: category budgets and the uncategorized-transactions
+  // queue sit in a shared desktop grid (index.tsx's own comment). RNTL can't
+  // evaluate real CSS media queries, so this asserts the structural things
+  // that matter — both columns share the same grid wrapper, and it declares
+  // flex-row-reverse (not plain flex-row) so categories (source-order-first,
+  // the primary column) reads on the right in this RTL app — not a fake
+  // pixel/viewport assertion.
+  it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    const categoriesColumn = getByText('תקציב לפי קטגוריה').parent
+    const gridWrapper = categoriesColumn?.parent
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const uncategorizedColumn = getByText('תנועות ללא קטגוריה').parent
+    expect(uncategorizedColumn?.parent).toBe(gridWrapper)
+  })
 })

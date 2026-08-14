@@ -262,7 +262,7 @@ describe('Dashboard month navigation and budget summary', () => {
 // transactions form a 2/3 main column and analytics/insights a 1/3 sidebar
 // at the desktop breakpoint (see index.tsx's own comment). RNTL can't
 // evaluate real CSS media queries, so this asserts the structural thing
-// that matters — the `web:desktop:flex-row` grid wrapper genuinely
+// that matters — the `web:desktop:flex-row-reverse` grid wrapper genuinely
 // contains both sections, not a fake pixel/viewport assertion.
 describe('Dashboard responsive desktop layout', () => {
   afterEach(() => {
@@ -281,5 +281,20 @@ describe('Dashboard responsive desktop layout', () => {
     const sidebarColumn = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent
     // Both columns are direct children of the same grid wrapper.
     expect(sidebarColumn?.parent).toBe(gridWrapper)
+  })
+
+  // Desktop polish pass regression: a real-browser visual check found this
+  // grid rendering left-to-right (main column on the left) — wrong for an
+  // RTL app, where the primary column (main) should read on the right and
+  // the secondary column (sidebar) on the left. `flex-row-reverse` keeps
+  // source order [main, sidebar] (so a screen reader still reaches the
+  // primary content first) while flipping only the visual position.
+  it('uses flex-row-reverse (not plain flex-row) so the primary column reads on the right in RTL', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const gridWrapper = getByText(i18n.t('dashboard.categoriesTitle')).parent?.parent
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
   })
 })

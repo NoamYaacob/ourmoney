@@ -29,14 +29,26 @@ const RAIL_DESTINATIONS: RailDestination[] = [
   { segment: 'settings', href: '/settings', labelKey: 'tabs.settings', icon: 'settings-outline', iconActive: 'settings' },
 ]
 
-// Responsive/desktop pass: replaces the bottom tab bar with a left/right
-// (RTL-aware) side rail at the `desktop` breakpoint on web only — same 4
+// Responsive/desktop pass: replaces the bottom tab bar with a right-side
+// (RTL-correct) rail at the `desktop` breakpoint on web only — same 4
 // destinations, no hidden routes exposed. Only ever mounted when
 // `Platform.OS === 'web'` (see AppLayout below), so it never renders under
 // jest-expo's default native platform and can't affect
-// `_layout.test.tsx`'s "exactly 4 tab buttons" assertion. `flex-row` (not
-// `flex-row-reverse`) auto-mirrors to the right edge under the app's forced
-// RTL flag, matching this codebase's established RTL convention.
+// `_layout.test.tsx`'s "exactly 4 tab buttons" assertion.
+//
+// Desktop polish pass: visually verified in a real browser that plain
+// `flex-row` was placing this rail on the LEFT, not the right — wrong for
+// this Hebrew/RTL app. Root cause: native Yoga auto-mirrors `row` layouts
+// under `I18nManager.isRTL`, but NativeWind's web-compiled CSS does not
+// consult that flag (and the app sets no `dir="rtl"` on the web document —
+// see app/_layout.tsx's RTL bootstrap, which is a no-op reload on web), so
+// `flex-row` on web renders as plain physical left-to-right regardless of
+// the app's forced-RTL state. AppLayout below uses `flex-row-reverse`
+// instead (web-only, see its own comment) — a deterministic, standard CSS
+// mechanism, not a hack — to place this first-rendered child on the
+// physical right. `border-s` (inline-start) therefore resolves to the
+// rail's LEFT edge here (this element renders in an LTR-computed box, since
+// no `dir="rtl"` is set), which is the edge adjacent to the content column.
 export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const { t } = useTranslation()
   const router = useRouter()
@@ -45,7 +57,7 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
   return (
-    <View className="hidden web:desktop:flex w-[220px] shrink-0 border-e border-border-light bg-surface-light px-3 pt-8 dark:border-border-dark dark:bg-surface-dark">
+    <View className="hidden web:desktop:flex w-[220px] shrink-0 border-s border-border-light bg-surface-light px-3 pt-8 dark:border-border-dark dark:bg-surface-dark">
       {RAIL_DESTINATIONS.map((dest) => {
         const focused = dest.segment === activeSegment
         const color = focused ? activeColor : inactiveColor
@@ -162,15 +174,23 @@ export default function AppLayout() {
         importantForAccessibility={isLocked ? 'no-hide-descendants' : 'auto'}
         accessibilityElementsHidden={isLocked}
       >
-        {/* `web:flex-row` no-ops on native (Platform.OS !== 'web' never
-            matches the variant), so this wrapper is a plain flex:1 column —
-            byte-identical to the previous single View — everywhere except a
-            real web build. The side rail itself is only ever mounted when
-            Platform.OS === 'web', so native's render tree (and
-            `_layout.test.tsx`'s exactly-4-tab-buttons assertion, which runs
-            under jest-expo's default native platform) is completely
-            unaffected. */}
-        <View className="flex-1 web:flex-row">
+        {/* `web:flex-row-reverse` no-ops on native (Platform.OS !== 'web'
+            never matches the `web:` variant), so this wrapper is a plain
+            flex:1 column — byte-identical to the previous single View —
+            everywhere except a real web build. The side rail itself is only
+            ever mounted when Platform.OS === 'web', so native's render tree
+            (and `_layout.test.tsx`'s exactly-4-tab-buttons assertion, which
+            runs under jest-expo's default native platform) is completely
+            unaffected.
+            `row-reverse` (not `row`) — see DesktopSideRail's own comment for
+            why plain `flex-row` renders left-to-right on web regardless of
+            the app's forced RTL state, and why reversing the axis here is
+            the correct, deterministic fix rather than a hack: DOM/source
+            order stays [rail, content] (so a screen reader still announces
+            navigation first, the logical RTL reading order), while the
+            visual position flips — rail on the right, content immediately
+            to its left. */}
+        <View className="flex-1 web:flex-row-reverse">
           {isWeb && <DesktopSideRail activeSegment={activeSegment} />}
           <View className="flex-1">
             <Tabs

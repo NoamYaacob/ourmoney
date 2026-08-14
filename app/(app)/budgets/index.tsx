@@ -196,11 +196,23 @@ export default function Budgets() {
             </View>
           </Card>
 
+          {/* Desktop polish pass: a subtle divider groups the hero away
+              from the grid below it, matching Dashboard's identical
+              treatment — desktop-only, mobile/tablet spacing untouched. */}
+          <View className="hidden web:desktop:mb-1 web:desktop:mt-6 web:desktop:flex">
+            <Divider />
+          </View>
+
           {/* Responsive/desktop pass: category budgets and the uncategorized
-              queue sit side by side at desktop (`web:desktop:flex-row`);
-              mobile/tablet stay stacked in the original order (plain View
-              column default). */}
-          <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+              queue sit side by side at desktop
+              (`web:desktop:flex-row-reverse` — see _layout.tsx's
+              DesktopSideRail comment for why `-reverse` is needed on web).
+              Reversing keeps source/DOM order as [categories,
+              uncategorized] while visually placing categories (primary) on
+              the right and uncategorized (secondary) on the left — the
+              correct RTL reading order. Mobile/tablet stay stacked in the
+              original order (plain View column default). */}
+          <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
           <View className="web:desktop:flex-1">
           {/* Per-category allocation editor + progress */}
           <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
@@ -277,7 +289,10 @@ export default function Budgets() {
           )}
 
           {editingCategoryId === null && addableCategories.length > 0 && (
-            <View className="mt-3">
+            // Desktop polish pass: tightened from mt-3 to feel like part of
+            // the same category-budgets area above it, rather than an
+            // isolated control — mobile/tablet keep the original mt-3 gap.
+            <View className="mt-3 web:desktop:mt-2">
               <Card>
                 <Select
                   variant="row"

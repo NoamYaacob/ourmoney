@@ -47,6 +47,29 @@ describe('Transactions list', () => {
     expect(queryAllByText('הוספת תנועה')).toHaveLength(0)
   })
 
+  // Desktop polish pass: a real-browser visual check found the empty state
+  // floating in an "enormous unused whitespace" on a wide desktop window —
+  // this gives it a deliberate, moderately-sized bounded region (same
+  // border/surface tokens as Card, capped width, not vertically centered
+  // against the viewport) at the desktop breakpoint only. Mobile keeps the
+  // exact original "items-center pt-10" box (asserted by absence of the
+  // desktop-only classes making any mobile-visible difference — none of the
+  // `web:desktop:` classes apply off that breakpoint).
+  it('gives the desktop empty state a bounded, non-oversized region instead of floating on a huge blank page', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Transactions />)
+
+    const boundedRegion = getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').parent?.parent
+    const className = boundedRegion?.props.className as string
+    expect(className).toContain('items-center')
+    expect(className).not.toContain('flex-1')
+    expect(className).not.toContain('justify-center')
+    expect(className).toContain('web:desktop:max-w-[640px]')
+    expect(className).toContain('web:desktop:rounded-card')
+    expect(className).toContain('web:desktop:border')
+  })
+
   it('renders a populated row with description, category name, and a positive-colored income amount', async () => {
     mockUseTransactions.mockReturnValue({
       transactions: [

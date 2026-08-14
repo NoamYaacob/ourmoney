@@ -220,9 +220,14 @@ export default function Settings() {
 
       {/* Responsive/desktop pass: profile+household in one column, the rest
           (money management/appearance/security/account) in a second column
-          — desktop only (`web:desktop:flex-row`). Mobile/tablet stay a
-          single stacked column in the original order. */}
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+          — desktop only (`web:desktop:flex-row-reverse`; see _layout.tsx's
+          DesktopSideRail comment for why `-reverse` is needed on web).
+          Reversing keeps source/DOM order as [profile+household, the rest]
+          (primary content announced first) while visually placing
+          profile+household on the right and the secondary column on the
+          left — the correct RTL reading order. Mobile/tablet stay a single
+          stacked column in the original order. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       {/* Profile */}
       {isProfileLoading ? (

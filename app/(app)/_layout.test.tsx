@@ -91,4 +91,50 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
     // visibility, its route name would render as an untitled 5th button.
     expect(result.getAllByRole('button')).toHaveLength(4)
   })
+
+  // Desktop polish pass regression: a real-browser visual check found the
+  // desktop side rail rendering on the LEFT of an RTL (Hebrew) app — wrong.
+  // Root cause: plain `flex-row` doesn't auto-mirror on web the way native
+  // Yoga does (see DesktopSideRail's own header comment), so the fix is an
+  // explicit `flex-row-reverse` on the wrapper. This can't be exercised
+  // end-to-end here (Platform.OS is 'ios' in jest-expo, so the rail itself
+  // never mounts — see the test above), but the wrapper's className is
+  // static JSX and renders regardless of platform, so this asserts the
+  // structural fact that actually matters: the source declares the
+  // reversed direction, not a fake pixel/viewport assertion.
+  it('declares the desktop rail wrapper as flex-row-reverse, not flex-row, for correct RTL placement', async () => {
+    const result = await renderRouter(
+      {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        _layout: { default: require('./_layout').default },
+        'dashboard/index': STUB_SCREEN,
+        'transactions/index': STUB_SCREEN,
+        'transactions/new': STUB_SCREEN,
+        'transactions/[id]': STUB_SCREEN,
+        'transactions/import': STUB_SCREEN,
+        'budgets/index': STUB_SCREEN,
+        'settings/index': STUB_SCREEN,
+        'settings/categories': STUB_SCREEN,
+        'accounts/index': STUB_SCREEN,
+        'accounts/[id]': STUB_SCREEN,
+        'goals/index': STUB_SCREEN,
+        'goals/[id]': STUB_SCREEN,
+        'recurring/index': STUB_SCREEN,
+        'recurring/[id]': STUB_SCREEN,
+      },
+      { initialUrl: '/dashboard' }
+    )
+
+    function findByClassName(node: unknown, substring: string): boolean {
+      if (!node || typeof node !== 'object') return false
+      if (Array.isArray(node)) return node.some((n) => findByClassName(n, substring))
+      // react-test-renderer's toJSON() shape is {type, props, children} —
+      // `children` is a sibling of `props`, not nested inside it.
+      const asRecord = node as { props?: { className?: unknown }; children?: unknown }
+      if (typeof asRecord.props?.className === 'string' && asRecord.props.className.includes(substring)) return true
+      return findByClassName(asRecord.children, substring)
+    }
+
+    expect(findByClassName(result.toJSON(), 'web:flex-row-reverse')).toBe(true)
+  })
 })
