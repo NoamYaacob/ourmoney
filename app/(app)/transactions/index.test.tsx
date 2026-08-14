@@ -70,21 +70,34 @@ describe('Transactions list', () => {
     expect(className).toContain('web:desktop:border')
   })
 
-  // Second desktop polish pass: the bounded region was independently
-  // `mx-auto` centered within the content column, which read as
-  // disconnected from the rest of the page's right-anchored RTL content —
-  // `web:desktop:items-end` anchors it to the same right edge instead
-  // (mobile keeps `items-center`, unaffected — the desktop override only
-  // applies at that breakpoint).
-  it('anchors the desktop empty state to the right edge (RTL) instead of independently centering it', async () => {
+  // Debugging pass (real-browser regression): an earlier attempt used
+  // `web:desktop:items-end` here, which was confirmed (via a real headless-
+  // browser getBoundingClientRect() measurement) to leave the box floating
+  // left-of-center instead of anchored right — `align-items` governs how
+  // THIS box's own children align inside it, not how the box itself
+  // positions within its parent (the Screen's plain flex-1 column, which
+  // defaults to `align-items: stretch`). `align-self` (Tailwind
+  // `self-end`) is the correct property for "how does this element sit in
+  // its parent" — confirmed by the same real-browser measurement moving
+  // the box flush against the wide content column's right edge. This test
+  // guards the actual root cause (the right CSS property on the box, not
+  // just "some right-ish-sounding class exists") — `items-center` must
+  // stay so the empty state's own icon+message still center inside the
+  // box, and `items-end` must NOT reappear as a regression.
+  it('anchors the desktop empty state to the right edge via align-self, not align-items', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
     const { getByText } = await render(<Transactions />)
 
     const boundedRegion = getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').parent?.parent
     const className = boundedRegion?.props.className as string
-    expect(className).toContain('web:desktop:items-end')
+    expect(className).toContain('web:desktop:self-end')
+    expect(className).not.toContain('web:desktop:items-end')
     expect(className).not.toContain('mx-auto')
+    // The box's own children (the EmptyState icon+message) must still be
+    // centered horizontally inside it — unaffected by how the box itself
+    // is positioned within its parent.
+    expect(className).toContain('items-center')
   })
 
   it('renders a populated row with description, category name, and a positive-colored income amount', async () => {

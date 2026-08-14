@@ -320,4 +320,27 @@ describe('Dashboard responsive desktop layout', () => {
     const insightsPanel = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent
     expect(insightsPanel?.props.className as string).toContain('web:desktop:border')
   })
+
+  // Debugging pass (real-browser regression): an earlier attempt filled
+  // these panels with `bg-surface-light/dark` — the SAME token as the
+  // Screen's own root background (confirmed via a real headless-browser
+  // measurement: both computed to the identical rgb(250,248,242)) — so the
+  // panel had zero fill contrast against the page and was reported as "not
+  // visibly rendering," even though its border/media-query classes were
+  // genuinely present and applied. `bg-surfaceMuted-light/dark` is the
+  // visually-distinct card tone used everywhere else (Card.tsx). This test
+  // guards the actual root cause (a specific wrong color token), not just
+  // "a background class exists."
+  it('fills each desktop panel with the visually-distinct surfaceMuted tone, not the same tone as the page background', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const categoriesPanel = getByText(i18n.t('dashboard.categoriesTitle')).parent
+    const className = categoriesPanel?.props.className as string
+    expect(className).toContain('web:desktop:bg-surfaceMuted-light')
+    expect(className).toContain('dark:web:desktop:bg-surfaceMuted-dark')
+    expect(className).not.toContain('web:desktop:bg-surface-light')
+    expect(className).not.toContain('web:desktop:bg-surface-dark')
+  })
 })

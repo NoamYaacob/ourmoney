@@ -218,8 +218,15 @@ export default function Budgets() {
               add-category control) becomes one bounded panel, so it reads
               as a single coherent area rather than a list with an isolated
               control below it — same pattern as Dashboard's panels, same
-              existing tokens. Mobile/tablet untouched. */}
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+              existing tokens. Mobile/tablet untouched.
+              Debugging pass: originally used `bg-surface-light/dark` here
+              — the same token as the Screen's own root background — so the
+              panel had zero fill contrast against the page and read as
+              "not rendering." See dashboard/index.tsx's identical panel
+              comment for the real-browser measurement that found this.
+              `bg-surfaceMuted-light/dark` is the established, visually-
+              distinct card tone used everywhere else. */}
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           {/* Per-category allocation editor + progress */}
           <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.categoriesTitle')}
@@ -333,7 +340,7 @@ export default function Budgets() {
               beside it — so it reads as an intentional secondary panel
               instead of nearly-empty space next to a fuller primary
               column, even when the queue itself is empty. */}
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           {/* Uncategorized transactions queue */}
           <Text className="mb-2 mt-8 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}

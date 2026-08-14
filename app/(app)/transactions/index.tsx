@@ -89,20 +89,27 @@ export default function Transactions() {
         // untouched: none of the `web:desktop:` classes apply there, so
         // this is the exact same "items-center pt-10" box as before.
         //
-        // Second desktop polish pass: this box was independently `mx-auto`
-        // centered within the full-width content column, which (once the
-        // outer width-capping bug below was fixed) reads as disconnected
-        // from the rest of the page's RTL-anchored content — the header row
-        // above it spans the full column and its title/CSV-import content
-        // reads from the right. Swapping `mx-auto` for `web:desktop:items-end`
-        // anchors the box to the same right edge instead of centering it
-        // independently — `items-end` is a real, deterministic CSS
-        // mechanism (not a hack): this document renders LTR-computed on web
-        // (no dir="rtl" set — see _layout.tsx's DesktopSideRail comment),
-        // so `flex-end` on a column container resolves to the physical
-        // right, the same edge every other desktop panel in this app reads
-        // from.
-        <View className="items-center web:desktop:items-end pt-10 web:desktop:mt-2 web:desktop:w-full web:desktop:max-w-[640px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:pb-10 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+        // Debugging pass (real-browser regression): the previous attempt
+        // added `web:desktop:items-end` to THIS element — but `align-items`
+        // governs how THIS box's own CHILDREN align inside it, not how the
+        // box itself is positioned within ITS parent (the Screen's plain
+        // `flex-1` column, which never set `align-items` and so defaults to
+        // `stretch`). A `max-w-[640px]`-clamped child under a `stretch`
+        // parent isn't repositioned by `stretch` (it only affects sizing of
+        // `auto`-width children) and falls back to `flex-start` — the
+        // physical left edge on this LTR-computed web document (see
+        // _layout.tsx's DesktopSideRail comment) — which is exactly the
+        // reported bug: the box floating left-of-center instead of anchored
+        // right. Confirmed both the bug and the fix with a real headless-
+        // browser measurement (`getBoundingClientRect()`), not just reading
+        // the compiled CSS: `items-end` left the box at
+        // {left:169,right:809} in a 1440px viewport; `self-end` — which
+        // sets `align-self` on the box itself, the correct property for
+        // "how does THIS element sit within its parent" — moved it to
+        // {left:631,right:1271}, flush against the wide content column's
+        // right edge. `items-center` (mobile default, unscoped) is kept
+        // so the empty-state's own icon+message still center inside the box.
+        <View className="items-center pt-10 web:desktop:mt-2 web:desktop:w-full web:desktop:max-w-[640px] web:desktop:self-end web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:pb-10 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
         </View>
       ) : (

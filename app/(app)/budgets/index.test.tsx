@@ -218,4 +218,21 @@ describe('Budgets', () => {
     const uncategorizedPanel = getByText('תנועות ללא קטגוריה').parent
     expect(uncategorizedPanel?.props.className as string).toContain('web:desktop:border')
   })
+
+  // Debugging pass (real-browser regression): see dashboard/index.test.tsx's
+  // identical test — these panels originally filled with `bg-surface-
+  // light/dark`, the same token as the Screen's own root background,
+  // giving zero fill contrast and reading as "not visibly rendering" even
+  // though the classes were genuinely applied. Guards the real root cause
+  // (the specific color token), not just "a background class exists."
+  it('fills each desktop panel with the visually-distinct surfaceMuted tone, not the same tone as the page background', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    const categoriesPanel = getByText('תקציב לפי קטגוריה').parent
+    const className = categoriesPanel?.props.className as string
+    expect(className).toContain('web:desktop:bg-surfaceMuted-light')
+    expect(className).toContain('dark:web:desktop:bg-surfaceMuted-dark')
+    expect(className).not.toContain('web:desktop:bg-surface-light')
+    expect(className).not.toContain('web:desktop:bg-surface-dark')
+  })
 })

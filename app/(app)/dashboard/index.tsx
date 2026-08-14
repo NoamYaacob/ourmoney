@@ -193,8 +193,20 @@ export default function Dashboard() {
               reading as loosely related content floating on a large blank
               canvas when data is sparse. Mobile/tablet keep the original
               unwrapped heading + Card/EmptyState layout exactly as before
-              (`web:desktop:` scoped). */}
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+              (`web:desktop:` scoped).
+              Debugging pass (real-browser regression): the panel's fill
+              was originally `bg-surface-light/dark` — the SAME token as
+              the Screen's own root background (see Screen.tsx's
+              SafeAreaView) — so it had zero contrast against the page and
+              only the 1px hairline border was left to notice, which read
+              as "not rendering." `bg-surfaceMuted-light/dark` is the
+              established, visually-distinct "card surface" tone Card.tsx
+              already uses everywhere else. Confirmed via a real headless-
+              browser measurement: the old fill computed to
+              rgb(250,248,242), byte-identical to the Screen root's
+              computed background — not a media-query/cascade failure, a
+              wrong color token. */}
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('dashboard.categoriesTitle')}
           </Text>
@@ -247,7 +259,7 @@ export default function Dashboard() {
       )}
           </View>
 
-          <View className="web:desktop:mt-4 web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+          <View className="web:desktop:mt-4 web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
       <View className="mb-2 mt-6 web:desktop:mt-0 flex-row items-center justify-between">
         <Text className="text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
           {t('dashboard.recentTitle')}
@@ -316,7 +328,7 @@ export default function Dashboard() {
         </View>
 
         <View className="web:desktop:flex-1">
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
       {analyticsError ? (
         <>
           <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
