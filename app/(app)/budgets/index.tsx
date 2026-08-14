@@ -225,8 +225,13 @@ export default function Budgets() {
               "not rendering." See dashboard/index.tsx's identical panel
               comment for the real-browser measurement that found this.
               `bg-surfaceMuted-light/dark` is the established, visually-
-              distinct card tone used everywhere else. */}
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+              distinct card tone used everywhere else.
+              Both panels also share a `min-h-[280px]` desktop floor: with
+              `items-start` siblings that size to their own content, a short
+              category list next to a longer uncategorized queue (or vice
+              versa) otherwise left the shorter panel reading as an awkward
+              sliver rather than a deliberate region. */}
+          <View className="web:desktop:min-h-[280px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           {/* Per-category allocation editor + progress */}
           <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.categoriesTitle')}
@@ -340,7 +345,7 @@ export default function Budgets() {
               beside it — so it reads as an intentional secondary panel
               instead of nearly-empty space next to a fuller primary
               column, even when the queue itself is empty. */}
-          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+          <View className="web:desktop:min-h-[280px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
           {/* Uncategorized transactions queue */}
           <Text className="mb-2 mt-8 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}

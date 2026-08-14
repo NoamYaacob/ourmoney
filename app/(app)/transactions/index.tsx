@@ -41,10 +41,10 @@ export default function Transactions() {
   return (
     <Screen
       scroll={false}
-      width="wide"
+      width="medium"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <View className="mb-6 flex-row items-center justify-between">
+      <View className="mb-6 flex-row items-center justify-between web:flex-row-reverse">
         <Text className="text-title font-bold text-ink-light dark:text-ink-dark">{t('transactions.title')}</Text>
         {/* Design Phase 3: a small secondary link, not a Button — this is a
             utility action, not a peer of the primary "add transaction"

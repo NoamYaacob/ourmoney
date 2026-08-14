@@ -12,6 +12,12 @@ export const CONTENT_WIDTH = {
 
 export type ContentWidth = keyof typeof CONTENT_WIDTH
 
+// Shared with the `desktop` Tailwind screen (tailwind.config.js) — the pixel
+// value CSS-only `web:desktop:` classes can't cover on its own, needed
+// wherever JS must branch on width directly (native style objects, Modal
+// animationType, etc.) instead of via className.
+export const DESKTOP_BREAKPOINT_PX = 1200
+
 // Shared web width clamp for centered dialogs/sheets (Select's bottom
 // sheet, the confirm Modal) — was duplicated as a literal in each caller.
 // Applies at every web width (not just tablet/desktop): on a narrow mobile

@@ -11,8 +11,7 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
 import { colors } from '@/constants/colors'
-
-const DESKTOP_BREAKPOINT = 1200
+import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 
 interface RailDestination {
   segment: string
@@ -161,7 +160,7 @@ export default function AppLayout() {
   // (`hidden web:desktop:flex`); this value only controls the bottom bar.
   const { width: windowWidth } = useWindowDimensions()
   const isWeb = Platform.OS === 'web'
-  const isDesktopWeb = isWeb && windowWidth >= DESKTOP_BREAKPOINT
+  const isDesktopWeb = isWeb && windowWidth >= DESKTOP_BREAKPOINT_PX
   // segments[0] is the '(app)' route group; segments[1] is the tab root
   // ('dashboard' | 'transactions' | 'budgets' | 'settings' | ...).
   const segments = useSegments()

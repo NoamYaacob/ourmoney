@@ -38,7 +38,7 @@ export function SegmentedControl<T extends string>({
     <View
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
-      className="flex-row gap-1 rounded-control border border-border-light bg-surfaceMuted-light p-1 dark:border-border-dark dark:bg-surfaceMuted-dark"
+      className="flex-row gap-1 rounded-control border border-border-light bg-surfaceMuted-light p-1 web:flex-row-reverse dark:border-border-dark dark:bg-surfaceMuted-dark"
     >
       {options.map((option) => {
         const selected = option.value === value

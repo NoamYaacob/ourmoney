@@ -169,4 +169,22 @@ describe('Categories settings screen', () => {
     // rule's own "THEN" target-category name — both are expected.
     expect(getAllByText('תחביבים').length).toBeGreaterThanOrEqual(2)
   })
+
+  // Desktop/RTL polish pass (real-browser regression): this split was
+  // missed by the earlier sweep that fixed Dashboard/Budgets/Settings —
+  // it declared plain flex-row (not flex-row-reverse), which native
+  // auto-mirrors via Yoga under the forced-RTL flag but NativeWind's
+  // web-compiled CSS does not. Categories (source-order-first, the primary
+  // column) must render on the right, matching every other desktop grid
+  // in this app.
+  it('reverses the categories/rules desktop split so categories (primary) render on the right', async () => {
+    const { getByText } = await render(<Categories />)
+
+    const categoriesColumn = getByText('קטגוריות מותאמות אישית').parent
+    const splitContainer = categoriesColumn?.parent
+    expect(splitContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const rulesColumn = getByText('כללי סיווג').parent
+    expect(rulesColumn?.parent).toBe(splitContainer)
+  })
 })

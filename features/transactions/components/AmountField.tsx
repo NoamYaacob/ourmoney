@@ -21,12 +21,14 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
   return (
     <View className="mb-6 items-center border-b border-border-light pb-5 dark:border-border-dark">
       <Text className="mb-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">{label}</Text>
-      {/* A plain flex-row, not flex-row-reverse — this app runs under a
-          global forced-RTL flag (app/_layout.tsx), so the row already
-          mirrors automatically: "₪" (first JSX child) lands on the visual
-          right and the digits to its left, matching how formatILS's own
-          Intl('he-IL') currency formatting already reads elsewhere in the
-          app (symbol before the amount).
+      {/* Native Yoga auto-mirrors flex-row under the forced-RTL flag
+          (app/_layout.tsx), so "₪" (first JSX child) already lands on the
+          visual right there. NativeWind's web-compiled CSS does not consult
+          that flag (no dir="rtl" on the web document), so web needs an
+          explicit web:flex-row-reverse to get the same result — DOM order
+          (and screen-reader order) is unchanged, only the web visual
+          position flips. Matches formatILS's own Intl('he-IL') currency
+          formatting (symbol before the amount).
           Phase 3.1: the TextInput keeps a min-width so short/empty values
           still have a comfortable, stable tap target, but its text is
           right-aligned (not centered) within that box — center-aligning a
@@ -34,7 +36,7 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           "₪" and the first digit. Right-aligning pins the digits flush
           against the symbol regardless of how many are typed, with any
           extra width growing away from it (left) instead of around it. */}
-      <View className="flex-row items-center gap-1">
+      <View className="flex-row items-center gap-1 web:flex-row-reverse">
         <Text className="text-display font-bold text-ink-light dark:text-ink-dark">₪</Text>
         <TextInput
           value={value}

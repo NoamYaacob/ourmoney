@@ -125,6 +125,35 @@ describe('Transactions list', () => {
     expect(amount.props.className).toContain('dark:text-positive-dark')
   })
 
+  // Desktop/RTL polish pass (real-browser regression): the title+CSV-import
+  // header was a plain flex-row, which native auto-mirrors via Yoga under
+  // the forced-RTL flag but NativeWind's web-compiled CSS does not — a
+  // headless-browser measurement found the title rendering on the physical
+  // left on web (should be right, since it's listed first/primary).
+  it('reverses the title/CSV-import header row on web so the title renders on the right', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Transactions />)
+
+    const header = getByText('תנועות').parent
+    expect(header?.props.className as string).toContain('web:flex-row-reverse')
+  })
+
+  // Desktop polish pass: a simple 3-column row list (icon, description,
+  // amount) stretched to the `wide` (1150px desktop) content cap read as
+  // absurdly wide rows — narrowed to `medium` (flat 800px), matching the
+  // "simple list screens ~760-1000px" desktop guideline.
+  it('caps the desktop content width at the medium (800px) token, not the wide (1150px) one', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Transactions />)
+
+    const contentColumn = getByText('תנועות').parent?.parent
+    const className = contentColumn?.props.className as string
+    expect(className).toContain('web:tablet:max-w-[800px]')
+    expect(className).not.toContain('web:desktop:max-w-[1150px]')
+  })
+
   it('gives an expense a neutral (non-positive) amount color, not accent', async () => {
     mockUseTransactions.mockReturnValue({
       transactions: [

@@ -116,4 +116,23 @@ describe('Accounts list', () => {
       expect.anything()
     )
   })
+
+  // Desktop/RTL polish pass (real-browser regression): the 2-column wrap
+  // grid declared plain flex-row (not flex-row-reverse), which native
+  // auto-mirrors via Yoga under the forced-RTL flag but NativeWind's
+  // web-compiled CSS does not — the first account (source order) must
+  // render top-right, continuing the RTL reading order into the wrap.
+  it('reverses the desktop 2-column account grid so the first account renders on the right', async () => {
+    const { getByText } = await render(<Accounts />)
+
+    // Climb from the account name up to its grid-item wrapper (the
+    // Pressable carrying the w-[48%] column width), then one more level
+    // to the shared grid container.
+    let node = getByText(ACTIVE_ACCOUNT.name).parent
+    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
+      node = node.parent
+    }
+    const gridContainer = node?.parent
+    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+  })
 })

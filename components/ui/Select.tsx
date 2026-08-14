@@ -1,10 +1,10 @@
 import { useState, type ComponentProps, type ReactNode } from 'react'
-import { FlatList, Modal, Platform, Pressable, Text, View } from 'react-native'
+import { FlatList, Modal, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
-import { DIALOG_WIDTH_CLASS } from '@/constants/layout'
+import { DESKTOP_BREAKPOINT_PX, DIALOG_WIDTH_CLASS } from '@/constants/layout'
 
 export interface SelectOption {
   value: string
@@ -46,10 +46,17 @@ export function Select({
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { colorScheme: scheme } = useColorScheme()
+  const { width: windowWidth } = useWindowDimensions()
   const selectedOption = options.find((option) => option.value === value)
   const selectedLabel = selectedOption?.label
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
+  // Below `desktop`, this Modal stays the original bottom sheet (slide-up,
+  // bottom-anchored, drag handle, top corners only) on both native and web —
+  // unchanged from every pre-existing caller. At desktop width on web only,
+  // it becomes a centered dialog instead: a bottom sheet reads as a mobile
+  // pattern once there's a full desktop viewport around it.
+  const isDesktopWeb = Platform.OS === 'web' && windowWidth >= DESKTOP_BREAKPOINT_PX
 
   return (
     <>
@@ -99,14 +106,26 @@ export function Select({
         </View>
       )}
 
-      <Modal visible={isOpen} transparent animationType="slide" onRequestClose={() => setIsOpen(false)}>
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setIsOpen(false)}>
+      <Modal
+        visible={isOpen}
+        transparent
+        animationType={isDesktopWeb ? 'fade' : 'slide'}
+        onRequestClose={() => setIsOpen(false)}
+      >
+        <Pressable
+          className="flex-1 justify-end bg-black/40 web:desktop:justify-center"
+          onPress={() => setIsOpen(false)}
+        >
           {variant === 'row' ? (
-            <View className={`max-h-[70%] w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light dark:bg-surface-dark`}>
+            <View
+              className={`max-h-[70%] w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light web:desktop:rounded-2xl dark:bg-surface-dark`}
+            >
               {/* Drag-handle affordance — this Modal is a plain RN Modal, not
                   a real gesture-driven bottom sheet, so there is nothing to
-                  wire up here beyond the visual cue (no new library added). */}
-              <View className="items-center pb-1 pt-3">
+                  wire up here beyond the visual cue (no new library added).
+                  A bottom-sheet-specific cue, so it's hidden once this
+                  becomes a centered desktop dialog. */}
+              <View className="items-center pb-1 pt-3 web:desktop:hidden">
                 <View className="h-1 w-9 rounded-full bg-border-light dark:bg-border-dark" />
               </View>
               {sheetTitle && (
@@ -142,7 +161,9 @@ export function Select({
               <SafeAreaView edges={['bottom']} />
             </View>
           ) : (
-            <View className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark`}>
+            <View
+              className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 web:desktop:rounded-2xl dark:bg-surface-dark`}
+            >
               <FlatList
                 data={options}
                 keyExtractor={(item) => item.value}

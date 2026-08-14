@@ -93,7 +93,7 @@ export default function Categories() {
       {/* Responsive/desktop pass: categories in one column, rules in a
           second column — desktop only (`web:desktop:flex-row`). Mobile/
           tablet stay a single stacked column in the original order. */}
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <Text className="mb-2 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('categories.customTitle')}

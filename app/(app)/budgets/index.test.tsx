@@ -235,4 +235,19 @@ describe('Budgets', () => {
     expect(className).not.toContain('web:desktop:bg-surface-light')
     expect(className).not.toContain('web:desktop:bg-surface-dark')
   })
+
+  // Desktop polish pass: with `items-start` siblings that size to their own
+  // content, a short category list next to a longer uncategorized queue
+  // (or vice versa) read as an awkward sliver instead of a deliberate
+  // region — both panels now share a desktop floor height so neither ever
+  // collapses to near-nothing next to a fuller sibling.
+  it('gives both desktop panels a shared minimum height so neither collapses next to a fuller sibling', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    const categoriesPanel = getByText('תקציב לפי קטגוריה').parent
+    expect(categoriesPanel?.props.className as string).toContain('web:desktop:min-h-[280px]')
+
+    const uncategorizedPanel = getByText('תנועות ללא קטגוריה').parent
+    expect(uncategorizedPanel?.props.className as string).toContain('web:desktop:min-h-[280px]')
+  })
 })
