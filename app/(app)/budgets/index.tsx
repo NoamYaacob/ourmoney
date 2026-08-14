@@ -196,12 +196,12 @@ export default function Budgets() {
             </View>
           </Card>
 
-          {/* Desktop polish pass: a subtle divider groups the hero away
-              from the grid below it, matching Dashboard's identical
-              treatment — desktop-only, mobile/tablet spacing untouched. */}
-          <View className="hidden web:desktop:mb-1 web:desktop:mt-6 web:desktop:flex">
-            <Divider />
-          </View>
+          {/* Desktop polish pass: each column below now renders as its own
+              bordered panel (see below), which already reads as clearly
+              grouped away from the hero — a plain spacer replaces the
+              earlier standalone divider line, matching Dashboard's
+              identical treatment. Desktop-only; mobile/tablet untouched. */}
+          <View className="hidden web:desktop:mt-6 web:desktop:flex" />
 
           {/* Responsive/desktop pass: category budgets and the uncategorized
               queue sit side by side at desktop
@@ -214,8 +214,14 @@ export default function Budgets() {
               original order (plain View column default). */}
           <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
           <View className="web:desktop:flex-1">
+          {/* Desktop polish pass: the category-budgets column (list + the
+              add-category control) becomes one bounded panel, so it reads
+              as a single coherent area rather than a list with an isolated
+              control below it — same pattern as Dashboard's panels, same
+              existing tokens. Mobile/tablet untouched. */}
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
           {/* Per-category allocation editor + progress */}
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.categoriesTitle')}
           </Text>
           {progress.length === 0 ? (
@@ -319,10 +325,17 @@ export default function Budgets() {
             </View>
           )}
           </View>
+          </View>
 
           <View className="web:desktop:flex-1">
+          {/* Desktop polish pass: the uncategorized-transactions column
+              gets the same bounded panel treatment as the category column
+              beside it — so it reads as an intentional secondary panel
+              instead of nearly-empty space next to a fuller primary
+              column, even when the queue itself is empty. */}
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
           {/* Uncategorized transactions queue */}
-          <Text className="mb-2 mt-8 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          <Text className="mb-2 mt-8 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}
           </Text>
           {uncategorizedError ? (
@@ -399,6 +412,7 @@ export default function Budgets() {
               ))}
             </Card>
           )}
+          </View>
           </View>
           </View>
         </>

@@ -70,6 +70,23 @@ describe('Transactions list', () => {
     expect(className).toContain('web:desktop:border')
   })
 
+  // Second desktop polish pass: the bounded region was independently
+  // `mx-auto` centered within the content column, which read as
+  // disconnected from the rest of the page's right-anchored RTL content —
+  // `web:desktop:items-end` anchors it to the same right edge instead
+  // (mobile keeps `items-center`, unaffected — the desktop override only
+  // applies at that breakpoint).
+  it('anchors the desktop empty state to the right edge (RTL) instead of independently centering it', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Transactions />)
+
+    const boundedRegion = getByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').parent?.parent
+    const className = boundedRegion?.props.className as string
+    expect(className).toContain('web:desktop:items-end')
+    expect(className).not.toContain('mx-auto')
+  })
+
   it('renders a populated row with description, category name, and a positive-colored income amount', async () => {
     mockUseTransactions.mockReturnValue({
       transactions: [

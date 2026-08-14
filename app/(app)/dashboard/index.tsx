@@ -166,13 +166,13 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Desktop polish pass: a subtle divider groups the hero away from
-          the grid below it, instead of the two areas reading as loosely
-          related blocks floating on a large desktop canvas. Desktop-only
-          (`hidden web:desktop:flex`) — mobile/tablet spacing is untouched. */}
-      <View className="hidden web:desktop:mb-1 web:desktop:mt-6 web:desktop:flex">
-        <Divider />
-      </View>
+      {/* Desktop polish pass: each lower section now renders as its own
+          bordered panel (see below), which already reads as clearly
+          grouped away from the hero — a plain spacer replaces the earlier
+          standalone divider line, which looked redundant stacked directly
+          above a panel's own top border. Desktop-only; mobile/tablet
+          spacing is untouched. */}
+      <View className="hidden web:desktop:mt-6 web:desktop:flex" />
 
       {/* Responsive/desktop pass: below the hero, a 2/3 main column
           (category budgets + recent transactions) and a 1/3 sidebar
@@ -187,7 +187,15 @@ export default function Dashboard() {
           source order. */}
       <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
         <View className="web:desktop:flex-[2]">
-          <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          {/* Desktop polish pass: each section below becomes its own bounded
+              panel (border + surface tone, existing tokens only) at desktop
+              — a real-browser visual check found the lower Dashboard
+              reading as loosely related content floating on a large blank
+              canvas when data is sparse. Mobile/tablet keep the original
+              unwrapped heading + Card/EmptyState layout exactly as before
+              (`web:desktop:` scoped). */}
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+          <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('dashboard.categoriesTitle')}
           </Text>
       {isProgressLoading ? (
@@ -237,8 +245,10 @@ export default function Dashboard() {
           })}
         </Card>
       )}
+          </View>
 
-      <View className="mb-2 mt-6 flex-row items-center justify-between">
+          <View className="web:desktop:mt-4 web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
+      <View className="mb-2 mt-6 web:desktop:mt-0 flex-row items-center justify-between">
         <Text className="text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
           {t('dashboard.recentTitle')}
         </Text>
@@ -302,9 +312,11 @@ export default function Dashboard() {
           })}
         </Card>
       )}
+          </View>
         </View>
 
         <View className="web:desktop:flex-1">
+          <View className="web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surface-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surface-dark">
       {analyticsError ? (
         <>
           <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
@@ -386,6 +398,7 @@ export default function Dashboard() {
           )}
         </>
       )}
+          </View>
         </View>
       </View>
     </Screen>

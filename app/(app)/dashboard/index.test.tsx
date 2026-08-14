@@ -274,11 +274,13 @@ describe('Dashboard responsive desktop layout', () => {
 
     const { getByText } = await render(<Dashboard />)
 
-    const mainColumn = getByText(i18n.t('dashboard.categoriesTitle')).parent
+    // Text -> desktop bounded panel -> flex-[2] main column -> grid wrapper.
+    const mainColumn = getByText(i18n.t('dashboard.categoriesTitle')).parent?.parent
     const gridWrapper = mainColumn?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
 
-    const sidebarColumn = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent
+    // Text -> desktop bounded panel -> flex-1 sidebar column.
+    const sidebarColumn = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent?.parent
     // Both columns are direct children of the same grid wrapper.
     expect(sidebarColumn?.parent).toBe(gridWrapper)
   })
@@ -294,7 +296,28 @@ describe('Dashboard responsive desktop layout', () => {
 
     const { getByText } = await render(<Dashboard />)
 
-    const gridWrapper = getByText(i18n.t('dashboard.categoriesTitle')).parent?.parent
+    const gridWrapper = getByText(i18n.t('dashboard.categoriesTitle')).parent?.parent?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+  })
+
+  // Desktop polish pass: each lower section (category budgets, recent
+  // transactions, analytics/insights) is now its own bordered panel at
+  // desktop, so the page reads as clearly grouped sections rather than
+  // loosely related content on a large blank canvas — see index.tsx's own
+  // comment. Asserts the structural fact (the panel class reaches each
+  // section's wrapper), not a fake pixel/viewport assertion.
+  it('gives the category budgets, recent transactions, and insights sections their own bounded desktop panel', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const categoriesPanel = getByText(i18n.t('dashboard.categoriesTitle')).parent
+    expect(categoriesPanel?.props.className as string).toContain('web:desktop:border')
+
+    const recentPanel = getByText(i18n.t('dashboard.recentTitle')).parent?.parent
+    expect(recentPanel?.props.className as string).toContain('web:desktop:border')
+
+    const insightsPanel = getByText(i18n.t('dashboard.analytics.insightsTitle')).parent
+    expect(insightsPanel?.props.className as string).toContain('web:desktop:border')
   })
 })

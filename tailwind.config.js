@@ -7,6 +7,16 @@ module.exports = {
     './components/**/*.{js,jsx,ts,tsx}',
     './features/**/*.{js,jsx,ts,tsx}',
     './hooks/**/*.{js,jsx,ts,tsx}',
+    // Desktop polish pass: constants/layout.ts defines CONTENT_WIDTH and
+    // DIALOG_WIDTH_CLASS as reusable className strings (Screen.tsx, Select.tsx,
+    // Modal.tsx all interpolate them) — this directory was missing from the
+    // scan, so Tailwind's JIT never generated the actual
+    // `web:tablet:max-w-[...]`/`web:desktop:max-w-[...]` utilities those
+    // constants reference. Every screen using Screen's `width` prop was
+    // silently unconstrained on desktop as a result (confirmed by grepping
+    // the compiled CSS — root cause of the "New Transaction stretches
+    // edge-to-edge" report). This scans the file where those strings live.
+    './constants/**/*.{js,jsx,ts,tsx}',
   ],
   presets: [require('nativewind/preset')],
   darkMode: 'class',

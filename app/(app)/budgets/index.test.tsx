@@ -196,11 +196,26 @@ describe('Budgets', () => {
   it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
-    const categoriesColumn = getByText('תקציב לפי קטגוריה').parent
+    // Text -> desktop bounded panel -> flex-1 column -> grid wrapper.
+    const categoriesColumn = getByText('תקציב לפי קטגוריה').parent?.parent
     const gridWrapper = categoriesColumn?.parent
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
 
-    const uncategorizedColumn = getByText('תנועות ללא קטגוריה').parent
+    const uncategorizedColumn = getByText('תנועות ללא קטגוריה').parent?.parent
     expect(uncategorizedColumn?.parent).toBe(gridWrapper)
+  })
+
+  // Desktop polish pass: with the category-budgets side often fuller than
+  // the uncategorized-queue side, an unbounded "nearly empty" secondary
+  // column read as lopsided — both columns now get the same bordered panel
+  // treatment so the uncategorized side looks intentional even when empty.
+  it('gives both the category-budgets and uncategorized columns their own bounded desktop panel', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    const categoriesPanel = getByText('תקציב לפי קטגוריה').parent
+    expect(categoriesPanel?.props.className as string).toContain('web:desktop:border')
+
+    const uncategorizedPanel = getByText('תנועות ללא קטגוריה').parent
+    expect(uncategorizedPanel?.props.className as string).toContain('web:desktop:border')
   })
 })
