@@ -40,6 +40,11 @@ export function useCreateTransaction(householdId: string | null | undefined) {
   return useMutation({
     mutationFn: async (input: CreateTransactionInput) => {
       let categoryId = input.categoryId ?? null
+      // Set only when findMatchingRule below actually matches — never when
+      // the caller supplies categoryId directly. That's what "matched_rule_id
+      // records automatic categorization, not any categorization" (ADR-027)
+      // means at the write site.
+      let matchedRuleId: string | null = null
 
       if (!categoryId) {
         const { data: rules, error: rulesError } = await supabase
@@ -52,7 +57,10 @@ export function useCreateTransaction(householdId: string | null | undefined) {
           description: input.description,
           merchant_name: input.merchantName ?? null,
         })
-        if (matched) categoryId = matched.category_id
+        if (matched) {
+          categoryId = matched.category_id
+          matchedRuleId = matched.id
+        }
       }
 
       const { data, error } = await supabase
@@ -61,6 +69,7 @@ export function useCreateTransaction(householdId: string | null | undefined) {
           household_id: input.householdId,
           account_id: input.accountId,
           category_id: categoryId,
+          matched_rule_id: matchedRuleId,
           amount_agorot: input.amountAgorot,
           description: input.description,
           merchant_name: input.merchantName ?? null,

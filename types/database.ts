@@ -564,6 +564,7 @@ export type Database = {
           id: string
           is_excluded: boolean
           is_shared: boolean
+          matched_rule_id: string | null
           merchant_name: string | null
           note: string | null
           payer_id: string | null
@@ -585,6 +586,7 @@ export type Database = {
           id?: string
           is_excluded?: boolean
           is_shared?: boolean
+          matched_rule_id?: string | null
           merchant_name?: string | null
           note?: string | null
           payer_id?: string | null
@@ -606,6 +608,7 @@ export type Database = {
           id?: string
           is_excluded?: boolean
           is_shared?: boolean
+          matched_rule_id?: string | null
           merchant_name?: string | null
           note?: string | null
           payer_id?: string | null
@@ -635,6 +638,13 @@ export type Database = {
             columns: ["household_id"]
             isOneToOne: false
             referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_matched_rule_id_fkey"
+            columns: ["matched_rule_id"]
+            isOneToOne: false
+            referencedRelation: "category_rules"
             referencedColumns: ["id"]
           },
           {

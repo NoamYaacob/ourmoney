@@ -15,8 +15,10 @@ import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Categories from './categories'
 
+let mockEditRuleId: string | undefined
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn() }),
+  useLocalSearchParams: () => ({ editRuleId: mockEditRuleId }),
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -87,6 +89,7 @@ describe('Categories settings screen', () => {
   beforeEach(() => {
     mockUseCategories.mockReturnValue({ categories: CATEGORIES, isLoading: false })
     mockUseCategoryRules.mockReturnValue({ rules: RULES, isLoading: false })
+    mockEditRuleId = undefined
   })
 
   it('shows an edit affordance on a custom category row and saves the renamed value via useUpdateCategory', async () => {
@@ -168,6 +171,25 @@ describe('Categories settings screen', () => {
     // "תחביבים" appears twice: the custom-categories list row, and the
     // rule's own "THEN" target-category name — both are expected.
     expect(getAllByText('תחביבים').length).toBeGreaterThanOrEqual(2)
+  })
+
+  // ADR-027 deep-link: a transaction's "עריכת הכלל" action navigates here
+  // with ?editRuleId=<id> so the user lands on the exact rule that caused
+  // the categorization, not a generic list they'd have to search.
+  it('auto-opens the targeted rule\'s inline edit form when navigated with an editRuleId param', async () => {
+    mockEditRuleId = 'rule-1'
+
+    const { getByDisplayValue } = await render(<Categories />)
+
+    expect(getByDisplayValue('קפה')).toBeTruthy()
+  })
+
+  it('does not crash and opens no edit form when editRuleId names a rule that no longer exists', async () => {
+    mockEditRuleId = 'rule-deleted'
+
+    const { queryByDisplayValue } = await render(<Categories />)
+
+    expect(queryByDisplayValue('קפה')).toBeNull()
   })
 
   // Desktop/RTL polish pass (real-browser regression): this split was

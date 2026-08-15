@@ -10,13 +10,14 @@
 //      useUpdateTransaction, but had no fields on this edit screen — once
 //      created, a transaction's merchant/shared status was permanently
 //      unreachable from the UI.
-import { describe, expect, it, jest } from '@jest/globals'
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import TransactionDetail from './[id]'
 
+const mockRouterPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: mockRouterPush }),
   useLocalSearchParams: () => ({ id: 'txn-1' }),
 }))
 // Avoids a deep, environment-specific import chain
@@ -35,6 +36,18 @@ jest.mock('@/features/accounts/hooks/useAccounts', () => ({
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({ categories: [{ id: 'cat-1', name_he: 'מזון', icon: '🍔' }] }),
 }))
+// Empty by default — most tests exercise a transaction with no provenance.
+// Provenance-specific tests below override this per-run.
+let mockRules: {
+  id: string
+  category_id: string
+  field: 'description' | 'merchant_name'
+  operator: 'contains' | 'equals' | 'starts_with'
+  value: string
+}[] = []
+jest.mock('@/features/categories/hooks/useCategoryRules', () => ({
+  useCategoryRules: () => ({ rules: mockRules }),
+}))
 jest.mock('@/features/transactions/hooks/useExcludeTransaction', () => ({
   useExcludeTransaction: () => ({ mutate: jest.fn(), isPending: false }),
 }))
@@ -50,7 +63,7 @@ jest.mock('@/features/transactions/hooks/useDeleteTransaction', () => ({
   useDeleteTransaction: () => ({ mutate: mockDeleteMutate, isPending: false, isError: mockDeleteIsError }),
 }))
 
-const TRANSACTION = {
+const BASE_TRANSACTION = {
   id: 'txn-1',
   household_id: 'household-1',
   account_id: 'acct-1',
@@ -61,9 +74,12 @@ const TRANSACTION = {
   is_shared: true,
   is_excluded: false,
   txn_date: '2026-01-01',
+  matched_rule_id: null as string | null,
 }
+// Reassignable per test — provenance tests below override matched_rule_id.
+let mockTransaction = { ...BASE_TRANSACTION }
 jest.mock('@/features/transactions/hooks/useTransaction', () => ({
-  useTransaction: () => ({ transaction: TRANSACTION, isLoading: false }),
+  useTransaction: () => ({ transaction: mockTransaction, isLoading: false }),
 }))
 
 let mockRole: 'admin' | 'member' = 'admin'
@@ -72,6 +88,12 @@ jest.mock('@/features/household/hooks/useHousehold', () => ({
 }))
 
 describe('TransactionDetail', () => {
+  beforeEach(() => {
+    mockTransaction = { ...BASE_TRANSACTION }
+    mockRules = []
+    mockRouterPush.mockClear()
+  })
+
   it('shows the delete button and confirm modal for an admin', async () => {
     mockRole = 'admin'
     const { getByText } = await render(<TransactionDetail />)
@@ -110,5 +132,59 @@ describe('TransactionDetail', () => {
       }),
       expect.anything()
     )
+  })
+
+  it('shows rule provenance and navigates to the exact matched rule when matched_rule_id is set', async () => {
+    mockTransaction = { ...BASE_TRANSACTION, matched_rule_id: 'rule-1' }
+    mockRules = [{ id: 'rule-1', category_id: 'cat-1', field: 'merchant_name', operator: 'contains', value: 'ארומה' }]
+
+    const { getByText } = await render(<TransactionDetail />)
+
+    expect(getByText('סווג אוטומטית לפי הכלל')).toBeTruthy()
+    const editRuleButton = getByText('עריכת הכלל')
+    expect(editRuleButton).toBeTruthy()
+
+    await fireEvent.press(editRuleButton)
+
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/settings/categories',
+      params: { editRuleId: 'rule-1' },
+    })
+  })
+
+  it('does not send categoryId on an unrelated save, so matched_rule_id is not cleared for a save that never touched the category', async () => {
+    mockTransaction = { ...BASE_TRANSACTION, matched_rule_id: 'rule-1' }
+    mockRules = [{ id: 'rule-1', category_id: 'cat-1', field: 'merchant_name', operator: 'contains', value: 'ארומה' }]
+    mockUpdateMutate.mockClear()
+
+    const { getByText } = await render(<TransactionDetail />)
+    await fireEvent.press(getByText('שמירה'))
+
+    const [payload] = mockUpdateMutate.mock.calls[0] as [Record<string, unknown>, unknown]
+    expect(payload.categoryId).toBeUndefined()
+  })
+
+  it('renders with no provenance block and no crash when matched_rule_id is null (never auto-categorized)', async () => {
+    mockTransaction = { ...BASE_TRANSACTION, matched_rule_id: null }
+    mockRules = []
+
+    const { queryByText } = await render(<TransactionDetail />)
+
+    expect(queryByText('סווג אוטומטית לפי הכלל')).toBeNull()
+    expect(queryByText('עריכת הכלל')).toBeNull()
+  })
+
+  it('renders with no provenance block and no crash when matched_rule_id points at a since-deleted rule', async () => {
+    mockTransaction = { ...BASE_TRANSACTION, matched_rule_id: 'rule-deleted' }
+    // The rule is absent from the household's current rule list — the FK's
+    // ON DELETE SET NULL means this specific combination shouldn't persist,
+    // but the UI must still degrade cleanly if it's ever seen (stale cache,
+    // race, etc.), never crash on a lookup miss.
+    mockRules = []
+
+    const { queryByText } = await render(<TransactionDetail />)
+
+    expect(queryByText('סווג אוטומטית לפי הכלל')).toBeNull()
+    expect(queryByText('עריכת הכלל')).toBeNull()
   })
 })

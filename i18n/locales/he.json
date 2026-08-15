@@ -71,7 +71,9 @@
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת תנועה",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו.",
-      "deleteError": "מחיקת התנועה נכשלה. נסו שוב"
+      "deleteError": "מחיקת התנועה נכשלה. נסו שוב",
+      "categorizedByRule": "סווג אוטומטית לפי הכלל",
+      "editRule": "עריכת הכלל"
     }
   },
   "accounts": {

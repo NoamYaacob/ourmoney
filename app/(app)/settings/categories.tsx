@@ -13,6 +13,7 @@
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -47,6 +48,7 @@ const OPERATOR_OPTIONS: CategoryRuleOperator[] = ['contains', 'equals', 'starts_
 
 export default function Categories() {
   const { t } = useTranslation()
+  const { editRuleId } = useLocalSearchParams<{ editRuleId?: string }>()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { user } = useAuth()
@@ -82,6 +84,26 @@ export default function Categories() {
   const [editRuleField, setEditRuleField] = useState<CategoryRuleField>('description')
   const [editRuleOperator, setEditRuleOperator] = useState<CategoryRuleOperator>('contains')
   const [editRuleValue, setEditRuleValue] = useState('')
+
+  // Deep-link from a transaction's "עריכת הכלל" action (ADR-027: a
+  // mis-categorized transaction must lead to the rule that caused it, not
+  // just this generic list). Adjusted during rendering — the same one-time
+  // guard pattern as transactions/[id].tsx's prefill — so it auto-opens the
+  // targeted rule's inline edit form exactly once per navigation, once
+  // `rules` has loaded, and never re-fires on a later re-render (e.g. after
+  // the user closes the form or edits a different rule).
+  const [consumedEditRuleId, setConsumedEditRuleId] = useState<string | null>(null)
+  if (editRuleId && editRuleId !== consumedEditRuleId && !isRulesLoading) {
+    setConsumedEditRuleId(editRuleId)
+    const targetRule = rules.find((r) => r.id === editRuleId)
+    if (targetRule) {
+      setEditingRuleId(targetRule.id)
+      setEditRuleCategoryId(targetRule.category_id)
+      setEditRuleField(targetRule.field)
+      setEditRuleOperator(targetRule.operator)
+      setEditRuleValue(targetRule.value)
+    }
+  }
 
   const customCategories = categories.filter((c) => !c.is_system)
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))

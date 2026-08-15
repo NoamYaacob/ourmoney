@@ -31,7 +31,12 @@ export function useUpdateTransaction(householdId: string | null | undefined) {
         .from('transactions')
         .update({
           ...(fields.accountId !== undefined && { account_id: fields.accountId }),
-          ...(fields.categoryId !== undefined && { category_id: fields.categoryId }),
+          // A caller only includes categoryId when the user genuinely
+          // changed it (see transactions/[id].tsx's handleSave) — so this is
+          // exactly "the user manually overrode the category," which must
+          // clear any recorded rule provenance (ADR-027): a category no rule
+          // set must never still claim a rule set it.
+          ...(fields.categoryId !== undefined && { category_id: fields.categoryId, matched_rule_id: null }),
           ...(fields.amountAgorot !== undefined && { amount_agorot: fields.amountAgorot }),
           ...(fields.description !== undefined && { description: fields.description }),
           ...(fields.merchantName !== undefined && { merchant_name: fields.merchantName }),

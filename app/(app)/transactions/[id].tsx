@@ -6,6 +6,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
+import { useCategoryRules } from '@/features/categories/hooks/useCategoryRules'
 import { useTransaction } from '@/features/transactions/hooks/useTransaction'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 import { useExcludeTransaction } from '@/features/transactions/hooks/useExcludeTransaction'
@@ -29,6 +30,10 @@ export default function TransactionDetail() {
   const { householdId, role, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
+  // Rule provenance lookup (ADR-027): matched_rule_id is only an id on the
+  // transaction row, so the rule it names — and whether it still exists —
+  // is resolved client-side against the household's full rule set.
+  const { rules } = useCategoryRules(householdId)
   const { transaction, isLoading } = useTransaction(id)
   const updateTransaction = useUpdateTransaction(householdId)
   const excludeTransaction = useExcludeTransaction(householdId)
@@ -99,7 +104,11 @@ export default function TransactionDetail() {
         id: transaction.id,
         householdId: transaction.household_id,
         accountId: accountId ?? transaction.account_id,
-        categoryId,
+        // Omitted (not passed as null/unchanged value) unless the user
+        // actually changed the category picker from what loaded — sending
+        // it unconditionally would clear matched_rule_id (useUpdateTransaction.ts)
+        // on every save, even ones that never touched the category.
+        categoryId: categoryId !== transaction.category_id ? categoryId : undefined,
         amountAgorot: signedAmountAgorot(parsed.agorot, isIncome),
         description: description.trim(),
         merchantName: merchantName.trim() || null,
@@ -113,6 +122,19 @@ export default function TransactionDetail() {
   // (useDeleteTransaction.ts's own header comment) — hiding the button for
   // non-admins avoids offering an action that would always fail server-side.
   const canDelete = role === 'admin'
+
+  // Rule provenance (ADR-027): matched_rule_id is set only when a rule
+  // auto-categorized this row (useCreateTransaction.ts /
+  // useApplyRulesRetroactively.ts) and cleared on manual override
+  // (useUpdateTransaction.ts). A missing lookup — null id, or an id the
+  // rule list no longer contains because the rule was deleted (the FK's
+  // ON DELETE SET NULL means this second case is actually unreachable, but
+  // is handled the same as "no provenance" regardless) — renders nothing,
+  // never a crash.
+  const matchedRule = transaction.matched_rule_id
+    ? rules.find((r) => r.id === transaction.matched_rule_id)
+    : undefined
+  const matchedRuleCategory = matchedRule ? categories.find((c) => c.id === matchedRule.category_id) : undefined
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
@@ -150,6 +172,31 @@ export default function TransactionDetail() {
         onChange={setCategoryId}
         placeholder={t('transactions.form.categoryPlaceholder')}
       />
+
+      {matchedRule && (
+        <View className="mb-4 rounded-card border border-border-light bg-surfaceMuted-light p-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <Text className="text-caption font-medium text-inkMuted-light dark:text-inkMuted-dark">
+            {t('transactions.detail.categorizedByRule')}
+          </Text>
+          <View className="mt-1 flex-row flex-wrap items-baseline gap-1.5">
+            <Text className="text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+              {t('categories.rules.ifLabel')}
+            </Text>
+            <Text className="text-body text-ink-light dark:text-ink-dark">
+              {t(`categories.rules.field.${matchedRule.field}`)} {t(`categories.rules.operator.${matchedRule.operator}`)} &quot;
+              {matchedRule.value}&quot;
+              {matchedRuleCategory ? ` → ${matchedRuleCategory.icon} ${matchedRuleCategory.name_he}` : ''}
+            </Text>
+          </View>
+          <View className="mt-2">
+            <Button
+              title={t('transactions.detail.editRule')}
+              variant="ghost"
+              onPress={() => router.push({ pathname: '/settings/categories', params: { editRuleId: matchedRule.id } })}
+            />
+          </View>
+        </View>
+      )}
 
       <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
         {t('transactions.form.sharedLabel')}

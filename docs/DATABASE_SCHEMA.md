@@ -238,6 +238,13 @@ CREATE TABLE transactions (
   account_id       UUID        NOT NULL REFERENCES accounts(id),
   category_id      UUID        REFERENCES categories(id),
   recurring_id     UUID        REFERENCES recurring_transactions(id),
+  -- Which category_rule (if any) set category_id automatically. NULL for a
+  -- transaction that was never auto-categorized, that a user categorized
+  -- by hand, or whose matching rule has since been deleted (ON DELETE SET
+  -- NULL — see "Migration 006" below). Cleared back to NULL whenever a
+  -- user explicitly changes category_id, so it never points at a rule
+  -- that no longer explains the visible category.
+  matched_rule_id  UUID        REFERENCES category_rules(id) ON DELETE SET NULL,
   amount_agorot    BIGINT      NOT NULL,
   currency         TEXT        NOT NULL DEFAULT 'ILS',
   description      TEXT        NOT NULL,
@@ -1069,6 +1076,100 @@ CREATE POLICY "household_members_delete" ON household_members
   self-`DELETE` on their own row — closing a second, more direct path to the same zero-admin outcome
   that ADR-032/ADR-034 had both previously characterized as merely "latent, not live." See ADR-034's
   Consequences for the full narrative and the test coverage this added (8.12, 8.13).
+
+### Migration 006 — Transaction rule provenance
+
+Closes the missing half of ADR-027, which is also a literal MVP-2 exit criterion (ROADMAP.md):
+"Every rule is visible and editable in-app, AND a mis-categorised transaction leads the user to the
+rule that caused it." Rules were already visible/editable/testable in-app; the "leads the user to the
+rule that caused it" half did not exist — no column, hook, or UI ever recorded which rule (if any) set
+a transaction's category, even though the matcher (`features/categories/lib/matchRule.ts`'s
+`findMatchingRule`) already returns the full matched rule object at both call sites that use it. One
+nullable FK column, plus the two `transactions` `WITH CHECK` policies widened the same way every other
+nullable reference column on that row already is. Rule matching itself is unchanged.
+
+```sql
+ALTER TABLE transactions
+  ADD COLUMN matched_rule_id UUID REFERENCES category_rules(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_transactions_matched_rule ON transactions(matched_rule_id);
+
+DROP POLICY "transactions_insert" ON transactions;
+CREATE POLICY "transactions_insert" ON transactions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    is_household_member(household_id)
+    AND account_id IN (SELECT id FROM accounts WHERE accounts.household_id = transactions.household_id)
+    AND (
+      category_id IS NULL
+      OR category_id IN (SELECT id FROM categories WHERE categories.household_id = transactions.household_id OR categories.household_id IS NULL)
+    )
+    AND (
+      recurring_id IS NULL
+      OR recurring_id IN (SELECT id FROM recurring_transactions WHERE recurring_transactions.household_id = transactions.household_id)
+    )
+    AND (
+      matched_rule_id IS NULL
+      OR matched_rule_id IN (SELECT id FROM category_rules WHERE category_rules.household_id = transactions.household_id)
+    )
+    AND created_by = auth.uid()
+    AND (
+      payer_id IS NULL
+      OR payer_id IN (SELECT user_id FROM household_members WHERE household_members.household_id = transactions.household_id)
+    )
+  );
+
+DROP POLICY "transactions_update" ON transactions;
+CREATE POLICY "transactions_update" ON transactions
+  FOR UPDATE TO authenticated
+  USING (is_household_member(household_id))
+  WITH CHECK (
+    is_household_member(household_id)
+    AND account_id IN (SELECT id FROM accounts WHERE accounts.household_id = transactions.household_id)
+    AND (
+      category_id IS NULL
+      OR category_id IN (SELECT id FROM categories WHERE categories.household_id = transactions.household_id OR categories.household_id IS NULL)
+    )
+    AND (
+      recurring_id IS NULL
+      OR recurring_id IN (SELECT id FROM recurring_transactions WHERE recurring_transactions.household_id = transactions.household_id)
+    )
+    AND (
+      matched_rule_id IS NULL
+      OR matched_rule_id IN (SELECT id FROM category_rules WHERE category_rules.household_id = transactions.household_id)
+    )
+    AND (
+      created_by IS NULL
+      OR created_by IN (SELECT user_id FROM household_members WHERE household_members.household_id = transactions.household_id)
+    )
+    AND (
+      payer_id IS NULL
+      OR payer_id IN (SELECT user_id FROM household_members WHERE household_members.household_id = transactions.household_id)
+    )
+  );
+```
+
+**Design notes**
+
+- **`ON DELETE SET NULL`, not `RESTRICT`/`CASCADE`.** `category_rules_delete` permits any household
+  member to delete a rule at any time (migration 002) — a transaction that rule once categorized must
+  survive that deletion. This also satisfies "a transaction whose rule was deleted must degrade cleanly
+  with no crash" at the database level: the column simply reads `NULL` afterward, and the UI already
+  treats `NULL` as "no provenance to show" for a normal never-auto-categorized transaction. The
+  deleted-rule case and the never-had-a-rule case are intentionally indistinguishable.
+- **Nullable, no `DEFAULT`.** Every transaction that predates this migration correctly has no recorded
+  provenance — there is no rule to retroactively attribute a historical categorization to.
+- **`WITH CHECK` widened, not restricted.** Same shape as the existing `category_id`/`recurring_id`/
+  `payer_id` coherence legs already on `transactions_insert`/`transactions_update`: a non-`NULL`
+  `matched_rule_id` must belong to a `category_rules` row in the *same* household as the transaction.
+  `transactions_update` is `DROP`+`CREATE` against its migration 004 form (the one with
+  `created_by IS NULL OR ...`), not the original migration 002 form — migrations are immutable, so the
+  live policy is the latest version, and this migration widens that one.
+- **Application-level:** `matched_rule_id` is set alongside `category_id` wherever a rule auto-matches
+  (`useCreateTransaction`, covering both manual creation and CSV import since import reuses that same
+  hook; `useApplyRulesRetroactively`), and is cleared back to `NULL` whenever a user explicitly changes
+  a transaction's category by hand (`useUpdateTransaction`), so it never points at a rule that no
+  longer explains the visible category.
 
 ---
 

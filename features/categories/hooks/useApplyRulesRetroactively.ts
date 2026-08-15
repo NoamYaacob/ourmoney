@@ -38,7 +38,7 @@ export function useApplyRulesRetroactively(householdId: string | null | undefine
 
         const { error: updateError } = await supabase
           .from('transactions')
-          .update({ category_id: matched.category_id })
+          .update({ category_id: matched.category_id, matched_rule_id: matched.id })
           .eq('id', transaction.id)
         if (updateError) throw updateError
 
