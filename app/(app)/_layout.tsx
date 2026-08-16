@@ -256,6 +256,7 @@ export default function AppLayout() {
               <Tabs.Screen name="goals/[id]" options={{ href: null }} />
               <Tabs.Screen name="recurring/index" options={{ href: null }} />
               <Tabs.Screen name="recurring/[id]" options={{ href: null }} />
+              <Tabs.Screen name="cash-flow/index" options={{ href: null }} />
               <Tabs.Screen name="settings/categories" options={{ href: null }} />
             </Tabs>
           </View>

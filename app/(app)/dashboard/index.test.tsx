@@ -13,15 +13,16 @@
 // independently, the same way import.test.tsx mocks
 // pickAndReadCsvFile per-test.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
+import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import Dashboard from './index'
 import type { TransactionFilters } from '@/features/transactions/hooks/useTransactions'
 import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 
+const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }))
 jest.mock('@/features/auth/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),
@@ -44,6 +45,29 @@ jest.mock('@/features/budgets/hooks/useBudgetProgress', () => ({
 }))
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({ categories: [] }),
+}))
+// Deliberately not 100000/40000/60000/etc — those collide with the budget
+// fixtures used elsewhere in this file (e.g. totalAllocatedAgorot: 100000),
+// which would make getByText ambiguous once both sections render the same
+// formatted string.
+const DEFAULT_SAFE_TO_SPEND_RESULT = {
+  availableCashAgorot: 777700,
+  plannedObligationsAgorot: 0,
+  recurringAgorot: 0,
+  reservedAgorot: 0,
+  safeToSpendAgorot: 777700,
+  shortfallAgorot: 0,
+  items: [] as unknown[],
+}
+const DEFAULT_SAFE_TO_SPEND = {
+  result: DEFAULT_SAFE_TO_SPEND_RESULT,
+  horizon: { kind: 'month' as const, start: '2026-08-16', end: '2026-08-31' },
+  isLoading: false,
+  error: null as Error | null,
+}
+const mockUseSafeToSpend = jest.fn<() => typeof DEFAULT_SAFE_TO_SPEND>()
+jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
+  useSafeToSpend: () => mockUseSafeToSpend(),
 }))
 const mockUseTransactions =
   jest.fn<(householdId: string | null | undefined, filters?: TransactionFilters) => {
@@ -76,6 +100,8 @@ jest.mock('nativewind', () => ({
 beforeEach(() => {
   mockUseBudgetProgress.mockReturnValue(DEFAULT_BUDGET_PROGRESS)
   mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
+  mockUseSafeToSpend.mockReturnValue(DEFAULT_SAFE_TO_SPEND)
+  mockPush.mockClear()
 })
 
 const EMPTY_ANALYTICS_MESSAGE = 'אין מספיק נתונים להצגה.'
@@ -256,6 +282,110 @@ describe('Dashboard month navigation and budget summary', () => {
     expect(getByText(CURRENT_MONTH_LABEL)).toBeTruthy()
     expect(getByText(NO_BUDGET_MESSAGE)).toBeTruthy()
     expect(getByText(NO_TRANSACTIONS_MESSAGE)).toBeTruthy()
+  })
+})
+
+describe('Dashboard Safe-to-Spend card', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('renders the safe-to-spend figure, subtitle, and breakdown when positive', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSafeToSpend.mockReturnValue({
+      ...DEFAULT_SAFE_TO_SPEND,
+      result: {
+        availableCashAgorot: 830000,
+        plannedObligationsAgorot: 348000,
+        recurringAgorot: 140000,
+        reservedAgorot: 488000,
+        safeToSpendAgorot: 342000,
+        shortfallAgorot: 0,
+        items: [],
+      },
+    })
+
+    const { getByText, getAllByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('dashboard.safeToSpend.title'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.safeToSpend.subtitle'))).toBeTruthy()
+    // formatILS carries locale bidi marks (see lib/money/format.test.ts) —
+    // match on the digit substring via regex, not exact string equality.
+    // ₪3,420.00 appears twice by design: once as the headline, once as the
+    // breakdown's own "אפשר להוציא" row.
+    expect(getAllByText(/3,420/).length).toBe(2)
+    expect(getByText(i18n.t('cashFlow.availableCash'))).toBeTruthy()
+    expect(getByText(i18n.t('cashFlow.plannedObligations'))).toBeTruthy()
+    expect(getByText(i18n.t('cashFlow.recurringCharges'))).toBeTruthy()
+    expect(getByText(i18n.t('cashFlow.safeToSpend'))).toBeTruthy()
+  })
+
+  it('shows the shortfall message instead of a negative headline figure when safe-to-spend is negative', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSafeToSpend.mockReturnValue({
+      ...DEFAULT_SAFE_TO_SPEND,
+      result: {
+        availableCashAgorot: 100000,
+        plannedObligationsAgorot: 150000,
+        recurringAgorot: 0,
+        reservedAgorot: 150000,
+        safeToSpendAgorot: -50000,
+        shortfallAgorot: 50000,
+        items: [],
+      },
+    })
+
+    const { getByText } = await render(<Dashboard />)
+
+    // The headline/breakdown block is a single if/else-if/else JSX chain
+    // (safeToSpendAgorot < 0 ? shortfall message : normal headline+
+    // breakdown) — this assertion alone is sufficient proof the shortfall
+    // branch rendered instead of the raw-number headline branch; a second
+    // "the raw negative string is absent" assertion would be redundant at
+    // best and actively wrong at worst, since the breakdown section below
+    // the headline deliberately DOES still show the real signed total in
+    // its own itemized "אפשר להוציא" row (transparency, not the "main CTA"
+    // the milestone's negative-headline rule is about).
+    expect(getByText(/חסר.*500/)).toBeTruthy()
+  })
+
+  it('shows the zero-safe-to-spend message when safe-to-spend is exactly zero', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSafeToSpend.mockReturnValue({
+      ...DEFAULT_SAFE_TO_SPEND,
+      result: {
+        availableCashAgorot: 100000,
+        plannedObligationsAgorot: 100000,
+        recurringAgorot: 0,
+        reservedAgorot: 100000,
+        safeToSpendAgorot: 0,
+        shortfallAgorot: 0,
+        items: [],
+      },
+    })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('dashboard.safeToSpend.zero'))).toBeTruthy()
+  })
+
+  it('shows an error message when the safe-to-spend query fails', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSafeToSpend.mockReturnValue({ ...DEFAULT_SAFE_TO_SPEND, error: new Error('network down') })
+
+    const { getAllByText } = await render(<Dashboard />)
+
+    expect(getAllByText(i18n.t('cashFlow.errors.generic')).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('navigates to /cash-flow when the card is tapped', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    await fireEvent.press(getByText(i18n.t('dashboard.safeToSpend.title')))
+
+    expect(mockPush).toHaveBeenCalledWith('/cash-flow')
   })
 })
 

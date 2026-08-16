@@ -20,6 +20,7 @@ import { useCallback, useEffect } from 'react'
 import { AppState, Platform } from 'react-native'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { accountBalancesQueryKey } from '@/features/accounts/hooks/useAccountBalances'
 import { recurringTransactionsQueryKey } from './useRecurringTransactions'
 
 interface GenerateRecurringTransactionsResult {
@@ -55,6 +56,14 @@ export function useGenerateRecurringTransactions(householdId: string | null | un
       void queryClient.invalidateQueries({ queryKey: ['transactions', householdId] })
       void queryClient.invalidateQueries({ queryKey: ['budgets', 'progress', householdId] })
       void queryClient.invalidateQueries({ queryKey: recurringTransactionsQueryKey(householdId) })
+      // Every generated occurrence both spends real money (new transaction
+      // row) and advances next_due_date past it (removing it from any
+      // future-occurrence forecast, e.g. Safe-to-Spend) — useAccountBalances
+      // must be invalidated in the same breath, or a consumer reading both
+      // together sees neither the spend nor the reservation for a stale
+      // window (useAccountBalances.ts's own header previously accepted this
+      // gap only because it had no consumer sensitive to it yet).
+      void queryClient.invalidateQueries({ queryKey: accountBalancesQueryKey(householdId) })
     },
   })
 

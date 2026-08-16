@@ -11,7 +11,11 @@
 // that prefix existing for Realtime invalidation) — this hook is not wired
 // into useTransactionsRealtimeSync.ts, which is out of this fix's scope.
 // The app's default 30s staleTime (lib/queryClient.ts) plus native
-// refetch-on-focus keeps it reasonably fresh in the meantime.
+// refetch-on-focus keeps it reasonably fresh in the meantime, and
+// useGenerateRecurringTransactions.ts explicitly invalidates
+// accountBalancesQueryKey on every successful generation (a Safe-to-Spend
+// consumer reading balances and recurring forecasts together cannot
+// tolerate that staleness the way earlier consumers of this hook could).
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'

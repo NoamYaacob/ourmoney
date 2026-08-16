@@ -6,6 +6,7 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useCategories } from '@/features/categories/hooks/useCategories'
+import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
 import { usePeriodStore } from '@/store/periodStore'
 import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
@@ -54,6 +55,16 @@ export default function Dashboard() {
   })
 
   const recentTransactions = transactions.slice(0, 5)
+
+  // Fixed at the 'month' horizon on the dashboard card — the detail screen
+  // (/cash-flow) is where the household switches horizons. Deliberately
+  // independent of `periodStart`/MonthNavigator above: Safe-to-Spend always
+  // means "from right now," never an arbitrary browsed month.
+  const {
+    result: safeToSpend,
+    isLoading: isSafeToSpendLoading,
+    error: safeToSpendError,
+  } = useSafeToSpend(householdId, 'month')
 
   // Analytics — lives inside Dashboard, not a separate route (no route is
   // reserved for it anywhere in the app tree). A widened 6-month window,
@@ -137,6 +148,95 @@ export default function Dashboard() {
           {t('dashboard.subtitle')}
         </Text>
       </View>
+
+      {/* Safe-to-Spend — the household's own real cash position, not tied to
+          the month navigator below (always "from right now," fixed at the
+          'month' horizon here; the detail screen offers the other
+          horizons). Tapping opens the itemized breakdown at /cash-flow. */}
+      <Pressable
+        onPress={() => router.push('/cash-flow')}
+        accessibilityRole="button"
+        className="mb-6 web:desktop:mb-8"
+      >
+        <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+            {t('dashboard.safeToSpend.title')}
+          </Text>
+          {safeToSpendError ? (
+            <View className="mt-1">
+              <ErrorMessage message={t('cashFlow.errors.generic')} />
+            </View>
+          ) : isSafeToSpendLoading ? (
+            <View className="mt-1">
+              <SkeletonList rows={1} />
+            </View>
+          ) : safeToSpend.safeToSpendAgorot < 0 ? (
+            <Text className="mt-1 text-heading font-bold text-danger-light dark:text-danger-dark web:desktop:text-[24px]">
+              {t('dashboard.safeToSpend.shortfall', { amount: formatILS(safeToSpend.shortfallAgorot) })}
+            </Text>
+          ) : (
+            <>
+              <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[44px]">
+                {formatILS(safeToSpend.safeToSpendAgorot)}
+              </Text>
+              <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('dashboard.safeToSpend.subtitle')}
+              </Text>
+              {safeToSpend.safeToSpendAgorot === 0 && (
+                <Text className="mt-1 text-caption text-danger-light dark:text-danger-dark">
+                  {t('dashboard.safeToSpend.zero')}
+                </Text>
+              )}
+            </>
+          )}
+
+          {!safeToSpendError && !isSafeToSpendLoading && (
+            <View className="mt-4 gap-1.5">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('cashFlow.availableCash')}
+                </Text>
+                <Text className="text-caption text-ink-light dark:text-ink-dark">
+                  {formatILS(safeToSpend.availableCashAgorot)}
+                </Text>
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('cashFlow.plannedObligations')}
+                </Text>
+                <Text className="text-caption text-ink-light dark:text-ink-dark">
+                  {formatILS(-safeToSpend.plannedObligationsAgorot)}
+                </Text>
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('cashFlow.recurringCharges')}
+                </Text>
+                <Text className="text-caption text-ink-light dark:text-ink-dark">
+                  {formatILS(-safeToSpend.recurringAgorot)}
+                </Text>
+              </View>
+              <View className="my-1">
+                <Divider />
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
+                  {t('cashFlow.safeToSpend')}
+                </Text>
+                <Text
+                  className={`text-caption font-semibold ${
+                    safeToSpend.safeToSpendAgorot < 0
+                      ? 'text-danger-light dark:text-danger-dark'
+                      : 'text-ink-light dark:text-ink-dark'
+                  }`}
+                >
+                  {formatILS(safeToSpend.safeToSpendAgorot)}
+                </Text>
+              </View>
+            </View>
+          )}
+        </Card>
+      </Pressable>
 
       <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
