@@ -23,8 +23,39 @@
   "transactions": {
     "title": "תנועות",
     "empty": "עדיין אין תנועות. הוסיפו את הראשונה שלכם.",
+    "noResults": "לא נמצאו תנועות שמתאימות לחיפוש או לסינון",
     "excludedLabel": "לא נכלל בתקציב",
     "addButton": "הוספת תנועה",
+    "filters": {
+      "searchLabel": "חיפוש",
+      "searchPlaceholder": "תיאור, בית עסק או קטגוריה",
+      "periodLabel": "תקופה",
+      "period": {
+        "current_month": "החודש",
+        "previous_month": "החודש הקודם",
+        "last_3_months": "3 החודשים האחרונים",
+        "last_6_months": "6 החודשים האחרונים",
+        "current_year": "השנה",
+        "all_time": "כל הזמן"
+      },
+      "accountLabel": "חשבון",
+      "allAccounts": "כל החשבונות",
+      "categoryLabel": "קטגוריה",
+      "allCategories": "כל הקטגוריות",
+      "uncategorized": "ללא קטגוריה",
+      "type": {
+        "all": "הכל",
+        "expense": "הוצאות",
+        "income": "הכנסות"
+      },
+      "shared": {
+        "all": "הכל",
+        "shared": "משותפות",
+        "personal": "אישיות"
+      },
+      "clear": "ניקוי סינון",
+      "resultCount": "{{count}} תנועות"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "התנועה לא נמצאה"

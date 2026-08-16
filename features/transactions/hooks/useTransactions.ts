@@ -11,6 +11,10 @@ import type { Transaction } from '@/types/app'
 export interface TransactionFilters {
   accountId?: string
   categoryId?: string
+  // Mutually exclusive with categoryId (the Transactions list filter UI
+  // never sets both) — category_id IS NULL, the exact same predicate
+  // "uncategorized" means everywhere else in this codebase.
+  uncategorized?: boolean
   periodStart?: string
   periodEnd?: string
   isShared?: boolean
@@ -32,7 +36,8 @@ export function useTransactions(householdId: string | null | undefined, filters:
         .order('created_at', { ascending: false })
 
       if (filters.accountId) request = request.eq('account_id', filters.accountId)
-      if (filters.categoryId) request = request.eq('category_id', filters.categoryId)
+      if (filters.uncategorized) request = request.is('category_id', null)
+      else if (filters.categoryId) request = request.eq('category_id', filters.categoryId)
       if (filters.periodStart) request = request.gte('txn_date', filters.periodStart)
       if (filters.periodEnd) request = request.lte('txn_date', filters.periodEnd)
       if (filters.isShared !== undefined) request = request.eq('is_shared', filters.isShared)

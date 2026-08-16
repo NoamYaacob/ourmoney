@@ -1,15 +1,28 @@
-// Design Phase 3: first test coverage for the Transactions list screen
-// (none existed before this phase). Covers the empty state and populated
-// row rendering — description, category name, and sign-aware amount color
-// class, matching Dashboard's Recent Transactions row convention.
-import { describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
+// Design Phase 3: original coverage — empty state and populated row
+// rendering (description, category name, sign-aware amount color class).
+// Search + Filters milestone: added coverage for the new search/filter
+// bar, the server-vs-client filter split (asserted via what useTransactions
+// is called with), the no-results vs true-empty distinction, and
+// clear-filters. Filter state's route-param persistence itself (the
+// mechanism that survives Transactions -> Detail -> back) is proven at the
+// pure-function level in features/transactions/lib/transactionFilters.test.ts
+// (the round-trip tests) — this file additionally proves the screen reads
+// that state exclusively from route params (never local component state),
+// by rendering with preset params and asserting the resulting
+// useTransactions call, which is what makes that persistence work: there
+// is no local state a remount/back-navigation could lose.
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Transactions from './index'
 import { formatILS } from '@/lib/money/format'
 
+let mockSearchParams: Record<string, string> = {}
+const mockSetParams = jest.fn()
+const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush, setParams: mockSetParams }),
+  useLocalSearchParams: () => mockSearchParams,
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -23,13 +36,16 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+jest.mock('@/features/accounts/hooks/useAccounts', () => ({
+  useAccounts: () => ({ accounts: [{ id: 'acct-1', name: 'עו״ש' }] }),
+}))
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({ categories: [{ id: 'cat-1', name_he: 'מזון', icon: '🍔' }] }),
 }))
 
 const mockUseTransactions = jest.fn()
 jest.mock('@/features/transactions/hooks/useTransactions', () => ({
-  useTransactions: () => mockUseTransactions(),
+  useTransactions: (...args: unknown[]) => mockUseTransactions(...args),
 }))
 
 // Climbs from a node up to the nearest ancestor whose className contains
@@ -44,6 +60,12 @@ function climbTo(node: any, marker: string) {
 }
 
 describe('Transactions list', () => {
+  beforeEach(() => {
+    mockSearchParams = {}
+    mockSetParams.mockClear()
+    mockPush.mockClear()
+  })
+
   it('shows the empty message and exactly one add-transaction CTA (the floating action, not a duplicate button)', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
@@ -190,5 +212,207 @@ describe('Transactions list', () => {
     const amount = getByText(formatILS(-5000))
     expect(amount.props.className).toContain('text-ink-light')
     expect(amount.props.className).not.toContain('positive')
+  })
+
+  describe('search + filters', () => {
+    it('typing in the search field updates the route params, not local-only state', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByLabelText } = await render(<Transactions />)
+      await fireEvent.changeText(getByLabelText('חיפוש'), 'סופר')
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ q: 'סופר' }))
+    })
+
+    it('filters the visible list by description/merchant/category text (client-side, given the server-fetched set)', async () => {
+      mockSearchParams = { q: 'סופר' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+          { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+
+      expect(getByText('קניות בסופר')).toBeTruthy()
+      expect(queryByText('דלק')).toBeNull()
+    })
+
+    it('pressing an income/expense type chip updates the route params', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByTestId } = await render(<Transactions />)
+      await fireEvent.press(getByTestId('transactions-filter-type-expense'))
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ type: 'expense' }))
+    })
+
+    it('pressing a shared/personal chip updates the route params', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByTestId } = await render(<Transactions />)
+      await fireEvent.press(getByTestId('transactions-filter-shared-personal'))
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ shared: 'personal' }))
+    })
+
+    it('pressing the account filter and choosing a specific account updates the route params', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByRole, getByText } = await render(<Transactions />)
+      await fireEvent.press(getByRole('button', { name: 'חשבון' }))
+      await fireEvent.press(getByText('עו״ש'))
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'acct-1' }))
+    })
+
+    it('pressing the category filter and choosing "ללא קטגוריה" sets categoryId to the uncategorized sentinel', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByRole, getByText } = await render(<Transactions />)
+      await fireEvent.press(getByRole('button', { name: 'קטגוריה' }))
+      await fireEvent.press(getByText('ללא קטגוריה'))
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'uncategorized' }))
+    })
+
+    it('a period param translates into the matching periodStart/periodEnd passed to useTransactions', async () => {
+      mockSearchParams = { period: 'current_month' }
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      await render(<Transactions />)
+
+      const [, filters] = mockUseTransactions.mock.calls[mockUseTransactions.mock.calls.length - 1] as [unknown, Record<string, unknown>]
+      expect(filters).toHaveProperty('periodStart')
+      expect(filters).toHaveProperty('periodEnd')
+    })
+
+    it('an accountId param is passed through to useTransactions as a server-side filter', async () => {
+      mockSearchParams = { accountId: 'acct-1' }
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      await render(<Transactions />)
+
+      const [, filters] = mockUseTransactions.mock.calls[mockUseTransactions.mock.calls.length - 1] as [unknown, Record<string, unknown>]
+      expect(filters).toEqual(expect.objectContaining({ accountId: 'acct-1' }))
+    })
+
+    it('a categoryId=uncategorized param is passed through as the uncategorized flag, not categoryId', async () => {
+      mockSearchParams = { categoryId: 'uncategorized' }
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      await render(<Transactions />)
+
+      const [, filters] = mockUseTransactions.mock.calls[mockUseTransactions.mock.calls.length - 1] as [unknown, Record<string, unknown>]
+      expect(filters).toEqual(expect.objectContaining({ uncategorized: true }))
+      expect(filters).not.toHaveProperty('categoryId')
+    })
+
+    it('composes multiple active params into a single consistent query + local filter pass', async () => {
+      mockSearchParams = { q: 'סופר', period: 'current_month', accountId: 'acct-1', type: 'expense', shared: 'shared' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      await render(<Transactions />)
+
+      const [, filters] = mockUseTransactions.mock.calls[mockUseTransactions.mock.calls.length - 1] as [unknown, Record<string, unknown>]
+      expect(filters).toEqual(
+        expect.objectContaining({ accountId: 'acct-1', isShared: true, periodStart: expect.any(String), periodEnd: expect.any(String) })
+      )
+    })
+
+    it('shows the no-results message (distinct from the true-empty message) when a filter is active and nothing matches', async () => {
+      mockSearchParams = { q: 'לא קיים' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+
+      expect(getByText('לא נמצאו תנועות שמתאימות לחיפוש או לסינון')).toBeTruthy()
+      expect(queryByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')).toBeNull()
+    })
+
+    it('the no-results state includes a clear-filters action that resets params to defaults', async () => {
+      mockSearchParams = { q: 'לא קיים' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getAllByText } = await render(<Transactions />)
+      const clearButtons = getAllByText('ניקוי סינון')
+      await fireEvent.press(clearButtons[0]!)
+
+      expect(mockSetParams).toHaveBeenCalledWith(
+        expect.objectContaining({ q: '', period: 'all_time', accountId: 'all', categoryId: 'all', type: 'all', shared: 'all' })
+      )
+    })
+
+    it('shows the true-empty message, not no-results, when no filter is active and the household has zero transactions', async () => {
+      mockSearchParams = {}
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getAllByText, queryByText } = await render(<Transactions />)
+
+      expect(getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').length).toBeGreaterThan(0)
+      expect(queryByText('לא נמצאו תנועות שמתאימות לחיפוש או לסינון')).toBeNull()
+    })
+
+    it('shows a result count and a clear-filters action once a filter is active', async () => {
+      mockSearchParams = { type: 'expense' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText } = await render(<Transactions />)
+
+      expect(getByText('1 תנועות')).toBeTruthy()
+      expect(getByText('ניקוי סינון')).toBeTruthy()
+    })
+
+    it('does not show a clear-filters action when no filter is active', async () => {
+      mockSearchParams = {}
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { queryByText } = await render(<Transactions />)
+
+      expect(queryByText('ניקוי סינון')).toBeNull()
+    })
+
+    it('an excluded transaction still renders (and is still labeled) under an active filter — exclusion behavior is unchanged', async () => {
+      mockSearchParams = { type: 'expense' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: true },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText } = await render(<Transactions />)
+
+      expect(getByText('קניות בסופר')).toBeTruthy()
+      expect(getByText('לא נכלל בתקציב')).toBeTruthy()
+    })
   })
 })
