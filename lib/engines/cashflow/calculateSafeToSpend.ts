@@ -107,17 +107,24 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
       accountId: o.accountId,
     }))
 
-  const recurringItems: SafeToSpendItem[] = forecastRecurringOccurrences(input.recurringTemplates, input.horizonEnd).map(
-    (occurrence) => ({
+  // forecastRecurringOccurrences is a general-purpose primitive that
+  // forecasts every active template regardless of sign (broadened to
+  // support the cash-flow forecast engine's need for both income and
+  // expense occurrences) — Safe-to-Spend is a reservation-only formula, so
+  // it explicitly keeps only expense-signed occurrences here and negates to
+  // its own always-positive "amount reserved" contract, exactly as before
+  // this primitive was broadened.
+  const recurringItems: SafeToSpendItem[] = forecastRecurringOccurrences(input.recurringTemplates, input.horizonEnd)
+    .filter((occurrence) => occurrence.amountAgorot < 0)
+    .map((occurrence) => ({
       sourceType: 'recurring',
       sourceId: occurrence.recurringId,
       description: occurrence.description,
-      amountAgorot: occurrence.amountAgorot,
+      amountAgorot: -occurrence.amountAgorot,
       date: occurrence.date,
       categoryId: occurrence.categoryId,
       accountId: occurrence.accountId,
-    })
-  )
+    }))
 
   const plannedObligationsAgorot = sumAgorot(obligationItems)
   const recurringAgorot = sumAgorot(recurringItems)

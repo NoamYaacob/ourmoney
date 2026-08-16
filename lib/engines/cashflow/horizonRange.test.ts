@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { getHorizonRange } from './horizonRange'
+import { getDayRangeHorizon, getHorizonRange } from './horizonRange'
 
 describe('getHorizonRange', () => {
   it('week: returns through Saturday of the current Israeli week (Sun-Sat)', () => {
@@ -55,6 +55,40 @@ describe('getHorizonRange', () => {
 
   it('defaults `today` to the current local date when omitted', () => {
     const range = getHorizonRange('month')
+    expect(range.start).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(range.end >= range.start).toBe(true)
+  })
+})
+
+describe('getDayRangeHorizon', () => {
+  it('returns an inclusive 30-day window, matching getHorizonRange("days30") exactly', () => {
+    expect(getDayRangeHorizon(30, '2026-08-16')).toEqual({ days: 30, start: '2026-08-16', end: '2026-09-14' })
+    expect(getHorizonRange('days30', '2026-08-16').end).toBe(getDayRangeHorizon(30, '2026-08-16').end)
+  })
+
+  it('returns an inclusive 60-day window', () => {
+    expect(getDayRangeHorizon(60, '2026-08-16')).toEqual({ days: 60, start: '2026-08-16', end: '2026-10-14' })
+  })
+
+  it('returns an inclusive 90-day window', () => {
+    expect(getDayRangeHorizon(90, '2026-08-16')).toEqual({ days: 90, start: '2026-08-16', end: '2026-11-13' })
+  })
+
+  it('is not hardcoded to 30/60/90 — accepts any day count', () => {
+    expect(getDayRangeHorizon(7, '2026-08-16')).toEqual({ days: 7, start: '2026-08-16', end: '2026-08-22' })
+    expect(getDayRangeHorizon(1, '2026-08-16')).toEqual({ days: 1, start: '2026-08-16', end: '2026-08-16' })
+  })
+
+  it('crosses a year boundary correctly', () => {
+    expect(getDayRangeHorizon(90, '2026-12-01')).toEqual({ days: 90, start: '2026-12-01', end: '2027-02-28' })
+  })
+
+  it('handles a leap-year February within the window', () => {
+    expect(getDayRangeHorizon(60, '2028-01-15')).toEqual({ days: 60, start: '2028-01-15', end: '2028-03-14' })
+  })
+
+  it('defaults `today` to the current local date when omitted', () => {
+    const range = getDayRangeHorizon(30)
     expect(range.start).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(range.end >= range.start).toBe(true)
   })

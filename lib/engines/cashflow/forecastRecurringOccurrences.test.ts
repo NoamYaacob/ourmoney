@@ -23,7 +23,7 @@ describe('forecastRecurringOccurrences', () => {
       {
         recurringId: 'rec-1',
         description: 'נטפליקס',
-        amountAgorot: 7990,
+        amountAgorot: -7990,
         date: '2026-08-15',
         categoryId: 'cat-1',
         accountId: 'acc-1',
@@ -54,14 +54,17 @@ describe('forecastRecurringOccurrences', () => {
     expect(result).toEqual([])
   })
 
-  it('ignores an income (positive amount) recurring template', () => {
-    const result = forecastRecurringOccurrences([template({ amountAgorot: 1500000 })], '2026-12-31')
-    expect(result).toEqual([])
+  it('includes an income (positive amount) recurring template — this primitive forecasts every sign', () => {
+    const result = forecastRecurringOccurrences([template({ amountAgorot: 850000 })], '2026-08-31')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.amountAgorot).toBe(850000)
   })
 
-  it('reports the amount as positive even though the source is negative (expense)', () => {
-    const result = forecastRecurringOccurrences([template({ amountAgorot: -45000 })], '2026-08-31')
-    expect(result[0]?.amountAgorot).toBe(45000)
+  it('reports the amount signed, exactly mirroring the source template (never negated or made absolute)', () => {
+    const expense = forecastRecurringOccurrences([template({ amountAgorot: -45000 })], '2026-08-31')
+    expect(expense[0]?.amountAgorot).toBe(-45000)
+    const income = forecastRecurringOccurrences([template({ amountAgorot: 45000 })], '2026-08-31')
+    expect(income[0]?.amountAgorot).toBe(45000)
   })
 
   it('handles a monthly template due on the 31st crossing into a 30-day month, then back to the 31st', () => {
@@ -115,8 +118,8 @@ describe('forecastRecurringOccurrences', () => {
     })
     const result = forecastRecurringOccurrences([netflix, internet], '2026-08-31')
     expect(result).toHaveLength(2)
-    expect(result.find((o) => o.recurringId === 'rec-netflix')?.amountAgorot).toBe(7990)
-    expect(result.find((o) => o.recurringId === 'rec-internet')?.amountAgorot).toBe(15000)
+    expect(result.find((o) => o.recurringId === 'rec-netflix')?.amountAgorot).toBe(-7990)
+    expect(result.find((o) => o.recurringId === 'rec-internet')?.amountAgorot).toBe(-15000)
   })
 
   it('skips a malformed template (monthly frequency with a null dayOfMonth) instead of throwing', () => {

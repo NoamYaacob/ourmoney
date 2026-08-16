@@ -26,7 +26,10 @@ export interface HorizonRange {
   end: string
 }
 
-function addDays(dateString: string, days: number): string {
+// Exported — calculateCashFlowForecast.ts walks day-by-day across a
+// horizon and needs the identical local-date arithmetic, not a second
+// copy of it.
+export function addDays(dateString: string, days: number): string {
   const [year, month, day] = dateString.split('-').map(Number) as [number, number, number]
   const next = new Date(year, month - 1, day + days)
   return localDateString(next)
@@ -48,7 +51,21 @@ export function getHorizonRange(kind: HorizonKind, today: string = localDateStri
     case 'month':
       return { kind, start: today, end: getPeriodEnd(getPeriodStartForDate(today)) }
     case 'days30':
-      // Inclusive 30-day window: today plus the next 29 days.
-      return { kind, start: today, end: addDays(today, 29) }
+      return { kind, start: today, end: getDayRangeHorizon(30, today).end }
   }
+}
+
+// Generic "N days from today, inclusive" horizon — the engine-facing
+// primitive behind 'days30' above (and behind the cash-flow forecast's
+// 30/60/90-day selector). Not tied to any fixed set of day counts, so a
+// future horizon (6 months, a custom range) needs no engine change, only a
+// new call site — the milestone's own explicit requirement.
+export interface DayRangeHorizon {
+  days: number
+  start: string
+  end: string
+}
+
+export function getDayRangeHorizon(days: number, today: string = localDateString()): DayRangeHorizon {
+  return { days, start: today, end: addDays(today, days - 1) }
 }

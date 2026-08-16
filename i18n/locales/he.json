@@ -542,6 +542,33 @@
     "empty": "אין התחייבויות או הוראות קבע צפויות בטווח הזמן שנבחר.",
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
+    },
+    "forecast": {
+      "sectionTitle": "תזרים צפוי",
+      "horizon": {
+        "days30": "30 ימים",
+        "days60": "60 ימים",
+        "days90": "90 ימים"
+      },
+      "availableCashToday": "יתרה זמינה היום",
+      "projectedEndingBalance": "יתרה צפויה בסוף התקופה",
+      "lowestBalance": "נקודה נמוכה ביותר",
+      "upcomingEventsTitle": "אירועים קרובים",
+      "source": {
+        "planned_obligation": "התחייבות",
+        "recurring": "הוראת קבע",
+        "recurringIncome": "הוראת קבע / הכנסה חוזרת"
+      },
+      "pastDue": "באיחור",
+      "shortfallWarningTitle": "צפוי חוסר בכיסוי",
+      "shortfallWarningBody": "בהתאם להתחייבויות הידועות כרגע, היתרה צפויה לרדת מתחת לאפס ב-{{date}}.",
+      "shortfallAmount": "חסר עד {{amount}}",
+      "noShortfall": "לא צפוי חוסר בכיסוי בטווח הזמן שנבחר, בהתאם לנתונים הקיימים.",
+      "empty": "אין אירועים צפויים בטווח הזמן שנבחר.",
+      "disclaimer": "התחזית מבוססת על היתרה והחיובים הידועים כרגע ואינה כוללת הוצאות עתידיות שלא הוגדרו.",
+      "errors": {
+        "generic": "משהו השתבש. נסו שוב"
+      }
     }
   },
   "household": {

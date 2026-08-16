@@ -18,20 +18,29 @@
 // that occurrence's money has not left the account either — it is still
 // correctly "upcoming," not a double count.)
 //
-// Only EXPENSE templates (signed amountAgorot < 0) reserve cash — an income
-// recurring template (e.g. a recurring transfer in) does not reduce
-// Safe-to-Spend. Inactive templates never forecast.
+// Forecasts EVERY active, well-formed template regardless of sign —
+// amountAgorot on the returned occurrence is SIGNED, mirroring the
+// template's own amount_agorot exactly (positive = income, negative =
+// expense; recurring_transactions has no separate "type" column, the sign
+// alone carries this, same as transactions.amount_agorot). This is a
+// general-purpose primitive: it does not decide what "counts" for any
+// particular consumer. calculateSafeToSpend.ts (a reservation-only formula)
+// filters to expense-signed occurrences itself; calculateCashFlowForecast.ts
+// (a full inflow/outflow projection) uses both signs. Originally this
+// function filtered out income itself, back when Safe-to-Spend was its only
+// caller — broadened here rather than duplicated into a second near-
+// identical function, since duplicating it would mean duplicating the
+// double-count-guard reasoning above too. Inactive templates never forecast.
 //
 // Defensive against a malformed template: advanceDueDate throws for
 // monthly/quarterly/yearly frequencies when dayOfMonth is null (a state the
 // schema's CHECK constraint alone does not prevent — day_of_month has no
-// NOT NULL tied to frequency). This engine is the first real render-path
-// caller of advanceDueDate (previously only used for optimistic "next due"
-// preview text, never inside a computation an uncaught throw could take
-// down); a display-only aggregate must degrade one bad row, not crash the
-// whole app. A template that would throw is skipped entirely — its
-// occurrences simply don't appear in the reservation, the same as any other
-// filtered-out template (inactive, income-signed).
+// NOT NULL tied to frequency). This engine is a real render-path caller of
+// advanceDueDate (previously only used for optimistic "next due" preview
+// text, never inside a computation an uncaught throw could take down); a
+// display-only aggregate must degrade one bad row, not crash the whole app.
+// A template that would throw is skipped entirely — its occurrences simply
+// don't appear, the same as any other filtered-out template (inactive).
 
 import { advanceDueDate } from '@/features/recurring/lib/recurringDueDate'
 import type { RecurringFrequency } from '@/types/app'
@@ -54,7 +63,9 @@ export interface RecurringForecastTemplate {
 export interface ForecastedRecurringOccurrence {
   recurringId: string
   description: string
-  // Always positive — the amount reserved, not a signed ledger movement.
+  // Signed — mirrors the template's own amountAgorot exactly (never
+  // negated, never made absolute). Callers that only want a magnitude
+  // (e.g. Safe-to-Spend's "amount reserved") derive that themselves.
   amountAgorot: number
   date: string
   categoryId: string | null
@@ -69,7 +80,6 @@ export function forecastRecurringOccurrences(
 
   for (const template of templates) {
     if (!template.isActive) continue
-    if (template.amountAgorot >= 0) continue
     if (FREQUENCIES_REQUIRING_DAY_OF_MONTH.has(template.frequency) && template.dayOfMonth === null) continue
 
     let cursor = template.nextDueDate
@@ -77,7 +87,7 @@ export function forecastRecurringOccurrences(
       occurrences.push({
         recurringId: template.id,
         description: template.description,
-        amountAgorot: -template.amountAgorot,
+        amountAgorot: template.amountAgorot,
         date: cursor,
         categoryId: template.categoryId,
         accountId: template.accountId,
