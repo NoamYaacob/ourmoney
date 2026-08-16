@@ -50,3 +50,24 @@ export function useTransactions(householdId: string | null | undefined, filters:
     error: query.error,
   }
 }
+
+// Bypasses the TanStack Query cache entirely — deliberately NOT
+// `queryClient.fetchQuery`, which would honor staleTime and could still
+// return a stale cached page for this exact query key. Used only for the
+// CSV import commit-time duplicate re-check (app/(app)/transactions/import.tsx),
+// where "fresh" must mean "just queried the server right now," not "not
+// too stale." A normal immediate second import in the same client session
+// must see the first import's just-written rows, which a staleTime-aware
+// cache read cannot guarantee.
+export async function fetchFreshTransactionsForAccount(
+  householdId: string,
+  accountId: string
+): Promise<Pick<Transaction, 'account_id' | 'txn_date' | 'amount_agorot' | 'description'>[]> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('account_id, txn_date, amount_agorot, description')
+    .eq('household_id', householdId)
+    .eq('account_id', accountId)
+  if (error) throw error
+  return data ?? []
+}

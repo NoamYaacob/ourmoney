@@ -4,13 +4,14 @@
 // named raw fields," with no validation of the values themselves
 // (validateImportRow.ts's job).
 
-export type CsvColumnRole = 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'ignore'
+export type CsvColumnRole = 'date' | 'description' | 'merchant' | 'amount' | 'debit' | 'credit' | 'ignore'
 
 export type CsvColumnMapping = Record<number, CsvColumnRole>
 
 export interface MappedCsvRow {
   rawDate: string | null
   rawDescription: string | null
+  rawMerchant: string | null
   rawAmount: string | null
   rawDebit: string | null
   rawCredit: string | null
@@ -21,6 +22,7 @@ export function mapCsvColumns(rows: readonly string[][], mapping: CsvColumnMappi
     const mapped: MappedCsvRow = {
       rawDate: null,
       rawDescription: null,
+      rawMerchant: null,
       rawAmount: null,
       rawDebit: null,
       rawCredit: null,
@@ -32,6 +34,9 @@ export function mapCsvColumns(rows: readonly string[][], mapping: CsvColumnMappi
           break
         case 'description':
           mapped.rawDescription = cell
+          break
+        case 'merchant':
+          mapped.rawMerchant = cell
           break
         case 'amount':
           mapped.rawAmount = cell

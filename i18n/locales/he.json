@@ -232,10 +232,15 @@
       "ignore": "התעלמות",
       "date": "תאריך",
       "description": "תיאור",
+      "merchant": "בית עסק",
       "amount": "סכום",
       "debit": "חובה",
       "credit": "זכות"
     },
+    "headerOffsetLabel": "מספר שורות לדילוג לפני שורת הכותרת",
+    "headerOffsetHint": "אם הקובץ מתחיל בשורות מבוא לפני הכותרת האמיתית, ציינו כמה שורות לדלג. ברירת המחדל היא 0",
+    "headerOffsetNoHeaderWarning": "לא נמצאה שורת כותרת במיקום זה. נסו מספר שורות אחר",
+    "checkingExistingTransactions": "בודק תנועות קיימות בחשבון...",
     "previewCount": "{{selected}} מתוך {{total}} נבחרו לייבוא",
     "duplicateFlag": "כפילות אפשרית",
     "selected": "נבחר",
@@ -249,11 +254,13 @@
     },
     "confirmButton": "ייבוא {{count}} תנועות",
     "doneMessage": "יובאו {{count}} תנועות בהצלחה.",
+    "duplicatesSkippedAtCommit": "{{count}} תנועות דולגו כי כבר יובאו קודם לכן",
     "backToTransactions": "חזרה לתנועות",
     "errors": {
       "readFailed": "קריאת הקובץ נכשלה. נסו שוב",
       "emptyFile": "הקובץ ריק או שלא נמצאו בו עמודות. בחרו קובץ CSV אחר",
-      "partialFailure": "יובאו {{succeeded}} מתוך {{total}} תנועות. חלק מהשורות נכשלו."
+      "partialFailure": "יובאו {{succeeded}} מתוך {{total}} תנועות. חלק מהשורות נכשלו.",
+      "dedupRecheckFailed": "בדיקת כפילויות נכשלה לפני הייבוא. נסו שוב"
     }
   },
   "budgets": {

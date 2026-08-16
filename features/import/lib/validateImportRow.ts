@@ -1,19 +1,20 @@
 // Validates a single mapped CSV row BEFORE it is ever offered for import —
 // this is the entire "validation happens before database writes" gate.
 // Malformed rows never reach the preview as importable; they're reported
-// with a specific reason instead. Reuses lib/money/format.ts's
-// agorotFromILS for the actual numeric parsing (magnitude only — sign is
-// resolved separately here, the same "sign derived, not typed" split
-// already established for manual transaction entry).
+// with a specific reason instead. Amount parsing goes through
+// normalizeImportAmount.ts (Milestone A), which itself delegates the final
+// numeric parse to lib/money/format.ts's agorotFromILS — one parser, one
+// set of money-parsing invariants, reused rather than duplicated.
 
-import { agorotFromILS } from '@/lib/money/format'
 import type { MappedCsvRow } from './mapCsvColumns'
+import { isZeroOrBlankImportAmount, normalizeImportAmount } from './normalizeImportAmount'
 
 export type ImportRowInvalidReason = 'invalid_date' | 'missing_description' | 'missing_amount' | 'invalid_amount'
 
 export interface ValidImportRow {
   txnDate: string // YYYY-MM-DD, local calendar date — never derived via toISOString()
   description: string
+  merchantName: string | null
   amountAgorot: number
 }
 
@@ -54,28 +55,30 @@ function parseImportDate(raw: string | null): string | null {
 function resolveImportAmountAgorot(mapped: MappedCsvRow): { ok: true; agorot: number } | { ok: false } | null {
   const rawAmount = mapped.rawAmount?.trim()
   if (rawAmount) {
-    const isNegative = rawAmount.startsWith('-')
-    const magnitude = rawAmount.replace(/^[-+]/, '')
-    const parsed = agorotFromILS(magnitude)
+    const parsed = normalizeImportAmount(rawAmount)
     if (!parsed.ok || parsed.agorot === null) return { ok: false }
-    return { ok: true, agorot: isNegative ? -parsed.agorot : parsed.agorot }
+    return { ok: true, agorot: parsed.agorot }
   }
 
   const rawDebit = mapped.rawDebit?.trim()
   const rawCredit = mapped.rawCredit?.trim()
-  const hasDebit = !!rawDebit
-  const hasCredit = !!rawCredit
+  // Milestone A fix: blank / 0 / 0.0 / 0.00 all count as "this side is
+  // absent" — only a genuinely non-zero value on BOTH sides is ambiguous.
+  // A bank that zero-fills its unused debit/credit column (rather than
+  // leaving it blank) must not trip a false ambiguous-row rejection.
+  const hasDebit = !!rawDebit && !isZeroOrBlankImportAmount(rawDebit)
+  const hasCredit = !!rawCredit && !isZeroOrBlankImportAmount(rawCredit)
 
-  if (hasDebit && hasCredit) return { ok: false } // ambiguous — both columns populated for one row
+  if (hasDebit && hasCredit) return { ok: false } // ambiguous — both sides have a real, non-zero value
   if (hasDebit) {
-    const parsed = agorotFromILS(rawDebit!)
+    const parsed = normalizeImportAmount(rawDebit!)
     if (!parsed.ok || parsed.agorot === null) return { ok: false }
-    return { ok: true, agorot: -parsed.agorot }
+    return { ok: true, agorot: -Math.abs(parsed.agorot) }
   }
   if (hasCredit) {
-    const parsed = agorotFromILS(rawCredit!)
+    const parsed = normalizeImportAmount(rawCredit!)
     if (!parsed.ok || parsed.agorot === null) return { ok: false }
-    return { ok: true, agorot: parsed.agorot }
+    return { ok: true, agorot: Math.abs(parsed.agorot) }
   }
 
   return null // no amount data present at all
@@ -92,5 +95,7 @@ export function validateImportRow(mapped: MappedCsvRow): ValidatedImportRow {
   if (amountResult === null) return { valid: false, reason: 'missing_amount' }
   if (!amountResult.ok) return { valid: false, reason: 'invalid_amount' }
 
-  return { valid: true, row: { txnDate, description, amountAgorot: amountResult.agorot } }
+  const merchantName = mapped.rawMerchant?.trim() || null
+
+  return { valid: true, row: { txnDate, description, merchantName, amountAgorot: amountResult.agorot } }
 }
