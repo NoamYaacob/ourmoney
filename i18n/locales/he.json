@@ -264,6 +264,42 @@
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
     }
   },
+  "obligations": {
+    "title": "התחייבויות עתידיות",
+    "empty": "עדיין אין התחייבויות מתוכננות.",
+    "addButton": "הוספת התחייבות",
+    "pastDue": "באיחור",
+    "status": {
+      "upcoming": "צפויה",
+      "completed": "שולמה",
+      "cancelled": "בוטלה"
+    },
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "ההתחייבות לא נמצאה"
+    },
+    "form": {
+      "nameLabel": "שם ההתחייבות",
+      "namePlaceholder": "לדוגמה: ביטוח רכב",
+      "dueDateLabel": "תאריך יעד",
+      "notesLabel": "הערות",
+      "notesPlaceholder": "הערות נוספות (לא חובה)",
+      "submit": "הוספת התחייבות",
+      "errors": {
+        "missingName": "יש להזין שם להתחייבות",
+        "missingDueDate": "יש לבחור תאריך יעד"
+      }
+    },
+    "detail": {
+      "edit": "עריכה",
+      "save": "שמירה",
+      "markPaid": "סימון כשולם",
+      "cancelObligation": "ביטול ההתחייבות",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת התחייבות",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    }
+  },
   "import": {
     "title": "ייבוא מקובץ CSV",
     "entryButton": "ייבוא מ-CSV",
@@ -530,7 +566,8 @@
       "accounts": "חשבונות",
       "categories": "קטגוריות וכללי סיווג",
       "recurring": "הוראות קבע",
-      "goals": "יעדי חיסכון"
+      "goals": "יעדי חיסכון",
+      "obligations": "התחייבויות עתידיות"
     },
     "appearance": {
       "title": "מראה"

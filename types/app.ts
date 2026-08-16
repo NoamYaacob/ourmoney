@@ -82,3 +82,13 @@ export interface RecurringTransaction extends Omit<Tables<'recurring_transaction
 // beyond the generated row shape is needed since every column here already
 // has a concrete type.
 export type SavingsGoal = Tables<'savings_goals'>
+
+// ============================================================================
+// Migration 007 — Planned obligations (Annual Expenses / Planned Obligations)
+// ============================================================================
+
+export type PlannedObligationStatus = 'upcoming' | 'completed' | 'cancelled'
+
+export interface PlannedObligation extends Omit<Tables<'planned_obligations'>, 'status'> {
+  status: PlannedObligationStatus
+}

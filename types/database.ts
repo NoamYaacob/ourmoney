@@ -382,6 +382,76 @@ export type Database = {
           },
         ]
       }
+      planned_obligations: {
+        Row: {
+          account_id: string | null
+          amount_agorot: number
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          due_date: string
+          household_id: string
+          id: string
+          is_shared: boolean
+          name: string
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          amount_agorot: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_date: string
+          household_id: string
+          id?: string
+          is_shared?: boolean
+          name: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          amount_agorot?: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_date?: string
+          household_id?: string
+          id?: string
+          is_shared?: boolean
+          name?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planned_obligations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planned_obligations_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planned_obligations_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

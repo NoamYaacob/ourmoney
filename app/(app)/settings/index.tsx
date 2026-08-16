@@ -426,6 +426,11 @@ export default function Settings() {
         />
         <SettingsRow iconName="repeat-outline" label={t('settings.financial.recurring')} onPress={() => router.push('/recurring')} />
         <SettingsRow iconName="flag-outline" label={t('settings.financial.goals')} onPress={() => router.push('/goals')} />
+        <SettingsRow
+          iconName="calendar-outline"
+          label={t('settings.financial.obligations')}
+          onPress={() => router.push('/obligations')}
+        />
       </SettingsSection>
 
       {/* Appearance */}

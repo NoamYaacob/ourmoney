@@ -155,6 +155,13 @@ INSERT INTO savings_goals (id, household_id, account_id, name, target_agorot, cr
   ('59000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', 'יעד חיסכון בית 1', 100000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   ('59000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000002', 'יעד חיסכון בית 2', 100000, 'cccccccc-cccc-cccc-cccc-cccccccccccc');
 
+-- Migration 007 (planned_obligations) fixtures — a Household-2 row is
+-- required for every cross-household isolation assertion below to be
+-- non-vacuous, same reasoning as every other financial table above.
+INSERT INTO planned_obligations (id, household_id, name, amount_agorot, due_date, category_id, account_id, status, created_by) VALUES
+  ('58000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'ארנונה בית 1', 180000, '2026-09-10', '5c000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'upcoming', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('58000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'ארנונה בית 2', 190000, '2026-09-10', '5c000000-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000002', 'upcoming', 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
 DO $$ BEGIN RAISE NOTICE '=== fixtures loaded (incl. Milestone 6 financial fixtures, both households) ==='; END $$;
 
 -- ============================================================================
@@ -1538,6 +1545,264 @@ BEGIN
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_d2_19;
+
+-- ============================================================================
+-- Migration 007 — OBLIGATIONS.*: planned_obligations RLS, D2 coherence,
+-- CHECK constraints, and the leave_household()/delete_own_account()
+-- attribution-nulling addition. Grouped under its own namespace (same
+-- convention as SAVINGS.TRIGGER.* for migration 003) rather than
+-- interleaved into the 1.x/2.x/D2.x numbering above, since this table did
+-- not exist when those were numbered.
+-- ============================================================================
+
+-- OBLIGATIONS.ISOLATION.1: User A cannot SELECT Household 2 planned_obligations.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM planned_obligations WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.ISOLATION.1: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('OBLIGATIONS.ISOLATION.1', 'User A cannot SELECT Household 2 planned_obligations');
+END $$;
+RESET role;
+
+-- OBLIGATIONS.ISOLATION.2: User D (no household) SELECTs planned_obligations => 0 rows.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM planned_obligations;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.ISOLATION.2: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('OBLIGATIONS.ISOLATION.2', 'User D (no household) SELECTs planned_obligations => 0 rows');
+END $$;
+RESET role;
+
+-- OBLIGATIONS.INSERT.1 (positive): User A creates a Household 1 planned
+-- obligation with a household category/account => succeeds.
+SAVEPOINT sp_obl_insert_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, category_id, account_id, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'ביטוח רכב', 420000, '2026-11-15', '5c000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.INSERT.1: expected 1 row inserted, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.INSERT.1', 'a household member can create a planned obligation with a household category/account');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_insert_1;
+
+-- OBLIGATIONS.INSERT.2: User A attempts to INSERT with household_id =
+-- Household 2 (not a member) => rejected.
+SAVEPOINT sp_obl_insert_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, created_by)
+    VALUES ('22222222-2222-2222-2222-222222222222', 'התחזות לבית זר', 100000, '2026-11-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.INSERT.2: a non-member was able to create an obligation for Household 2';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.INSERT.2', 'a user cannot create a planned obligation for a household they do not belong to');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_insert_2;
+
+-- OBLIGATIONS.D2.1: category_id pointing at Household 2's custom category => rejected.
+SAVEPOINT sp_obl_d2_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, category_id, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'עם קטגוריה זרה', 100000, '2026-11-15', '5c000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.1: obligation with a cross-household category_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.1', 'planned_obligations.category_id pointing at another household''s category is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_1;
+
+-- OBLIGATIONS.D2.2 (positive): category_id pointing at a SYSTEM category (household_id IS NULL) => succeeds.
+SAVEPOINT sp_obl_d2_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_system_category_id UUID;
+BEGIN
+  SELECT id INTO v_system_category_id FROM categories WHERE household_id IS NULL LIMIT 1;
+  INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, category_id, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'עם קטגוריית מערכת', 100000, '2026-11-15', v_system_category_id, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.2: expected 1 row inserted referencing a system category, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.D2.2', 'planned_obligations.category_id can reference a system category');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_2;
+
+-- OBLIGATIONS.D2.3: account_id pointing at Household 2's account => rejected.
+SAVEPOINT sp_obl_d2_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, account_id, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'עם חשבון זר', 100000, '2026-11-15', '5a000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.3: obligation with a cross-household account_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.3', 'planned_obligations.account_id pointing at another household''s account is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_3;
+
+-- OBLIGATIONS.D2.4: created_by set to a different user on INSERT => rejected (must equal auth.uid()).
+SAVEPOINT sp_obl_d2_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'עם created_by זר', 100000, '2026-11-15', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.4: User A inserted an obligation attributed to User B';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.4', 'planned_obligations.created_by must equal the inserting user on INSERT');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_4;
+
+-- OBLIGATIONS.UPDATE.1 (co-editing): User B (partner, did not create the
+-- fixture obligation) marks the Household 1 obligation as completed => succeeds.
+SAVEPOINT sp_obl_update_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE planned_obligations SET status = 'completed' WHERE id = '58000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.UPDATE.1: expected 1 row updated, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.UPDATE.1', 'any household member can mark an obligation completed, including one they did not create');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_update_1;
+
+-- OBLIGATIONS.DELETE.1: any household member can delete a planned obligation.
+SAVEPOINT sp_obl_delete_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  DELETE FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.DELETE.1: expected 1 row deleted, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.DELETE.1', 'any household member can delete a planned obligation, including one they did not create');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_delete_1;
+
+-- OBLIGATIONS.CHECK.1: amount_agorot <= 0 => rejected by the CHECK constraint.
+SAVEPOINT sp_obl_check_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'סכום שגוי', 0, '2026-11-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.CHECK.1: a zero amount_agorot was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('OBLIGATIONS.CHECK.1', 'amount_agorot <= 0 is rejected by the CHECK constraint');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_check_1;
+
+-- OBLIGATIONS.CHECK.2: an invalid status value => rejected by the CHECK constraint.
+SAVEPOINT sp_obl_check_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, status, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'סטטוס שגוי', 100000, '2026-11-15', 'not_a_real_status', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.CHECK.2: an invalid status value was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('OBLIGATIONS.CHECK.2', 'an invalid status value is rejected by the CHECK constraint');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_check_2;
+
+-- OBLIGATIONS.CHECK.3 (positive): status = 'cancelled' is accepted (the
+-- optional third status the task names alongside upcoming/completed).
+SAVEPOINT sp_obl_check_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, status, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'מבוטל', 100000, '2026-11-15', 'cancelled', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.CHECK.3: expected 1 row inserted with status=cancelled, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.CHECK.3', 'status=cancelled is a valid, accepted value');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_check_3;
+
+-- OBLIGATIONS.LEAVE.1: proves migration 007's addition to leave_household()
+-- actually nulls planned_obligations.created_by for a departing member of a
+-- CONTINUING (multi-member) household — the one branch with no auth.users
+-- deletion to fall back on. User B leaves Household 1 (User A remains); the
+-- fixture obligation was created by User A, so this exercises "some other
+-- member's row is untouched" implicitly, and a fresh row created by B
+-- (inserted here, inside this same savepoint, so it exists to null) proves
+-- the actual nulling.
+SAVEPOINT sp_obl_leave_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO planned_obligations (id, household_id, name, amount_agorot, due_date, created_by)
+  VALUES ('58000000-0000-0000-0000-000000000099', '11111111-1111-1111-1111-111111111111', 'התחייבות של B', 50000, '2026-11-15', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+END $$;
+
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.LEAVE.1: expected ok:true for User B leaving Household 1, got %', v_result;
+  END IF;
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_created_by UUID;
+BEGIN
+  SELECT created_by INTO v_created_by
+  FROM planned_obligations
+  WHERE id = '58000000-0000-0000-0000-000000000099';
+  IF v_created_by IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.LEAVE.1: expected created_by to be nulled after the creator left the household, got %', v_created_by;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.LEAVE.1', 'leave_household() nulls planned_obligations.created_by for the departing member''s own rows, keeping the household''s data intact');
+END $$;
+ROLLBACK TO SAVEPOINT sp_obl_leave_1;
 
 -- ============================================================================
 -- Financial visibility matrix (M6 plan §6a) — is_shared/created_by/payer_id
