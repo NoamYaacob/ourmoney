@@ -1698,6 +1698,28 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_obl_update_1;
 
+-- OBLIGATIONS.D2.UPDATE: User A attempts to UPDATE the Household 1 fixture
+-- obligation's category_id to point at Household 2's custom category =>
+-- rejected. The UPDATE policy's WITH CHECK coherence clause is textually
+-- identical to INSERT's (OBLIGATIONS.D2.1 covers the INSERT leg) — this
+-- proves it also actually applies on UPDATE, not just at row-creation time.
+SAVEPOINT sp_obl_d2_update;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    UPDATE planned_obligations
+    SET category_id = '5c000000-0000-0000-0000-000000000002'
+    WHERE id = '58000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.UPDATE: UPDATE to a cross-household category_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.UPDATE', 'planned_obligations_update rejects a category_id UPDATE pointing at another household''s category, not just on INSERT');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_update;
+
 -- OBLIGATIONS.DELETE.1: any household member can delete a planned obligation.
 SAVEPOINT sp_obl_delete_1;
 SET LOCAL role = authenticated;

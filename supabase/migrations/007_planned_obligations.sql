@@ -195,9 +195,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON planned_obligations TO authenticated;
 -- FALSE forever" freeze migration 004 Part 2 fixed everywhere else if this
 -- table's own planned_obligations_update policy is ever tightened to rely
 -- on it more strictly than the already-permissive IS NULL branch above.
--- Copied verbatim from migration 005 with exactly one added statement (the
--- new UPDATE planned_obligations block, placed immediately after the
--- existing UPDATE savings_goals block) — every other line is unchanged.
+-- Every executable statement is unchanged from migration 005's version,
+-- with exactly one added statement (the new UPDATE planned_obligations
+-- block, placed immediately after the existing UPDATE savings_goals
+-- block) — confirmed by diffing this function body against migration
+-- 005's. Some of migration 005's own inline comments (e.g. the "Safe to
+-- read without a lock" and "FOR UPDATE is required, not optional" notes)
+-- are not repeated here to keep this addition focused; see migration
+-- 005's file for that reasoning, which still applies unchanged.
 -- Migrations are immutable in this project's convention; re-creating the
 -- function here (not editing migration 005's file) is the established way
 -- to widen it, exactly as migration 005 itself did to migration 004's
@@ -321,10 +326,11 @@ GRANT EXECUTE ON FUNCTION leave_household() TO authenticated;
 -- removed for it. Added here to match that established, deliberate
 -- redundancy rather than make planned_obligations the one table this
 -- function treats differently from its six siblings and from
--- leave_household() above. Copied verbatim from migration 005 with exactly
--- one added statement (the new UPDATE planned_obligations block, placed
--- immediately after the existing UPDATE savings_goals block) — every other
--- line is unchanged.
+-- leave_household() above. Every executable statement is unchanged from
+-- migration 005's version, with exactly one added statement (the new
+-- UPDATE planned_obligations block, placed immediately after the existing
+-- UPDATE savings_goals block) — confirmed by diffing this function body
+-- against migration 005's.
 CREATE OR REPLACE FUNCTION delete_own_account()
 RETURNS JSONB
 LANGUAGE plpgsql
