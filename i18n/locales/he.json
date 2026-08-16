@@ -56,6 +56,20 @@
       "clear": "ניקוי סינון",
       "resultCount": "{{count}} תנועות"
     },
+    "selection": {
+      "enterButton": "בחירה",
+      "selectedCount": "{{count}} נבחרו",
+      "selectAll": "בחר הכל",
+      "deselectAll": "נקה בחירה",
+      "cancel": "בטל",
+      "changeCategoryButton": "שינוי קטגוריה",
+      "rowLabel": "{{description}}, {{state}}",
+      "selected": "נבחר",
+      "notSelected": "לא נבחר",
+      "successMessage": "{{count}} תנועות עודכנו לקטגוריה החדשה",
+      "partialMessage": "{{updated}} מתוך {{total}} תנועות עודכנו. השאר נשארו מסומנים — נסו שוב",
+      "errorMessage": "עדכון הקטגוריה נכשל. נסו שוב"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "התנועה לא נמצאה"

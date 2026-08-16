@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { FlatList, Pressable, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
@@ -8,6 +9,7 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
+import { useBulkUpdateTransactionCategory } from '@/features/transactions/hooks/useBulkUpdateTransactionCategory'
 import {
   buildTransactionQueryFilters,
   DEFAULT_TRANSACTION_FILTER_STATE,
@@ -20,16 +22,19 @@ import {
   type TransactionSharedFilter,
 } from '@/features/transactions/lib/transactionFilters'
 import { TRANSACTION_PERIODS, type TransactionPeriod } from '@/features/transactions/lib/transactionPeriod'
+import { intersectWithVisible, selectAllVisible, toggleSelection } from '@/features/transactions/lib/transactionSelection'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { formatILS } from '@/lib/money/format'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
+import { HIT_SLOP } from '@/constants/accessibility'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
+import { Button } from '@/components/ui/Button'
 import { FAB } from '@/components/ui/FAB'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
@@ -45,11 +50,20 @@ export default function Transactions() {
   const { user } = useAuth()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
+  const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
   const categoryNameById = Object.fromEntries(categories.map((c) => [c.id, c.name_he]))
   const categoryIconById = Object.fromEntries(categories.map((c) => [c.id, c.icon]))
+
+  // Bulk categorization selection mode — plain component state, not route
+  // params like the filter state: selection is ephemeral UI state with no
+  // reason to survive navigation or be shareable/bookmarkable.
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkResultMessage, setBulkResultMessage] = useState<string | null>(null)
+  const bulkUpdateCategory = useBulkUpdateTransactionCategory(householdId)
 
   // Filter state lives on the route itself (query params), not component
   // state — this is what survives Transactions -> Transaction Detail ->
@@ -66,6 +80,29 @@ export default function Transactions() {
   }>()
   // Cheap (a handful of string comparisons) — no memo needed.
   const filterState = parseTransactionFilterParams(rawParams)
+
+  // Selection semantics with filters (chosen policy, documented): clear the
+  // entire selection whenever any filter/search dimension changes, rather
+  // than trying to reconcile "keep ids still present." Reconciling
+  // correctly requires the visible-set-changed detection to be exhaustive
+  // (every filter dimension, every edge case) — a single bug there would
+  // silently let a stale, no-longer-visible id survive selected, which is
+  // exactly the "hidden dangerous selection" this milestone says to avoid.
+  // Clearing outright can never have that failure mode.
+  //
+  // Adjusted during rendering, not useEffect — the same one-time/guarded
+  // "adjust state in response to a changed signal" pattern already
+  // established in this codebase (transactions/[id].tsx's
+  // loadedTransactionId guard, settings/categories.tsx's
+  // consumedEditRuleId guard), which is also what this codebase's React
+  // Compiler lint rule (react-hooks/set-state-in-effect) requires instead
+  // of a synchronous setState inside a useEffect body.
+  const filterSignature = `${filterState.search}|${filterState.period}|${filterState.accountId}|${filterState.categoryId}|${filterState.type}|${filterState.shared}`
+  const [lastFilterSignature, setLastFilterSignature] = useState(filterSignature)
+  if (filterSignature !== lastFilterSignature) {
+    setLastFilterSignature(filterSignature)
+    if (selectedIds.size > 0) setSelectedIds(new Set())
+  }
 
   function updateFilters(partial: Partial<TransactionFilterState>) {
     const next: TransactionFilterState = { ...filterState, ...partial }
@@ -105,6 +142,72 @@ export default function Transactions() {
     { search: filterState.search, type: filterState.type },
     categoryNameById
   )
+
+  const visibleIds = filteredTransactions.map((t) => t.id)
+
+  function handleEnterSelectionMode() {
+    setBulkResultMessage(null)
+    setIsSelectionMode(true)
+    // Deliberately does not select anything — entering selection mode is
+    // never itself a selecting action.
+  }
+
+  function handleCancelSelection() {
+    setIsSelectionMode(false)
+    setSelectedIds(new Set())
+    setBulkResultMessage(null)
+  }
+
+  function handleSelectAll() {
+    setSelectedIds(selectAllVisible(visibleIds))
+  }
+
+  function handleDeselectAll() {
+    setSelectedIds(new Set())
+  }
+
+  function handleToggleRow(id: string) {
+    setSelectedIds((prev) => toggleSelection(prev, id))
+  }
+
+  async function handleBulkCategoryChange(value: string) {
+    if (!householdId || bulkUpdateCategory.isPending) return
+    const categoryId = value === 'uncategorized' ? null : value
+    // Belt-and-suspenders on top of the reconciliation effect above: the
+    // actual write only ever targets ids that are ALSO in the current
+    // filtered result set, computed at the exact moment of submission —
+    // see intersectWithVisible's own header comment.
+    const idsToUpdate = intersectWithVisible(selectedIds, visibleIds)
+    if (idsToUpdate.length === 0) return
+
+    setBulkResultMessage(null)
+    try {
+      const result = await bulkUpdateCategory.mutateAsync({ householdId, transactionIds: idsToUpdate, categoryId })
+      if (result.missingIds.length === 0) {
+        setBulkResultMessage(t('transactions.selection.successMessage', { count: result.updatedIds.length }))
+        setSelectedIds(new Set())
+        setIsSelectionMode(false)
+      } else {
+        // Failed rows must not disappear from selection as if they
+        // succeeded — only the confirmed-updated ids are cleared;
+        // everything the UPDATE didn't touch stays selected so the user
+        // can see exactly what's left and retry.
+        setBulkResultMessage(
+          t('transactions.selection.partialMessage', { updated: result.updatedIds.length, total: idsToUpdate.length })
+        )
+        setSelectedIds(new Set(result.missingIds))
+      }
+    } catch {
+      // The whole atomic UPDATE statement failed — nothing changed, so the
+      // full original selection is left exactly as it was (not cleared).
+      setBulkResultMessage(t('transactions.selection.errorMessage'))
+    }
+  }
+
+  const bulkCategoryOptions = [
+    { value: 'uncategorized', label: t('transactions.filters.uncategorized') },
+    ...categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) })),
+  ]
 
   const isFilterActive = !isDefaultTransactionFilterState(filterState)
   // "True empty" (household has never had a transaction, ignoring
@@ -220,19 +323,83 @@ export default function Transactions() {
         ))}
       </View>
 
-      {!isPageLoading && !error && (
+      {!isPageLoading && !error && !isSelectionMode && (
         <View className="mb-4 flex-row items-center justify-between web:flex-row-reverse">
           <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.filters.resultCount', { count: filteredTransactions.length })}
           </Text>
-          {isFilterActive && (
-            <Pressable onPress={clearFilters} accessibilityRole="button">
+          <View className="flex-row items-center gap-3">
+            {isFilterActive && (
+              <Pressable onPress={clearFilters} accessibilityRole="button">
+                <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                  {t('transactions.filters.clear')}
+                </Text>
+              </Pressable>
+            )}
+            {filteredTransactions.length > 0 && (
+              <Pressable onPress={handleEnterSelectionMode} accessibilityRole="button" hitSlop={HIT_SLOP}>
+                <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                  {t('transactions.selection.enterButton')}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+
+      {isSelectionMode && (
+        <View className="mb-4">
+          <View className="mb-2 flex-row items-center justify-between web:flex-row-reverse">
+            <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
+              {t('transactions.selection.selectedCount', { count: selectedIds.size })}
+            </Text>
+            <Pressable onPress={handleCancelSelection} accessibilityRole="button" hitSlop={HIT_SLOP}>
               <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
-                {t('transactions.filters.clear')}
+                {t('transactions.selection.cancel')}
               </Text>
             </Pressable>
+          </View>
+
+          <View className="flex-row flex-wrap items-center gap-3">
+            <Pressable onPress={handleSelectAll} accessibilityRole="button" hitSlop={HIT_SLOP}>
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('transactions.selection.selectAll')}
+              </Text>
+            </Pressable>
+            <Pressable onPress={handleDeselectAll} accessibilityRole="button" hitSlop={HIT_SLOP}>
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('transactions.selection.deselectAll')}
+              </Text>
+            </Pressable>
+          </View>
+
+          {selectedIds.size > 0 && (
+            <View className="mt-3">
+              {bulkUpdateCategory.isPending ? (
+                <Button title={t('transactions.selection.changeCategoryButton')} loading disabled onPress={() => {}} />
+              ) : (
+                <Select
+                  variant="box"
+                  label={t('transactions.selection.changeCategoryButton')}
+                  options={bulkCategoryOptions}
+                  value={null}
+                  onChange={(value) => void handleBulkCategoryChange(value)}
+                  placeholder={t('transactions.form.categoryPlaceholder')}
+                  sheetTitle={t('transactions.form.categorySheetTitle')}
+                />
+              )}
+            </View>
           )}
         </View>
+      )}
+
+      {/* Deliberately rendered outside the isSelectionMode block above: a
+          fully-successful bulk update exits selection mode as part of the
+          same state change that produces this message, so gating the
+          message on isSelectionMode would hide it at the exact moment it
+          needs to be seen. */}
+      {bulkResultMessage && (
+        <Text className="mb-4 text-caption text-inkMuted-light dark:text-inkMuted-dark">{bulkResultMessage}</Text>
       )}
 
       {error ? (
@@ -291,10 +458,36 @@ export default function Transactions() {
           ItemSeparatorComponent={() => <View className="h-2" />}
           renderItem={({ item }) => {
             const categoryName = item.category_id ? categoryNameById[item.category_id] : undefined
+            const isSelected = selectedIds.has(item.id)
             return (
-              <Pressable onPress={() => router.push(`/transactions/${item.id}`)} accessibilityRole="button">
-                <Card>
+              <Pressable
+                onPress={() => (isSelectionMode ? handleToggleRow(item.id) : router.push(`/transactions/${item.id}`))}
+                accessibilityRole={isSelectionMode ? 'checkbox' : 'button'}
+                accessibilityState={isSelectionMode ? { checked: isSelected } : undefined}
+                accessibilityLabel={
+                  isSelectionMode
+                    ? t('transactions.selection.rowLabel', {
+                        description: item.description,
+                        state: isSelected ? t('transactions.selection.selected') : t('transactions.selection.notSelected'),
+                      })
+                    : undefined
+                }
+              >
+                <Card
+                  className={
+                    isSelectionMode && isSelected
+                      ? 'rounded-card border-2 border-accent-light bg-surfaceMuted-light p-3 dark:border-accent-dark dark:bg-surfaceMuted-dark'
+                      : undefined
+                  }
+                >
                   <View className="flex-row items-center gap-3">
+                    {isSelectionMode && (
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={22}
+                        color={isSelected ? accentColor : mutedColor}
+                      />
+                    )}
                     <CategoryIcon icon={item.category_id ? categoryIconById[item.category_id] : undefined} size="sm" />
                     <View className="flex-1">
                       <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>

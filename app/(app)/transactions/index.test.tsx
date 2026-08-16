@@ -48,6 +48,12 @@ jest.mock('@/features/transactions/hooks/useTransactions', () => ({
   useTransactions: (...args: unknown[]) => mockUseTransactions(...args),
 }))
 
+const mockBulkMutateAsync = jest.fn<(...args: unknown[]) => Promise<{ updatedIds: string[]; missingIds: string[] }>>()
+let mockBulkIsPending = false
+jest.mock('@/features/transactions/hooks/useBulkUpdateTransactionCategory', () => ({
+  useBulkUpdateTransactionCategory: () => ({ mutateAsync: mockBulkMutateAsync, isPending: mockBulkIsPending }),
+}))
+
 // Climbs from a node up to the nearest ancestor whose className contains
 // `marker`, rather than a fixed number of `.parent` hops — resilient to the
 // exact wrapper nesting between the queried text and the element under test.
@@ -64,6 +70,9 @@ describe('Transactions list', () => {
     mockSearchParams = {}
     mockSetParams.mockClear()
     mockPush.mockClear()
+    mockBulkMutateAsync.mockClear()
+    mockBulkMutateAsync.mockResolvedValue({ updatedIds: [], missingIds: [] })
+    mockBulkIsPending = false
   })
 
   it('shows the empty message and exactly one add-transaction CTA (the floating action, not a duplicate button)', async () => {
@@ -413,6 +422,219 @@ describe('Transactions list', () => {
 
       expect(getByText('קניות בסופר')).toBeTruthy()
       expect(getByText('לא נכלל בתקציב')).toBeTruthy()
+    })
+  })
+
+  describe('bulk categorization / selection mode', () => {
+    const TXN_1 = { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false }
+    const TXN_2 = { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false }
+
+    it('does not select anything when entering selection mode', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+
+      expect(getByText('0 נבחרו')).toBeTruthy()
+      expect(queryByText('שינוי קטגוריה')).toBeNull() // no selection yet -> bulk action not offered
+    })
+
+    it('selecting one row updates the selected count', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('קניות בסופר'))
+
+      expect(getByText('1 נבחרו')).toBeTruthy()
+    })
+
+    it('pressing an already-selected row deselects it', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('קניות בסופר'))
+      expect(getByText('1 נבחרו')).toBeTruthy()
+
+      await fireEvent.press(getByText('קניות בסופר'))
+      expect(getByText('0 נבחרו')).toBeTruthy()
+    })
+
+    it('"select all" selects every currently visible (filtered) transaction', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+
+      expect(getByText('2 נבחרו')).toBeTruthy()
+    })
+
+    it('"deselect all" clears the selection but stays in selection mode', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+      await fireEvent.press(getByText('נקה בחירה'))
+
+      expect(getByText('0 נבחרו')).toBeTruthy()
+      // Still in selection mode — the "בחירה" entry point is gone, "בטל" is present.
+      expect(queryByText('בחירה')).toBeNull()
+      expect(getByText('בטל')).toBeTruthy()
+    })
+
+    it('"בטל" (cancel) exits selection mode and clears the selection, restoring normal row navigation', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+      await fireEvent.press(getByText('בטל'))
+
+      expect(queryByText('0 נבחרו')).toBeNull()
+      expect(queryByText('בטל')).toBeNull()
+      expect(getByText('בחירה')).toBeTruthy() // back to the entry point
+
+      await fireEvent.press(getByText('קניות בסופר'))
+      expect(mockPush).toHaveBeenCalledWith('/transactions/t1') // normal navigation restored
+    })
+
+    it('changing a filter while selection mode is active clears the selection (documented safe behavior)', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText, rerender } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+      expect(getByText('2 נבחרו')).toBeTruthy()
+
+      // Simulate a filter change: the route param changes and the screen
+      // re-renders with a narrower visible set — exactly what happens when
+      // the user picks a different filter while selection mode is active.
+      mockSearchParams = { type: 'expense' }
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      await rerender(<Transactions />)
+
+      expect(getByText('0 נבחרו')).toBeTruthy()
+    })
+
+    it('bulk-categorizing updates only the selected transactions, sending exactly those ids', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1'], missingIds: [] })
+
+      const { getByText, getByRole } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('קניות בסופר')) // select only t1, not t2
+
+      await fireEvent.press(getByRole('button', { name: 'שינוי קטגוריה' }))
+      await fireEvent.press(getByText('מזון'))
+
+      expect(mockBulkMutateAsync).toHaveBeenCalledWith({
+        householdId: 'household-1',
+        transactionIds: ['t1'],
+        categoryId: 'cat-1',
+      })
+    })
+
+    it('supports assigning "ללא קטגוריה" (uncategorized) as the bulk target', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1'], missingIds: [] })
+
+      const { getByText, getByRole } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('קניות בסופר'))
+      await fireEvent.press(getByRole('button', { name: 'שינוי קטגוריה' }))
+      await fireEvent.press(getByText('ללא קטגוריה'))
+
+      expect(mockBulkMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ categoryId: null })
+      )
+    })
+
+    it('shows a success message and exits selection mode when every selected row updates', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1', 't2'], missingIds: [] })
+
+      const { getByText, getByRole, queryByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+      await fireEvent.press(getByRole('button', { name: 'שינוי קטגוריה' }))
+      await fireEvent.press(getByText('מזון'))
+
+      expect(getByText('2 תנועות עודכנו לקטגוריה החדשה')).toBeTruthy()
+      expect(queryByText('בטל')).toBeNull() // selection mode exited
+    })
+
+    it('partial success keeps only the not-updated rows selected and shows a partial message (failed rows do not vanish from selection)', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1'], missingIds: ['t2'] })
+
+      const { getByText, getByRole } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+      await fireEvent.press(getByRole('button', { name: 'שינוי קטגוריה' }))
+      await fireEvent.press(getByText('מזון'))
+
+      expect(getByText('1 מתוך 2 תנועות עודכנו. השאר נשארו מסומנים — נסו שוב')).toBeTruthy()
+      // Still in selection mode with exactly the un-updated row selected.
+      expect(getByText('1 נבחרו')).toBeTruthy()
+      expect(getByText('בטל')).toBeTruthy()
+    })
+
+    it('treats a thrown error as a total failure — the full original selection is preserved, not cleared', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockBulkMutateAsync.mockRejectedValue(new Error('network error'))
+
+      const { getByText, getByRole } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+      await fireEvent.press(getByRole('button', { name: 'שינוי קטגוריה' }))
+      await fireEvent.press(getByText('מזון'))
+
+      expect(getByText('עדכון הקטגוריה נכשל. נסו שוב')).toBeTruthy()
+      expect(getByText('2 נבחרו')).toBeTruthy() // nothing was cleared
+    })
+
+    it('shows a disabled loading control instead of the category picker while a bulk update is in flight (double-submit protection)', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockBulkIsPending = true
+
+      const { getByText, queryByRole } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('קניות בסופר'))
+
+      // The category-picking trigger itself is not interactable while pending.
+      expect(queryByRole('button', { name: 'שינוי קטגוריה' })).toBeNull()
+    })
+
+    it('gives a selected row a non-color-only, screen-reader-visible selected state (accessibilityRole/State, not color alone)', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+
+      const { getByText, getByLabelText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('קניות בסופר'))
+
+      const row = getByLabelText('קניות בסופר, נבחר')
+      expect(row.props.accessibilityRole).toBe('checkbox')
+      expect(row.props.accessibilityState).toEqual({ checked: true })
+    })
+
+    it('an unselected row in selection mode is labeled and stated as not selected', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+
+      const { getByText, getByLabelText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+
+      const row = getByLabelText('קניות בסופר, לא נבחר')
+      expect(row.props.accessibilityState).toEqual({ checked: false })
+    })
+
+    it('the selection entry point is hidden while there is nothing to select', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { queryByText } = await render(<Transactions />)
+      expect(queryByText('בחירה')).toBeNull()
     })
   })
 })
