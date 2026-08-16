@@ -51,12 +51,22 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+// Mutable per-test (like mockUncategorized below) so the "categories query
+// still loading" race (qa-adversarial-reviewer finding) can be exercised
+// from the same mocked module: useCategories() resolves to `categories: []`
+// both while genuinely still loading AND once a household with zero active
+// categories has loaded, indistinguishable from the categories array alone
+// — isCategoriesLoading is what the screen must key off instead.
+let mockCategoriesLoading = false
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({
-    categories: [
-      { id: 'cat-1', name_he: 'מזון', icon: '🍔' },
-      { id: 'cat-2', name_he: 'תחבורה', icon: '🚌' },
-    ],
+    categories: mockCategoriesLoading
+      ? []
+      : [
+          { id: 'cat-1', name_he: 'מזון', icon: '🍔' },
+          { id: 'cat-2', name_he: 'תחבורה', icon: '🚌' },
+        ],
+    isLoading: mockCategoriesLoading,
   }),
 }))
 
@@ -159,6 +169,7 @@ describe('Budgets', () => {
     usePeriodStore.setState({ selectedPeriodStart: TARGET_PERIOD_START })
     mockUncategorized = []
     mockUncategorizedError = null
+    mockCategoriesLoading = false
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
@@ -330,6 +341,7 @@ describe('Budgets — copy previous month budget', () => {
     usePeriodStore.setState({ selectedPeriodStart: TARGET_PERIOD_START })
     mockUncategorized = []
     mockUncategorizedError = null
+    mockCategoriesLoading = false
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
@@ -361,6 +373,19 @@ describe('Budgets — copy previous month budget', () => {
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? EMPTY_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
+    const { queryByText } = await render(<Budgets />)
+    expect(queryByText(actionButtonLabel())).toBeNull()
+  })
+
+  // qa-adversarial-reviewer finding: useCategories() also resolves to
+  // categories: [] while its own query is still in flight — indistinguishable
+  // from a household with genuinely zero active categories. Without gating
+  // on its isLoading, every previous-month category would look "no longer
+  // valid" during that window and get silently reported as skipped instead
+  // of offered for copy. The action must stay hidden (not show a false
+  // skipped-category state) until categories has actually resolved.
+  it('hides the copy action while categories are still loading, rather than falsely reporting every category as skipped', async () => {
+    mockCategoriesLoading = true
     const { queryByText } = await render(<Budgets />)
     expect(queryByText(actionButtonLabel())).toBeNull()
   })
@@ -450,6 +475,62 @@ describe('Budgets — copy previous month budget', () => {
     )
     expect(variables.allocations).toHaveLength(2)
     expect(getByText(i18n.t('budgets.copyPrevious.successMessage'))).toBeTruthy()
+  })
+
+  // qa-adversarial-reviewer finding: none of the other copy tests ever make
+  // refetch() resolve with data that actually differs from the stale
+  // `progress` closure, so they can't tell a real "refetch fresh data
+  // before building the payload" implementation apart from one that just
+  // reuses the stale cache and ignores the refetch result entirely. This
+  // reproduces the exact scenario handleConfirmCopyBudget's own comment
+  // describes: household member B's screen is showing a stale target-month
+  // allocation set (only cat-1) while member A has already concurrently
+  // added cat-3 to the same month server-side. The refetch that runs right
+  // before the copy payload is built picks that up. If the payload were
+  // ever built from the stale `progress` closure instead of the refetch
+  // result, cat-3 would be silently dropped from the true-replace payload
+  // sent to save_budget_allocations — deleting A's concurrent allocation.
+  it('builds the copy payload from the freshly-refetched target month, not the stale cache, so a concurrent partner edit is preserved', async () => {
+    const freshTargetWithConcurrentEdit: BudgetCategoryProgress[] = [
+      ...PROGRESS,
+      {
+        categoryId: 'cat-3',
+        categoryNameHe: 'concurrent',
+        categoryIcon: '💡',
+        allocatedAgorot: 77700,
+        spentAgorot: 0,
+        remainingAgorot: 77700,
+        percentSpent: 0,
+      },
+    ]
+    const refetchWithConcurrentEdit = jest
+      .fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>()
+      .mockResolvedValue({ data: { categories: freshTargetWithConcurrentEdit } })
+
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+        : // `categories` here is deliberately the STALE set (just cat-1, no
+          // cat-3) — exactly like a screen that hasn't re-rendered since
+          // member A's concurrent write. Only `refetch()` knows about cat-3.
+          { ...DEFAULT_PROGRESS_RESULT, refetch: refetchWithConcurrentEdit }
+    )
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+    await fireEvent.press(getByText(confirmLabel()))
+
+    expect(refetchWithConcurrentEdit).toHaveBeenCalledTimes(1)
+    expect(mockSaveAllocationsMutate).toHaveBeenCalledTimes(1)
+    const [variables] = mockSaveAllocationsMutate.mock.calls[0] as [{ periodStart: string; allocations: unknown[] }]
+    expect(variables.allocations).toEqual(
+      expect.arrayContaining([
+        { categoryId: 'cat-1', amountAgorot: 100000 }, // existing target allocation, unchanged
+        { categoryId: 'cat-3', amountAgorot: 77700 }, // member A's concurrent edit — must survive the true-replace payload
+        { categoryId: 'cat-2', amountAgorot: 50000 }, // copied from the previous month
+      ])
+    )
+    expect(variables.allocations).toHaveLength(3)
   })
 
   it('shows an error and keeps the state safe when the write fails', async () => {

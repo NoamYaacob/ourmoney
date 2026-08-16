@@ -52,7 +52,7 @@ export default function Budgets() {
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { categories } = useCategories(householdId)
+  const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
   const {
@@ -174,7 +174,17 @@ export default function Budgets() {
   }))
   const targetAllocationsForCopy = progress.map((c) => ({ categoryId: c.categoryId, amountAgorot: c.allocatedAgorot }))
   const copyPlan = planCopyPreviousMonthBudget(previousAllocationsForCopy, targetAllocationsForCopy, validCategoryIds)
-  const canOfferCopyPreviousMonth = !isPreviousProgressLoading && previousAllocationsForCopy.length > 0
+  // categories must be loaded before validCategoryIds means anything —
+  // useCategories() resolves to [] both while its query is still pending
+  // AND when the household genuinely has zero active categories
+  // (features/categories/hooks/useCategories.ts), indistinguishable from
+  // inside this component. Without isCategoriesLoading here, a
+  // still-loading categories query would make every previous-month
+  // category look "no longer valid" and get silently reported as skipped
+  // instead of offered for copy (qa-adversarial-reviewer finding). Mirrors
+  // isHouseholdLoading's identical fold into `isLoading` above.
+  const canOfferCopyPreviousMonth =
+    !isPreviousProgressLoading && !isCategoriesLoading && previousAllocationsForCopy.length > 0
 
   async function handleConfirmCopyBudget() {
     if (isCopyingBudget) return
