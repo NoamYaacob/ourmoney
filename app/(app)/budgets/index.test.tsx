@@ -10,11 +10,21 @@
 //      "all categorized" success EmptyState as a genuinely empty queue.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
-import '@/i18n'
+import i18n from '@/i18n'
 import Budgets from './index'
 import { usePeriodStore } from '@/store/periodStore'
-import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
+import { formatMonthLabel, getCurrentMonthPeriodStart, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
+import type { BudgetCategoryProgress } from '@/types/app'
+
+interface MockBudgetProgressResult {
+  categories: BudgetCategoryProgress[]
+  totalAllocatedAgorot: number
+  totalSpentAgorot: number
+  isLoading: boolean
+  error: Error | null
+  refetch: () => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>
+}
 
 // Climbs from a section's title up to its panel wrapper by matching the
 // panel's own marker class, rather than a fixed number of `.parent` hops —
@@ -61,22 +71,72 @@ const PROGRESS = [
     percentSpent: 20,
   },
 ]
-const DEFAULT_PROGRESS_RESULT = {
+const DEFAULT_PROGRESS_RESULT: MockBudgetProgressResult = {
   categories: PROGRESS,
   totalAllocatedAgorot: 100000,
   totalSpentAgorot: 20000,
   isLoading: false,
-  error: null as Error | null,
-  refetch: jest.fn<() => Promise<{ data: { categories: typeof PROGRESS } }>>().mockResolvedValue({
+  error: null,
+  refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: PROGRESS },
   }),
 }
-const mockUseBudgetProgress = jest.fn()
+
+// Copy Previous Month Budget: the screen calls useBudgetProgress twice —
+// once for the displayed (target) month, once for the previous month. The
+// mock now branches on the periodStart argument instead of ignoring args,
+// so each call site can be controlled independently per test.
+const TARGET_PERIOD_START = getCurrentMonthPeriodStart()
+const PREVIOUS_PERIOD_START = shiftMonth(TARGET_PERIOD_START, -1)
+const PREVIOUS_PROGRESS = [
+  {
+    categoryId: 'cat-2',
+    categoryNameHe: 'תחבורה',
+    categoryIcon: '🚌',
+    allocatedAgorot: 50000,
+    spentAgorot: 0,
+    remainingAgorot: 50000,
+    percentSpent: 0,
+  },
+]
+const DEFAULT_PREVIOUS_PROGRESS_RESULT: MockBudgetProgressResult = {
+  categories: PREVIOUS_PROGRESS,
+  totalAllocatedAgorot: 50000,
+  totalSpentAgorot: 0,
+  isLoading: false,
+  error: null,
+  refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
+    data: { categories: PREVIOUS_PROGRESS },
+  }),
+}
+const EMPTY_PROGRESS_RESULT: MockBudgetProgressResult = {
+  categories: [],
+  totalAllocatedAgorot: 0,
+  totalSpentAgorot: 0,
+  isLoading: false,
+  error: null,
+  refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
+    data: { categories: [] },
+  }),
+}
+
+const mockUseBudgetProgress = jest.fn<(householdId: string, periodStart: string) => MockBudgetProgressResult>()
 jest.mock('@/features/budgets/hooks/useBudgetProgress', () => ({
-  useBudgetProgress: () => mockUseBudgetProgress(),
+  useBudgetProgress: (householdId: string, periodStart: string) => mockUseBudgetProgress(householdId, periodStart),
 }))
+
+// A fuller mutate mock than a plain jest.fn(): the copy-budget confirm flow
+// relies on the onSuccess/onError callbacks passed to mutate() actually
+// firing, the same way the real useMutation would. Defaults to succeeding
+// synchronously; individual tests override with mockImplementationOnce for
+// the failure/pending-write cases.
+const mockSaveAllocationsMutate = jest.fn(
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: () => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
 jest.mock('@/features/budgets/hooks/useSaveBudgetAllocations', () => ({
-  useSaveBudgetAllocations: () => ({ mutate: jest.fn(), isPending: false }),
+  useSaveBudgetAllocations: () => ({ mutate: mockSaveAllocationsMutate, isPending: false }),
 }))
 jest.mock('@/features/transactions/hooks/useUpdateTransaction', () => ({
   useUpdateTransaction: () => ({ mutate: jest.fn(), isPending: false }),
@@ -96,10 +156,13 @@ jest.mock('@/features/budgets/hooks/useUncategorizedTransactions', () => ({
 
 describe('Budgets', () => {
   beforeEach(() => {
-    usePeriodStore.setState({ selectedPeriodStart: getCurrentMonthPeriodStart() })
+    usePeriodStore.setState({ selectedPeriodStart: TARGET_PERIOD_START })
     mockUncategorized = []
     mockUncategorizedError = null
-    mockUseBudgetProgress.mockReturnValue(DEFAULT_PROGRESS_RESULT)
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+    mockSaveAllocationsMutate.mockClear()
   })
 
   it('re-shows the add-category control after navigating months while a category edit was open (was stuck hidden)', async () => {
@@ -178,10 +241,14 @@ describe('Budgets', () => {
   })
 
   it('shows an exceeded state for a category that has spent past its allocation', async () => {
-    mockUseBudgetProgress.mockReturnValue({
-      ...DEFAULT_PROGRESS_RESULT,
-      categories: [{ ...PROGRESS[0], spentAgorot: 120000, remainingAgorot: -20000, percentSpent: 120 }],
-    })
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+        : {
+            ...DEFAULT_PROGRESS_RESULT,
+            categories: [{ ...PROGRESS[0]!, spentAgorot: 120000, remainingAgorot: -20000, percentSpent: 120 }],
+          }
+    )
 
     const { getByText } = await render(<Budgets />)
 
@@ -189,12 +256,11 @@ describe('Budgets', () => {
   })
 
   it('shows a compact empty state when no categories have a budget yet', async () => {
-    mockUseBudgetProgress.mockReturnValue({
-      ...DEFAULT_PROGRESS_RESULT,
-      categories: [],
-      totalAllocatedAgorot: 0,
-      totalSpentAgorot: 0,
-    })
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+        : { ...DEFAULT_PROGRESS_RESULT, categories: [], totalAllocatedAgorot: 0, totalSpentAgorot: 0 }
+    )
 
     const { getAllByText } = await render(<Budgets />)
 
@@ -256,5 +322,179 @@ describe('Budgets', () => {
 
     expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
     expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
+  })
+})
+
+describe('Budgets — copy previous month budget', () => {
+  beforeEach(() => {
+    usePeriodStore.setState({ selectedPeriodStart: TARGET_PERIOD_START })
+    mockUncategorized = []
+    mockUncategorizedError = null
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+    mockSaveAllocationsMutate.mockClear()
+  })
+
+  const actionButtonLabel = () => i18n.t('budgets.copyPrevious.actionButton')
+  const confirmLabel = () => i18n.t('budgets.copyPrevious.confirm')
+
+  it('shows the copy-previous-month action when the previous month has allocations', async () => {
+    const { getByText } = await render(<Budgets />)
+    expect(getByText(actionButtonLabel())).toBeTruthy()
+  })
+
+  it('hides the copy action when there is no previous-month budget', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? EMPTY_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+    const { queryByText } = await render(<Budgets />)
+    expect(queryByText(actionButtonLabel())).toBeNull()
+  })
+
+  // useBudgetProgress resolves both "no budget row for last month" and "a
+  // budget row exists but every allocation was removed" to the same
+  // categories: [] shape (see index.tsx's comment on this) — a deliberate
+  // simplification, since both cases mean the same thing here: nothing to
+  // offer copying from.
+  it('hides the copy action when the previous month exists but has zero allocations', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? EMPTY_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+    const { queryByText } = await render(<Budgets />)
+    expect(queryByText(actionButtonLabel())).toBeNull()
+  })
+
+  it('lists every previous-month category to copy when the target month is empty', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : EMPTY_PROGRESS_RESULT
+    )
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+
+    expect(getByText('תחבורה')).toBeTruthy()
+    expect(getByText(formatILS(50000))).toBeTruthy()
+  })
+
+  it('preserves existing target-month allocations and only lists the missing categories to copy', async () => {
+    // Previous month has both cat-1 (food) and cat-2 (transport). Target
+    // month already has cat-1 — only cat-2 should show up as "to copy".
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? {
+            ...DEFAULT_PREVIOUS_PROGRESS_RESULT,
+            categories: [...PREVIOUS_PROGRESS, { ...PROGRESS[0]! }],
+          }
+        : DEFAULT_PROGRESS_RESULT
+    )
+    const { getByText, queryByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+
+    expect(getByText('תחבורה')).toBeTruthy()
+    expect(
+      queryByText(i18n.t('budgets.copyPrevious.alreadyExisting', { count: 1, toMonth: formatMonthLabel(TARGET_PERIOD_START) }))
+    ).toBeTruthy()
+  })
+
+  it('shows the exact required message when every previous-month category already exists in the target month', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+        : { ...DEFAULT_PROGRESS_RESULT, categories: [...PROGRESS, { ...PREVIOUS_PROGRESS[0]! }] }
+    )
+    const { getByText, queryByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+
+    expect(getByText('כל הקטגוריות מהחודש הקודם כבר קיימות בתקציב החודש')).toBeTruthy()
+    // Nothing to confirm — the confirm button is not offered at all.
+    expect(queryByText(confirmLabel())).toBeNull()
+  })
+
+  it('skips a previous-month category that no longer exists and reports it', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? {
+            ...DEFAULT_PREVIOUS_PROGRESS_RESULT,
+            categories: [...PREVIOUS_PROGRESS, { ...PREVIOUS_PROGRESS[0]!, categoryId: 'cat-deleted', categoryNameHe: 'ישן' }],
+          }
+        : EMPTY_PROGRESS_RESULT
+    )
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+
+    expect(getByText(i18n.t('budgets.copyPrevious.skippedDeleted', { count: 1 }))).toBeTruthy()
+    expect(getByText('תחבורה')).toBeTruthy()
+  })
+
+  it('writes only the target month, preserving existing allocations and copying exact previous-month amounts', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+    await fireEvent.press(getByText(confirmLabel()))
+
+    expect(mockSaveAllocationsMutate).toHaveBeenCalledTimes(1)
+    const [variables] = mockSaveAllocationsMutate.mock.calls[0] as [{ periodStart: string; allocations: unknown[] }]
+    expect(variables.periodStart).toBe(TARGET_PERIOD_START)
+    expect(variables.allocations).toEqual(
+      expect.arrayContaining([
+        { categoryId: 'cat-1', amountAgorot: 100000 }, // existing target allocation, unchanged
+        { categoryId: 'cat-2', amountAgorot: 50000 }, // copied from the previous month, exact agorot amount
+      ])
+    )
+    expect(variables.allocations).toHaveLength(2)
+    expect(getByText(i18n.t('budgets.copyPrevious.successMessage'))).toBeTruthy()
+  })
+
+  it('shows an error and keeps the state safe when the write fails', async () => {
+    mockSaveAllocationsMutate.mockImplementationOnce((_variables: unknown, callbacks?: { onError?: () => void }) => {
+      callbacks?.onError?.()
+    })
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+    await fireEvent.press(getByText(confirmLabel()))
+
+    expect(getByText('משהו השתבש. נסו שוב')).toBeTruthy()
+    // No false success — the modal stays open on failure.
+    expect(getByText(confirmLabel())).toBeTruthy()
+  })
+
+  it('prevents a double-submit while the copy write is in flight', async () => {
+    // A refetch that never resolves simulates a write still in progress —
+    // the confirm Button flips to its loading/disabled state and stays
+    // there, so a second tap on the same element must be a no-op.
+    const pendingRefetch = jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>(
+      () => new Promise(() => {})
+    )
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+        : { ...DEFAULT_PROGRESS_RESULT, refetch: pendingRefetch }
+    )
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+    const confirmButton = getByText(confirmLabel())
+    await fireEvent.press(confirmButton)
+    await fireEvent.press(confirmButton)
+
+    expect(pendingRefetch).toHaveBeenCalledTimes(1)
+    expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
+  })
+
+  it('cancelling the review step writes nothing', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(actionButtonLabel()))
+    await fireEvent.press(getByText(i18n.t('common.cancel')))
+
+    expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
   })
 })

@@ -21,6 +21,9 @@ import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useSaveBudgetAllocations } from '@/features/budgets/hooks/useSaveBudgetAllocations'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
+import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
+import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
+import { shiftMonth, formatMonthLabel } from '@/features/budgets/lib/budgetPeriod'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
 import { spentPercent } from '@/lib/money/arithmetic'
@@ -71,12 +74,28 @@ export default function Budgets() {
   } = useUncategorizedTransactions(householdId)
   const updateTransaction = useUpdateTransaction(householdId)
 
+  // Copy Previous Month Budget: a second, independent useBudgetProgress
+  // read targeting last month's period. useBudgetProgress can't tell "no
+  // budget row" apart from "budget row with zero allocations" (it always
+  // resolves to categories: []) — deliberately not distinguished here
+  // either, since both cases mean the same thing for this feature: nothing
+  // to offer copying from, so the action stays hidden (empty-state A).
+  const previousPeriodStart = shiftMonth(periodStart, -1)
+  const { categories: previousProgress, isLoading: isPreviousProgressLoading } = useBudgetProgress(
+    householdId,
+    previousPeriodStart
+  )
+
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingAmount, setEditingAmount] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isPreparingSave, setIsPreparingSave] = useState(false)
   const [assigningTxnId, setAssigningTxnId] = useState<string | null>(null)
   const [assignCategoryId, setAssignCategoryId] = useState<string | null>(null)
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false)
+  const [isCopyingBudget, setIsCopyingBudget] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
+  const [copySuccessMessage, setCopySuccessMessage] = useState<string | null>(null)
 
   // The edit form is keyed off editingCategoryId matching a category from
   // THIS month's `progress` list. Navigating the month without clearing it
@@ -90,6 +109,9 @@ export default function Budgets() {
     setPeriodStart(nextPeriodStart)
     setEditingCategoryId(null)
     setEditingAmount('')
+    setIsCopyModalOpen(false)
+    setCopyError(null)
+    setCopySuccessMessage(null)
   }
 
   // save_budget_allocations() uses true-replace semantics (D3): the payload
@@ -134,6 +156,60 @@ export default function Budgets() {
           setSaveError(null)
         },
         onError: () => setSaveError(t('budgets.errors.generic')),
+      }
+    )
+  }
+
+  // The plan shown in the review modal is built from ordinary (possibly
+  // slightly stale) cached data — it's an informational preview, not the
+  // write itself. handleConfirmCopyBudget recomputes this same plan
+  // against freshly-refetched target-month data immediately before
+  // writing, for the same concurrent-partner-edit reason documented on
+  // handleSaveAllocation above: a stale "missing categories" list could
+  // otherwise silently overwrite an allocation a partner just added.
+  const validCategoryIds = new Set(categories.map((c) => c.id))
+  const previousAllocationsForCopy = previousProgress.map((c) => ({
+    categoryId: c.categoryId,
+    amountAgorot: c.allocatedAgorot,
+  }))
+  const targetAllocationsForCopy = progress.map((c) => ({ categoryId: c.categoryId, amountAgorot: c.allocatedAgorot }))
+  const copyPlan = planCopyPreviousMonthBudget(previousAllocationsForCopy, targetAllocationsForCopy, validCategoryIds)
+  const canOfferCopyPreviousMonth = !isPreviousProgressLoading && previousAllocationsForCopy.length > 0
+
+  async function handleConfirmCopyBudget() {
+    if (isCopyingBudget) return
+    setIsCopyingBudget(true)
+    setCopyError(null)
+
+    const { data: freshData } = await refetchProgress()
+    const freshTargetAllocations = (freshData?.categories ?? progress).map((c) => ({
+      categoryId: c.categoryId,
+      amountAgorot: c.allocatedAgorot,
+    }))
+    const freshValidCategoryIds = new Set(categories.map((c) => c.id))
+    const freshPlan = planCopyPreviousMonthBudget(previousAllocationsForCopy, freshTargetAllocations, freshValidCategoryIds)
+
+    if (freshPlan.toCopy.length === 0) {
+      setIsCopyingBudget(false)
+      setIsCopyModalOpen(false)
+      setCopySuccessMessage(t('budgets.copyPrevious.nothingToCopy'))
+      return
+    }
+
+    const nextAllocations = [...freshTargetAllocations, ...freshPlan.toCopy]
+
+    saveAllocations.mutate(
+      { periodStart, allocations: nextAllocations },
+      {
+        onSuccess: () => {
+          setIsCopyingBudget(false)
+          setIsCopyModalOpen(false)
+          setCopySuccessMessage(t('budgets.copyPrevious.successMessage'))
+        },
+        onError: () => {
+          setIsCopyingBudget(false)
+          setCopyError(t('budgets.errors.generic'))
+        },
       }
     )
   }
@@ -239,7 +315,29 @@ export default function Budgets() {
               sliver rather than a deliberate region. */}
           <View className={DESKTOP_PANEL}>
           {/* Per-category allocation editor + progress */}
-          <DesktopPanelHeader icon="pie-chart-outline" title={t('budgets.categoriesTitle')} />
+          <DesktopPanelHeader
+            icon="pie-chart-outline"
+            title={t('budgets.categoriesTitle')}
+            action={
+              canOfferCopyPreviousMonth && (
+                <Pressable
+                  onPress={() => {
+                    setCopySuccessMessage(null)
+                    setCopyError(null)
+                    setIsCopyModalOpen(true)
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                    {t('budgets.copyPrevious.actionButton')}
+                  </Text>
+                </Pressable>
+              )
+            }
+          />
+          {copySuccessMessage && (
+            <Text className="mb-2 text-caption text-positive-light dark:text-positive-dark">{copySuccessMessage}</Text>
+          )}
           {progress.length === 0 ? (
             <>
               {/* Desktop polish pass: `compact` has no responsive variant —
@@ -449,6 +547,21 @@ export default function Budgets() {
           </View>
         </>
       )}
+
+      <CopyPreviousMonthBudgetModal
+        visible={isCopyModalOpen}
+        fromMonthLabel={formatMonthLabel(previousPeriodStart)}
+        toMonthLabel={formatMonthLabel(periodStart)}
+        plan={copyPlan}
+        categories={categories}
+        loading={isCopyingBudget}
+        onConfirm={() => void handleConfirmCopyBudget()}
+        onCancel={() => {
+          if (isCopyingBudget) return
+          setIsCopyModalOpen(false)
+        }}
+      />
+      {copyError && <ErrorMessage message={copyError} />}
     </Screen>
   )
 }

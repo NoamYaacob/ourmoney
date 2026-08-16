@@ -323,6 +323,17 @@
     "assignCategoryButton": "שיוך לקטגוריה",
     "assignCategoryLabel": "קטגוריה",
     "assignCategorySubmit": "שיוך",
+    "copyPrevious": {
+      "actionButton": "העתקת התקציב מהחודש הקודם",
+      "title": "העתקת תקציב מ{{fromMonth}}",
+      "subtitle": "התקציב של {{fromMonth}} יועתק לתקציב {{toMonth}}. תקציב {{fromMonth}} לא ישתנה.",
+      "toCopyTitle": "קטגוריות שיועתקו",
+      "alreadyExisting": "{{count}} קטגוריות כבר קיימות בתקציב {{toMonth}} ולא ישתנו",
+      "skippedDeleted": "{{count}} קטגוריות מהתקציב הקודם כבר לא קיימות ולא יועתקו",
+      "nothingToCopy": "כל הקטגוריות מהחודש הקודם כבר קיימות בתקציב החודש",
+      "confirm": "העתקת התקציב",
+      "successMessage": "התקציב הועתק בהצלחה"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
     }
