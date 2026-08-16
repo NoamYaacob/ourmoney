@@ -10,11 +10,13 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useCreateRecurringTransaction } from '@/features/recurring/hooks/useCreateRecurringTransaction'
+import { usePriceIncreaseDetections } from '@/features/recurring/hooks/usePriceIncreaseDetections'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
+import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
@@ -37,6 +39,7 @@ export default function Recurring() {
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const { recurringTransactions, isLoading: isRecurringLoading, error } = useRecurringTransactions(householdId)
   const createRecurring = useCreateRecurringTransaction(householdId)
+  const { detections: priceIncreaseDetections } = usePriceIncreaseDetections(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
 
@@ -104,6 +107,51 @@ export default function Recurring() {
   return (
     <Screen keyboardAvoiding width="wide">
       <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('recurring.title')}</Text>
+
+      {priceIncreaseDetections.length > 0 && (
+        <View className="mb-4 web:desktop:max-w-[600px]">
+          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
+            {t('recurring.priceIncrease.sectionTitle')}
+          </Text>
+          <Card>
+            {priceIncreaseDetections.map((d, index) => (
+              <View key={d.identityKey}>
+                {index > 0 && (
+                  <View className="my-3">
+                    <Divider />
+                  </View>
+                )}
+                <Pressable
+                  onPress={() =>
+                    d.recurringId
+                      ? router.push(`/recurring/${d.recurringId}`)
+                      : router.push(`/transactions/${d.currentTransactionId}`)
+                  }
+                  accessibilityRole="button"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-base text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {d.description}
+                    </Text>
+                    <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
+                      {t('recurring.priceIncrease.badge')}
+                    </Text>
+                  </View>
+                  <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                    {formatILS(d.previousAmountAgorot)} → {formatILS(d.currentAmountAgorot)}
+                  </Text>
+                  <Text className="mt-0.5 text-xs text-danger-light dark:text-danger-dark">
+                    {t('recurring.priceIncrease.increaseLine', {
+                      amount: formatILS(d.increaseAgorot),
+                      percent: d.increasePercent,
+                    })}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
 
       {error ? (
         <ErrorMessage message={t('recurring.errors.generic')} />

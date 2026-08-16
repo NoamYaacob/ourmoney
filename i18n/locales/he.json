@@ -205,6 +205,11 @@
     "addButton": "הוספת הוראת קבע",
     "nextDue": "תאריך הבא:",
     "inactive": "מושהית",
+    "priceIncrease": {
+      "sectionTitle": "עליות מחיר שזוהו",
+      "badge": "המחיר עלה",
+      "increaseLine": "עלייה של {{amount}} ({{percent}}%)"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "הוראת הקבע לא נמצאה"
