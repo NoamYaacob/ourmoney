@@ -58,7 +58,15 @@ export default function Dashboard() {
     periodStart,
   })
 
-  const recentTransactions = transactions.slice(0, 5)
+  // Migration 008 (ADR-035): a transfer's two legs share one description and
+  // would otherwise render here as two separate, mis-colored rows (one
+  // green like income, one plain like an expense) with no indication
+  // they're the same internal movement — excluded here the same way
+  // filterForAnalytics excludes them from every other summary on this
+  // screen, rather than teaching this compact preview the full
+  // transfer-specific row treatment app/(app)/transactions/index.tsx
+  // already owns (icon, accent color, single navigation target).
+  const recentTransactions = transactions.filter((t) => t.transfer_id === null).slice(0, 5)
 
   // Fixed at the 'month' horizon on the dashboard card — the detail screen
   // (/cash-flow) is where the household switches horizons. Deliberately
@@ -105,6 +113,7 @@ export default function Dashboard() {
     txnDate: t.txn_date,
     isShared: t.is_shared,
     isExcluded: t.is_excluded,
+    transferId: t.transfer_id,
   }))
   const monthlyTrendPoints = computeMonthlyTrend(analyticsInput, last6MonthStarts)
   const categoryBreakdown = computeCategoryBreakdown(analyticsInput, periodStart)

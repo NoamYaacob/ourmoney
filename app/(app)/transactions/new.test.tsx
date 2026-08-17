@@ -56,6 +56,17 @@ jest.mock('@/features/transactions/hooks/useCreateTransaction', () => ({
   useCreateTransaction: () => ({ mutate: mockCreateMutate, isPending: mockIsPending, isError: mockIsError }),
 }))
 
+const mockCreateTransferMutate = jest.fn()
+let mockTransferIsPending = false
+let mockTransferIsError = false
+jest.mock('@/features/transactions/hooks/useCreateTransfer', () => ({
+  useCreateTransfer: () => ({
+    mutate: mockCreateTransferMutate,
+    isPending: mockTransferIsPending,
+    isError: mockTransferIsError,
+  }),
+}))
+
 async function fillRequiredFields(getByLabelText: Awaited<ReturnType<typeof render>>['getByLabelText'], amount = '50') {
   await fireEvent.changeText(getByLabelText('סכום'), amount)
   await fireEvent.changeText(getByLabelText('תיאור'), 'קניות בסופר')
@@ -66,6 +77,9 @@ describe('NewTransaction (Add Transaction)', () => {
     mockCreateMutate.mockClear()
     mockIsPending = false
     mockIsError = false
+    mockCreateTransferMutate.mockClear()
+    mockTransferIsPending = false
+    mockTransferIsError = false
   })
 
   it('defaults to expense, and submits a negative signed amount', async () => {
@@ -123,6 +137,68 @@ describe('NewTransaction (Add Transaction)', () => {
 
     await waitFor(() => expect(getByText('יש להזין סכום תקין')).toBeTruthy())
     expect(mockCreateMutate).not.toHaveBeenCalled()
+  })
+
+  // Migration 008 (ADR-035) — transfer mode.
+  describe('transfer mode', () => {
+    it('switches to transfer via the segmented control and calls useCreateTransfer, never useCreateTransaction', async () => {
+      const { getByLabelText, getByText } = await render(<NewTransaction />)
+
+      await fireEvent.press(getByText('העברה'))
+      await fillRequiredFields(getByLabelText, '500')
+      await fireEvent.press(getByText('שמירת תנועה'))
+
+      expect(mockCreateTransferMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          householdId: 'household-1',
+          fromAccountId: 'acct-1',
+          toAccountId: 'acct-2',
+          amountAgorot: 50000,
+          description: 'קניות בסופר',
+        }),
+        expect.anything()
+      )
+      expect(mockCreateMutate).not.toHaveBeenCalled()
+    })
+
+    it('hides category, shared/personal, and merchant fields in transfer mode', async () => {
+      const { getByText, queryByLabelText, queryByText } = await render(<NewTransaction />)
+
+      await fireEvent.press(getByText('העברה'))
+
+      expect(queryByLabelText('קטגוריה (אופציונלי)')).toBeNull()
+      expect(queryByText('משותפת')).toBeNull()
+      expect(queryByText('אישית')).toBeNull()
+      expect(queryByLabelText('בית עסק (אופציונלי)')).toBeNull()
+      expect(queryByLabelText('מהחשבון')).toBeTruthy()
+      expect(queryByLabelText('לחשבון')).toBeTruthy()
+    })
+
+    it('shows a validation error and does not submit when the amount is missing, in transfer mode too', async () => {
+      const { getByLabelText, getByText } = await render(<NewTransaction />)
+
+      await fireEvent.press(getByText('העברה'))
+      await fireEvent.changeText(getByLabelText('תיאור'), 'העברה לחיסכון')
+      await fireEvent.press(getByText('שמירת תנועה'))
+
+      await waitFor(() => expect(getByText('יש להזין סכום תקין')).toBeTruthy())
+      expect(mockCreateTransferMutate).not.toHaveBeenCalled()
+    })
+
+    it('switching back to expense restores the category/shared fields and submits via useCreateTransaction again', async () => {
+      const { getByLabelText, getByText, queryByLabelText } = await render(<NewTransaction />)
+
+      await fireEvent.press(getByText('העברה'))
+      await fireEvent.press(getByText('הוצאה'))
+
+      expect(queryByLabelText('קטגוריה (אופציונלי)')).toBeTruthy()
+
+      await fillRequiredFields(getByLabelText)
+      await fireEvent.press(getByText('שמירת תנועה'))
+
+      expect(mockCreateMutate).toHaveBeenCalledWith(expect.objectContaining({ amountAgorot: -5000 }), expect.anything())
+      expect(mockCreateTransferMutate).not.toHaveBeenCalled()
+    })
   })
 
   // Responsive/desktop pass: unlike the dashboard/list screens, this form

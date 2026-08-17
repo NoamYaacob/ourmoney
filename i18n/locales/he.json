@@ -46,7 +46,8 @@
       "type": {
         "all": "הכל",
         "expense": "הוצאות",
-        "income": "הכנסות"
+        "income": "הכנסות",
+        "transfer": "העברות"
       },
       "shared": {
         "all": "הכל",
@@ -78,6 +79,7 @@
       "title": "תנועה חדשה",
       "expense": "הוצאה",
       "income": "הכנסה",
+      "transfer": "העברה",
       "amountLabel": "סכום",
       "amountPlaceholder": "0.00",
       "descriptionLabel": "תיאור",
@@ -95,11 +97,17 @@
       "sharedHint": "כל חברי משק הבית רואים כל תנועה — השיוך קובע רק אם היא נספרת בתקציב המשותף.",
       "payerLabel": "מי שילם",
       "payerPlaceholder": "בחירת משלם/ת",
+      "fromAccountLabel": "מהחשבון",
+      "fromAccountPlaceholder": "בחירת חשבון מקור",
+      "toAccountLabel": "לחשבון",
+      "toAccountPlaceholder": "בחירת חשבון יעד",
+      "transferDescriptionPlaceholder": "לדוגמה: העברה לחיסכון",
       "submit": "שמירת תנועה",
       "errors": {
         "missingAccount": "יש לבחור חשבון",
         "missingDescription": "יש להזין תיאור",
         "generic": "משהו השתבש. נסו שוב",
+        "sameAccount": "יש לבחור שני חשבונות שונים",
         "amount": {
           "invalid": "יש להזין סכום תקין",
           "not_positive": "הסכום חייב להיות גדול מאפס",
@@ -119,6 +127,33 @@
       "deleteError": "מחיקת התנועה נכשלה. נסו שוב",
       "categorizedByRule": "סווג אוטומטית לפי הכלל",
       "editRule": "עריכת הכלל"
+    },
+    "transferLabel": "העברה"
+  },
+  "transfers": {
+    "detail": {
+      "title": "פרטי העברה",
+      "fromLabel": "מהחשבון",
+      "toLabel": "לחשבון",
+      "amountLabel": "סכום",
+      "descriptionLabel": "תיאור",
+      "save": "שמירה",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת העברה",
+      "deleteConfirmMessage": "פעולה זו תמחק את שני הצדדים של ההעברה ולא ניתן לשחזר אותה.",
+      "deleteError": "מחיקת ההעברה נכשלה. נסו שוב"
+    },
+    "errors": {
+      "notFound": "ההעברה לא נמצאה",
+      "generic": "משהו השתבש. נסו שוב",
+      "sameAccount": "יש לבחור שני חשבונות שונים",
+      "missingDescription": "יש להזין תיאור",
+      "amount": {
+        "invalid": "יש להזין סכום תקין",
+        "not_positive": "הסכום חייב להיות גדול מאפס",
+        "too_large": "הסכום גדול מדי",
+        "too_many_decimals": "עד שתי ספרות אחרי הנקודה"
+      }
     }
   },
   "accounts": {

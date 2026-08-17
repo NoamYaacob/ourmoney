@@ -12,8 +12,11 @@ export interface SegmentedOption<T extends string> {
   label: string
   // Selected-state text color. 'ink' (default) is the neutral choice —
   // deliberately not used for anything alarming; 'positive' is for options
-  // that represent a financially good state (e.g. income).
-  tint?: 'ink' | 'positive'
+  // that represent a financially good state (e.g. income); 'accent' is for
+  // an option that is neither good nor bad — money moving, not gained or
+  // spent (e.g. an internal transfer, migration 008/ADR-035) — using the
+  // app's existing branded accent rather than inventing a new hue.
+  tint?: 'ink' | 'positive' | 'accent'
 }
 
 interface SegmentedControlProps<T extends string> {
@@ -23,9 +26,10 @@ interface SegmentedControlProps<T extends string> {
   accessibilityLabel: string
 }
 
-const TINT_TEXT: Record<'ink' | 'positive', string> = {
+const TINT_TEXT: Record<'ink' | 'positive' | 'accent', string> = {
   ink: 'text-ink-light dark:text-ink-dark',
   positive: 'text-positive-light dark:text-positive-dark',
+  accent: 'text-accent-light dark:text-accent-dark',
 }
 
 export function SegmentedControl<T extends string>({

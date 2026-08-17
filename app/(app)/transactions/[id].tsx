@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
@@ -65,11 +65,25 @@ export default function TransactionDetail() {
     setAccountId(transaction.account_id)
   }
 
+  // A transfer leg is never editable here — RLS forces this
+  // (transactions_update's USING clause excludes transfer_id IS NOT NULL
+  // rows entirely, migration 008/ADR-035) — so a leg opened directly (e.g.
+  // a deep link, or a stale list row from before this milestone) redirects
+  // to the dedicated transfer detail screen instead of rendering a form
+  // that could never save. useEffect, not adjust-during-render: this is a
+  // navigation side effect, not a state sync, matching
+  // useAuthGuard.ts's own router.replace pattern.
+  useEffect(() => {
+    if (transaction?.transfer_id) {
+      router.replace(`/transfers/${transaction.transfer_id}`)
+    }
+  }, [transaction?.transfer_id, router])
+
   // Folds in isHouseholdLoading: accounts/categories used for the Select
   // pickers below are gated on householdId, so without this the pickers
   // would briefly render with zero options while useHousehold is still
   // resolving (mobile-expo-reviewer finding).
-  if (isLoading || isHouseholdLoading) {
+  if (isLoading || isHouseholdLoading || transaction?.transfer_id) {
     return (
       <Screen center>
         <LoadingSpinner />

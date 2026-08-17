@@ -51,6 +51,13 @@ export interface Transaction extends Omit<Tables<'transactions'>, 'source'> {
   source: TransactionSource
 }
 
+// Migration 008 (ADR-035) — a transfer's shared metadata (from/to account,
+// amount, date, description). Its two linked transaction legs are ordinary
+// Transaction rows with transfer_id set to this row's id; this type is never
+// itself a transaction and carries no category_id/is_shared/payer_id, which
+// only ever belong to a transaction row.
+export type Transfer = Tables<'transfers'>
+
 export type Budget = Tables<'budgets'>
 export type BudgetAllocation = Tables<'budget_allocations'>
 

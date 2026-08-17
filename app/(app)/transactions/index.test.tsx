@@ -156,6 +156,7 @@ describe('Transactions list', () => {
           txn_date: '2026-08-01',
           is_shared: true,
           is_excluded: false,
+          transfer_id: null,
         },
       ],
       isLoading: false,
@@ -210,6 +211,7 @@ describe('Transactions list', () => {
           txn_date: '2026-08-02',
           is_shared: true,
           is_excluded: false,
+          transfer_id: null,
         },
       ],
       isLoading: false,
@@ -221,6 +223,113 @@ describe('Transactions list', () => {
     const amount = getByText(formatILS(-5000))
     expect(amount.props.className).toContain('text-ink-light')
     expect(amount.props.className).not.toContain('positive')
+  })
+
+  // Migration 008 (ADR-035).
+  describe('internal transfers', () => {
+    const TRANSFER_LEG = {
+      id: 't-transfer-1',
+      category_id: null,
+      description: 'העברה לחיסכון',
+      merchant_name: null,
+      amount_agorot: -50000,
+      txn_date: '2026-08-04',
+      is_shared: true,
+      is_excluded: false,
+      transfer_id: 'transfer-1',
+    }
+    const ORDINARY_TXN = {
+      id: 't1',
+      category_id: null,
+      description: 'קניות בסופר',
+      merchant_name: null,
+      amount_agorot: -5000,
+      txn_date: '2026-08-02',
+      is_shared: true,
+      is_excluded: false,
+      transfer_id: null,
+    }
+
+    it('gives a transfer row an accent (neutral) amount color, not positive/expense-ink', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+
+      const amount = getByText(formatILS(-50000))
+      expect(amount.props.className).toContain('text-accent-light')
+      expect(amount.props.className).toContain('dark:text-accent-dark')
+      expect(amount.props.className).not.toContain('text-positive')
+      expect(amount.props.className).not.toContain('text-ink-light')
+    })
+
+    it('labels a transfer row with the transfer label, not a category name or the personal suffix (even when is_shared is false)', async () => {
+      mockUseTransactions.mockReturnValue({
+        transactions: [{ ...TRANSFER_LEG, is_shared: false }],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+
+      expect(getByText(`העברה · ${TRANSFER_LEG.txn_date}`)).toBeTruthy()
+      expect(queryByText('אישית')).toBeNull()
+    })
+
+    it('tapping a transfer row navigates to the transfer detail screen, not the transaction detail screen', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('העברה לחיסכון'))
+
+      expect(mockPush).toHaveBeenCalledWith('/transfers/transfer-1')
+      expect(mockPush).not.toHaveBeenCalledWith(`/transactions/${TRANSFER_LEG.id}`)
+    })
+
+    it('the transfer type filter chip shows only transfer rows', async () => {
+      mockSearchParams = { type: 'transfer' }
+      mockUseTransactions.mockReturnValue({
+        transactions: [TRANSFER_LEG, ORDINARY_TXN],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText, queryByText } = await render(<Transactions />)
+
+      expect(getByText('העברה לחיסכון')).toBeTruthy()
+      expect(queryByText('קניות בסופר')).toBeNull()
+    })
+
+    it('pressing the transfer type chip updates the route params', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByTestId } = await render(<Transactions />)
+      await fireEvent.press(getByTestId('transactions-filter-type-transfer'))
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ type: 'transfer' }))
+    })
+
+    it('a transfer row is not selectable in selection mode — tapping it does nothing', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG, ORDINARY_TXN], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('העברה לחיסכון'))
+
+      expect(getByText('0 נבחרו')).toBeTruthy()
+    })
+
+    it('"select all" does not include transfer rows', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG, ORDINARY_TXN], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+      await fireEvent.press(getByText('בחירה'))
+      await fireEvent.press(getByText('בחר הכל'))
+
+      // Only TXN_1 is selectable — the transfer leg is excluded from the
+      // selectable set entirely (RLS would reject a bulk category write on
+      // it anyway, since transactions_update excludes transfer legs).
+      expect(getByText('1 נבחרו')).toBeTruthy()
+    })
   })
 
   describe('search + filters', () => {
@@ -237,8 +346,8 @@ describe('Transactions list', () => {
       mockSearchParams = { q: 'סופר' }
       mockUseTransactions.mockReturnValue({
         transactions: [
-          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
-          { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false },
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null },
+          { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false, transfer_id: null },
         ],
         isLoading: false,
         error: null,
@@ -324,7 +433,7 @@ describe('Transactions list', () => {
       mockSearchParams = { q: 'סופר', period: 'current_month', accountId: 'acct-1', type: 'expense', shared: 'shared' }
       mockUseTransactions.mockReturnValue({
         transactions: [
-          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null },
         ],
         isLoading: false,
         error: null,
@@ -342,7 +451,7 @@ describe('Transactions list', () => {
       mockSearchParams = { q: 'לא קיים' }
       mockUseTransactions.mockReturnValue({
         transactions: [
-          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null },
         ],
         isLoading: false,
         error: null,
@@ -358,7 +467,7 @@ describe('Transactions list', () => {
       mockSearchParams = { q: 'לא קיים' }
       mockUseTransactions.mockReturnValue({
         transactions: [
-          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null },
         ],
         isLoading: false,
         error: null,
@@ -387,7 +496,7 @@ describe('Transactions list', () => {
       mockSearchParams = { type: 'expense' }
       mockUseTransactions.mockReturnValue({
         transactions: [
-          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false },
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null },
         ],
         isLoading: false,
         error: null,
@@ -412,7 +521,7 @@ describe('Transactions list', () => {
       mockSearchParams = { type: 'expense' }
       mockUseTransactions.mockReturnValue({
         transactions: [
-          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: true },
+          { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: true, transfer_id: null },
         ],
         isLoading: false,
         error: null,
@@ -426,8 +535,8 @@ describe('Transactions list', () => {
   })
 
   describe('bulk categorization / selection mode', () => {
-    const TXN_1 = { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false }
-    const TXN_2 = { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false }
+    const TXN_1 = { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null }
+    const TXN_2 = { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false, transfer_id: null }
 
     it('does not select anything when entering selection mode', async () => {
       mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })

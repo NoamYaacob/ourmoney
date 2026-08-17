@@ -18,6 +18,9 @@ export type EventType =
   | 'bank.connection_expiring'
   | 'loan.rate_opportunity_detected'
   | 'mortgage.refinance_opportunity_detected'
+  | 'transfer.created'
+  | 'transfer.updated'
+  | 'transfer.deleted'
 
 export interface TransactionCreatedPayload {
   transactionId: string
@@ -112,6 +115,33 @@ export interface MortgageRefinanceOpportunityDetectedPayload {
   estimatedSavingsAgorot: number
 }
 
+// Migration 008 (ADR-035). Deliberately NOT 'transaction.created' for either
+// leg — a transfer is one domain occurrence, not two, and a dedicated event
+// means no current or future 'transaction.created' subscriber has to
+// remember to exclude transfer legs (budgetThresholdSubscriber.ts already
+// no-ops on a null categoryId, which every transfer leg has, but that's
+// incidental safety, not a design to lean on). No subscriber yet — declared
+// now per ADR-013's "add new event types freely."
+export interface TransferCreatedPayload {
+  transferId: string
+  fromAccountId: string
+  toAccountId: string
+  amountAgorot: number
+  txnDate: string
+}
+
+export interface TransferUpdatedPayload {
+  transferId: string
+  fromAccountId: string
+  toAccountId: string
+  amountAgorot: number
+  txnDate: string
+}
+
+export interface TransferDeletedPayload {
+  transferId: string
+}
+
 export interface EventPayloadMap {
   'transaction.created': TransactionCreatedPayload
   'transaction.updated': TransactionUpdatedPayload
@@ -128,6 +158,9 @@ export interface EventPayloadMap {
   'bank.connection_expiring': BankConnectionExpiringPayload
   'loan.rate_opportunity_detected': LoanRateOpportunityDetectedPayload
   'mortgage.refinance_opportunity_detected': MortgageRefinanceOpportunityDetectedPayload
+  'transfer.created': TransferCreatedPayload
+  'transfer.updated': TransferUpdatedPayload
+  'transfer.deleted': TransferDeletedPayload
 }
 
 export type PayloadFor<T extends EventType> = EventPayloadMap[T]

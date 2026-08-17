@@ -16,8 +16,9 @@ import '@/i18n'
 import TransactionDetail from './[id]'
 
 const mockRouterPush = jest.fn()
+const mockRouterReplace = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: jest.fn(), push: mockRouterPush }),
+  useRouter: () => ({ back: jest.fn(), push: mockRouterPush, replace: mockRouterReplace }),
   useLocalSearchParams: () => ({ id: 'txn-1' }),
 }))
 // Avoids a deep, environment-specific import chain
@@ -75,6 +76,7 @@ const BASE_TRANSACTION = {
   is_excluded: false,
   txn_date: '2026-01-01',
   matched_rule_id: null as string | null,
+  transfer_id: null as string | null,
 }
 // Reassignable per test — provenance tests below override matched_rule_id.
 let mockTransaction = { ...BASE_TRANSACTION }
@@ -92,6 +94,23 @@ describe('TransactionDetail', () => {
     mockTransaction = { ...BASE_TRANSACTION }
     mockRules = []
     mockRouterPush.mockClear()
+    mockRouterReplace.mockClear()
+  })
+
+  // Migration 008 (ADR-035): a transfer leg is never editable here — RLS
+  // forces this (transactions_update excludes transfer_id IS NOT NULL rows
+  // entirely) — so this screen redirects to the dedicated transfer detail
+  // screen instead of rendering a form that could never save.
+  it('redirects to the transfer detail screen when the transaction is a transfer leg', async () => {
+    mockTransaction = { ...BASE_TRANSACTION, transfer_id: 'transfer-1' }
+    await render(<TransactionDetail />)
+    expect(mockRouterReplace).toHaveBeenCalledWith('/transfers/transfer-1')
+  })
+
+  it('does not redirect for an ordinary (non-transfer) transaction', async () => {
+    mockTransaction = { ...BASE_TRANSACTION, transfer_id: null }
+    await render(<TransactionDetail />)
+    expect(mockRouterReplace).not.toHaveBeenCalled()
   })
 
   it('shows the delete button and confirm modal for an admin', async () => {

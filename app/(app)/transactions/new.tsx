@@ -25,6 +25,7 @@ import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMemb
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useCreateTransaction } from '@/features/transactions/hooks/useCreateTransaction'
+import { useCreateTransfer } from '@/features/transactions/hooks/useCreateTransfer'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
@@ -54,16 +55,26 @@ export default function NewTransaction() {
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const createTransaction = useCreateTransaction(householdId)
+  const createTransfer = useCreateTransfer(householdId)
   const { colorScheme: scheme } = useColorScheme()
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
-  // accountId/payerId are "overrides": null means "no explicit user choice
-  // yet, fall back to the sensible default computed at render time" (the
-  // first account, the current user) — avoids a setState-in-effect just to
-  // seed a default once data loads.
+  // accountId/toAccountId/payerId are "overrides": null means "no explicit
+  // user choice yet, fall back to the sensible default computed at render
+  // time" (the first account, the second distinct account, the current
+  // user) — avoids a setState-in-effect just to seed a default once data
+  // loads.
   const [accountIdOverride, setAccountIdOverride] = useState<string | null>(null)
+  const [toAccountIdOverride, setToAccountIdOverride] = useState<string | null>(null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [isIncome, setIsIncome] = useState(false)
+  // Migration 008 (ADR-035): a third entry type alongside expense/income.
+  // Transfer mode hides category/shared-personal/payer entirely (a
+  // transfer is never categorized, never partially shared — see this
+  // screen's transfer-mode branch below) rather than merely disabling them,
+  // matching the milestone's explicit UI requirement.
+  const [entryType, setEntryType] = useState<'expense' | 'income' | 'transfer'>('expense')
+  const isIncome = entryType === 'income'
+  const isTransfer = entryType === 'transfer'
   const [amountText, setAmountText] = useState('')
   const [description, setDescription] = useState('')
   const [merchantName, setMerchantName] = useState('')
@@ -72,18 +83,23 @@ export default function NewTransaction() {
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const accountId = accountIdOverride ?? accounts[0]?.id ?? null
+  // Default destination is the first account that isn't already the
+  // default source — never the same account twice, so the same-account
+  // validation error never greets a user who hasn't touched either picker.
+  const toAccountId = toAccountIdOverride ?? accounts.find((a) => a.id !== accountId)?.id ?? null
   const payerId = payerIdOverride ?? user?.id ?? null
   const selectedAccount = accounts.find((a) => a.id === accountId)
+  const selectedToAccount = accounts.find((a) => a.id === toAccountId)
   const selectedCategory = categories.find((c) => c.id === categoryId)
 
   function handleCategoryChange(nextCategoryId: string) {
     setCategoryId(nextCategoryId)
     const category = categories.find((c) => c.id === nextCategoryId)
-    if (category) setIsIncome(category.is_income)
+    if (category) setEntryType(category.is_income ? 'income' : 'expense')
   }
 
   function handleSubmit() {
-    if (createTransaction.isPending) return
+    if (createTransaction.isPending || createTransfer.isPending) return
     setValidationError(null)
 
     if (!householdId || !accountId) {
@@ -98,6 +114,25 @@ export default function NewTransaction() {
     const parsed = agorotFromILS(amountText)
     if (!parsed.ok || parsed.agorot === null) {
       setValidationError(t(`transactions.form.errors.amount.${parsed.error ?? 'invalid'}`))
+      return
+    }
+
+    if (isTransfer) {
+      if (!toAccountId || toAccountId === accountId) {
+        setValidationError(t('transactions.form.errors.sameAccount'))
+        return
+      }
+      createTransfer.mutate(
+        {
+          householdId,
+          fromAccountId: accountId,
+          toAccountId,
+          amountAgorot: parsed.agorot,
+          txnDate: localDateString(),
+          description: description.trim(),
+        },
+        { onSuccess: () => router.back() }
+      )
       return
     }
 
@@ -135,9 +170,10 @@ export default function NewTransaction() {
               options={[
                 { value: 'expense', label: t('transactions.form.expense'), tint: 'ink' },
                 { value: 'income', label: t('transactions.form.income'), tint: 'positive' },
+                { value: 'transfer', label: t('transactions.form.transfer'), tint: 'accent' },
               ]}
-              value={isIncome ? 'income' : 'expense'}
-              onChange={(v) => setIsIncome(v === 'income')}
+              value={entryType}
+              onChange={setEntryType}
             />
           </View>
 
@@ -152,73 +188,123 @@ export default function NewTransaction() {
             label={t('transactions.form.descriptionLabel')}
             value={description}
             onChangeText={setDescription}
-            placeholder={t('transactions.form.descriptionPlaceholder')}
+            placeholder={
+              isTransfer
+                ? t('transactions.form.transferDescriptionPlaceholder')
+                : t('transactions.form.descriptionPlaceholder')
+            }
           />
 
-          <Input
-            label={t('transactions.form.merchantLabel')}
-            value={merchantName}
-            onChangeText={setMerchantName}
-            placeholder={t('transactions.form.merchantPlaceholder')}
-          />
-
-          <View className="mb-4 mt-2">
-            <Card>
-              <Select
-                variant="row"
-                label={t('transactions.form.accountLabel')}
-                options={accountOptions}
-                value={accountId}
-                onChange={setAccountIdOverride}
-                placeholder={t('transactions.form.accountPlaceholder')}
-                sheetTitle={t('transactions.form.accountLabel')}
-                leadingIcon={
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                    <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
-                  </View>
-                }
-              />
-              <Divider />
-              <Select
-                variant="row"
-                label={t('transactions.form.categoryLabel')}
-                options={categoryOptions}
-                value={categoryId}
-                onChange={handleCategoryChange}
-                placeholder={t('transactions.form.categoryPlaceholder')}
-                sheetTitle={t('transactions.form.categorySheetTitle')}
-                leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
-              />
-            </Card>
-          </View>
-
-          <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-            {t('transactions.form.sharedLabel')}
-          </Text>
-          <SegmentedControl
-            accessibilityLabel={t('transactions.form.sharedLabel')}
-            options={[
-              { value: 'shared', label: t('transactions.form.shared') },
-              { value: 'personal', label: t('transactions.form.personal') },
-            ]}
-            value={isShared ? 'shared' : 'personal'}
-            onChange={(v) => setIsShared(v === 'shared')}
-          />
-          <Text className="mb-4 mt-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-            {t('transactions.form.sharedHint')}
-          </Text>
-
-          {payerOptions.length > 1 && (
-            <Select
-              label={t('transactions.form.payerLabel')}
-              options={payerOptions}
-              value={payerId}
-              onChange={setPayerIdOverride}
-              placeholder={t('transactions.form.payerPlaceholder')}
+          {!isTransfer && (
+            <Input
+              label={t('transactions.form.merchantLabel')}
+              value={merchantName}
+              onChangeText={setMerchantName}
+              placeholder={t('transactions.form.merchantPlaceholder')}
             />
           )}
 
-          {(validationError || createTransaction.isError) && (
+          {isTransfer ? (
+            // Transfer mode: category/shared-personal/payer are meaningless
+            // for an internal transfer (migration 008, ADR-035) — replaced
+            // entirely by a from-account/to-account pair, never shown
+            // alongside the expense/income fields above.
+            <View className="mb-4 mt-2">
+              <Card>
+                <Select
+                  variant="row"
+                  label={t('transactions.form.fromAccountLabel')}
+                  options={accountOptions}
+                  value={accountId}
+                  onChange={setAccountIdOverride}
+                  placeholder={t('transactions.form.fromAccountPlaceholder')}
+                  sheetTitle={t('transactions.form.fromAccountLabel')}
+                  leadingIcon={
+                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                      <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                    </View>
+                  }
+                />
+                <Divider />
+                <Select
+                  variant="row"
+                  label={t('transactions.form.toAccountLabel')}
+                  options={accountOptions}
+                  value={toAccountId}
+                  onChange={setToAccountIdOverride}
+                  placeholder={t('transactions.form.toAccountPlaceholder')}
+                  sheetTitle={t('transactions.form.toAccountLabel')}
+                  leadingIcon={
+                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                      <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
+                    </View>
+                  }
+                />
+              </Card>
+            </View>
+          ) : (
+            <View className="mb-4 mt-2">
+              <Card>
+                <Select
+                  variant="row"
+                  label={t('transactions.form.accountLabel')}
+                  options={accountOptions}
+                  value={accountId}
+                  onChange={setAccountIdOverride}
+                  placeholder={t('transactions.form.accountPlaceholder')}
+                  sheetTitle={t('transactions.form.accountLabel')}
+                  leadingIcon={
+                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                      <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                    </View>
+                  }
+                />
+                <Divider />
+                <Select
+                  variant="row"
+                  label={t('transactions.form.categoryLabel')}
+                  options={categoryOptions}
+                  value={categoryId}
+                  onChange={handleCategoryChange}
+                  placeholder={t('transactions.form.categoryPlaceholder')}
+                  sheetTitle={t('transactions.form.categorySheetTitle')}
+                  leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
+                />
+              </Card>
+            </View>
+          )}
+
+          {!isTransfer && (
+            <>
+              <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                {t('transactions.form.sharedLabel')}
+              </Text>
+              <SegmentedControl
+                accessibilityLabel={t('transactions.form.sharedLabel')}
+                options={[
+                  { value: 'shared', label: t('transactions.form.shared') },
+                  { value: 'personal', label: t('transactions.form.personal') },
+                ]}
+                value={isShared ? 'shared' : 'personal'}
+                onChange={(v) => setIsShared(v === 'shared')}
+              />
+              <Text className="mb-4 mt-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                {t('transactions.form.sharedHint')}
+              </Text>
+
+              {payerOptions.length > 1 && (
+                <Select
+                  label={t('transactions.form.payerLabel')}
+                  options={payerOptions}
+                  value={payerId}
+                  onChange={setPayerIdOverride}
+                  placeholder={t('transactions.form.payerPlaceholder')}
+                />
+              )}
+            </>
+          )}
+
+          {(validationError || createTransaction.isError || createTransfer.isError) && (
             <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
           )}
 
@@ -226,7 +312,7 @@ export default function NewTransaction() {
             <Button
               title={t('transactions.form.submit')}
               onPress={handleSubmit}
-              loading={createTransaction.isPending}
+              loading={createTransaction.isPending || createTransfer.isPending}
             />
           </View>
         </>

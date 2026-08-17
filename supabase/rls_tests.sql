@@ -29,6 +29,14 @@
 -- account surviving in every branch, plus the LEAVE.CONCURRENT
 -- true-concurrency test (isolated section, same reason as 5.9/
 -- DELETE_ACCOUNT.CONCURRENT).
+-- Migration 008 (internal account transfers, ADR-035) adds Group 9:
+-- create_transfer()/update_transfer()/delete_transfer() correctness,
+-- household isolation, and admin-gating on delete; the RLS tightening on
+-- transactions_insert/_update/_delete that forces every transfer-leg write
+-- through those RPCs (9.7-9.10 prove the direct-mutation-bypass regressions
+-- design-stage review found are closed); the transfers table's SELECT-only
+-- grant; and the leave_household()/delete_own_account() widening that nulls
+-- transfers.created_by for a departing member.
 --
 -- Design: every test impersonates a role via `SET LOCAL role` +
 -- `SET LOCAL request.jwt.claims` (the technique DATABASE_SCHEMA.md
@@ -161,6 +169,15 @@ INSERT INTO savings_goals (id, household_id, account_id, name, target_agorot, cr
 INSERT INTO planned_obligations (id, household_id, name, amount_agorot, due_date, category_id, account_id, status, created_by) VALUES
   ('58000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'ארנונה בית 1', 180000, '2026-09-10', '5c000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'upcoming', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   ('58000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'ארנונה בית 2', 190000, '2026-09-10', '5c000000-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000002', 'upcoming', 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
+-- Migration 008 (internal transfers, ADR-035) fixtures — a second account
+-- per household, since a transfer needs two distinct accounts. Every Group 9
+-- test below needs at least one of these; kept as permanent top-level
+-- fixtures (like every other financial fixture above) rather than local to
+-- one test, since multiple sub-tests reuse them.
+INSERT INTO accounts (id, household_id, owner_id, name, type) VALUES
+  ('5a000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', NULL, 'חשבון חיסכון בית 1', 'savings'),
+  ('5a000000-0000-0000-0000-000000000004', '22222222-2222-2222-2222-222222222222', NULL, 'חשבון חיסכון בית 2', 'savings');
 
 DO $$ BEGIN RAISE NOTICE '=== fixtures loaded (incl. Milestone 6 financial fixtures, both households) ==='; END $$;
 
@@ -3445,6 +3462,548 @@ RESET role;
 -- SAVEPOINT-scoped test in this file.
 ROLLBACK TO SAVEPOINT sp_8_13;
 
+-- ============================================================================
+-- Group 9 — Internal account transfers (migration 008, ADR-035)
+-- ============================================================================
+-- create_transfer()/update_transfer()/delete_transfer() correctness and
+-- authorization, plus the RLS tightening on transactions_insert/_update/
+-- _delete that forces every transfer-leg write through those three RPCs.
+-- 9.7-9.10 are the direct-mutation-bypass regressions the design-stage
+-- review found before this migration was written (see migration
+-- 008_internal_transfers.sql's own header) — proven closed here, not merely
+-- asserted. 9.5's anon-cannot-execute and the fixed-search_path guarantee
+-- for all three RPCs are additionally covered for free by the existing
+-- generic 6.5/6.6 structural guards below (they scan every SECURITY DEFINER
+-- function in public, not just the ones existing at the time those guards
+-- were written), so no redundant per-function search_path/grant test is
+-- duplicated here.
+
+-- 9.1: create_transfer() as an authenticated household member creates
+-- exactly one transfers row and two correctly-signed transaction legs, both
+-- with category_id NULL and transfer_id set to the new transfer's id.
+SAVEPOINT sp_9_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_result JSONB;
+  v_transfer_id UUID;
+  v_leg_count INT;
+  v_source_count INT;
+  v_dest_count INT;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid,
+    '5a000000-0000-0000-0000-000000000003'::uuid,
+    50000,
+    '2026-08-15'::date,
+    'העברה לחיסכון'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 9.1: create_transfer failed, got %', v_result;
+  END IF;
+  v_transfer_id := (v_result->>'transfer_id')::uuid;
+
+  SELECT COUNT(*) INTO v_leg_count FROM transactions WHERE transfer_id = v_transfer_id;
+  IF v_leg_count <> 2 THEN
+    RAISE EXCEPTION 'FAIL 9.1: expected exactly 2 linked transaction legs, got %', v_leg_count;
+  END IF;
+
+  SELECT COUNT(*) INTO v_source_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000001'
+      AND amount_agorot = -50000 AND category_id IS NULL;
+  SELECT COUNT(*) INTO v_dest_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000003'
+      AND amount_agorot = 50000 AND category_id IS NULL;
+  IF v_source_count <> 1 OR v_dest_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 9.1: legs not correctly signed/linked (source=%, dest=%)', v_source_count, v_dest_count;
+  END IF;
+
+  PERFORM _pass('9.1', 'create_transfer() creates one transfers row and two correctly-signed, category-less linked transaction legs');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_1;
+
+-- 9.2: same from/to account => same_account, nothing inserted.
+SAVEPOINT sp_9_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_count INT;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    10000, '2026-08-15'::date, 'לא חוקי'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'same_account' THEN
+    RAISE EXCEPTION 'FAIL 9.2: expected same_account error, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE description = 'לא חוקי';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 9.2: a transfer row was inserted despite the rejected call'; END IF;
+  PERFORM _pass('9.2', 'create_transfer() rejects an identical from/to account with same_account, nothing inserted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_2;
+
+-- 9.3: an account from the OTHER household => invalid_account, nothing
+-- inserted. Proves create_transfer cannot be used to move money into or out
+-- of a household the caller does not belong to.
+SAVEPOINT sp_9_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_count INT;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000002'::uuid,
+    10000, '2026-08-15'::date, 'חוצה בתים'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 9.3: expected invalid_account error for a cross-household destination, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE description = 'חוצה בתים';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 9.3: a transfer row was inserted despite the rejected call'; END IF;
+  PERFORM _pass('9.3', 'create_transfer() rejects a to_account_id belonging to a different household, nothing inserted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_3;
+
+-- 9.4: non-positive amount => invalid_amount.
+SAVEPOINT sp_9_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    0, '2026-08-15'::date, 'סכום אפס'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_amount' THEN
+    RAISE EXCEPTION 'FAIL 9.4: expected invalid_amount for a zero amount, got %', v_result;
+  END IF;
+  PERFORM _pass('9.4', 'create_transfer() rejects a non-positive amount with invalid_amount');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_4;
+
+-- 9.5: anon cannot EXECUTE create_transfer.
+SAVEPOINT sp_9_5;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM create_transfer(
+      '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+      10000, '2026-08-15'::date, 'לא רלוונטי'
+    );
+    RAISE EXCEPTION 'FAIL 9.5: anon was able to call create_transfer';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('9.5', 'anon cannot EXECUTE create_transfer');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_5;
+
+-- 9.6: a real transfer, created once and reused by 9.7-9.18 below (each
+-- sub-test runs in its own SAVEPOINT nested inside this one, so none of
+-- their attempted mutations persist into the next). Its identity is
+-- stashed via set_config/current_setting — LOCAL to this transaction, so it
+-- survives each nested savepoint's own ROLLBACK TO SAVEPOINT the same way
+-- the fixture row itself does (that rollback only undoes changes made AFTER
+-- the nested savepoint, not this one) — rather than a TEMP TABLE, which
+-- would need an explicit GRANT to be writable while impersonating
+-- authenticated (it would otherwise be owned by postgres with no privileges
+-- extended to other roles, unlike _pass()'s SECURITY DEFINER escape hatch).
+SAVEPOINT sp_9_fixture;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_transfer_id UUID;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    50000, '2026-08-15'::date, 'העברה קבועה לבדיקות'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'setup for Group 9 fixture transfer failed: %', v_result;
+  END IF;
+  v_transfer_id := (v_result->>'transfer_id')::uuid;
+  PERFORM set_config('g9.transfer_id', v_transfer_id::text, true);
+  PERFORM set_config('g9.source_leg_id', (SELECT id::text FROM transactions WHERE transfer_id = v_transfer_id AND amount_agorot < 0), true);
+  PERFORM set_config('g9.dest_leg_id', (SELECT id::text FROM transactions WHERE transfer_id = v_transfer_id AND amount_agorot > 0), true);
+END $$;
+RESET role;
+
+-- 9.7 [MUST-FIX regression, database-security-reviewer]: a direct client
+-- INSERT into transactions with transfer_id set is rejected by
+-- transactions_insert's tightened WITH CHECK — a transfer leg can only ever
+-- be created by create_transfer().
+SAVEPOINT sp_9_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, transfer_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', v_transfer_id, -1000, 'עוקף', '2026-08-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 9.7: a direct INSERT with transfer_id set was allowed';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('9.7', 'a direct client INSERT with transfer_id set is rejected — only create_transfer() may create a transfer leg');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_7;
+
+-- 9.8 [MUST-FIX regression, architecture-reviewer + database-security-
+-- reviewer]: the core finding from design-stage review. A direct UPDATE
+-- attempting to detach a leg from its transfer (SET transfer_id = NULL) —
+-- previously only blocked by WITH CHECK, which the reviewers proved
+-- insufficient on its own. transactions_update's USING clause now also
+-- requires transfer_id IS NULL on the OLD row, so this leg is not even a
+-- reachable UPDATE target: 0 rows affected, not a rejected-but-attempted
+-- write.
+SAVEPOINT sp_9_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_source_leg_id UUID; v_rows INT;
+BEGIN
+  v_source_leg_id := current_setting('g9.source_leg_id')::uuid;
+  UPDATE transactions SET transfer_id = NULL, amount_agorot = -999999 WHERE id = v_source_leg_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.8: a direct UPDATE detached and mutated a transfer leg — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('9.8', 'a direct UPDATE attempting to detach a leg (transfer_id = NULL) and change its amount in the same statement affects 0 rows — the exact bypass the design-stage review found and required fixed before this migration shipped');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_8;
+
+-- 9.9: a direct UPDATE that leaves transfer_id untouched (just changes the
+-- amount) is equally rejected — proves the USING-clause fix blocks ANY
+-- direct mutation of a transfer leg, not only ones that touch transfer_id.
+SAVEPOINT sp_9_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_source_leg_id UUID; v_rows INT;
+BEGIN
+  v_source_leg_id := current_setting('g9.source_leg_id')::uuid;
+  UPDATE transactions SET description = 'שינוי ישיר' WHERE id = v_source_leg_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.9: a direct UPDATE that never touches transfer_id still mutated a transfer leg — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('9.9', 'a direct UPDATE to a transfer leg is rejected even when it never touches transfer_id itself — the leg is simply not a reachable UPDATE target');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_9;
+
+-- 9.10: a direct DELETE on a transfer leg via the ordinary admin-only
+-- transactions_delete policy is rejected — only delete_transfer() may
+-- remove a transfer (and it always removes both legs together).
+SAVEPOINT sp_9_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_source_leg_id UUID; v_rows INT;
+BEGIN
+  v_source_leg_id := current_setting('g9.source_leg_id')::uuid;
+  DELETE FROM transactions WHERE id = v_source_leg_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.10: a direct admin DELETE removed one leg of a transfer without the other — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('9.10', 'a direct DELETE on a transfer leg (even by an admin) is rejected — only delete_transfer() can remove a transfer, always both legs together');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_10;
+
+-- 9.11: cross-household SELECT isolation on the transfers table itself.
+SAVEPOINT sp_9_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.11: User C (household 2) could see household 1''s transfer row';
+  END IF;
+  PERFORM _pass('9.11', 'a member of a different household cannot SELECT another household''s transfers row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_11;
+
+-- 9.12: update_transfer() on a transfer belonging to a DIFFERENT household
+-- => not_found, not a silent no-op success and not a cross-household write.
+SAVEPOINT sp_9_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000002'::uuid, '5a000000-0000-0000-0000-000000000004'::uuid,
+    99999, '2026-08-16'::date, 'ניסיון חוצה בתים'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 9.12: expected not_found for a cross-household transfer id, got %', v_result;
+  END IF;
+  PERFORM _pass('9.12', 'update_transfer() on another household''s transfer_id reports not_found, never a cross-household write');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_12;
+
+-- 9.13: update_transfer() with an account substitution from a DIFFERENT
+-- household, on the caller's OWN transfer => invalid_account, nothing
+-- changed (proves the household-membership check applies to update, not
+-- only create).
+SAVEPOINT sp_9_13;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_desc TEXT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000002'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    60000, '2026-08-16'::date, 'ניסיון חשבון זר'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 9.13: expected invalid_account for a cross-household from_account_id, got %', v_result;
+  END IF;
+  SELECT description INTO v_desc FROM transfers WHERE id = v_transfer_id;
+  IF v_desc <> 'העברה קבועה לבדיקות' THEN
+    RAISE EXCEPTION 'FAIL 9.13: the transfer was mutated despite the rejected call, description is now %', v_desc;
+  END IF;
+  PERFORM _pass('9.13', 'update_transfer() rejects a from_account_id belonging to a different household, nothing changed');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_13;
+
+-- 9.14: update_transfer() with the same from/to account => same_account,
+-- nothing changed.
+SAVEPOINT sp_9_14;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    60000, '2026-08-16'::date, 'לא חוקי'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'same_account' THEN
+    RAISE EXCEPTION 'FAIL 9.14: expected same_account, got %', v_result;
+  END IF;
+  PERFORM _pass('9.14', 'update_transfer() rejects an identical from/to account with same_account');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_14;
+
+-- 9.15: a successful update_transfer() rewrites the transfers row and both
+-- legs together — new amount, new accounts, new description, both legs
+-- still correctly signed and still linked to the same transfer_id.
+SAVEPOINT sp_9_15;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_source_count INT; v_dest_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  -- Swaps the direction (source<->dest) as part of the same update, proving
+  -- the sign-based leg selection in update_transfer() (WHERE amount_agorot
+  -- < 0 / > 0, evaluated against each leg's CURRENT amount before this
+  -- statement changes it) correctly re-targets both legs even when which
+  -- account is "source" changes.
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000003'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    75000, '2026-08-20'::date, 'עודכן'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 9.15: update_transfer failed, got %', v_result;
+  END IF;
+
+  SELECT COUNT(*) INTO v_source_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000003'
+      AND amount_agorot = -75000 AND txn_date = '2026-08-20' AND description = 'עודכן';
+  SELECT COUNT(*) INTO v_dest_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000001'
+      AND amount_agorot = 75000 AND txn_date = '2026-08-20' AND description = 'עודכן';
+  IF v_source_count <> 1 OR v_dest_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 9.15: legs not correctly rewritten after a direction-swapping update (source=%, dest=%)', v_source_count, v_dest_count;
+  END IF;
+  PERFORM _pass('9.15', 'update_transfer() atomically rewrites the transfers row and both legs, including correctly re-targeting each leg when the from/to direction is swapped');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_15;
+
+-- 9.16: delete_transfer() by a non-admin member => not_admin, nothing
+-- deleted.
+SAVEPOINT sp_9_16;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT delete_transfer(v_transfer_id) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_admin' THEN
+    RAISE EXCEPTION 'FAIL 9.16: expected not_admin for a non-admin member, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.16: the transfer was deleted despite the rejected call'; END IF;
+  PERFORM _pass('9.16', 'delete_transfer() rejects a non-admin household member with not_admin, nothing deleted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_16;
+
+-- 9.17: delete_transfer() on a transfer belonging to a DIFFERENT household
+-- => not_found, even for that OTHER household's own admin (household
+-- isolation, not merely a role check).
+SAVEPOINT sp_9_17;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT delete_transfer(v_transfer_id) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 9.17: expected not_found for a cross-household transfer id (even from an admin), got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.17: the transfer was deleted by another household''s admin'; END IF;
+  PERFORM _pass('9.17', 'delete_transfer() on another household''s transfer_id reports not_found even for that household''s own admin');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_17;
+
+-- 9.18: delete_transfer() by the OWNING household's admin removes the
+-- transfers row and both linked legs atomically (ON DELETE CASCADE), in
+-- one statement.
+SAVEPOINT sp_9_18;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_transfer_count INT; v_leg_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT delete_transfer(v_transfer_id) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 9.18: delete_transfer failed for the owning household''s admin, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_transfer_count FROM transfers WHERE id = v_transfer_id;
+  SELECT COUNT(*) INTO v_leg_count FROM transactions WHERE transfer_id = v_transfer_id;
+  IF v_transfer_count <> 0 OR v_leg_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.18: transfer or its legs survived deletion (transfer=%, legs=%)', v_transfer_count, v_leg_count;
+  END IF;
+  PERFORM _pass('9.18', 'delete_transfer() by the owning household''s admin atomically removes the transfers row and both legs via ON DELETE CASCADE');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_18;
+
+ROLLBACK TO SAVEPOINT sp_9_fixture;
+
+-- 9.19: transfers' own table grant is SELECT-only for authenticated — no
+-- INSERT/UPDATE/DELETE grant, matching its policy (SELECT-only, no
+-- mutation policy exists at all) exactly rather than relying on RLS alone
+-- to deny what a wider grant would permit.
+DO $$
+DECLARE v_bad TEXT;
+BEGIN
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'transfers' AND grantee = 'authenticated'
+    AND privilege_type <> 'SELECT';
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 9.19: transfers is granted % to authenticated, expected SELECT only', v_bad;
+  END IF;
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'transfers' AND grantee = 'anon';
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 9.19: transfers is granted % to anon, expected nothing', v_bad;
+  END IF;
+  PERFORM _pass('9.19', 'transfers table grant is SELECT-only for authenticated and nothing for anon, matching its SELECT-only policy exactly');
+END $$;
+
+-- 9.20: leave_household() nulls transfers.created_by for a departing
+-- member in a continuing household — mirrors OBLIGATIONS.LEAVE.1's pattern
+-- for the identical reason (RLS's WITH CHECK reads current
+-- household_members membership; a departed member's row must not leave a
+-- dangling FK pointing at someone no longer in the household).
+SAVEPOINT sp_9_20;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  -- User B (member) creates a transfer, then leaves — User A (admin)
+  -- remains, so this is the continuing-household branch, not the
+  -- sole-member cascade.
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    20000, '2026-08-15'::date, 'העברה של משתמש עוזב'
+  ) INTO v_result;
+  v_transfer_id := (v_result->>'transfer_id')::uuid;
+
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'setup for 9.20 failed: leave_household() returned %', v_result;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM transfers WHERE id = v_transfer_id AND created_by IS NOT NULL) THEN
+    RAISE EXCEPTION 'FAIL 9.20: transfers.created_by still points at the departed member';
+  END IF;
+  PERFORM _pass('9.20', 'leave_household() nulls transfers.created_by for the departing member''s own rows, keeping the transfer itself intact');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_20;
+
+-- 9.21: transfers.created_by's ON DELETE SET NULL, tested directly against
+-- the raw FK constraint rather than through delete_own_account() — that
+-- RPC's own explicit "UPDATE transfers SET created_by = NULL ..." (§9.20's
+-- continuing-household branch) would null the same column regardless of
+-- what the FK's ON DELETE behavior is, masking a missing or wrong FK
+-- definition. Deleting the auth.users row directly, decoupled from any RPC,
+-- isolates exactly what this migration changed: present from this
+-- migration's first version (unlike recurring_transactions.created_by/
+-- savings_goals.created_by, which needed a migration 004 retrofit after
+-- shipping without it) so delete_own_account() never regresses into a raw
+-- foreign_key_violation for a user who ever created a transfer.
+SAVEPOINT sp_9_21;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  PERFORM create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    30000, '2026-08-15'::date, 'העברה למבחן FK'
+  );
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_transfer_id UUID; v_created_by UUID;
+BEGIN
+  SELECT id INTO v_transfer_id FROM transfers WHERE description = 'העברה למבחן FK';
+  DELETE FROM auth.users WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  SELECT created_by INTO v_created_by FROM transfers WHERE id = v_transfer_id;
+  IF v_created_by IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 9.21: transfers.created_by is still %, expected NULL', v_created_by;
+  END IF;
+  PERFORM _pass('9.21', 'deleting the auth.users row a transfer''s created_by references does not raise a foreign_key_violation -- transfers.created_by has ON DELETE SET NULL from this migration''s first version, and the transfer itself survives intact');
+END $$;
+ROLLBACK TO SAVEPOINT sp_9_21;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -3551,7 +4110,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008) ===', v_total;
 END $$;
 
 ROLLBACK;

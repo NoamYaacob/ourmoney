@@ -30,6 +30,7 @@ function txn(overrides: Partial<Transaction>): Transaction {
     payer_id: null,
     note: null,
     source: 'manual',
+    transfer_id: null,
     created_by: 'user-1',
     created_at: '2026-08-01T00:00:00Z',
     ...overrides,
@@ -188,6 +189,34 @@ describe('filterTransactionsLocally', () => {
     ]
     const result = filterTransactionsLocally(transactions, { search: 'קפה', type: 'expense' }, categoryNameById)
     expect(result.map((t) => t.id)).toEqual(['t1'])
+  })
+
+  it('filters to transfers only, by transfer_id (migration 008)', () => {
+    const transactions = [
+      txn({ id: 't1', amount_agorot: -5000, transfer_id: 'transfer-1' }),
+      txn({ id: 't2', amount_agorot: 5000, transfer_id: 'transfer-1' }),
+      txn({ id: 't3', amount_agorot: -1000 }),
+    ]
+    const result = filterTransactionsLocally(transactions, { search: '', type: 'transfer' }, categoryNameById)
+    expect(result.map((t) => t.id).sort()).toEqual(['t1', 't2'])
+  })
+
+  it('excludes a transfer leg from the expense filter even though its amount is negative', () => {
+    const transactions = [
+      txn({ id: 't1', amount_agorot: -5000, transfer_id: 'transfer-1' }),
+      txn({ id: 't2', amount_agorot: -1000 }),
+    ]
+    const result = filterTransactionsLocally(transactions, { search: '', type: 'expense' }, categoryNameById)
+    expect(result.map((t) => t.id)).toEqual(['t2'])
+  })
+
+  it('excludes a transfer leg from the income filter even though its amount is positive', () => {
+    const transactions = [
+      txn({ id: 't1', amount_agorot: 5000, transfer_id: 'transfer-1' }),
+      txn({ id: 't2', amount_agorot: 1000 }),
+    ]
+    const result = filterTransactionsLocally(transactions, { search: '', type: 'income' }, categoryNameById)
+    expect(result.map((t) => t.id)).toEqual(['t2'])
   })
 
   it('does not hide or treat excluded transactions specially — is_excluded plays no role in filtering', () => {

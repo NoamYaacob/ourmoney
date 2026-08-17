@@ -163,6 +163,7 @@ describe('Dashboard analytics section', () => {
           txn_date: '2026-08-05',
           is_shared: true,
           is_excluded: false,
+          transfer_id: null,
           description: 'קפה',
         },
       ],
@@ -249,6 +250,7 @@ describe('Dashboard month navigation and budget summary', () => {
             id: 'txn-1',
             description: 'קפה',
             amount_agorot: -1500,
+            transfer_id: null,
           },
         ],
         isLoading: false,
@@ -274,6 +276,31 @@ describe('Dashboard month navigation and budget summary', () => {
     expect(getByText(i18n.t('dashboard.viewAll'))).toBeTruthy()
     expect(queryByText(NO_BUDGET_MESSAGE)).toBeNull()
     expect(queryByText(NO_TRANSACTIONS_MESSAGE)).toBeNull()
+  })
+
+  // Migration 008 (ADR-035): a transfer's two legs share one description —
+  // without this exclusion they rendered as two mismatched rows (one
+  // green like income, one plain like an expense) with no indication
+  // they were the same internal movement (qa-adversarial-reviewer finding).
+  it('excludes internal transfer legs from the recent-transactions panel entirely', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseTransactions.mockImplementationOnce((_householdId, filters) => {
+      if (filters?.periodEnd) return { transactions: [], isLoading: false, error: null }
+      return {
+        transactions: [
+          { id: 'leg-source', description: 'העברה לחיסכון', amount_agorot: -50000, transfer_id: 'transfer-1' },
+          { id: 'leg-dest', description: 'העברה לחיסכון', amount_agorot: 50000, transfer_id: 'transfer-1' },
+          { id: 'txn-1', description: 'קפה', amount_agorot: -1500, transfer_id: null },
+        ],
+        isLoading: false,
+        error: null,
+      }
+    })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText('קפה')).toBeTruthy()
+    expect(queryByText('העברה לחיסכון')).toBeNull()
   })
 
   it('renders the same key content in dark color scheme as in light', async () => {

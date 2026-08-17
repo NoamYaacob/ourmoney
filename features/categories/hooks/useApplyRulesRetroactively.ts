@@ -26,7 +26,13 @@ export function useApplyRulesRetroactively(householdId: string | null | undefine
           .from('transactions')
           .select('id, description, merchant_name, category_id')
           .eq('household_id', householdId)
-          .is('category_id', null),
+          .is('category_id', null)
+          // Migration 008 (ADR-035): a transfer leg must never be
+          // auto-categorized — matching it against a rule would attempt to
+          // set category_id on a row the transactions_transfer_no_category
+          // CHECK constraint forbids from ever carrying one, surfacing as a
+          // raw DB error to the user instead of a clean no-op.
+          .is('transfer_id', null),
       ])
       if (rulesError) throw rulesError
       if (txnError) throw txnError

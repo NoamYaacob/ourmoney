@@ -18,6 +18,11 @@ export function useUncategorizedTransactions(householdId: string | null | undefi
         .select('id, description, amount_agorot, txn_date')
         .eq('household_id', householdId as string)
         .is('category_id', null)
+        // Migration 008 (ADR-035): a transfer leg's category_id is always
+        // NULL by design (it is never "uncategorized," it is never
+        // categorizable at all) — without this it would surface here
+        // permanently, since nothing can ever assign it a category.
+        .is('transfer_id', null)
         .order('txn_date', { ascending: false })
       if (error) throw error
       return data

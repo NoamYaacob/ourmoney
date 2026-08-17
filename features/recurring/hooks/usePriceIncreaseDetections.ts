@@ -16,16 +16,23 @@ export function usePriceIncreaseDetections(
 ): { detections: PriceIncreaseDetection[]; isLoading: boolean; error: Error | null } {
   const { transactions, isLoading, error } = useTransactions(householdId)
 
-  const observations: RecurringChargeObservation[] = transactions.map((t) => ({
-    id: t.id,
-    recurringId: t.recurring_id,
-    accountId: t.account_id,
-    description: t.description,
-    merchantName: t.merchant_name,
-    amountAgorot: t.amount_agorot,
-    txnDate: t.txn_date,
-    isExcluded: t.is_excluded,
-  }))
+  // Migration 008 (ADR-035): a transfer leg is never a recurring charge —
+  // excluded before detection rather than relying on detectPriceIncreases
+  // to somehow recognize it (it has no signal to do so; a transfer's
+  // description is user-chosen free text, indistinguishable in shape from
+  // any real recurring charge's description).
+  const observations: RecurringChargeObservation[] = transactions
+    .filter((t) => t.transfer_id === null)
+    .map((t) => ({
+      id: t.id,
+      recurringId: t.recurring_id,
+      accountId: t.account_id,
+      description: t.description,
+      merchantName: t.merchant_name,
+      amountAgorot: t.amount_agorot,
+      txnDate: t.txn_date,
+      isExcluded: t.is_excluded,
+    }))
 
   return {
     detections: detectPriceIncreases(observations, threshold),

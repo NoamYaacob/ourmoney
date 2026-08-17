@@ -89,6 +89,7 @@ entering what hits the account, not the headline purchase price. That is copy, n
 | Shared vs personal accounts | **[MVP]** | `owner_id` null = household-owned |
 | Account balances | **[MVP]** | integer agorot, manually maintained |
 | Account archiving | **[MVP]** | preserve history, exclude from totals |
+| Internal transfers between accounts | **[MVP]** | two linked, signed transaction rows; never counted as income/expense ([ADR-035](DECISIONS.md#adr-035)) |
 | Multi-currency accounts | **[NEXT]** | ILS-only in MVP; USD/EUR common for Israeli households |
 | FX rate handling | [BLOCKED: rate data source] | needed for real multi-currency |
 | Net worth tracking | **[NEXT]** | assets minus liabilities over time |

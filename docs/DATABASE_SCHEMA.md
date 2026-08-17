@@ -286,6 +286,41 @@ nothing now and are expensive to retrofit.
 Neither may be overloaded to mean visibility, installment status, or anything else. Overloading a
 boolean is how the next person is forced into a migration.
 
+### Migration 008 — internal account transfers (real, not future)
+
+Unlike installments/visibility below, this model is **implemented**, not planned. See
+[ADR-035](DECISIONS.md#adr-035) for the full decision record.
+
+```sql
+CREATE TABLE transfers (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  household_id     UUID        NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  from_account_id  UUID        NOT NULL REFERENCES accounts(id),
+  to_account_id    UUID        NOT NULL REFERENCES accounts(id),
+  amount_agorot    BIGINT      NOT NULL CHECK (amount_agorot > 0),
+  txn_date         DATE        NOT NULL,
+  description      TEXT        NOT NULL,
+  created_by       UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (from_account_id <> to_account_id)
+);
+
+-- Each leg IS a transaction (I1) — the source leg is negative, the destination leg positive,
+-- summing to zero. The link is one nullable FK, cascading so a deleted transfer takes both legs
+-- with it in one statement.
+ALTER TABLE transactions
+  ADD COLUMN transfer_id UUID REFERENCES transfers(id) ON DELETE CASCADE;
+ALTER TABLE transactions
+  ADD CONSTRAINT transactions_transfer_no_category CHECK (transfer_id IS NULL OR category_id IS NULL);
+```
+
+A transfer is never entered directly against `transactions` by a client — only `create_transfer()`/
+`update_transfer()`/`delete_transfer()` (all `SECURITY DEFINER`) may write a row with `transfer_id`
+set, enforced by tightening `transactions_insert`/`_update`/`_delete`'s RLS to require
+`transfer_id IS NULL`. `transfers` itself carries a `SELECT`-only policy — no client-side
+`INSERT`/`UPDATE`/`DELETE` path exists at all.
+
 ### Future model — installments (NOT in MVP)
 
 Resolved by [Q18](DECISIONS.md#open-questions): **no installment columns in the MVP schema.**
@@ -1696,6 +1731,36 @@ row-level assertions.
 | LEAVE.CONCURRENT | Two members of the same household call concurrently (isolated dblink section, true concurrency) | no deadlock, both calls succeed, household fully gone, **both users' accounts survive intact** regardless of call order |
 
 **Known gap, stated rather than silently left uncovered:** none of the tests above (or `DELETE_ACCOUNT.CONCURRENT`) exercise the *actual* true-concurrency shape of the critical finding 8.13 fixes — a real second transaction (the client's raw "admin removes a member" `DELETE`, which takes no lock) committing between this function's `SELECT`/`FOR UPDATE` and its promotion `UPDATE`. 8.13 proves the logic deterministically; the live locking/timing behavior needs a real database to verify (see migration 005's own `NEEDS LIVE VERIFICATION` note).
+
+### Group 9 — Internal account transfers (migration 008, [ADR-035](DECISIONS.md#adr-035))
+
+| # | Test | Expected |
+|---|---|---|
+| 9.1 | `create_transfer()` happy path | one `transfers` row + two correctly-signed, category-less linked `transactions` legs |
+| 9.2 | Same `from`/`to` account | `{ok: false, error: 'same_account'}`, nothing inserted |
+| 9.3 | `to_account_id` from a different household | `{ok: false, error: 'invalid_account'}`, nothing inserted |
+| 9.4 | Non-positive amount | `{ok: false, error: 'invalid_amount'}` |
+| 9.5 | Caller is `anon` | `EXECUTE` denied |
+| 9.7 | **[design-review regression]** direct `INSERT` into `transactions` with `transfer_id` set | rejected — only `create_transfer()` may create a leg |
+| 9.8 | **[design-review regression]** direct `UPDATE ... SET transfer_id = NULL, amount_agorot = ...` on a leg (the detach-and-mutate bypass) | 0 rows affected — `transactions_update`'s `USING` clause excludes `transfer_id IS NOT NULL` rows entirely, not only `WITH CHECK` |
+| 9.9 | Direct `UPDATE` on a leg that never touches `transfer_id` | 0 rows affected — the leg is not a reachable `UPDATE` target at all |
+| 9.10 | Direct admin `DELETE` on a single leg | 0 rows affected — only `delete_transfer()` can remove a transfer, always both legs together |
+| 9.11 | Cross-household `SELECT` on `transfers` | 0 rows visible |
+| 9.12 | `update_transfer()` on another household's `transfer_id` | `{ok: false, error: 'not_found'}` |
+| 9.13 | `update_transfer()` with an account from a different household, on the caller's own transfer | `{ok: false, error: 'invalid_account'}`, nothing changed |
+| 9.14 | `update_transfer()` with the same `from`/`to` account | `{ok: false, error: 'same_account'}` |
+| 9.15 | `update_transfer()` happy path, including a from/to direction swap | both legs correctly re-signed and re-linked |
+| 9.16 | `delete_transfer()` by a non-admin member | `{ok: false, error: 'not_admin'}`, nothing deleted |
+| 9.17 | `delete_transfer()` on another household's `transfer_id` (even by that household's own admin) | `{ok: false, error: 'not_found'}` |
+| 9.18 | `delete_transfer()` by the owning household's admin | `transfers` row and both legs gone (`ON DELETE CASCADE`) |
+| 9.19 | Grants | `transfers` is `SELECT`-only for `authenticated`, nothing for `anon` |
+| 9.20 | `leave_household()` widening | `transfers.created_by` nulled for a departing member, transfer itself intact |
+| 9.21 | `transfers.created_by` FK behavior, tested directly (not through an RPC) | deleting the referenced `auth.users` row nulls `created_by` rather than raising `foreign_key_violation` |
+
+9.6 is fixture setup (a real transfer, reused by 9.7–9.18), not an assertion of its own. 9.5's anon-cannot-execute
+guarantee and the fixed-`search_path` guarantee for all three new RPCs are additionally covered for free by the
+existing generic 6.5/6.6 structural guards, which scan every `SECURITY DEFINER` function in `public` rather than
+being written once per function.
 
 ---
 

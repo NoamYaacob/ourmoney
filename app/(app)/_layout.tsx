@@ -258,6 +258,7 @@ export default function AppLayout() {
                   the tab bar via href: null. See this file's own header comment. */}
               <Tabs.Screen name="transactions/new" options={{ href: null }} />
               <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
+              <Tabs.Screen name="transfers/[id]" options={{ href: null }} />
               <Tabs.Screen name="transactions/import" options={{ href: null }} />
               <Tabs.Screen name="accounts/index" options={{ href: null }} />
               <Tabs.Screen name="accounts/[id]" options={{ href: null }} />

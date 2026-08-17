@@ -1524,6 +1524,97 @@ own header for the full implementation detail.
 
 ---
 
+## ADR-035
+### Internal account transfers: a `transfers` table plus two linked transaction rows
+
+**Status:** Accepted
+
+**Context.** Moving money between two accounts the same household owns (e.g. checking → savings) was
+previously only representable as an ordinary transaction — which is wrong on both sides: an expense row
+on the source account inflates spending analytics/budgets that never actually left the household, and
+an income row on the destination account inflates income analytics the same way, while a household's
+*net* position never changed. This ADR pulls "internal transfer" into MVP-2 scope ([ROADMAP.md](
+../ROADMAP.md#mvp-2--core-financial-loop), [FEATURES.md](FEATURES.md#accounts-and-financial-position))
+as a correctness fix for account balances and budget/analytics attribution, not a new financial
+capability — no engine gains a new formula; several existing computations gain an exclusion.
+
+**Decision.**
+
+1. **A transfer is exactly two `transactions` rows, linked by a new `transfers` parent table** — not a
+   `transfer_group_id`-only design. A parent row (`from_account_id`, `to_account_id`, `amount_agorot`,
+   `txn_date`, `description`) is the single source of truth for shared metadata; `transactions.transfer_id`
+   (nullable FK, `ON DELETE CASCADE`) links each leg back to it. This honors [ADR-029](#adr-029)'s
+   transaction identity invariants directly: I1 ("one row = one movement of money") is *better* satisfied
+   by two real, independently signed movements than by one row carrying dual semantics; I2/I4 are
+   unaffected (`transfer_id` is a plain FK, not a uniqueness constraint, and it is used immediately by
+   this feature, not spec'd speculatively ahead of it — the kind of column ADR-029 forbids).
+2. **All transfer mutation goes through three `SECURITY DEFINER` RPCs** (`create_transfer`,
+   `update_transfer`, `delete_transfer`), never a client-side multi-statement write — the only way three
+   row-writes (parent + 2 legs) are guaranteed all-or-nothing, matching the established convention
+   (`create_household`, `accept_invitation`, `delete_own_account`, `leave_household`). `delete_transfer`
+   is a single `DELETE FROM transfers` relying on cascade for the two legs — atomic by construction.
+   `delete_transfer` requires household-admin, matching every other hard-delete of a shared resource in
+   this schema (`docs/ARCHITECTURE.md`'s Security Model Summary).
+3. **The existing `transactions_insert`/`_update`/`_delete` RLS policies are tightened to require
+   `transfer_id IS NULL`** — on `_update`, in *both* `USING` and `WITH CHECK`, not `WITH CHECK` alone.
+   `WITH CHECK` only constrains the row's state *after* a write; without the same restriction in `USING`,
+   a single `UPDATE transactions SET transfer_id = NULL, amount_agorot = ... WHERE id = <a leg>` detaches
+   a leg from its transfer and mutates it in the same statement, defeating the RPC-only guarantee this
+   whole design rests on. (Caught in review before the migration was written, not after.) The `transfers`
+   table itself carries a `SELECT` policy only — no `INSERT`/`UPDATE`/`DELETE` policy exists at all,
+   mirroring `household_members`' no-role-change-policy precedent ([ADR-022](#adr-022)); its table grant
+   is `SELECT` only for `authenticated`, matching policy exactly rather than relying on RLS alone to deny
+   what a wider grant would permit.
+4. **One new domain event per transfer action** (`transfer.created`/`transfer.updated`/`transfer.deleted`),
+   never `transaction.created` for either leg. `features/budgets/lib/budgetThresholdSubscriber.ts`
+   already no-ops on a null `category_id`, so reuse would be harmless *today* — but a dedicated event is
+   the architecturally honest choice: a transfer is one domain occurrence, not two, and no current or
+   future `transaction.created` subscriber has to remember to special-case transfer legs. This is exactly
+   [ADR-013](#adr-013)'s "add new event types freely" pattern, already used for zero-subscriber events like
+   `income.received`.
+5. **No advisory lock, unlike [ADR-032](#adr-032)/[ADR-034](#adr-034)'s `pg_advisory_xact_lock`.** The
+   succession race those ADRs close exists because the contended state is a *candidate selected from a
+   set* (`ORDER BY joined_at LIMIT 1`) that can vanish between selection and use. Here the contended
+   invariant — "a transfer has exactly two balanced legs" — is anchored to one row, `transfers.id`, and
+   `update_transfer`/`delete_transfer` each take their row lock as the *first* statement that touches
+   `transfers` (a locking `UPDATE`/`DELETE ... WHERE id = ... AND household_id = ...`, never an earlier
+   unlocked `SELECT` used only to validate). A second concurrent call on the same `transfer_id` blocks on
+   that row lock for the duration of the transaction, then re-evaluates. Every mutating statement inlines
+   `AND household_id = v_household_id` rather than trusting an earlier isolated membership check (the
+   "structural guards over enumerated assertions" discipline, [ADR-023](#adr-023)), and every write checks
+   its affected-row count via `GET DIAGNOSTICS`, returning `not_found` rather than a silent no-op —
+   closing the exact "ghost success" failure class [ADR-034](#adr-034) found and fixed twice for
+   `leave_household()`/`delete_own_account()`'s admin-succession queries.
+6. **`transfers.created_by` uses `ON DELETE SET NULL`, from day one** — not retrofitted later like
+   `recurring_transactions.created_by`/`savings_goals.created_by` needed in [ADR-032](#adr-032). Both
+   `leave_household()` and `delete_own_account()` are re-created in the same migration (immutable-history
+   convention: re-create, don't edit a shipped migration) with one added statement each, nulling
+   `transfers.created_by` for a departing member in a continuing household — otherwise a user who ever
+   created a transfer could never delete their own account, an App-Store-compliance regression.
+7. **Zero changes to `calculateSafeToSpend.ts`/`calculateCashFlowForecast.ts`.** Both already treat
+   `computeAccountBalances()`'s output as opaque input and never query `transactions` directly; since that
+   function sums *all* `transactions.amount_agorot` per account with no special-casing, correctness flows
+   through automatically once transfer legs exist as ordinary signed rows — a transfer's net effect on
+   total household balance is zero by construction (`-amount + amount`), which is exactly the emergent
+   property this design should produce.
+
+**Consequences.** `filterForAnalytics.ts`, `useBudgetProgress.ts`, `usePriceIncreaseDetections.ts`,
+`useUncategorizedTransactions.ts`, and `useApplyRulesRetroactively.ts` all gain a `transfer_id IS NOT NULL`
+exclusion — a DB-level `CHECK (transfer_id IS NULL OR category_id IS NULL)` backs this as defense-in-depth,
+so a bug in any one query-side exclusion cannot let a transfer leg be silently categorized. No engine
+formula changes anywhere. No historical-transfer auto-detection is introduced — existing data is untouched,
+and manual creation bypasses rule-matching entirely (a transfer is never "categorized," so there is nothing
+for a rule to match).
+
+**Related:** [ADR-029](#adr-029) (transaction identity invariants this design must honor), [ADR-013](
+#adr-013)/[ADR-014](#adr-014) (domain events, channel independence), [ADR-022](#adr-022) (no-mutation-
+policy precedent for a table whose writes are RPC-only), [ADR-023](#adr-023) (structural RLS guards,
+inline household scoping), [ADR-032](#adr-032)/[ADR-034](#adr-034) (the `SECURITY DEFINER` RPC and
+advisory-lock conventions this design follows and, for locking, deliberately departs from with reasoning).
+See `supabase/migrations/008_internal_transfers.sql` for the full implementation.
+
+---
+
 ## Release versioning convention
 
 Not an ADR (no architectural reversal is at stake) — documented here, alongside the ADRs, because no

@@ -641,6 +641,7 @@ export type Database = {
           receipt_url: string | null
           recurring_id: string | null
           source: string
+          transfer_id: string | null
           txn_date: string
           updated_at: string
         }
@@ -663,6 +664,7 @@ export type Database = {
           receipt_url?: string | null
           recurring_id?: string | null
           source?: string
+          transfer_id?: string | null
           txn_date: string
           updated_at?: string
         }
@@ -685,6 +687,7 @@ export type Database = {
           receipt_url?: string | null
           recurring_id?: string | null
           source?: string
+          transfer_id?: string | null
           txn_date?: string
           updated_at?: string
         }
@@ -724,6 +727,74 @@ export type Database = {
             referencedRelation: "recurring_transactions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "transactions_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transfers: {
+        Row: {
+          amount_agorot: number
+          created_at: string
+          created_by: string | null
+          description: string
+          from_account_id: string
+          household_id: string
+          id: string
+          to_account_id: string
+          txn_date: string
+          updated_at: string
+        }
+        Insert: {
+          amount_agorot: number
+          created_at?: string
+          created_by?: string | null
+          description: string
+          from_account_id: string
+          household_id: string
+          id?: string
+          to_account_id: string
+          txn_date: string
+          updated_at?: string
+        }
+        Update: {
+          amount_agorot?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          from_account_id?: string
+          household_id?: string
+          id?: string
+          to_account_id?: string
+          txn_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfers_from_account_id_fkey"
+            columns: ["from_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -741,6 +812,16 @@ export type Database = {
         Returns: string
       }
       create_household: { Args: { p_name: string }; Returns: Json }
+      create_transfer: {
+        Args: {
+          p_amount_agorot: number
+          p_description: string
+          p_from_account_id: string
+          p_to_account_id: string
+          p_txn_date: string
+        }
+        Returns: Json
+      }
       dblink: { Args: { "": string }; Returns: Record<string, unknown>[] }
       dblink_cancel_query: { Args: { "": string }; Returns: string }
       dblink_close: { Args: { "": string }; Returns: string }
@@ -776,6 +857,7 @@ export type Database = {
       }
       dblink_is_busy: { Args: { "": string }; Returns: number }
       delete_own_account: { Args: never; Returns: Json }
+      delete_transfer: { Args: { p_transfer_id: string }; Returns: Json }
       generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
       is_household_member: { Args: { hid: string }; Returns: boolean }
@@ -786,6 +868,17 @@ export type Database = {
       }
       skip_recurring_occurrence: {
         Args: { p_recurring_id: string }
+        Returns: Json
+      }
+      update_transfer: {
+        Args: {
+          p_amount_agorot: number
+          p_description: string
+          p_from_account_id: string
+          p_to_account_id: string
+          p_transfer_id: string
+          p_txn_date: string
+        }
         Returns: Json
       }
     }

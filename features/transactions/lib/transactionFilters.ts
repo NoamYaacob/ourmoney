@@ -17,7 +17,7 @@ import type { Transaction } from '@/types/app'
 import type { TransactionFilters } from '../hooks/useTransactions'
 import { getPeriodRange, TRANSACTION_PERIODS, type TransactionPeriod } from './transactionPeriod'
 
-export type TransactionTypeFilter = 'all' | 'expense' | 'income'
+export type TransactionTypeFilter = 'all' | 'expense' | 'income' | 'transfer'
 export type TransactionSharedFilter = 'all' | 'shared' | 'personal'
 
 // categoryId is a plain account/category id, the literal sentinel
@@ -102,9 +102,14 @@ export function filterTransactionsLocally(
   return transactions.filter((transaction) => {
     // Income/expense is the existing signed-amount convention
     // (transactionSign.ts: isIncome -> positive, expense -> negative) —
-    // never inferred from category name.
-    if (criteria.type === 'expense' && transaction.amount_agorot >= 0) return false
-    if (criteria.type === 'income' && transaction.amount_agorot <= 0) return false
+    // never inferred from category name. A transfer leg is excluded from
+    // both: its negative source leg is not "an expense" and its positive
+    // destination leg is not "income" (migration 008, ADR-035) — it only
+    // ever matches the dedicated 'transfer' filter below.
+    const isTransfer = transaction.transfer_id !== null
+    if (criteria.type === 'expense' && (isTransfer || transaction.amount_agorot >= 0)) return false
+    if (criteria.type === 'income' && (isTransfer || transaction.amount_agorot <= 0)) return false
+    if (criteria.type === 'transfer' && !isTransfer) return false
 
     if (!query) return true
 
@@ -137,7 +142,8 @@ function isTransactionPeriod(value: string): value is TransactionPeriod {
 
 export function parseTransactionFilterParams(params: TransactionFilterParams): TransactionFilterState {
   const period = params.period && isTransactionPeriod(params.period) ? params.period : DEFAULT_TRANSACTION_FILTER_STATE.period
-  const type: TransactionTypeFilter = params.type === 'expense' || params.type === 'income' ? params.type : 'all'
+  const type: TransactionTypeFilter =
+    params.type === 'expense' || params.type === 'income' || params.type === 'transfer' ? params.type : 'all'
   const shared: TransactionSharedFilter = params.shared === 'shared' || params.shared === 'personal' ? params.shared : 'all'
 
   return {

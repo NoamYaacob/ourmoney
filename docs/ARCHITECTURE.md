@@ -337,6 +337,9 @@ naming them early is the entire point.
 | `bank.connection_expiring` | Consent nears its 90-day expiry | future |
 | `loan.rate_opportunity_detected` | A loan's rate is materially above benchmark | future |
 | `mortgage.refinance_opportunity_detected` | Refinancing would materially improve the position | future |
+| `transfer.created` | `create_transfer()` succeeds ([ADR-035](DECISIONS.md#adr-035)) | ✅ |
+| `transfer.updated` | `update_transfer()` succeeds | ✅ |
+| `transfer.deleted` | `delete_transfer()` succeeds | ✅ |
 
 ### Event shape
 

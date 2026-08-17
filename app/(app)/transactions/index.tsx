@@ -41,7 +41,7 @@ import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Transaction } from '@/types/app'
 
-const TYPE_FILTER_VALUES: TransactionTypeFilter[] = ['all', 'expense', 'income']
+const TYPE_FILTER_VALUES: TransactionTypeFilter[] = ['all', 'expense', 'income', 'transfer']
 const SHARED_FILTER_VALUES: TransactionSharedFilter[] = ['all', 'shared', 'personal']
 
 export default function Transactions() {
@@ -143,7 +143,13 @@ export default function Transactions() {
     categoryNameById
   )
 
-  const visibleIds = filteredTransactions.map((t) => t.id)
+  // Transfer rows are excluded from the selectable set entirely (migration
+  // 008, ADR-035): a transfer leg has no category to bulk-assign, and the
+  // RLS tightening that backs the atomic edit/delete RPCs would reject the
+  // write anyway (transactions_update's USING clause excludes
+  // transfer_id IS NOT NULL rows) — better to never offer the selection in
+  // the first place than to let a user select a row a submit can't touch.
+  const visibleIds = filteredTransactions.filter((t) => t.transfer_id === null).map((t) => t.id)
 
   function handleEnterSelectionMode() {
     setBulkResultMessage(null)
@@ -457,15 +463,31 @@ export default function Transactions() {
           keyExtractor={(item) => item.id}
           ItemSeparatorComponent={() => <View className="h-2" />}
           renderItem={({ item }) => {
+            const isTransfer = item.transfer_id !== null
             const categoryName = item.category_id ? categoryNameById[item.category_id] : undefined
             const isSelected = selectedIds.has(item.id)
+            // A transfer row is never selectable (see visibleIds above) —
+            // in selection mode it neither toggles nor navigates, so a tap
+            // can't silently exit selection mode or offer an action that
+            // would fail server-side.
+            const handlePress = isSelectionMode
+              ? isTransfer
+                ? undefined
+                : () => handleToggleRow(item.id)
+              : () => router.push(isTransfer ? `/transfers/${item.transfer_id}` : `/transactions/${item.id}`)
             return (
               <Pressable
-                onPress={() => (isSelectionMode ? handleToggleRow(item.id) : router.push(`/transactions/${item.id}`))}
-                accessibilityRole={isSelectionMode ? 'checkbox' : 'button'}
-                accessibilityState={isSelectionMode ? { checked: isSelected } : undefined}
+                onPress={handlePress}
+                // undefined, not a bare boolean, when not disabled — Pressable
+                // merges a literal `disabled` prop (even `false`) into
+                // accessibilityState (busy/disabled/expanded/selected all
+                // appear), which would change every ordinary row's
+                // accessibilityState shape too, not just transfer rows.
+                disabled={isSelectionMode && isTransfer ? true : undefined}
+                accessibilityRole={isSelectionMode && !isTransfer ? 'checkbox' : 'button'}
+                accessibilityState={isSelectionMode && !isTransfer ? { checked: isSelected } : undefined}
                 accessibilityLabel={
-                  isSelectionMode
+                  isSelectionMode && !isTransfer
                     ? t('transactions.selection.rowLabel', {
                         description: item.description,
                         state: isSelected ? t('transactions.selection.selected') : t('transactions.selection.notSelected'),
@@ -481,28 +503,44 @@ export default function Transactions() {
                   }
                 >
                   <View className="flex-row items-center gap-3">
-                    {isSelectionMode && (
+                    {isSelectionMode && !isTransfer && (
                       <Ionicons
                         name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
                         size={22}
                         color={isSelected ? accentColor : mutedColor}
                       />
                     )}
-                    <CategoryIcon icon={item.category_id ? categoryIconById[item.category_id] : undefined} size="sm" />
+                    {isTransfer ? (
+                      <View
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                        className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark"
+                      >
+                        <Ionicons name="swap-horizontal" size={16} color={accentColor} />
+                      </View>
+                    ) : (
+                      <CategoryIcon icon={item.category_id ? categoryIconById[item.category_id] : undefined} size="sm" />
+                    )}
                     <View className="flex-1">
                       <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                         {item.description}
                       </Text>
                       <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                        {categoryName ? `${categoryName} · ${item.txn_date}` : item.txn_date}
-                        {!item.is_shared ? ` · ${t('transactions.form.personal')}` : ''}
+                        {isTransfer
+                          ? `${t('transactions.transferLabel')} · ${item.txn_date}`
+                          : categoryName
+                            ? `${categoryName} · ${item.txn_date}`
+                            : item.txn_date}
+                        {!isTransfer && !item.is_shared ? ` · ${t('transactions.form.personal')}` : ''}
                       </Text>
                     </View>
                     <Text
                       className={
-                        item.amount_agorot > 0
-                          ? 'text-body font-medium text-positive-light dark:text-positive-dark'
-                          : 'text-body font-medium text-ink-light dark:text-ink-dark'
+                        isTransfer
+                          ? 'text-body font-medium text-accent-light dark:text-accent-dark'
+                          : item.amount_agorot > 0
+                            ? 'text-body font-medium text-positive-light dark:text-positive-dark'
+                            : 'text-body font-medium text-ink-light dark:text-ink-dark'
                       }
                     >
                       {formatILS(item.amount_agorot)}
