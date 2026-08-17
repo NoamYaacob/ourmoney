@@ -8,7 +8,9 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useUpdatePlannedObligation } from '@/features/obligations/hooks/useUpdatePlannedObligation'
+import { useSetPlannedObligationStatus } from '@/features/obligations/hooks/useSetPlannedObligationStatus'
 import { useDeletePlannedObligation } from '@/features/obligations/hooks/useDeletePlannedObligation'
+import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
@@ -19,6 +21,8 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
+import { ConflictModal } from '@/components/ui/ConflictModal'
+import type { PlannedObligation } from '@/types/app'
 
 export default function ObligationDetail() {
   const { t } = useTranslation()
@@ -28,8 +32,9 @@ export default function ObligationDetail() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { obligations, isLoading: isObligationsLoading } = usePlannedObligations(householdId)
+  const { obligations, isLoading: isObligationsLoading, refetch } = usePlannedObligations(householdId)
   const updateObligation = useUpdatePlannedObligation(householdId)
+  const setStatus = useSetPlannedObligationStatus(householdId)
   const deleteObligation = useDeletePlannedObligation(householdId)
 
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
@@ -44,6 +49,13 @@ export default function ObligationDetail() {
   const [isShared, setIsShared] = useState(true)
   const [notes, setNotes] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
+  // Pinned at the exact moment startEditing() snapshots the other fields —
+  // never re-read from the live query result at submit time, or the whole
+  // compare-and-swap is defeated (ADR-036).
+  const [editingVersion, setEditingVersion] = useState<number | null>(null)
+
+  const [conflict, setConflict] = useState<{ kind: 'conflict' | 'not_found' } | null>(null)
+  const [reloading, setReloading] = useState(false)
 
   const obligation = obligations.find((o) => o.id === id)
 
@@ -68,21 +80,21 @@ export default function ObligationDetail() {
     )
   }
 
-  function startEditing() {
-    if (!obligation) return
+  function startEditing(source: PlannedObligation) {
     setEditError(null)
-    setName(obligation.name)
-    setAmountText(String(obligation.amount_agorot / 100))
-    setDueDate(obligation.due_date)
-    setCategoryId(obligation.category_id)
-    setAccountId(obligation.account_id)
-    setIsShared(obligation.is_shared)
-    setNotes(obligation.notes ?? '')
+    setName(source.name)
+    setAmountText(String(source.amount_agorot / 100))
+    setDueDate(source.due_date)
+    setCategoryId(source.category_id)
+    setAccountId(source.account_id)
+    setIsShared(source.is_shared)
+    setNotes(source.notes ?? '')
+    setEditingVersion(source.version)
     setIsEditing(true)
   }
 
   function handleSave() {
-    if (updateObligation.isPending || !obligation) return
+    if (updateObligation.isPending || !obligation || editingVersion === null) return
     setEditError(null)
 
     if (!name.trim()) {
@@ -102,6 +114,7 @@ export default function ObligationDetail() {
     updateObligation.mutate(
       {
         id: obligation.id,
+        expectedVersion: editingVersion,
         name: name.trim(),
         amountAgorot: parsed.agorot,
         dueDate,
@@ -112,9 +125,31 @@ export default function ObligationDetail() {
       },
       {
         onSuccess: () => setIsEditing(false),
-        onError: () => setEditError(t('obligations.errors.generic')),
+        onError: (error) => {
+          if (isConflictError(error)) {
+            setConflict({ kind: 'conflict' })
+          } else if (isNotFoundError(error)) {
+            setConflict({ kind: 'not_found' })
+          } else {
+            setEditError(t('obligations.errors.generic'))
+          }
+        },
       }
     )
+  }
+
+  async function handleReloadFromConflict() {
+    setReloading(true)
+    const { data: fresh } = await refetch()
+    setReloading(false)
+    setConflict(null)
+
+    const freshObligation = fresh?.find((o) => o.id === id)
+    if (isEditing && freshObligation) {
+      startEditing(freshObligation)
+    } else {
+      setIsEditing(false)
+    }
   }
 
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he }))
@@ -196,19 +231,29 @@ export default function ObligationDetail() {
       ) : (
         <>
           <View className="mb-3">
-            <Button title={t('obligations.detail.edit')} variant="secondary" onPress={startEditing} />
+            <Button title={t('obligations.detail.edit')} variant="secondary" onPress={() => startEditing(obligation)} />
           </View>
 
           {obligation.status === 'upcoming' && (
             <View className="mb-3">
               <Button
                 title={t('obligations.detail.markPaid')}
-                loading={updateObligation.isPending}
+                loading={setStatus.isPending}
                 onPress={() => {
                   setActionError(null)
-                  updateObligation.mutate(
-                    { id: obligation.id, status: 'completed' },
-                    { onError: () => setActionError(t('obligations.errors.generic')) }
+                  setStatus.mutate(
+                    { id: obligation.id, expectedVersion: obligation.version, status: 'completed' },
+                    {
+                      onError: (error) => {
+                        if (isConflictError(error)) {
+                          setConflict({ kind: 'conflict' })
+                        } else if (isNotFoundError(error)) {
+                          setConflict({ kind: 'not_found' })
+                        } else {
+                          setActionError(t('obligations.errors.generic'))
+                        }
+                      },
+                    }
                   )
                 }}
               />
@@ -220,12 +265,22 @@ export default function ObligationDetail() {
               <Button
                 title={t('obligations.detail.cancelObligation')}
                 variant="secondary"
-                loading={updateObligation.isPending}
+                loading={setStatus.isPending}
                 onPress={() => {
                   setActionError(null)
-                  updateObligation.mutate(
-                    { id: obligation.id, status: 'cancelled' },
-                    { onError: () => setActionError(t('obligations.errors.generic')) }
+                  setStatus.mutate(
+                    { id: obligation.id, expectedVersion: obligation.version, status: 'cancelled' },
+                    {
+                      onError: (error) => {
+                        if (isConflictError(error)) {
+                          setConflict({ kind: 'conflict' })
+                        } else if (isNotFoundError(error)) {
+                          setConflict({ kind: 'not_found' })
+                        } else {
+                          setActionError(t('obligations.errors.generic'))
+                        }
+                      },
+                    }
                   )
                 }}
               />
@@ -248,17 +303,34 @@ export default function ObligationDetail() {
         loading={deleteObligation.isPending}
         onCancel={() => setConfirmDeleteVisible(false)}
         onConfirm={() =>
-          deleteObligation.mutate(obligation.id, {
-            onSuccess: () => {
-              setConfirmDeleteVisible(false)
-              router.back()
-            },
-            onError: () => {
-              setConfirmDeleteVisible(false)
-              setActionError(t('obligations.errors.generic'))
-            },
-          })
+          deleteObligation.mutate(
+            { id: obligation.id, expectedVersion: obligation.version },
+            {
+              onSuccess: () => {
+                setConfirmDeleteVisible(false)
+                router.back()
+              },
+              onError: (error) => {
+                setConfirmDeleteVisible(false)
+                if (isConflictError(error)) {
+                  setConflict({ kind: 'conflict' })
+                } else if (isNotFoundError(error)) {
+                  setConflict({ kind: 'not_found' })
+                } else {
+                  setActionError(t('obligations.errors.generic'))
+                }
+              },
+            }
+          )
         }
+      />
+
+      <ConflictModal
+        visible={conflict !== null}
+        kind={conflict?.kind ?? 'conflict'}
+        loading={reloading}
+        onReload={handleReloadFromConflict}
+        onCancel={() => setConflict(null)}
       />
     </Screen>
   )

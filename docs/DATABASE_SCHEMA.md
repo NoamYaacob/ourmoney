@@ -223,7 +223,11 @@ CREATE TABLE recurring_transactions (
   last_generated_at TIMESTAMPTZ,
   is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
   created_by        UUID        NOT NULL REFERENCES auth.users(id),
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Migration 009 (ADR-036) — optimistic concurrency. See "Migration 009"
+  -- below: UPDATE stays open (unlike the other two version-protected
+  -- tables) and is instead enforced by a BEFORE UPDATE trigger.
+  version           BIGINT      NOT NULL DEFAULT 1
 );
 ```
 
@@ -320,6 +324,65 @@ A transfer is never entered directly against `transactions` by a client — only
 set, enforced by tightening `transactions_insert`/`_update`/`_delete`'s RLS to require
 `transfer_id IS NULL`. `transfers` itself carries a `SELECT`-only policy — no client-side
 `INSERT`/`UPDATE`/`DELETE` path exists at all.
+
+### Migration 009 — Optimistic concurrency protection (ADR-036)
+
+`planned_obligations`, `recurring_transactions`, and `savings_goals` each gain a
+`version BIGINT NOT NULL DEFAULT 1` column (see each table's definition above). Every mutating RPC
+below implements the same atomic compare-and-swap: `WHERE id = p_id AND household_id = v_household_id
+AND version = p_expected_version`, `GET DIAGNOSTICS` row-count verified, and a zero-row result
+disambiguated by a second diagnostic-only read into `conflict` (row exists, version mismatch) vs.
+`not_found` (row does not exist, or belongs to a different household — no oracle, same discipline as
+[ADR-010](DECISIONS.md#adr-010)). See [ADR-036](DECISIONS.md#adr-036) for the full decision record,
+including why `recurring_transactions` is a deliberate asymmetry.
+
+| Table | UPDATE | DELETE |
+|---|---|---|
+| `planned_obligations` | RLS-closed; `update_planned_obligation()`/`set_planned_obligation_status()` (`SECURITY DEFINER`) | RLS-closed; `delete_planned_obligation()` (`SECURITY DEFINER`) |
+| `savings_goals` | RLS-closed; `update_savings_goal()`/`update_savings_goal_progress()` (`SECURITY DEFINER`) | RLS-closed; `delete_savings_goal()` (`SECURITY DEFINER`) |
+| `recurring_transactions` | RLS stays **open** (`recurring_update`, unchanged) — `update_recurring_transaction()`/`set_recurring_transaction_active()` are `SECURITY INVOKER`, adding only the version compare-and-swap on top of RLS's existing household scoping | RLS-closed; `delete_recurring_transaction()` (`SECURITY DEFINER`) |
+
+`recurring_transactions`' `UPDATE` stays open because `generate_recurring_transactions()`/
+`skip_recurring_occurrence()` (migration 003) are themselves `SECURITY INVOKER` and depend on that
+policy for their own `next_due_date`/`last_generated_at` writes — closing it would silently break both.
+Enforcement instead comes from a new `BEFORE UPDATE` trigger, `enforce_recurring_transaction_version()`,
+applied to every update to the row regardless of caller:
+
+```sql
+CREATE OR REPLACE FUNCTION enforce_recurring_transaction_version()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+  -- Unconditional: version may only stay the same or advance by exactly 1,
+  -- on ANY update — closes a "roll version backward with no protected
+  -- column touched" bypass a purely conditional check would miss.
+  IF NEW.version NOT IN (OLD.version, OLD.version + 1) THEN
+    RAISE EXCEPTION 'recurring_transaction_version_invalid' USING ERRCODE = 'P0001';
+  END IF;
+  -- Conditional: if a human-editable column changed, version MUST have
+  -- advanced by exactly 1 — closes "change amount_agorot, never touch
+  -- version." next_due_date/last_generated_at (system-owned) and currency
+  -- (no multi-currency support in MVP) are deliberately excluded.
+  IF (NEW.account_id, NEW.category_id, NEW.amount_agorot, NEW.description, NEW.is_shared,
+      NEW.frequency, NEW.day_of_month, NEW.is_active)
+     IS DISTINCT FROM
+     (OLD.account_id, OLD.category_id, OLD.amount_agorot, OLD.description, OLD.is_shared,
+      OLD.frequency, OLD.day_of_month, OLD.is_active)
+  THEN
+    IF NEW.version <> OLD.version + 1 THEN
+      RAISE EXCEPTION 'recurring_transaction_version_conflict' USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+```
+
+Every RPC returns the same stable `{ok, error}` shape established by [ADR-035](DECISIONS.md#adr-035):
+`{ok:true, version}` on success (`update_savings_goal_progress()` additionally returns
+`currentAgorot`/`isCompleted`, since `derive_savings_goal_completion()`'s trigger-derived value must
+reach the caller in the same round trip), or `{ok:false, error:'conflict'|'not_found'|...}` — the client
+never parses a raw Postgres error. `lib/mutations/concurrencyError.ts` is the single place that turns
+this shape into a typed `ConcurrencyError` a screen can `instanceof`-check.
 
 ### Future model — installments (NOT in MVP)
 
@@ -458,9 +521,16 @@ CREATE TABLE savings_goals (
   is_completed    BOOLEAN     NOT NULL DEFAULT FALSE,
   created_by      UUID        NOT NULL REFERENCES auth.users(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Migration 009 (ADR-036) — optimistic concurrency. See "Migration 009"
+  -- below: UPDATE/DELETE are now RPC-only, compare-and-swapped on this
+  -- column.
+  version         BIGINT      NOT NULL DEFAULT 1
 );
 ```
+
+`planned_obligations` (migration 007) gains the identical `version BIGINT NOT NULL DEFAULT 1` column in
+migration 009 — see "Migration 009" below.
 
 ---
 
@@ -1494,6 +1564,12 @@ CREATE POLICY "recurring_delete" ON recurring_transactions
   FOR DELETE TO authenticated USING (is_household_member(household_id));
 ```
 
+Migration 009 (ADR-036) drops `recurring_delete` and re-grants the table `SELECT, INSERT, UPDATE` only
+(no `DELETE`) — `delete_recurring_transaction()` is the only delete path. `recurring_update` above is
+**left completely unchanged**; version compare-and-swap for `UPDATE` is enforced by a `BEFORE UPDATE`
+trigger instead (`enforce_recurring_transaction_version()`, see "Migration 009" under Tables above), not
+by narrowing this policy or its grant.
+
 ### savings_goals
 
 ```sql
@@ -1529,6 +1605,13 @@ CREATE POLICY "savings_goals_update" ON savings_goals
 CREATE POLICY "savings_goals_delete" ON savings_goals
   FOR DELETE TO authenticated USING (is_household_member(household_id));
 ```
+
+Migration 009 (ADR-036) drops `savings_goals_update`/`savings_goals_delete` entirely and re-grants the
+table `SELECT, INSERT` only — every mutation goes through `update_savings_goal()`/
+`update_savings_goal_progress()`/`delete_savings_goal()` (all `SECURITY DEFINER`, version compare-and-
+swapped). `planned_obligations` (migration 007) receives the identical treatment: `planned_obligations_
+update`/`_delete` dropped, grant narrowed to `SELECT, INSERT`, mutation moved to
+`update_planned_obligation()`/`set_planned_obligation_status()`/`delete_planned_obligation()`.
 
 Milestone 7 adds one more trigger to this table — `derive_completion` (`BEFORE INSERT OR UPDATE`,
 calling `derive_savings_goal_completion()`) — unconditionally setting
@@ -1761,6 +1844,30 @@ row-level assertions.
 guarantee and the fixed-`search_path` guarantee for all three new RPCs are additionally covered for free by the
 existing generic 6.5/6.6 structural guards, which scan every `SECURITY DEFINER` function in `public` rather than
 being written once per function.
+
+### Group 10 — Optimistic concurrency protection (migration 009, [ADR-036](DECISIONS.md#adr-036))
+
+| # | Test | Expected |
+|---|---|---|
+| 10.1 | `update_planned_obligation()` happy path | `{ok:true, version:2}`, data changed |
+| 10.2 | Stale `expected_version` | `{ok:false, error:'conflict'}`, data/version unchanged — the first, successful write's values survive untouched |
+| 10.3 | Cross-household call with the *correct* current version | `{ok:false, error:'not_found'}` — no oracle distinguishing wrong-household from does-not-exist |
+| 10.4 / 10.5 | Direct `UPDATE`/`DELETE` on `planned_obligations` | `insufficient_privilege` — rejected at the grant level, not merely by RLS |
+| 10.6 / 10.7 | `delete_planned_obligation()` stale then correct | stale: `conflict`, row survives; correct: `ok:true`, row gone |
+| 10.8 | `set_planned_obligation_status()` valid then invalid status | valid: version advances; invalid: clean `{ok:false, error:'invalid_status'}`, version untouched |
+| 10.9 | Version monotonicity | three successive updates: `1 -> 2 -> 3`, never resets |
+| 10.10–10.18 | `savings_goals` — identical coverage shape (`update_savings_goal`, cross-household, direct-bypass, `update_savings_goal_progress` incl. the `derive_savings_goal_completion` trigger still firing inside the RPC's own statement, `delete_savings_goal` stale/success) | mirrors 10.1–10.9 |
+| 10.19–10.23 | `recurring_transactions` — `update_recurring_transaction()`/`set_recurring_transaction_active()` (`SECURITY INVOKER`) happy path, stale conflict, cross-household `not_found`, clean `invalid_frequency`/`invalid_account` rejection | mirrors 10.1/10.2/10.3, proving the `SECURITY INVOKER` RPCs give the identical guarantee as the `SECURITY DEFINER` ones |
+| 10.24 | Direct `UPDATE` changing a protected column **without** incrementing `version` | rejected — `enforce_recurring_transaction_version()`'s conditional rule |
+| 10.25 | Direct `UPDATE` changing a protected column **and** correctly incrementing `version` by 1 | succeeds — proves `recurring_transactions`' `UPDATE` is legitimately reachable directly, the deliberate asymmetry vs. the other two tables |
+| 10.26 | **[design-review regression]** Direct `UPDATE ... SET version = <lower>` with **no protected column touched** | rejected — the unconditional rule; a purely conditional check would have let this through |
+| 10.27 | Direct `DELETE` on `recurring_transactions` | `insufficient_privilege` — `DELETE` is closed even though `UPDATE` stays open |
+| 10.28 / 10.29 | `delete_recurring_transaction()` stale then correct | mirrors 10.6/10.7 |
+| 10.30 / 10.31 | `generate_recurring_transactions()`/`skip_recurring_occurrence()`'s own writes | never blocked by the trigger — `version` stays untouched at 1 |
+| 10.32 | Caller is `anon`, all three RPC shapes (`SECURITY DEFINER` and `SECURITY INVOKER` alike) | `EXECUTE` denied |
+| 10.33 | Grants | `planned_obligations`/`savings_goals`: exactly `SELECT, INSERT` for `authenticated`, nothing for `anon`/`PUBLIC`; `recurring_transactions`: exactly `SELECT, INSERT, UPDATE` |
+| 10.34 | Fixed `search_path` for the two `SECURITY INVOKER` recurring RPCs and the trigger function | not covered by 6.5 (which scans only `SECURITY DEFINER` functions) — verified directly here |
+| 10.35 | `enforce_recurring_transaction_version()` has zero direct `EXECUTE` grants | trigger-only, mirrors `derive_savings_goal_completion()`'s precedent |
 
 ---
 

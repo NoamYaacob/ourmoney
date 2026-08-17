@@ -8,9 +8,13 @@
 //      paused (is_active: false); pressing it hit the RPC's not_found
 //      branch and surfaced a generic error toast instead of the button
 //      simply being unavailable.
-import { afterEach, describe, expect, it, jest } from '@jest/globals'
-import { fireEvent, render } from '@testing-library/react-native'
+// Also covers migration 009/ADR-036: pause/resume moved to its own narrow
+// RPC hook, every mutation now carries expectedVersion, and a conflict
+// surfaces the shared ConflictModal rather than a generic error.
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import '@/i18n'
+import { ConcurrencyError } from '@/lib/mutations/concurrencyError'
 import RecurringDetail from './[id]'
 
 jest.mock('expo-router', () => ({
@@ -40,7 +44,7 @@ jest.mock('@/features/categories/hooks/useCategories', () => ({
   }),
 }))
 
-let mockItem = {
+const BASE_ITEM = {
   id: 'rec-1',
   household_id: 'household-1',
   account_id: 'acct-1',
@@ -52,14 +56,30 @@ let mockItem = {
   frequency: 'monthly' as const,
   day_of_month: 1,
   next_due_date: '2026-09-01',
+  version: 1,
 }
+let mockItem = { ...BASE_ITEM }
+const mockRefetch = jest.fn(async () => ({ data: [mockItem] }))
 jest.mock('@/features/recurring/hooks/useRecurringTransactions', () => ({
-  useRecurringTransactions: () => ({ recurringTransactions: [mockItem], isLoading: false }),
+  useRecurringTransactions: () => ({ recurringTransactions: [mockItem], isLoading: false, refetch: mockRefetch }),
 }))
 
-const mockUpdateMutate = jest.fn()
+const mockUpdateMutate = jest.fn(
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
 jest.mock('@/features/recurring/hooks/useUpdateRecurringTransaction', () => ({
   useUpdateRecurringTransaction: () => ({ mutate: mockUpdateMutate, isPending: false, isError: false }),
+}))
+
+const mockSetActiveMutate = jest.fn(
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
+jest.mock('@/features/recurring/hooks/useSetRecurringTransactionActive', () => ({
+  useSetRecurringTransactionActive: () => ({ mutate: mockSetActiveMutate, isPending: false }),
 }))
 
 const mockSkipMutate = jest.fn()
@@ -72,13 +92,13 @@ jest.mock('@/features/recurring/hooks/useDeleteRecurringTransaction', () => ({
 }))
 
 describe('RecurringDetail', () => {
-  afterEach(() => {
+  beforeEach(() => {
     jest.clearAllMocks()
-    mockItem = { ...mockItem, is_active: true }
+    mockItem = { ...BASE_ITEM }
   })
 
   // Fix 1 — edit is reachable, prefilled, and saves the right fields.
-  it('reaches the edit form via the edit button, prefills it from the template, and saves amount/description/account/category/frequency edits', async () => {
+  it('reaches the edit form via the edit button, prefills it from the template, and saves amount/description/account/category/frequency edits along with the loaded version', async () => {
     const { getByText, getByDisplayValue } = await render(<RecurringDetail />)
 
     // Not reachable before pressing "edit" — proves this is real editing UI,
@@ -105,6 +125,7 @@ describe('RecurringDetail', () => {
     expect(mockUpdateMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'rec-1',
+        expectedVersion: 1,
         accountId: 'acct-1',
         categoryId: 'cat-1',
         amountAgorot: -7500,
@@ -129,7 +150,6 @@ describe('RecurringDetail', () => {
 
   // Fix 2 — skip is unavailable on a paused template.
   it('shows an enabled skip button for an active template', async () => {
-    mockItem = { ...mockItem, is_active: true }
     const { getByRole } = await render(<RecurringDetail />)
 
     const skipButton = getByRole('button', { name: 'דילוג על החיוב הקרוב' })
@@ -140,11 +160,54 @@ describe('RecurringDetail', () => {
   })
 
   it('hides the skip button entirely for a paused template', async () => {
-    mockItem = { ...mockItem, is_active: false }
+    mockItem = { ...BASE_ITEM, is_active: false }
     const { queryByText, queryByRole } = await render(<RecurringDetail />)
 
     expect(queryByText('דילוג על החיוב הקרוב')).toBeNull()
     expect(queryByRole('button', { name: 'דילוג על החיוב הקרוב' })).toBeNull()
     expect(mockSkipMutate).not.toHaveBeenCalled()
+  })
+
+  it('pauses via the narrow set-active RPC, sending the currently-rendered version, not the identity-edit hook', async () => {
+    const { getByText } = await render(<RecurringDetail />)
+
+    await fireEvent.press(getByText('השהיה'))
+
+    expect(mockSetActiveMutate).toHaveBeenCalledWith(
+      { id: 'rec-1', expectedVersion: 1, isActive: false },
+      expect.anything()
+    )
+    expect(mockUpdateMutate).not.toHaveBeenCalled()
+  })
+
+  it('shows the conflict modal when a save loses to a newer version, and does not silently overwrite the newer server data', async () => {
+    mockUpdateMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new ConcurrencyError('conflict'))
+    })
+    const { getByText } = await render(<RecurringDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.press(getByText('שמירה'))
+
+    await waitFor(() => expect(getByText('כבר בוצע שינוי בפריט הזה ממכשיר או משתמש אחר.')).toBeTruthy())
+  })
+
+  it('reloading from a conflict refetches and re-populates the edit form with the fresh server version', async () => {
+    mockUpdateMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new ConcurrencyError('conflict'))
+    })
+    const freshItem = { ...BASE_ITEM, description: 'ארנונה מהמכשיר האחר', version: 2 }
+    mockRefetch.mockResolvedValueOnce({ data: [freshItem] })
+
+    const { getByText, getByDisplayValue } = await render(<RecurringDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.press(getByText('שמירה'))
+
+    await waitFor(() => expect(getByText('טען את הגרסה החדשה')).toBeTruthy())
+    await fireEvent.press(getByText('טען את הגרסה החדשה'))
+
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalled())
+    await waitFor(() => expect(getByDisplayValue('ארנונה מהמכשיר האחר')).toBeTruthy())
   })
 })

@@ -1615,6 +1615,133 @@ See `supabase/migrations/008_internal_transfers.sql` for the full implementation
 
 ---
 
+## ADR-036
+### Optimistic concurrency for shared financial-record edits: a `version` column, not `updated_at`
+
+**Status:** Accepted
+
+**Context.** `planned_obligations`, `recurring_transactions`, and `savings_goals` are all editable by any
+household member, and until this ADR, none of the three had any concurrency protection at all — two members
+opening the same record and saving in sequence would silently overwrite each other, with the second save
+winning regardless of which edit was newer. This is distinct from every prior `SECURITY DEFINER`/locking ADR
+in this document ([ADR-032](#adr-032)/[ADR-034](#adr-034)/[ADR-035](#adr-035)): those protect *system-driven*
+atomicity (succession, cascades, a transfer's two legs). This one protects against *two humans editing the
+same row*, which requires the write itself to carry a claim about which version of the row the edit was
+based on, and the database to reject that claim if it's stale.
+
+**Decision.**
+
+1. **A monotonically increasing `version BIGINT NOT NULL DEFAULT 1`, not `updated_at`.** `updated_at`
+   (already present on all three tables via the existing `set_updated_at` trigger) has clock-precision
+   ambiguity and no clean "next value" semantics — comparing it for equality invites off-by-a-network-hop
+   bugs. An integer version gives an unambiguous compare-and-swap predicate (`version = expected`) and a
+   trivially correct next value (`version + 1`), matching the brief's explicit preference and this project's
+   general preference for explicit integer invariants over timestamp comparisons.
+2. **The database is the sole owner of the version.** A client sends only `expectedVersion`; it never
+   computes or sends the next version. Every mutating statement's own `SET version = version + 1` is a SQL
+   expression evaluated against the row's true current value at write time — a client cannot inject an
+   arbitrary next version even if it tried, since the REST/RPC layer only accepts literal parameter values,
+   never a SQL expression.
+3. **The compare-and-swap is one atomic statement, never SELECT-then-compare-then-UPDATE.** Every mutating
+   RPC's `WHERE id = p_id AND household_id = v_household_id AND version = p_expected_version` clause *is*
+   the atomicity guarantee — there is no window between reading a version and writing against it. Zero
+   affected rows are disambiguated into `not_found` vs. `conflict` by a second, purely diagnostic read
+   *after* the write already atomically succeeded or failed — this does not reintroduce a race, because
+   nothing further is written based on that second read.
+4. **`planned_obligations` and `savings_goals`: RLS-closed, `SECURITY DEFINER` RPCs — the same shape ADR-035
+   established for `transfers`.** Neither table has a competing system writer, so their direct-client
+   `UPDATE`/`DELETE` policies are dropped entirely (`SELECT`/`INSERT` untouched), and every mutation goes
+   through a narrowly-scoped `SECURITY DEFINER` RPC deriving `household_id` server-side from `auth.uid()` —
+   never trusting client input for it, matching every RPC in this codebase since [ADR-010](#adr-010).
+5. **`recurring_transactions` is a deliberate, documented asymmetry: RLS stays open, enforcement moves into
+   a trigger.** `generate_recurring_transactions()`/`skip_recurring_occurrence()` (migration 003) are
+   established **`SECURITY INVOKER`** functions whose own `UPDATE
+   recurring_transactions SET next_due_date = …, last_generated_at = NOW()` statements rely on the *existing*
+   `recurring_update` RLS policy to succeed. Closing that policy to force RPC-only mutation would silently
+   break both — a large, out-of-scope rewrite of already-shipped, already-tested code for zero correctness
+   benefit, since neither function ever touches a human-edited field or needs version protection (and
+   *shouldn't* participate in it: if their own housekeeping bumped `version`, a human's in-progress edit
+   would spuriously "conflict" against nothing a human actually changed). Instead: `recurring_update` stays
+   open and unchanged; the new `update_recurring_transaction`/`set_recurring_transaction_active` RPCs are
+   `SECURITY INVOKER` (RLS already correctly scopes household membership — no privilege escalation needed,
+   matching `generate_recurring_transactions()`'s own precedent exactly); a new `BEFORE UPDATE` trigger,
+   `enforce_recurring_transaction_version()`, closes the "raw client bypass" gap that leaving RLS open would
+   otherwise leave open, via two rules checked on *every* update to the row, not only ones a human-facing RPC
+   issues:
+   - **Unconditionally**, `NEW.version` must be `OLD.version` or `OLD.version + 1` — nothing else. Database-
+     security-review of this ADR's design found this rule cannot be conditional on "did a protected column
+     change": a caller could otherwise issue `UPDATE recurring_transactions SET version = 1 WHERE id = X`
+     with no other column touched, rolling `version` backward (or jumping it forward) with impunity, since a
+     purely conditional rule never even inspects the statement. That would let a since-stale
+     `expected_version` from *before* several real edits spuriously succeed later — a genuine lost update,
+     defeating the entire feature. Confirmed and fixed before this migration was written, not after.
+   - **Conditionally**, if any of the eight human-editable columns actually changed (`account_id,
+     category_id, amount_agorot, description, is_shared, frequency, day_of_month, is_active` — deliberately
+     excluding `next_due_date`, `last_generated_at`, and `currency`, the last because MVP has no
+     multi-currency support at all), `NEW.version` must be exactly `OLD.version + 1`, not merely unchanged —
+     this is what makes a naive raw client update (one that changes `amount_agorot` but never touches
+     `version` at all) fail.
+   Together these two rules are a genuine compare-and-swap enforced by the database itself, regardless of
+   caller — not merely "the app happens to call the right RPC." `DELETE` on `recurring_transactions` has no
+   competing system writer (nothing ever deletes a template automatically), so unlike `UPDATE` it *is*
+   closed the same way as the other two tables' deletes: `delete_recurring_transaction()` is `SECURITY
+   DEFINER`, and it too takes `p_expected_version` — a stale delete is exactly as dangerous as a stale
+   update (see point 7), and there is no asymmetry-forcing reason to leave it unprotected the way `UPDATE`
+   has one.
+6. **Every protected mutation is split into a narrow, single-purpose RPC, matching an existing precedent —
+   not inventing one.** `useUpdateSavingsGoal` vs. `useUpdateSavingsGoalProgress` were already two separate
+   hooks writing the same row's different field subsets, specifically so the identity-edit hook never has
+   to reason about `goal.completed`/`goal.progress_updated`. This ADR extends the identical split to
+   `planned_obligations` (`update_planned_obligation` for the edit form vs. `set_planned_obligation_status`
+   for the one-tap mark-paid/cancel actions) and newly to `recurring_transactions`
+   (`update_recurring_transaction` vs. `set_recurring_transaction_active` for the one-tap pause/resume
+   action) — every existing mutation call site maps to exactly one new RPC.
+7. **Delete requires `expectedVersion` too, on all three tables.** A stale-viewing member deleting a row
+   someone else has since edited is *worse* than a silent overwrite: it is irreversible destruction of
+   the newer edit, not merely its replacement. The same atomic `WHERE id = … AND household_id = … AND
+   version = expected` + row-count-verified pattern applies to every delete RPC.
+8. **`expectedVersion` is pinned client-side at the exact moment each screen's existing edit-session snapshot
+   already happens — never re-read from a live query result at submit time.** `obligations/[id].tsx` and
+   `recurring/[id].tsx` snapshot into local state when `startEditing()` is pressed; `goals/[id].tsx` snapshots
+   via its `loadedGoalId` guard on first load. Both existing idioms are preserved exactly, not unified — this
+   ADR only adds a `version` field to what each already snapshots. The one-tap actions (mark-paid, cancel,
+   pause/resume) have no separate edit session at all: their `expectedVersion` is read from the currently-
+   rendered row at the moment of the tap, which is correct because render time and intent-formation time are
+   the same instant for those actions — there is no earlier snapshot to go stale against.
+9. **No new realtime subscription.** Only `transactions` has a realtime channel today (migration 002 §15);
+   none of these three tables do. Save-time compare-and-swap is authoritative and sufficient on its own to
+   satisfy the invariant this ADR exists for — a realtime push would only improve the UX of *warning* before
+   save, which the milestone's own scope guards explicitly exclude ("no collaborative real-time editing," "no
+   notifications for every concurrent edit"). Adding one would be net-new infrastructure scope this ADR does
+   not need, matching [ADR-013](#adr-013)'s "no broker, no queue" discipline.
+10. **A stale save or delete never destroys the user's own unsaved draft.** On `conflict`, a shared
+    `ConflictModal` (wrapping the existing `Modal` component) offers exactly two actions: reload the latest
+    server version (refetches and re-populates the form, including a fresh `expectedVersion`, discarding the
+    stale draft) or cancel. No automatic merge, no automatic retry of the stale mutation with the new
+    version — both would defeat the protection this ADR exists to provide, and are explicitly out of scope.
+
+**Consequences.** `planned_obligations`/`savings_goals` lose their direct-client `UPDATE`/`DELETE` RLS
+policies entirely; every mutation to those two tables is now RPC-only, enforced at the database layer, not by
+convention. `recurring_transactions` keeps its open `UPDATE` policy but gains a `BEFORE UPDATE` trigger that
+makes *any* update — RPC-issued or raw — provably respect the version invariant; only its `DELETE` policy is
+closed. The new `SECURITY INVOKER` RPCs and the new trigger function are **not** covered by the existing
+Group 6.5/6.6 structural guards, which scan only `SECURITY DEFINER` functions — dedicated
+`supabase/rls_tests.sql` assertions were added for their `search_path`/grant hygiene specifically, since no
+existing guard would have caught a regression there. `useUpdateSavingsGoalProgress.ts`'s existing
+`goal.completed`/`goal.progress_updated` event-emission logic is preserved unchanged in shape; the new
+`update_savings_goal_progress()` RPC returns `current_agorot`/`is_completed`/`version` so that client-side
+logic keeps working against the RPC's result exactly as it did against the old raw `.update().select()`
+call's result.
+
+**Related:** [ADR-032](#adr-032)/[ADR-034](#adr-034)/[ADR-035](#adr-035) (the `SECURITY DEFINER`/RLS-closure/
+`GET DIAGNOSTICS` conventions this design reuses for two of three tables, and deliberately departs from for
+`recurring_transactions`'s `UPDATE` with reasoning), [ADR-010](#adr-010) (no information-leak discipline —
+`not_found` and cross-household-invisible collapse to the identical response here too), [ADR-013](#adr-013)
+(no broker/queue — why no new realtime channel was added). See
+`supabase/migrations/009_concurrency_protection.sql` for the full implementation.
+
+---
+
 ## Release versioning convention
 
 Not an ADR (no architectural reversal is at stake) — documented here, alongside the ADRs, because no

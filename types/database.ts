@@ -397,6 +397,7 @@ export type Database = {
           notes: string | null
           status: string
           updated_at: string
+          version: number
         }
         Insert: {
           account_id?: string | null
@@ -412,6 +413,7 @@ export type Database = {
           notes?: string | null
           status?: string
           updated_at?: string
+          version?: number
         }
         Update: {
           account_id?: string | null
@@ -427,6 +429,7 @@ export type Database = {
           notes?: string | null
           status?: string
           updated_at?: string
+          version?: number
         }
         Relationships: [
           {
@@ -499,6 +502,7 @@ export type Database = {
           is_shared: boolean
           last_generated_at: string | null
           next_due_date: string
+          version: number
         }
         Insert: {
           account_id: string
@@ -516,6 +520,7 @@ export type Database = {
           is_shared?: boolean
           last_generated_at?: string | null
           next_due_date: string
+          version?: number
         }
         Update: {
           account_id?: string
@@ -533,6 +538,7 @@ export type Database = {
           is_shared?: boolean
           last_generated_at?: string | null
           next_due_date?: string
+          version?: number
         }
         Relationships: [
           {
@@ -573,6 +579,7 @@ export type Database = {
           target_agorot: number
           target_date: string | null
           updated_at: string
+          version: number
         }
         Insert: {
           account_id?: string | null
@@ -588,6 +595,7 @@ export type Database = {
           target_agorot: number
           target_date?: string | null
           updated_at?: string
+          version?: number
         }
         Update: {
           account_id?: string | null
@@ -603,6 +611,7 @@ export type Database = {
           target_agorot?: number
           target_date?: string | null
           updated_at?: string
+          version?: number
         }
         Relationships: [
           {
@@ -857,6 +866,18 @@ export type Database = {
       }
       dblink_is_busy: { Args: { "": string }; Returns: number }
       delete_own_account: { Args: never; Returns: Json }
+      delete_planned_obligation: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
+      delete_recurring_transaction: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
+      delete_savings_goal: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
       delete_transfer: { Args: { p_transfer_id: string }; Returns: Json }
       generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
@@ -866,8 +887,61 @@ export type Database = {
         Args: { p_allocations: Json; p_period_start: string }
         Returns: Json
       }
+      set_planned_obligation_status: {
+        Args: { p_expected_version: number; p_id: string; p_status: string }
+        Returns: Json
+      }
+      set_recurring_transaction_active: {
+        Args: { p_expected_version: number; p_id: string; p_is_active: boolean }
+        Returns: Json
+      }
       skip_recurring_occurrence: {
         Args: { p_recurring_id: string }
+        Returns: Json
+      }
+      update_planned_obligation: {
+        Args: {
+          p_account_id: string | null
+          p_amount_agorot: number
+          p_category_id: string | null
+          p_due_date: string
+          p_expected_version: number
+          p_id: string
+          p_is_shared: boolean
+          p_name: string
+          p_notes: string | null
+        }
+        Returns: Json
+      }
+      update_recurring_transaction: {
+        Args: {
+          p_account_id: string
+          p_amount_agorot: number
+          p_category_id: string | null
+          p_day_of_month: number | null
+          p_description: string
+          p_expected_version: number
+          p_frequency: string
+          p_id: string
+          p_is_shared: boolean
+        }
+        Returns: Json
+      }
+      update_savings_goal: {
+        Args: {
+          p_account_id: string | null
+          p_color: string | null
+          p_expected_version: number
+          p_icon: string | null
+          p_id: string
+          p_name: string
+          p_target_agorot: number
+          p_target_date: string | null
+        }
+        Returns: Json
+      }
+      update_savings_goal_progress: {
+        Args: { p_current_agorot: number; p_expected_version: number; p_id: string }
         Returns: Json
       }
       update_transfer: {

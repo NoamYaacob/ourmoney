@@ -29,5 +29,10 @@ export function usePlannedObligations(householdId: string | null | undefined) {
     obligations: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // Exposed for the detail screen's conflict-recovery flow — a failed
+    // compare-and-swap means the mutation never invalidated this query, so
+    // "load latest version" needs an explicit refetch, not a cache read
+    // (same reasoning as useBudgetProgress.ts's own refetch export).
+    refetch: query.refetch,
   }
 }

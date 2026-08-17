@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { fireEvent, render } from '@testing-library/react-native'
+import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import '@/i18n'
+import { ConcurrencyError } from '@/lib/mutations/concurrencyError'
 import ObligationDetail from './[id]'
 
 const mockBack = jest.fn()
@@ -29,7 +30,7 @@ jest.mock('@/features/categories/hooks/useCategories', () => ({
 }))
 
 const mockUpdateMutate = jest.fn(
-  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: () => void }) => {
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
     callbacks?.onSuccess?.()
   }
 )
@@ -37,8 +38,17 @@ jest.mock('@/features/obligations/hooks/useUpdatePlannedObligation', () => ({
   useUpdatePlannedObligation: () => ({ mutate: mockUpdateMutate, isPending: false, isError: false }),
 }))
 
+const mockSetStatusMutate = jest.fn(
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
+jest.mock('@/features/obligations/hooks/useSetPlannedObligationStatus', () => ({
+  useSetPlannedObligationStatus: () => ({ mutate: mockSetStatusMutate, isPending: false }),
+}))
+
 const mockDeleteMutate = jest.fn(
-  (_id: string, callbacks?: { onSuccess?: () => void; onError?: () => void }) => {
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
     callbacks?.onSuccess?.()
   }
 )
@@ -46,9 +56,10 @@ jest.mock('@/features/obligations/hooks/useDeletePlannedObligation', () => ({
   useDeletePlannedObligation: () => ({ mutate: mockDeleteMutate, isPending: false }),
 }))
 
+const mockRefetch = jest.fn(async () => ({ data: mockObligations }))
 let mockObligations: Record<string, unknown>[] = []
 jest.mock('@/features/obligations/hooks/usePlannedObligations', () => ({
-  usePlannedObligations: () => ({ obligations: mockObligations, isLoading: false }),
+  usePlannedObligations: () => ({ obligations: mockObligations, isLoading: false, refetch: mockRefetch }),
 }))
 
 const UPCOMING_OBLIGATION = {
@@ -63,6 +74,7 @@ const UPCOMING_OBLIGATION = {
   notes: null,
   status: 'upcoming',
   created_by: 'user-1',
+  version: 1,
 }
 
 describe('Obligation detail', () => {
@@ -70,7 +82,9 @@ describe('Obligation detail', () => {
     mockId = 'ob-1'
     mockObligations = [UPCOMING_OBLIGATION]
     mockUpdateMutate.mockClear()
+    mockSetStatusMutate.mockClear()
     mockDeleteMutate.mockClear()
+    mockRefetch.mockClear()
     mockBack.mockClear()
   })
 
@@ -80,7 +94,7 @@ describe('Obligation detail', () => {
     expect(getByText('ההתחייבות לא נמצאה')).toBeTruthy()
   })
 
-  it('edits the obligation without duplicating it — a single update call, not a create', async () => {
+  it('edits the obligation without duplicating it — a single update call carrying the loaded version', async () => {
     const { getByText, getByLabelText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('עריכה'))
@@ -88,29 +102,31 @@ describe('Obligation detail', () => {
     await fireEvent.press(getByText('שמירה'))
 
     expect(mockUpdateMutate).toHaveBeenCalledTimes(1)
-    const [variables] = mockUpdateMutate.mock.calls[0] as [{ id: string; name: string }]
+    const [variables] = mockUpdateMutate.mock.calls[0] as [{ id: string; name: string; expectedVersion: number }]
     expect(variables.id).toBe('ob-1')
     expect(variables.name).toBe('ארנונה מעודכנת')
+    expect(variables.expectedVersion).toBe(1)
   })
 
-  it('marks the obligation as paid, setting status to completed', async () => {
+  it('marks the obligation as paid via the narrow status RPC, sending the currently-rendered version', async () => {
     const { getByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('סימון כשולם'))
 
-    expect(mockUpdateMutate).toHaveBeenCalledWith(
-      { id: 'ob-1', status: 'completed' },
+    expect(mockSetStatusMutate).toHaveBeenCalledWith(
+      { id: 'ob-1', expectedVersion: 1, status: 'completed' },
       expect.anything()
     )
+    expect(mockUpdateMutate).not.toHaveBeenCalled()
   })
 
-  it('cancels the obligation, setting status to cancelled', async () => {
+  it('cancels the obligation via the narrow status RPC, sending the currently-rendered version', async () => {
     const { getByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('ביטול ההתחייבות'))
 
-    expect(mockUpdateMutate).toHaveBeenCalledWith(
-      { id: 'ob-1', status: 'cancelled' },
+    expect(mockSetStatusMutate).toHaveBeenCalledWith(
+      { id: 'ob-1', expectedVersion: 1, status: 'cancelled' },
       expect.anything()
     )
   })
@@ -123,17 +139,61 @@ describe('Obligation detail', () => {
     expect(queryByText('ביטול ההתחייבות')).toBeNull()
   })
 
-  it('deletes the obligation after confirming, then navigates back', async () => {
+  it('deletes the obligation after confirming, sending the currently-rendered version, then navigates back', async () => {
     const { getByText, getAllByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('מחיקה'))
-    // The confirm modal's own confirm button shares the same label as the
-    // trigger that opened it — both are mounted at once once the modal is
-    // visible, so press the last "מחיקה" node (the modal's confirm button).
     const deleteButtons = getAllByText('מחיקה')
     await fireEvent.press(deleteButtons[deleteButtons.length - 1]!)
 
-    expect(mockDeleteMutate).toHaveBeenCalledWith('ob-1', expect.anything())
+    expect(mockDeleteMutate).toHaveBeenCalledWith({ id: 'ob-1', expectedVersion: 1 }, expect.anything())
     expect(mockBack).toHaveBeenCalled()
+  })
+
+  it('shows the conflict modal instead of a generic error when a save loses to a newer version, and does not silently overwrite the newer server data', async () => {
+    mockUpdateMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new ConcurrencyError('conflict'))
+    })
+    const { getByText, queryByText } = await render(<ObligationDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.press(getByText('שמירה'))
+
+    await waitFor(() => expect(getByText('כבר בוצע שינוי בפריט הזה ממכשיר או משתמש אחר.')).toBeTruthy())
+    // No generic-error fallback text alongside the conflict-specific modal.
+    expect(queryByText('משהו השתבש. נסו שוב')).toBeNull()
+  })
+
+  it('reloading from a conflict refetches and re-populates the edit form with the fresh server version', async () => {
+    mockUpdateMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new ConcurrencyError('conflict'))
+    })
+    const freshObligation = { ...UPCOMING_OBLIGATION, name: 'ארנונה מהמכשיר האחר', version: 2 }
+    mockRefetch.mockResolvedValueOnce({ data: [freshObligation] })
+
+    const { getByText, getByLabelText, getByDisplayValue } = await render(<ObligationDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.changeText(getByLabelText('שם ההתחייבות'), 'הטיוטה שלי שלא נשמרה')
+    await fireEvent.press(getByText('שמירה'))
+
+    await waitFor(() => expect(getByText('טען את הגרסה החדשה')).toBeTruthy())
+    await fireEvent.press(getByText('טען את הגרסה החדשה'))
+
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalled())
+    // The form now reflects the freshly-reloaded server row, not the
+    // discarded stale draft.
+    await waitFor(() => expect(getByDisplayValue('ארנונה מהמכשיר האחר')).toBeTruthy())
+  })
+
+  it('shows the not-found variant of the conflict modal when the obligation was deleted elsewhere', async () => {
+    mockSetStatusMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new ConcurrencyError('not_found'))
+    })
+    const { getByText } = await render(<ObligationDetail />)
+
+    await fireEvent.press(getByText('סימון כשולם'))
+
+    await waitFor(() => expect(getByText('הפריט הזה נמחק או שאינו זמין יותר.')).toBeTruthy())
   })
 })

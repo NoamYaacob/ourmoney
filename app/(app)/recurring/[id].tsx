@@ -8,9 +8,11 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useUpdateRecurringTransaction } from '@/features/recurring/hooks/useUpdateRecurringTransaction'
+import { useSetRecurringTransactionActive } from '@/features/recurring/hooks/useSetRecurringTransactionActive'
 import { useSkipRecurringOccurrence } from '@/features/recurring/hooks/useSkipRecurringOccurrence'
 import { useDeleteRecurringTransaction } from '@/features/recurring/hooks/useDeleteRecurringTransaction'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
+import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
@@ -20,7 +22,8 @@ import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
-import type { RecurringFrequency } from '@/types/app'
+import { ConflictModal } from '@/components/ui/ConflictModal'
+import type { RecurringFrequency, RecurringTransaction } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
 
@@ -32,8 +35,9 @@ export default function RecurringDetail() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { recurringTransactions, isLoading: isRecurringLoading } = useRecurringTransactions(householdId)
+  const { recurringTransactions, isLoading: isRecurringLoading, refetch } = useRecurringTransactions(householdId)
   const updateRecurring = useUpdateRecurringTransaction(householdId)
+  const setActive = useSetRecurringTransactionActive(householdId)
   const skipOccurrence = useSkipRecurringOccurrence(householdId)
   const deleteRecurring = useDeleteRecurringTransaction(householdId)
 
@@ -48,6 +52,12 @@ export default function RecurringDetail() {
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
   const [editError, setEditError] = useState<string | null>(null)
+  // Pinned at the exact moment startEditing() snapshots the other fields —
+  // never re-read from the live query result at submit time (ADR-036).
+  const [editingVersion, setEditingVersion] = useState<number | null>(null)
+
+  const [conflict, setConflict] = useState<{ kind: 'conflict' | 'not_found' } | null>(null)
+  const [reloading, setReloading] = useState(false)
 
   const item = recurringTransactions.find((r) => r.id === id)
 
@@ -72,20 +82,20 @@ export default function RecurringDetail() {
     )
   }
 
-  function startEditing() {
-    if (!item) return
+  function startEditing(source: RecurringTransaction) {
     setEditError(null)
-    setAmountText(String(Math.abs(item.amount_agorot) / 100))
-    setIsIncome(item.amount_agorot > 0)
-    setDescription(item.description)
-    setAccountId(item.account_id)
-    setCategoryId(item.category_id)
-    setFrequency(item.frequency)
+    setAmountText(String(Math.abs(source.amount_agorot) / 100))
+    setIsIncome(source.amount_agorot > 0)
+    setDescription(source.description)
+    setAccountId(source.account_id)
+    setCategoryId(source.category_id)
+    setFrequency(source.frequency)
+    setEditingVersion(source.version)
     setIsEditing(true)
   }
 
   function handleSave() {
-    if (updateRecurring.isPending || !item) return
+    if (updateRecurring.isPending || !item || editingVersion === null) return
     setEditError(null)
 
     if (!accountId) {
@@ -105,17 +115,42 @@ export default function RecurringDetail() {
     updateRecurring.mutate(
       {
         id: item.id,
+        expectedVersion: editingVersion,
         accountId,
         categoryId,
         amountAgorot: signedAmountAgorot(parsed.agorot, isIncome),
         description: description.trim(),
+        isShared: item.is_shared,
         frequency,
+        dayOfMonth: item.day_of_month,
       },
       {
         onSuccess: () => setIsEditing(false),
-        onError: () => setEditError(t('recurring.errors.generic')),
+        onError: (error) => {
+          if (isConflictError(error)) {
+            setConflict({ kind: 'conflict' })
+          } else if (isNotFoundError(error)) {
+            setConflict({ kind: 'not_found' })
+          } else {
+            setEditError(t('recurring.errors.generic'))
+          }
+        },
       }
     )
+  }
+
+  async function handleReloadFromConflict() {
+    setReloading(true)
+    const { data: fresh } = await refetch()
+    setReloading(false)
+    setConflict(null)
+
+    const freshItem = fresh?.find((r) => r.id === id)
+    if (isEditing && freshItem) {
+      startEditing(freshItem)
+    } else {
+      setIsEditing(false)
+    }
   }
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
@@ -194,7 +229,7 @@ export default function RecurringDetail() {
       ) : (
         <>
           <View className="mb-3">
-            <Button title={t('recurring.detail.edit')} variant="secondary" onPress={startEditing} />
+            <Button title={t('recurring.detail.edit')} variant="secondary" onPress={() => startEditing(item)} />
           </View>
 
           {item.is_active && (
@@ -213,12 +248,22 @@ export default function RecurringDetail() {
             <Button
               title={item.is_active ? t('recurring.detail.pause') : t('recurring.detail.resume')}
               variant="secondary"
-              loading={updateRecurring.isPending}
+              loading={setActive.isPending}
               onPress={() => {
                 setActionError(null)
-                updateRecurring.mutate(
-                  { id: item.id, isActive: !item.is_active },
-                  { onError: () => setActionError(t('recurring.errors.generic')) }
+                setActive.mutate(
+                  { id: item.id, expectedVersion: item.version, isActive: !item.is_active },
+                  {
+                    onError: (error) => {
+                      if (isConflictError(error)) {
+                        setConflict({ kind: 'conflict' })
+                      } else if (isNotFoundError(error)) {
+                        setConflict({ kind: 'not_found' })
+                      } else {
+                        setActionError(t('recurring.errors.generic'))
+                      }
+                    },
+                  }
                 )
               }}
             />
@@ -246,17 +291,34 @@ export default function RecurringDetail() {
         loading={deleteRecurring.isPending}
         onCancel={() => setConfirmDeleteVisible(false)}
         onConfirm={() =>
-          deleteRecurring.mutate(item.id, {
-            onSuccess: () => {
-              setConfirmDeleteVisible(false)
-              router.back()
-            },
-            onError: () => {
-              setConfirmDeleteVisible(false)
-              setActionError(t('recurring.errors.generic'))
-            },
-          })
+          deleteRecurring.mutate(
+            { id: item.id, expectedVersion: item.version },
+            {
+              onSuccess: () => {
+                setConfirmDeleteVisible(false)
+                router.back()
+              },
+              onError: (error) => {
+                setConfirmDeleteVisible(false)
+                if (isConflictError(error)) {
+                  setConflict({ kind: 'conflict' })
+                } else if (isNotFoundError(error)) {
+                  setConflict({ kind: 'not_found' })
+                } else {
+                  setActionError(t('recurring.errors.generic'))
+                }
+              },
+            }
+          )
         }
+      />
+
+      <ConflictModal
+        visible={conflict !== null}
+        kind={conflict?.kind ?? 'conflict'}
+        loading={reloading}
+        onReload={handleReloadFromConflict}
+        onCancel={() => setConflict(null)}
       />
     </Screen>
   )

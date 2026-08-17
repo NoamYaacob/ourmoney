@@ -30,5 +30,8 @@ export function useSavingsGoals(householdId: string | null | undefined) {
     goals: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // Exposed for the detail screen's conflict-recovery flow — see
+    // usePlannedObligations.ts's identical export for the reasoning.
+    refetch: query.refetch,
   }
 }

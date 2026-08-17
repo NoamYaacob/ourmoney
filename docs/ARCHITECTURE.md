@@ -280,6 +280,12 @@ Budget progress recalculates on the client when the transaction list updates.
     rule 4). Zero parameters — resolves only `auth.uid()`, never a caller-supplied id — which makes
     cross-account/cross-household deletion structurally impossible. See
     [ADR-032](DECISIONS.md#adr-032).
+11. Shared, editable financial records (`planned_obligations`, `recurring_transactions`,
+    `savings_goals`) carry a DB-owned `version` column and are compare-and-swapped on every mutation —
+    a stale client can never silently overwrite or delete a newer edit. Two tables achieve this by
+    dropping their direct-client `UPDATE`/`DELETE` policies entirely (RPC-only, `SECURITY DEFINER`);
+    `recurring_transactions` keeps `UPDATE` open (its own generation/skip functions depend on it) and
+    is instead enforced by a `BEFORE UPDATE` trigger. See [ADR-036](DECISIONS.md#adr-036).
 
 ---
 

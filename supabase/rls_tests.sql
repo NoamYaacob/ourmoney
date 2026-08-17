@@ -37,6 +37,18 @@
 -- design-stage review found are closed); the transfers table's SELECT-only
 -- grant; and the leave_household()/delete_own_account() widening that nulls
 -- transfers.created_by for a departing member.
+-- Migration 009 (optimistic concurrency protection, ADR-036) adds Group 10:
+-- version-column compare-and-swap correctness for planned_obligations/
+-- recurring_transactions/savings_goals — update/status/progress/delete RPC
+-- success and stale-write/stale-delete => conflict, household isolation
+-- (no oracle), version monotonicity, and the RLS-closure + grant-narrowing
+-- proof that a direct client UPDATE/DELETE bypass is rejected for the two
+-- RLS-closed tables. recurring_transactions' UPDATE stays open by design
+-- (its own generate_recurring_transactions()/skip_recurring_occurrence()
+-- depend on it), enforced instead by a BEFORE UPDATE trigger — 10.24-10.26
+-- prove both of its rules independently, including the unconditional-rule
+-- regression design-stage review required fixed, and 10.30-10.31 prove the
+-- two system functions' own writes are never blocked by it.
 --
 -- Design: every test impersonates a role via `SET LOCAL role` +
 -- `SET LOCAL request.jwt.claims` (the technique DATABASE_SCHEMA.md
@@ -1700,54 +1712,71 @@ RESET role;
 ROLLBACK TO SAVEPOINT sp_obl_d2_4;
 
 -- OBLIGATIONS.UPDATE.1 (co-editing): User B (partner, did not create the
--- fixture obligation) marks the Household 1 obligation as completed => succeeds.
+-- fixture obligation) marks the Household 1 obligation as completed =>
+-- succeeds. Migration 009 (ADR-036) closed planned_obligations' direct
+-- UPDATE path entirely — this now goes through set_planned_obligation_status()
+-- (database-security-reviewer finding: the pre-009 version of this test did
+-- a raw UPDATE, which migration 009 turns into an unconditional
+-- insufficient_privilege failure that would abort the whole suite under
+-- -v ON_ERROR_STOP=1).
 SAVEPOINT sp_obl_update_1;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 DO $$
-DECLARE v_rows INT;
+DECLARE v_result JSONB;
 BEGIN
-  UPDATE planned_obligations SET status = 'completed' WHERE id = '58000000-0000-0000-0000-000000000001';
-  GET DIAGNOSTICS v_rows = ROW_COUNT;
-  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.UPDATE.1: expected 1 row updated, got %', v_rows; END IF;
-  PERFORM _pass('OBLIGATIONS.UPDATE.1', 'any household member can mark an obligation completed, including one they did not create');
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 1, 'completed') INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.UPDATE.1: expected ok, got %', v_result;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.UPDATE.1', 'any household member can mark an obligation completed via set_planned_obligation_status(), including one they did not create');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_obl_update_1;
 
--- OBLIGATIONS.D2.UPDATE: User A attempts to UPDATE the Household 1 fixture
+-- OBLIGATIONS.D2.UPDATE: User A attempts to update the Household 1 fixture
 -- obligation's category_id to point at Household 2's custom category =>
--- rejected. The UPDATE policy's WITH CHECK coherence clause is textually
--- identical to INSERT's (OBLIGATIONS.D2.1 covers the INSERT leg) — this
--- proves it also actually applies on UPDATE, not just at row-creation time.
+-- rejected. Migration 009 moves this coherence check from
+-- planned_obligations_update's WITH CHECK into update_planned_obligation()
+-- itself (database-security-reviewer finding: keeping this test as a raw
+-- UPDATE would still incidentally "pass" — insufficient_privilege now covers
+-- ANY direct UPDATE, RLS-WITH-CHECK-shaped or not — but would no longer
+-- exercise the D2 coherence check the RPC itself performs, so a real
+-- regression there would go undetected).
 SAVEPOINT sp_obl_d2_update;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 DO $$
+DECLARE v_result JSONB;
 BEGIN
-  BEGIN
-    UPDATE planned_obligations
-    SET category_id = '5c000000-0000-0000-0000-000000000002'
-    WHERE id = '58000000-0000-0000-0000-000000000001';
-    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.UPDATE: UPDATE to a cross-household category_id was accepted';
-  EXCEPTION WHEN insufficient_privilege THEN
-    PERFORM _pass('OBLIGATIONS.D2.UPDATE', 'planned_obligations_update rejects a category_id UPDATE pointing at another household''s category, not just on INSERT');
-  END;
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'ארנונה בית 1', 180000, '2026-09-10'::date,
+    '5c000000-0000-0000-0000-000000000002'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, NULL
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_category' THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.UPDATE: expected invalid_category for a cross-household category_id, got %', v_result;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.D2.UPDATE', 'update_planned_obligation() rejects a category_id from another household, not just create-time INSERT coherence');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_obl_d2_update;
 
--- OBLIGATIONS.DELETE.1: any household member can delete a planned obligation.
+-- OBLIGATIONS.DELETE.1: any household member can delete a planned
+-- obligation, via delete_planned_obligation() (migration 009 closed the
+-- direct DELETE path — same reasoning as OBLIGATIONS.UPDATE.1 above).
 SAVEPOINT sp_obl_delete_1;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 DO $$
-DECLARE v_rows INT;
+DECLARE v_result JSONB;
 BEGIN
-  DELETE FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001';
-  GET DIAGNOSTICS v_rows = ROW_COUNT;
-  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.DELETE.1: expected 1 row deleted, got %', v_rows; END IF;
-  PERFORM _pass('OBLIGATIONS.DELETE.1', 'any household member can delete a planned obligation, including one they did not create');
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.DELETE.1: expected ok, got %', v_result;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.DELETE.1', 'any household member can delete a planned obligation via delete_planned_obligation(), including one they did not create');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_obl_delete_1;
@@ -2697,44 +2726,60 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_1;
 
--- SAVINGS.TRIGGER.2: UPDATE attempting to set is_completed=false directly
--- while current_agorot >= target_agorot => trigger forces true.
+-- SAVINGS.TRIGGER.2: migration 009 (ADR-036) closed savings_goals' direct
+-- UPDATE path entirely, so "a client-supplied is_completed=false on UPDATE"
+-- is no longer merely overridden — it is impossible to attempt at all
+-- (insufficient_privilege, proven independently by 10.13). What survives to
+-- test here: update_savings_goal_progress() — the only legitimate write
+-- path for current_agorot, and one that never accepts an is_completed
+-- parameter in the first place — still derives is_completed=true correctly
+-- when current_agorot >= target_agorot (database-security-reviewer finding:
+-- the pre-009 version of this test did a raw UPDATE, which now aborts the
+-- whole suite under -v ON_ERROR_STOP=1).
 SAVEPOINT sp_savings_trigger_2;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 DO $$
-DECLARE v_goal_id UUID; v_is_completed BOOLEAN;
+DECLARE v_goal_id UUID; v_result JSONB;
 BEGIN
   INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, created_by)
-  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.2', 100000, 100000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.2', 100000, 40000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
   RETURNING id INTO v_goal_id;
 
-  UPDATE savings_goals SET is_completed = FALSE WHERE id = v_goal_id RETURNING is_completed INTO v_is_completed;
-  IF v_is_completed IS DISTINCT FROM TRUE THEN
-    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: expected the trigger to override a contradictory is_completed=false on UPDATE, got %', v_is_completed;
+  BEGIN
+    UPDATE savings_goals SET is_completed = FALSE WHERE id = v_goal_id;
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: a direct UPDATE on savings_goals was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  SELECT update_savings_goal_progress(v_goal_id, 1, 100000) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'isCompleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: expected the trigger to derive is_completed=true via update_savings_goal_progress(), got %', v_result;
   END IF;
-  PERFORM _pass('SAVINGS.TRIGGER.2', 'a client-supplied is_completed=false on UPDATE is overridden by the DB trigger when current_agorot >= target_agorot');
+  PERFORM _pass('SAVINGS.TRIGGER.2', 'a direct UPDATE attempting is_completed=false is rejected at the grant level, and the only legitimate write path (update_savings_goal_progress()) still correctly derives is_completed=true when current_agorot >= target_agorot');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_2;
 
--- SAVINGS.TRIGGER.3: a normal progress update (current_agorot only, no
--- is_completed in the payload) correctly derives is_completed on crossing.
+-- SAVINGS.TRIGGER.3: a normal progress update via update_savings_goal_
+-- progress() (current_agorot only — the RPC has no is_completed parameter
+-- at all) correctly derives is_completed on crossing.
 SAVEPOINT sp_savings_trigger_3;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 DO $$
-DECLARE v_goal_id UUID; v_is_completed BOOLEAN;
+DECLARE v_goal_id UUID; v_result JSONB;
 BEGIN
   INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, created_by)
   VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.3', 100000, 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
   RETURNING id INTO v_goal_id;
 
-  UPDATE savings_goals SET current_agorot = 100000 WHERE id = v_goal_id RETURNING is_completed INTO v_is_completed;
-  IF v_is_completed IS DISTINCT FROM TRUE THEN
-    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.3: expected is_completed=true after current_agorot reached target, got %', v_is_completed;
+  SELECT update_savings_goal_progress(v_goal_id, 1, 100000) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'isCompleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.3: expected is_completed=true after current_agorot reached target, got %', v_result;
   END IF;
-  PERFORM _pass('SAVINGS.TRIGGER.3', 'is_completed is correctly derived true when a plain current_agorot update reaches target');
+  PERFORM _pass('SAVINGS.TRIGGER.3', 'is_completed is correctly derived true when update_savings_goal_progress() reaches target');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_3;
@@ -4004,6 +4049,792 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT sp_9_21;
 
+-- ============================================================================
+-- Group 10 — Optimistic concurrency protection (migration 009, ADR-036)
+-- ============================================================================
+-- planned_obligations/savings_goals: update/status/delete RPC correctness,
+-- household isolation (no oracle: cross-household + correct version still
+-- => not_found), direct-UPDATE/DELETE bypass rejected at the grant level
+-- (not merely by RLS), stale-write and stale-delete => conflict with no
+-- data/version change, version monotonicity. recurring_transactions: the
+-- deliberate asymmetry — UPDATE stays open, enforced instead by
+-- enforce_recurring_transaction_version()'s two rules (10.24-10.26 prove
+-- both independently, including the unconditional-rule regression the
+-- design-stage review required fixed before this migration shipped), DELETE
+-- closed the same way as the other two tables, and a positive-path proof
+-- that generate_recurring_transactions()/skip_recurring_occurrence()'s own
+-- writes are never blocked. 10.32b/10.32c prove anon cannot EXECUTE the two
+-- SECURITY INVOKER recurring RPCs (functional coverage of what 6.6 would
+-- give a SECURITY DEFINER function for free); 10.34/10.35 cover fixed
+-- search_path for those same two RPCs plus the trigger function, and the
+-- trigger function's own zero-EXECUTE-grants posture — none of which Group
+-- 6's 6.5/6.6 structural guards reach (they scan only SECURITY DEFINER
+-- functions).
+
+-- 10.1: update_planned_obligation() as the owning household's member —
+-- version 1 -> 2, data changes.
+SAVEPOINT sp_10_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'ארנונה מעודכנת', 185000, '2026-09-15'::date,
+    '5c000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, 'הערה'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.1: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM planned_obligations
+    WHERE id = '58000000-0000-0000-0000-000000000001' AND name = 'ארנונה מעודכנת' AND amount_agorot = 185000 AND version = 2
+  ) THEN
+    RAISE EXCEPTION 'FAIL 10.1: row was not actually updated to the new values/version';
+  END IF;
+  PERFORM _pass('10.1', 'update_planned_obligation() with the correct expected_version applies the update and advances version 1 -> 2');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_1;
+
+-- 10.2: same call with a stale expected_version (still 1 after someone else
+-- already bumped it) => conflict, data AND version left completely
+-- unchanged — the core invariant of this whole milestone.
+SAVEPOINT sp_10_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  -- First save advances version to 2 (simulates the "other device/user").
+  PERFORM update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'עדכון ראשון', 185000, '2026-09-15'::date,
+    '5c000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, NULL
+  );
+  -- Second save is still based on the version-1 snapshot it loaded.
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'עדכון שני (מיושן)', 999900, '2026-12-31'::date,
+    '5c000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, NULL
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.2: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM planned_obligations
+    WHERE id = '58000000-0000-0000-0000-000000000001' AND name = 'עדכון ראשון' AND version = 2
+  ) THEN
+    RAISE EXCEPTION 'FAIL 10.2: the stale (rejected) write leaked through — row is not exactly as the first, successful write left it';
+  END IF;
+  PERFORM _pass('10.2', 'update_planned_obligation() with a stale expected_version returns conflict and leaves the row''s data and version completely untouched — a stale client can never silently overwrite a newer version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_2;
+
+-- 10.3: Household 2's admin calling update_planned_obligation() on
+-- Household 1's obligation, with the CORRECT current version, still gets
+-- not_found — no oracle distinguishing "wrong household" from "does not
+-- exist" (same discipline ADR-010 already established for invitations).
+SAVEPOINT sp_10_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'ניסיון חציית בתים', 100000, '2026-09-15'::date,
+    NULL, NULL, TRUE, NULL
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 10.3: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND name = 'ניסיון חציית בתים') THEN
+    RAISE EXCEPTION 'FAIL 10.3: a member of the OTHER household was able to mutate this obligation';
+  END IF;
+  PERFORM _pass('10.3', 'update_planned_obligation() called by a different household''s member, even with the correct current version, returns not_found and mutates nothing — expected_version cannot be used to bypass household isolation');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_3;
+
+-- 10.4: a direct client UPDATE on planned_obligations is rejected at the
+-- GRANT level (insufficient_privilege) — not merely "the app doesn't call
+-- it anymore." planned_obligations_update was DROP-ed and the table grant
+-- narrowed to SELECT, INSERT only.
+SAVEPOINT sp_10_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    UPDATE planned_obligations SET name = 'עוקף' WHERE id = '58000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.4: a direct UPDATE on planned_obligations was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.4', 'a direct client UPDATE on planned_obligations is rejected at the grant level — update_planned_obligation()/set_planned_obligation_status() are the only write paths');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_4;
+
+-- 10.5: same for a direct DELETE.
+SAVEPOINT sp_10_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    DELETE FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.5: a direct DELETE on planned_obligations was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.5', 'a direct client DELETE on planned_obligations is rejected at the grant level — delete_planned_obligation() is the only delete path');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_5;
+
+-- 10.6: delete_planned_obligation() with a stale expected_version =>
+-- conflict, row survives untouched.
+SAVEPOINT sp_10_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 99) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.6: expected conflict for a stale delete, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.6: the obligation was deleted despite a stale expected_version';
+  END IF;
+  PERFORM _pass('10.6', 'delete_planned_obligation() with a stale expected_version returns conflict and does not delete the row — a stale client can never silently remove a newer version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_6;
+
+-- 10.7: delete_planned_obligation() with the correct version succeeds.
+SAVEPOINT sp_10_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.7: expected ok for a correctly-versioned delete, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.7: the obligation still exists after a successful delete';
+  END IF;
+  PERFORM _pass('10.7', 'delete_planned_obligation() with the correct expected_version deletes the row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_7;
+
+-- 10.8: set_planned_obligation_status() — the mark-paid/cancel one-tap
+-- action — succeeds and advances version; an invalid status is rejected
+-- cleanly (no raw constraint exception) and leaves version untouched.
+SAVEPOINT sp_10_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 1, 'completed') INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.8a: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'completed' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.8a: status/version not actually updated';
+  END IF;
+
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 2, 'not_a_real_status') INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_status' THEN
+    RAISE EXCEPTION 'FAIL 10.8b: expected a clean invalid_status error, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.8b: version changed despite the rejected invalid status';
+  END IF;
+  PERFORM _pass('10.8', 'set_planned_obligation_status(): a valid status advances version 1 -> 2; an invalid status is rejected with a clean {ok:false} result, not a raw constraint exception, and leaves version untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_8;
+
+-- 10.9: version monotonicity — three successive correctly-versioned updates
+-- advance 1 -> 2 -> 3, never resetting or skipping.
+SAVEPOINT sp_10_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, 'א', 100000, '2026-09-01'::date, NULL, NULL, TRUE, NULL) INTO v_result;
+  IF (v_result->>'version')::bigint <> 2 THEN RAISE EXCEPTION 'FAIL 10.9: expected version 2 after first update, got %', v_result; END IF;
+
+  SELECT update_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 2, 'ב', 100000, '2026-09-01'::date, NULL, NULL, TRUE, NULL) INTO v_result;
+  IF (v_result->>'version')::bigint <> 3 THEN RAISE EXCEPTION 'FAIL 10.9: expected version 3 after second update, got %', v_result; END IF;
+
+  PERFORM _pass('10.9', 'three successive correctly-versioned updates advance version 1 -> 2 -> 3, strictly monotonic');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_9;
+
+-- 10.10: update_savings_goal() — version 1 -> 2, data changes.
+SAVEPOINT sp_10_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד מעודכן', 150000, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, NULL, NULL
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.10: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND name = 'יעד מעודכן' AND target_agorot = 150000 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.10: row was not actually updated';
+  END IF;
+  PERFORM _pass('10.10', 'update_savings_goal() with the correct expected_version applies the update and advances version 1 -> 2');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_10;
+
+-- 10.11: stale update_savings_goal() => conflict, unchanged.
+SAVEPOINT sp_10_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1, 'עדכון ראשון', 150000, NULL, NULL, NULL, NULL);
+  SELECT update_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1, 'עדכון מיושן', 999900, NULL, NULL, NULL, NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.11: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND name = 'עדכון ראשון' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.11: the stale write leaked through';
+  END IF;
+  PERFORM _pass('10.11', 'update_savings_goal() with a stale expected_version returns conflict and leaves the row untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_11;
+
+-- 10.12: cross-household update_savings_goal() with the correct version =>
+-- not_found, no oracle.
+SAVEPOINT sp_10_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1, 'חציית בתים', 100000, NULL, NULL, NULL, NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 10.12: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  PERFORM _pass('10.12', 'update_savings_goal() called by a different household''s member returns not_found even with the correct current version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_12;
+
+-- 10.13/10.14: direct UPDATE/DELETE on savings_goals rejected at the grant level.
+SAVEPOINT sp_10_13;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    UPDATE savings_goals SET name = 'עוקף' WHERE id = '59000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.13: a direct UPDATE on savings_goals was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.13', 'a direct client UPDATE on savings_goals is rejected at the grant level');
+  END;
+  BEGIN
+    DELETE FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.14: a direct DELETE on savings_goals was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.14', 'a direct client DELETE on savings_goals is rejected at the grant level');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_13;
+
+-- 10.15: update_savings_goal_progress() crossing the completion threshold —
+-- returns currentAgorot/isCompleted/version together (the shape
+-- useUpdateSavingsGoalProgress.ts's goal.completed/goal.progress_updated
+-- transition detection depends on), and derive_savings_goal_completion()
+-- (migration 003) still fires inside the same statement.
+SAVEPOINT sp_10_15;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 1, 100000) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2
+     OR (v_result->>'currentAgorot')::bigint <> 100000 OR NOT (v_result->>'isCompleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.15: expected ok/version=2/currentAgorot=100000/isCompleted=true, got %', v_result;
+  END IF;
+  PERFORM _pass('10.15', 'update_savings_goal_progress() returns version/currentAgorot/isCompleted together, and derive_savings_goal_completion() still derives is_completed correctly inside the same statement');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_15;
+
+-- 10.16: stale update_savings_goal_progress() => conflict.
+SAVEPOINT sp_10_16;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 1, 50000);
+  SELECT update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 1, 999900) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.16: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND current_agorot = 50000 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.16: the stale progress write leaked through';
+  END IF;
+  PERFORM _pass('10.16', 'update_savings_goal_progress() with a stale expected_version returns conflict and does not apply');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_16;
+
+-- 10.17/10.18: delete_savings_goal() — stale => conflict, survives; correct
+-- version => succeeds.
+SAVEPOINT sp_10_17;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 99) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.17: expected conflict for a stale delete, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.17: the goal was deleted despite a stale expected_version';
+  END IF;
+  PERFORM _pass('10.17', 'delete_savings_goal() with a stale expected_version returns conflict and does not delete the row');
+
+  SELECT delete_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.18: expected ok for a correctly-versioned delete, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.18: the goal still exists after a successful delete';
+  END IF;
+  PERFORM _pass('10.18', 'delete_savings_goal() with the correct expected_version deletes the row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_17;
+
+-- 10.19: update_recurring_transaction() — SECURITY INVOKER, relies on the
+-- still-open recurring_update RLS for household scoping, adding only the
+-- version compare-and-swap. Version 1 -> 2, data changes.
+SAVEPOINT sp_10_19;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_recurring_transaction(
+    '5e000000-0000-0000-0000-000000000001'::uuid, 1,
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5c000000-0000-0000-0000-000000000001'::uuid,
+    -6000, 'הו״ק מעודכן', TRUE, 'monthly', NULL
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.19: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND amount_agorot = -6000 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.19: row was not actually updated';
+  END IF;
+  PERFORM _pass('10.19', 'update_recurring_transaction() with the correct expected_version applies the update and advances version 1 -> 2, via the RLS-scoped SECURITY INVOKER RPC');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_19;
+
+-- 10.20: stale update_recurring_transaction() => conflict.
+SAVEPOINT sp_10_20;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -6000, 'עדכון ראשון', TRUE, 'monthly', NULL);
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -999900, 'עדכון מיושן', TRUE, 'monthly', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.20: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND description = 'עדכון ראשון' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.20: the stale write leaked through';
+  END IF;
+  PERFORM _pass('10.20', 'update_recurring_transaction() with a stale expected_version returns conflict and leaves the row untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_20;
+
+-- 10.21: cross-household update_recurring_transaction() with the correct
+-- version => not_found, no oracle (same guarantee as the two DEFINER RPCs,
+-- proven independently here since this RPC derives household membership
+-- itself rather than relying solely on RLS row visibility for the WHERE
+-- clause).
+SAVEPOINT sp_10_21;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000002'::uuid, NULL, -6000, 'חציית בתים', TRUE, 'monthly', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 10.21: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  PERFORM _pass('10.21', 'update_recurring_transaction() called by a different household''s member returns not_found even with the correct current version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_21;
+
+-- 10.22: update_recurring_transaction() rejects an invalid frequency/day_of_
+-- month/account with a clean {ok:false} result rather than a raw
+-- constraint/RLS exception (the gap this migration's own self-review found
+-- and fixed before the design-stage review even ran).
+SAVEPOINT sp_10_22;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -6000, 'תדירות לא חוקית', TRUE, 'not_a_real_frequency', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_frequency' THEN
+    RAISE EXCEPTION 'FAIL 10.22a: expected a clean invalid_frequency error, got %', v_result;
+  END IF;
+
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000002'::uuid, NULL, -6000, 'חשבון בית אחר', TRUE, 'monthly', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 10.22b: expected a clean invalid_account error for a cross-household account_id, got %', v_result;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND version = 1) THEN
+    RAISE EXCEPTION 'FAIL 10.22: version advanced despite both rejected calls';
+  END IF;
+  PERFORM _pass('10.22', 'update_recurring_transaction() rejects an invalid frequency and a cross-household account_id with clean {ok:false} results, never a raw Postgres exception, and never advances version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_22;
+
+-- 10.23: set_recurring_transaction_active() — pause/resume — succeeds and
+-- advances version; stale call => conflict.
+SAVEPOINT sp_10_23;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT set_recurring_transaction_active('5e000000-0000-0000-0000-000000000001'::uuid, 1, FALSE) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.23a: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND is_active = FALSE AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.23a: is_active/version not actually updated';
+  END IF;
+
+  SELECT set_recurring_transaction_active('5e000000-0000-0000-0000-000000000001'::uuid, 1, TRUE) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.23b: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  PERFORM _pass('10.23', 'set_recurring_transaction_active() advances version on success and returns conflict for a stale expected_version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_23;
+
+-- 10.24: enforce_recurring_transaction_version() conditional rule — a
+-- direct client UPDATE that changes a protected column (amount_agorot)
+-- WITHOUT incrementing version is rejected.
+SAVEPOINT sp_10_24;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_caught BOOLEAN := FALSE;
+BEGIN
+  BEGIN
+    UPDATE recurring_transactions SET amount_agorot = -9999 WHERE id = '5e000000-0000-0000-0000-000000000001';
+  EXCEPTION WHEN raise_exception THEN
+    v_caught := TRUE;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL 10.24: a direct UPDATE changing amount_agorot without incrementing version was NOT rejected';
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND amount_agorot = -9999) THEN
+    RAISE EXCEPTION 'FAIL 10.24: the rejected write leaked through despite the exception';
+  END IF;
+  PERFORM _pass('10.24', 'enforce_recurring_transaction_version(): a protected-column change with version left unchanged is rejected (conditional rule)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_24;
+
+-- 10.25: positive control — a direct client UPDATE that changes a protected
+-- column AND correctly increments version by exactly 1 succeeds. Proves
+-- recurring_transactions' UPDATE is legitimately reachable directly (the
+-- deliberate asymmetry vs. the other two tables), not merely "currently
+-- unused by the app."
+SAVEPOINT sp_10_25;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  UPDATE recurring_transactions SET amount_agorot = -9999, version = version + 1 WHERE id = '5e000000-0000-0000-0000-000000000001';
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND amount_agorot = -9999 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.25: a correctly-versioned direct UPDATE did not apply';
+  END IF;
+  PERFORM _pass('10.25', 'a direct UPDATE that changes a protected column and correctly increments version by 1 succeeds — recurring_transactions'' UPDATE RLS is intentionally still open, unlike the other two tables');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_25;
+
+-- 10.26: enforce_recurring_transaction_version() unconditional rule — the
+-- specific regression design-stage review required fixed. First a
+-- legitimate update bumps version to 2; then a direct UPDATE attempts to
+-- roll version BACKWARD to 1 while touching NO protected column at all. A
+-- purely conditional check (only validating version when a protected column
+-- changes) would let this through untouched; the unconditional rule closes
+-- it.
+SAVEPOINT sp_10_26;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_caught BOOLEAN := FALSE;
+BEGIN
+  UPDATE recurring_transactions SET description = 'עדכון לגיטימי', version = version + 1 WHERE id = '5e000000-0000-0000-0000-000000000001';
+
+  BEGIN
+    UPDATE recurring_transactions SET version = 1 WHERE id = '5e000000-0000-0000-0000-000000000001';
+  EXCEPTION WHEN raise_exception THEN
+    v_caught := TRUE;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL 10.26: a direct UPDATE rolling version backward with no protected column touched was NOT rejected — the unconditional-rule regression';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.26: version is not 2 after the rejected rollback attempt';
+  END IF;
+  PERFORM _pass('10.26', 'enforce_recurring_transaction_version(): version cannot be rolled backward even when no protected column is touched — the unconditional rule catches what a purely conditional check would miss, matching this migration''s header/ADR-036 §5');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_26;
+
+-- 10.27: a direct DELETE on recurring_transactions is rejected at the grant
+-- level — no competing writer for delete on this table either, so it is
+-- closed exactly like the other two.
+SAVEPOINT sp_10_27;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    DELETE FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.27: a direct DELETE on recurring_transactions was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.27', 'a direct client DELETE on recurring_transactions is rejected at the grant level — delete_recurring_transaction() is the only delete path, even though UPDATE stays open');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_27;
+
+-- 10.28/10.29: delete_recurring_transaction() — stale => conflict, survives;
+-- correct version => succeeds.
+SAVEPOINT sp_10_28;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 99) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.28: expected conflict for a stale delete, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.28: the template was deleted despite a stale expected_version';
+  END IF;
+  PERFORM _pass('10.28', 'delete_recurring_transaction() with a stale expected_version returns conflict and does not delete the row');
+
+  SELECT delete_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.29: expected ok for a correctly-versioned delete, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.29: the template still exists after a successful delete';
+  END IF;
+  PERFORM _pass('10.29', 'delete_recurring_transaction() with the correct expected_version deletes the row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_28;
+
+-- 10.30/10.31: positive-path proof that generate_recurring_transactions()
+-- and skip_recurring_occurrence()'s own next_due_date/last_generated_at
+-- writes are never blocked by enforce_recurring_transaction_version() —
+-- neither function ever touches version, so it stays at 1 (NEW.version =
+-- OLD.version trivially satisfies the unconditional rule; neither function
+-- touches a protected column, so the conditional rule never fires either).
+SAVEPOINT sp_10_30;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID := '5e100000-0000-0000-0000-000000000001'; v_result JSONB; v_version BIGINT; v_new_due DATE;
+BEGIN
+  INSERT INTO recurring_transactions (id, household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES (v_id, '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1000, 'תבנית למבחן 10.30', 'daily', CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+
+  SELECT generate_recurring_transactions() INTO v_result;
+
+  SELECT version, next_due_date INTO v_version, v_new_due FROM recurring_transactions WHERE id = v_id;
+  IF v_version <> 1 THEN
+    RAISE EXCEPTION 'FAIL 10.30: generate_recurring_transactions() own write was blocked or altered version — expected 1, got %', v_version;
+  END IF;
+  IF v_new_due <> CURRENT_DATE + 1 THEN
+    RAISE EXCEPTION 'FAIL 10.30: next_due_date did not advance as expected, got %', v_new_due;
+  END IF;
+  PERFORM _pass('10.30', 'generate_recurring_transactions() own next_due_date/last_generated_at write is never blocked by enforce_recurring_transaction_version() — version stays untouched at 1');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_30;
+
+SAVEPOINT sp_10_31;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID := '5e100000-0000-0000-0000-000000000002'; v_result JSONB; v_version BIGINT; v_new_due DATE;
+BEGIN
+  INSERT INTO recurring_transactions (id, household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES (v_id, '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1000, 'תבנית למבחן 10.31', 'daily', CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+
+  SELECT skip_recurring_occurrence(v_id) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.31: skip_recurring_occurrence() failed, got %', v_result;
+  END IF;
+
+  SELECT version, next_due_date INTO v_version, v_new_due FROM recurring_transactions WHERE id = v_id;
+  IF v_version <> 1 THEN
+    RAISE EXCEPTION 'FAIL 10.31: skip_recurring_occurrence() own write was blocked or altered version — expected 1, got %', v_version;
+  END IF;
+  IF v_new_due <> CURRENT_DATE + 1 THEN
+    RAISE EXCEPTION 'FAIL 10.31: next_due_date did not advance as expected, got %', v_new_due;
+  END IF;
+  PERFORM _pass('10.31', 'skip_recurring_occurrence() own next_due_date write is never blocked by enforce_recurring_transaction_version() — version stays untouched at 1');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_31;
+
+-- 10.32: anon cannot EXECUTE any of the new version-aware RPCs (DEFINER or
+-- INVOKER alike).
+SAVEPOINT sp_10_32;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM update_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, 'x', 100, '2026-09-01'::date, NULL, NULL, TRUE, NULL);
+    RAISE EXCEPTION 'FAIL 10.32a: anon was able to call update_planned_obligation';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.32a', 'anon cannot EXECUTE update_planned_obligation');
+  END;
+  BEGIN
+    PERFORM update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -100, 'x', TRUE, 'monthly', NULL);
+    RAISE EXCEPTION 'FAIL 10.32b: anon was able to call update_recurring_transaction';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.32b', 'anon cannot EXECUTE update_recurring_transaction (SECURITY INVOKER is not a lesser guarantee — EXECUTE is still revoked from anon/PUBLIC exactly like every DEFINER RPC)');
+  END;
+  BEGIN
+    PERFORM set_recurring_transaction_active('5e000000-0000-0000-0000-000000000001'::uuid, 1, FALSE);
+    RAISE EXCEPTION 'FAIL 10.32c: anon was able to call set_recurring_transaction_active';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.32c', 'anon cannot EXECUTE set_recurring_transaction_active');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_32;
+
+-- 10.33: planned_obligations/savings_goals table grants are exactly SELECT,
+-- INSERT for authenticated — no UPDATE/DELETE, nothing for anon — proving
+-- the REVOKE ALL actually ran before the narrower re-GRANT (an additive-only
+-- GRANT SELECT, INSERT without a preceding REVOKE would leave the old
+-- broader grant silently intact; 10.4/10.5/10.13/10.14 already prove the
+-- practical consequence, this proves the grant catalog itself is exactly
+-- right, not merely "narrow enough to fail those specific statements").
+DO $$
+DECLARE v_bad TEXT;
+BEGIN
+  SELECT string_agg(table_name || ':' || privilege_type, ', ') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name IN ('planned_obligations', 'savings_goals')
+    AND grantee = 'authenticated' AND privilege_type NOT IN ('SELECT', 'INSERT');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33a: planned_obligations/savings_goals granted more than SELECT,INSERT to authenticated: %', v_bad;
+  END IF;
+
+  SELECT string_agg(table_name || ':' || privilege_type, ', ') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name IN ('planned_obligations', 'savings_goals')
+    AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33b: planned_obligations/savings_goals granted something to anon/PUBLIC: %', v_bad;
+  END IF;
+
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'recurring_transactions'
+    AND grantee = 'authenticated' AND privilege_type NOT IN ('SELECT', 'INSERT', 'UPDATE');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33c: recurring_transactions granted more than SELECT,INSERT,UPDATE to authenticated: %', v_bad;
+  END IF;
+
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'recurring_transactions' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33d: recurring_transactions granted something to anon/PUBLIC: %', v_bad;
+  END IF;
+
+  PERFORM _pass('10.33', 'planned_obligations/savings_goals are granted exactly SELECT,INSERT to authenticated and nothing to anon/PUBLIC; recurring_transactions is granted exactly SELECT,INSERT,UPDATE to authenticated and nothing to anon/PUBLIC — the REVOKE ALL before each narrower re-GRANT actually took effect');
+END $$;
+
+-- 10.34: search_path is fixed for the two SECURITY INVOKER recurring RPCs
+-- and the trigger function — Group 6's 6.5/6.6 structural guards only scan
+-- prosecdef = TRUE (SECURITY DEFINER) functions, so these three are not
+-- automatically covered by that generic sweep.
+DO $$
+DECLARE v_bad TEXT;
+BEGIN
+  SELECT string_agg(proname, ',') INTO v_bad
+  FROM pg_proc
+  WHERE pronamespace = 'public'::regnamespace
+    AND proname IN ('update_recurring_transaction', 'set_recurring_transaction_active', 'enforce_recurring_transaction_version')
+    AND (proconfig IS NULL OR NOT EXISTS (SELECT 1 FROM unnest(proconfig) c WHERE c LIKE 'search_path=%'));
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.34: functions without a fixed search_path: %', v_bad;
+  END IF;
+  PERFORM _pass('10.34', 'update_recurring_transaction()/set_recurring_transaction_active()/enforce_recurring_transaction_version() all have a fixed search_path, even though none is SECURITY DEFINER and so none is covered by Group 6''s 6.5 sweep');
+END $$;
+
+-- 10.35: enforce_recurring_transaction_version() has zero direct EXECUTE
+-- grants to any role — it is trigger-only, exactly like migration 003's
+-- derive_savings_goal_completion(), never meant to be called directly.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SELECT count(*) INTO v_count
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'enforce_recurring_transaction_version';
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 10.35: enforce_recurring_transaction_version has % direct EXECUTE grant(s), expected 0 (trigger-only)', v_count;
+  END IF;
+  PERFORM _pass('10.35', 'enforce_recurring_transaction_version() has zero direct EXECUTE grants — callable only as a trigger, never directly');
+END $$;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -4110,7 +4941,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008; Group 10 optimistic concurrency protection, migration 009) ===', v_total;
 END $$;
 
 ROLLBACK;

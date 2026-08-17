@@ -4,6 +4,13 @@
     "message": "אירעה שגיאה לא צפויה. אפשר לנסות שוב.",
     "retry": "נסו שוב"
   },
+  "concurrency": {
+    "conflictTitle": "התנגשות עדכון",
+    "conflictMessage": "כבר בוצע שינוי בפריט הזה ממכשיר או משתמש אחר.",
+    "notFoundTitle": "הפריט לא נמצא",
+    "notFoundMessage": "הפריט הזה נמחק או שאינו זמין יותר.",
+    "reloadLatest": "טען את הגרסה החדשה"
+  },
   "common": {
     "appName": "OurMoney",
     "comingSoon": "בקרוב",
