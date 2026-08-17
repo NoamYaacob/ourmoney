@@ -14,20 +14,12 @@ interface SkipRecurringOccurrenceResult {
   error?: string
 }
 
-// types/database.ts is never hand-edited (CLAUDE.md) — see the identical
-// comment in useGenerateRecurringTransactions.ts. This cast is temporary,
-// pending a real `supabase gen types` run against migration 003.
-const rpc = supabase.rpc.bind(supabase) as unknown as (
-  fn: 'skip_recurring_occurrence',
-  args: { p_recurring_id: string }
-) => Promise<{ data: unknown; error: unknown }>
-
 export function useSkipRecurringOccurrence(householdId: string | null | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (recurringId: string) => {
-      const { data, error } = await rpc('skip_recurring_occurrence', { p_recurring_id: recurringId })
+      const { data, error } = await supabase.rpc('skip_recurring_occurrence', { p_recurring_id: recurringId })
       if (error) throw error
 
       const result = data as unknown as SkipRecurringOccurrenceResult

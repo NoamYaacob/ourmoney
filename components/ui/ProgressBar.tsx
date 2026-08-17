@@ -16,7 +16,13 @@ export function ProgressBar({ percent, overBudget = false }: ProgressBarProps) {
     <View
       className="h-2 w-full overflow-hidden rounded-full bg-border-light dark:bg-border-dark"
       accessibilityRole="progressbar"
-      accessibilityValue={{ min: 0, max: 100, now: percent ?? 0 }}
+      // `now` must stay within the declared [min, max] range even when
+      // `percent` legitimately exceeds 100 (overspending) — assistive tech
+      // treats an out-of-range `now` as invalid. Reuses the same `clamped`
+      // value already driving the visual bar width, so the announced value
+      // and the rendered width never disagree; the overspending state
+      // itself is still fully conveyed via `overBudget`/color, unaffected.
+      accessibilityValue={{ min: 0, max: 100, now: clamped }}
     >
       <View className={`h-full rounded-full ${barColor}`} style={{ width: `${clamped}%` }} />
     </View>

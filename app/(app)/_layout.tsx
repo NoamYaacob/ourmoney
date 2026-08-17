@@ -162,9 +162,18 @@ export default function AppLayout() {
   const isWeb = Platform.OS === 'web'
   const isDesktopWeb = isWeb && windowWidth >= DESKTOP_BREAKPOINT_PX
   // segments[0] is the '(app)' route group; segments[1] is the tab root
-  // ('dashboard' | 'transactions' | 'budgets' | 'settings' | ...).
+  // ('dashboard' | 'transactions' | 'budgets' | 'settings' | ...). Without a
+  // generated .expo/types/router.d.ts (this sandboxed environment never runs
+  // a full `expo start` dev server), expo-router's typed-routes fallback
+  // types useSegments()'s return as a fixed 1-element tuple, so a literal
+  // `segments[1]` is a genuine out-of-range tuple index under TypeScript
+  // (TS2493) even though it's valid at runtime. `.at(1)` has no such
+  // fixed-length restriction — it's defined on the array/tuple's element
+  // type regardless of the tuple's statically-known length — so it
+  // expresses the identical runtime intent ("the second segment, or none")
+  // without a cast or a suppressed diagnostic.
   const segments = useSegments()
-  const activeSegment = segments[1] ?? ''
+  const activeSegment = segments.at(1) ?? ''
 
   return (
     <>

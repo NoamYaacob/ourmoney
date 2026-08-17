@@ -29,22 +29,12 @@ interface GenerateRecurringTransactionsResult {
   results?: { recurringId: string; transactionId: string; txnDate: string }[]
 }
 
-// types/database.ts is never hand-edited (CLAUDE.md) — only a real
-// `supabase gen types` run against a live migration-003 database may add
-// this RPC name to the generated Functions union. Until that regeneration
-// happens, supabase.rpc's typed overload doesn't know this function name
-// exists, so this one narrow, explicit cast stands in for it — remove once
-// types/database.ts is regenerated.
-const rpc = supabase.rpc.bind(supabase) as unknown as (
-  fn: 'generate_recurring_transactions'
-) => Promise<{ data: unknown; error: unknown }>
-
 export function useGenerateRecurringTransactions(householdId: string | null | undefined) {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await rpc('generate_recurring_transactions')
+      const { data, error } = await supabase.rpc('generate_recurring_transactions')
       if (error) throw error
 
       const result = data as unknown as GenerateRecurringTransactionsResult

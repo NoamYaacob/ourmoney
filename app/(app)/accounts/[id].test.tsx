@@ -4,7 +4,7 @@
 // imported it — there was no edit entry point on this screen at all.
 // Mirrors app/(app)/transactions/[id].test.tsx's established
 // screen-testing pattern.
-import { describe, expect, it, jest } from '@jest/globals'
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import { formatILS } from '@/lib/money/format'
@@ -24,8 +24,9 @@ jest.mock('@expo/vector-icons', () => ({
 jest.mock('@/features/auth/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),
 }))
+const mockUseHousehold = jest.fn(() => ({ householdId: 'household-1', role: 'admin', isLoading: false }))
 jest.mock('@/features/household/hooks/useHousehold', () => ({
-  useHousehold: () => ({ householdId: 'household-1', role: 'admin', isLoading: false }),
+  useHousehold: () => mockUseHousehold(),
 }))
 
 const ACCOUNT = {
@@ -55,6 +56,10 @@ jest.mock('@/features/accounts/hooks/useUpdateAccount', () => ({
 }))
 
 describe('AccountDetail', () => {
+  beforeEach(() => {
+    mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'admin', isLoading: false })
+  })
+
   it('renders the edit form prefilled with the account name', async () => {
     const { getByDisplayValue } = await render(<AccountDetail />)
     expect(getByDisplayValue('עו״ש בנק לאומי')).toBeTruthy()
@@ -78,5 +83,22 @@ describe('AccountDetail', () => {
       name: 'חשבון עו״ש חדש',
       type: 'checking',
     })
+  })
+
+  // Regression: accounts_delete RLS is admin-only (is_household_admin), but
+  // the delete button was rendered unconditionally regardless of the
+  // caller's own role — a non-admin saw a fully actionable destructive
+  // control that would inevitably fail server-side. Mirrors Settings'
+  // existing admin-gating pattern for household rename/remove-member.
+  it('shows the delete button to an admin', async () => {
+    mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'admin', isLoading: false })
+    const { getByText } = await render(<AccountDetail />)
+    expect(getByText('מחיקה')).toBeTruthy()
+  })
+
+  it('hides the delete button from a non-admin member', async () => {
+    mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'member', isLoading: false })
+    const { queryByText } = await render(<AccountDetail />)
+    expect(queryByText('מחיקה')).toBeNull()
   })
 })

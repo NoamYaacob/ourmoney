@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
 import { AppState, Platform } from 'react-native'
 import type { Database } from '@/types/database'
+import { validateSupabaseConfig } from './validateSupabaseConfig'
 
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => SecureStore.getItemAsync(key),
@@ -29,17 +30,10 @@ const WebStorageAdapter = {
 
 const authStorage = Platform.OS === 'web' ? WebStorageAdapter : ExpoSecureStoreAdapter
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-
-// Fail loudly at startup rather than letting createClient() throw an opaque
-// "supabaseUrl is required" error, or worse, silently construct a client
-// that fails confusingly on its first real request.
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY. Set them in your .env before starting the app.'
-  )
-}
+const { url: supabaseUrl, anonKey: supabaseAnonKey } = validateSupabaseConfig(
+  process.env.EXPO_PUBLIC_SUPABASE_URL,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+)
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {

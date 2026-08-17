@@ -14,7 +14,7 @@ import { severityIconName, severityColorToken } from '@/features/alerts/lib/aler
 import { usePeriodStore } from '@/store/periodStore'
 import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
-import { remainingAgorot } from '@/lib/money/arithmetic'
+import { remainingAgorot, spentPercent } from '@/lib/money/arithmetic'
 import { formatILS } from '@/lib/money/format'
 import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
 import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
@@ -140,7 +140,11 @@ export default function Dashboard() {
     )
   }
 
-  const overallPercent = totalAllocatedAgorot > 0 ? (totalSpentAgorot / totalAllocatedAgorot) * 100 : null
+  // Same shared, integer-safe helper Budgets uses (lib/money/arithmetic.ts)
+  // — previously a raw float ratio here, which could round to a different
+  // whole percent than Budgets' Math.floor cross-multiplication for the
+  // identical spent/allocated pair. One helper, one number, everywhere.
+  const overallPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot)
   const remaining = remainingAgorot(totalAllocatedAgorot, totalSpentAgorot)
   const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
 
@@ -331,7 +335,7 @@ export default function Dashboard() {
           </View>
           {overallPercent !== null && (
             <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-              {t('dashboard.percentUsed', { percent: Math.round(overallPercent) })}
+              {t('dashboard.percentUsed', { percent: overallPercent })}
             </Text>
           )}
 

@@ -27,7 +27,7 @@ export default function AccountDetail() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuth()
-  const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  const { householdId, role, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { balances, isLoading: isBalancesLoading } = useAccountBalances(householdId)
   const archiveAccount = useArchiveAccount(householdId)
@@ -110,9 +110,17 @@ export default function AccountDetail() {
         onPress={() => archiveAccount.mutate(account.id)}
       />
 
-      <View className="mt-3">
-        <Button title={t('accounts.detail.delete')} variant="ghost" onPress={() => setConfirmDeleteVisible(true)} />
-      </View>
+      {/* accounts_delete RLS (is_household_admin(household_id)) is the real
+          gate — a non-admin's delete call is always rejected server-side.
+          This mirrors Settings' existing admin-gating pattern (rename
+          household, remove member): hiding a control the backend would
+          reject anyway, rather than letting a non-admin discover the
+          rejection through a failed destructive action. */}
+      {role === 'admin' && (
+        <View className="mt-3">
+          <Button title={t('accounts.detail.delete')} variant="ghost" onPress={() => setConfirmDeleteVisible(true)} />
+        </View>
+      )}
 
       {deleteError && <ErrorMessage message={t(deleteError)} />}
 
