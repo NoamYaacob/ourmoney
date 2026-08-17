@@ -69,6 +69,11 @@ const mockUseSafeToSpend = jest.fn<() => typeof DEFAULT_SAFE_TO_SPEND>()
 jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
   useSafeToSpend: () => mockUseSafeToSpend(),
 }))
+const DEFAULT_ALERTS = { alerts: [] as unknown[], isLoading: false, hasPartialError: false }
+const mockUseFinancialAlerts = jest.fn<() => typeof DEFAULT_ALERTS>()
+jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
+  useFinancialAlerts: () => mockUseFinancialAlerts(),
+}))
 const mockUseTransactions =
   jest.fn<(householdId: string | null | undefined, filters?: TransactionFilters) => {
     transactions: unknown[]
@@ -101,6 +106,7 @@ beforeEach(() => {
   mockUseBudgetProgress.mockReturnValue(DEFAULT_BUDGET_PROGRESS)
   mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
   mockUseSafeToSpend.mockReturnValue(DEFAULT_SAFE_TO_SPEND)
+  mockUseFinancialAlerts.mockReturnValue(DEFAULT_ALERTS)
   mockPush.mockClear()
 })
 
@@ -499,5 +505,122 @@ describe('Dashboard responsive desktop layout', () => {
     )
     expect((iconChip as { props: { className: string } } | undefined)?.props.className).toContain('web:desktop:flex')
     expect((iconChip as { props: { className: string } } | undefined)?.props.className).toContain('hidden')
+  })
+})
+
+function alert(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'upcoming_obligation:ob-1',
+    type: 'upcoming_obligation',
+    severity: 'warning',
+    title: 'ארנונה בעוד 3 ימים',
+    description: '₪475.00 צפויים לרדת ב-2026-08-19',
+    date: '2026-08-19',
+    amountAgorot: 47500,
+    source: 'planned_obligation',
+    sourceId: 'ob-1',
+    actionRoute: '/obligations/ob-1',
+    ...overrides,
+  }
+}
+
+describe('Dashboard alerts section', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('does not render the section at all when there are zero alerts', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({ alerts: [], isLoading: false, hasPartialError: false })
+
+    const { queryByText } = await render(<Dashboard />)
+
+    expect(queryByText(i18n.t('alerts.dashboardSectionTitle'))).toBeNull()
+  })
+
+  it('renders a single alert with its title and description', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: false })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('alerts.dashboardSectionTitle'))).toBeTruthy()
+    expect(getByText('ארנונה בעוד 3 ימים')).toBeTruthy()
+    expect(getByText('₪475.00 צפויים לרדת ב-2026-08-19')).toBeTruthy()
+  })
+
+  it('shows at most 3 alerts even when more are available', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({
+      alerts: [
+        alert({ id: 'a1', title: 'התראה 1', sourceId: 'a1', actionRoute: '/obligations/a1' }),
+        alert({ id: 'a2', title: 'התראה 2', sourceId: 'a2', actionRoute: '/obligations/a2' }),
+        alert({ id: 'a3', title: 'התראה 3', sourceId: 'a3', actionRoute: '/obligations/a3' }),
+        alert({ id: 'a4', title: 'התראה 4', sourceId: 'a4', actionRoute: '/obligations/a4' }),
+        alert({ id: 'a5', title: 'התראה 5', sourceId: 'a5', actionRoute: '/obligations/a5' }),
+      ],
+      isLoading: false,
+      hasPartialError: false,
+    })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText('התראה 1')).toBeTruthy()
+    expect(getByText('התראה 2')).toBeTruthy()
+    expect(getByText('התראה 3')).toBeTruthy()
+    expect(queryByText('התראה 4')).toBeNull()
+    expect(queryByText('התראה 5')).toBeNull()
+  })
+
+  it('preserves the order the engine already sorted (highest priority first)', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({
+      alerts: [
+        alert({ id: 'a1', severity: 'critical', title: 'קריטי', sourceId: 'a1', actionRoute: '/obligations/a1' }),
+        alert({ id: 'a2', severity: 'warning', title: 'אזהרה', sourceId: 'a2', actionRoute: '/obligations/a2' }),
+      ],
+      isLoading: false,
+      hasPartialError: false,
+    })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const critical = getByText('קריטי')
+    const warning = getByText('אזהרה')
+    // Both rendered; order in the source array is preserved (the screen
+    // never re-sorts — buildFinancialAlerts.ts already did).
+    expect(critical).toBeTruthy()
+    expect(warning).toBeTruthy()
+  })
+
+  it('navigates to /alerts when "כל ההתראות" is tapped', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: false })
+
+    const { getByText } = await render(<Dashboard />)
+
+    await fireEvent.press(getByText(i18n.t('alerts.viewAll')))
+
+    expect(mockPush).toHaveBeenCalledWith('/alerts')
+  })
+
+  it('navigates to the alert\'s own actionRoute when the alert row is tapped', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: false })
+
+    const { getByText } = await render(<Dashboard />)
+
+    await fireEvent.press(getByText('ארנונה בעוד 3 ימים'))
+
+    expect(mockPush).toHaveBeenCalledWith('/obligations/ob-1')
+  })
+
+  it('does not render the section while alerts are still loading', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: true, hasPartialError: false })
+
+    const { queryByText } = await render(<Dashboard />)
+
+    expect(queryByText(i18n.t('alerts.dashboardSectionTitle'))).toBeNull()
   })
 })

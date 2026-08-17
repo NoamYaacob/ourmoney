@@ -571,6 +571,40 @@
       }
     }
   },
+  "alerts": {
+    "dashboardSectionTitle": "דורש תשומת לב",
+    "viewAll": "כל ההתראות",
+    "allGoodMessage": "הכל נראה תקין כרגע.",
+    "screenTitle": "התראות ותובנות",
+    "groups": {
+      "critical": "דורש טיפול",
+      "warning": "כדאי לשים לב",
+      "info": "מידע"
+    },
+    "empty": "אין התראות כרגע.",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "partial": "חלק מהנתונים לא זמינים כרגע — מוצגות התראות מהמידע הזמין."
+    },
+    "forecastShortfall": {
+      "title": "צפוי חוסר בכיסוי",
+      "description": "בהתאם ליתרה ולהתחייבויות הידועות כרגע, היתרה צפויה לרדת מתחת לאפס ב-{{date}}. חוסר צפוי של {{amount}}."
+    },
+    "upcomingObligation": {
+      "overdueTitle": "{{name}} באיחור",
+      "todayTitle": "{{name}} היום",
+      "dueInDaysTitle": "{{name}} בעוד {{days}} ימים",
+      "description": "{{amount}} צפויים לרדת ב-{{date}}"
+    },
+    "priceIncrease": {
+      "title": "המחיר עלה",
+      "description": "החיוב של {{name}} עלה מ-{{previous}} ל-{{current}}"
+    },
+    "budgetRisk": {
+      "title": "תקציב בסיכון",
+      "description": "{{category}}: נוצלו {{percent}}% מהתקציב"
+    }
+  },
   "household": {
     "errors": {
       "invalidName": "יש להזין שם תקין למשק הבית",

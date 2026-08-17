@@ -92,3 +92,40 @@ export type PlannedObligationStatus = 'upcoming' | 'completed' | 'cancelled'
 export interface PlannedObligation extends Omit<Tables<'planned_obligations'>, 'status'> {
   status: PlannedObligationStatus
 }
+
+// ============================================================================
+// Smart Financial Alerts V1 — lib/engines/alerts/buildFinancialAlerts.ts's
+// output shape. Lives here (not inlined in the engine file, unlike
+// SafeToSpendItem/CashFlowForecastEvent) because it has more than one real
+// consumer: the aggregation hook, the Dashboard section, and the /alerts
+// screen — the same "camelCase, UI-shaped, computed client-side" fan-out
+// point BudgetCategoryProgress above already lives at this level for.
+// ============================================================================
+
+export type FinancialAlertType = 'forecast_shortfall' | 'upcoming_obligation' | 'recurring_price_increase' | 'budget_risk'
+
+export type FinancialAlertSeverity = 'info' | 'warning' | 'critical'
+
+export type FinancialAlertSource = 'cash_flow' | 'planned_obligation' | 'recurring' | 'budget'
+
+export interface FinancialAlert {
+  // Deterministic, derived from type + source identity — never random, never
+  // a persisted row id (no alert is ever stored). See buildFinancialAlerts.ts
+  // for the exact per-type composition and why each type's prefix can never
+  // collide with another's.
+  id: string
+  type: FinancialAlertType
+  severity: FinancialAlertSeverity
+  title: string
+  description: string
+  // null when the alert has no single relevant calendar date (budget_risk).
+  date: string | null
+  // null when the alert has no single relevant money figure.
+  amountAgorot: number | null
+  source: FinancialAlertSource
+  sourceId: string | null
+  // A plain route string (e.g. `/obligations/${id}`) — matches every other
+  // screen's existing router.push(`/...`) call shape in this codebase, no
+  // typed Href needed at the engine layer.
+  actionRoute: string
+}

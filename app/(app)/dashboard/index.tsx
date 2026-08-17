@@ -1,12 +1,16 @@
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
+import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
+import { severityIconName, severityColorToken } from '@/features/alerts/lib/alertDisplay'
 import { usePeriodStore } from '@/store/periodStore'
 import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
@@ -65,6 +69,16 @@ export default function Dashboard() {
     isLoading: isSafeToSpendLoading,
     error: safeToSpendError,
   } = useSafeToSpend(householdId, 'month')
+
+  const { alerts, isLoading: isAlertsLoading } = useFinancialAlerts(householdId)
+  const { colorScheme: scheme } = useColorScheme()
+  // Loading/error states are deliberately silent here (unlike the primary
+  // Safe-to-Spend card above): this is a secondary, optional section — the
+  // full /alerts screen is where a genuine error state belongs. A single
+  // failed source among the four never blanks this section anyway
+  // (useFinancialAlerts.ts's own partial-availability design); it only
+  // shows fewer alerts.
+  const topAlerts = isAlertsLoading ? [] : alerts.slice(0, 3)
 
   // Analytics — lives inside Dashboard, not a separate route (no route is
   // reserved for it anywhere in the app tree). A widened 6-month window,
@@ -237,6 +251,57 @@ export default function Dashboard() {
           )}
         </Card>
       </Pressable>
+
+      {/* Compact, optional section — renders nothing at all when there are
+          no alerts (chosen over a persistent "everything's fine" banner:
+          no existing screen in this app has that kind of standing chrome,
+          and the milestone's own brief explicitly allows either choice).
+          Max 3, highest-priority first (buildFinancialAlerts.ts's own
+          severity→date→id sort) — the full grouped list lives at /alerts. */}
+      {topAlerts.length > 0 && (
+        <View className="mb-6 web:desktop:mb-8">
+          <View className="mb-2 flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+              {t('alerts.dashboardSectionTitle')}
+            </Text>
+            <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('alerts.viewAll')}
+              </Text>
+            </Pressable>
+          </View>
+          <Card>
+            {topAlerts.map((alert, index) => (
+              <View key={alert.id}>
+                {index > 0 && (
+                  <View className="my-3">
+                    <Divider />
+                  </View>
+                )}
+                <Pressable
+                  onPress={() => router.push(alert.actionRoute)}
+                  accessibilityRole="button"
+                  className="flex-row items-center gap-3"
+                >
+                  <Ionicons
+                    name={severityIconName(alert.severity)}
+                    size={20}
+                    color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                  />
+                  <View className="flex-1">
+                    <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {alert.title}
+                    </Text>
+                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                      {alert.description}
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
 
       <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
