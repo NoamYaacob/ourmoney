@@ -1,0 +1,70 @@
+name: Patch RLS 10.35 Source
+
+on:
+  push:
+    branches:
+      - preview/iphone-local
+    paths:
+      - '.github/workflows/patch-rls-1035.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: preview/iphone-local
+      - name: Patch owner-aware trigger grant assertion and self-remove
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('supabase/rls_tests.sql')
+          text = path.read_text()
+          old = '''-- 10.35: enforce_recurring_transaction_version() has zero direct EXECUTE
+-- grants to any role — it is trigger-only, exactly like migration 003's
+-- derive_savings_goal_completion(), never meant to be called directly.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SELECT count(*) INTO v_count
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'enforce_recurring_transaction_version';
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 10.35: enforce_recurring_transaction_version has % direct EXECUTE grant(s), expected 0 (trigger-only)', v_count;
+  END IF;
+  PERFORM _pass('10.35', 'enforce_recurring_transaction_version() has zero direct EXECUTE grants — callable only as a trigger, never directly');
+END $$;'''
+          new = '''-- 10.35: enforce_recurring_transaction_version() is trigger-only.
+-- As in RECURRING.GRANTS.6 above, the owning postgres role inherently retains
+-- EXECUTE as object owner; no non-owner/application role may have a direct
+-- EXECUTE grant.
+DO $$
+DECLARE v_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public'
+    AND routine_name = 'enforce_recurring_transaction_version'
+    AND grantee <> 'postgres';
+  IF v_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.35: enforce_recurring_transaction_version has unexpected non-owner EXECUTE grant(s): %', v_grantees;
+  END IF;
+  PERFORM _pass('10.35', 'enforce_recurring_transaction_version() has no EXECUTE grant to any non-owner role — trigger-only');
+END $$;'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one 10.35 block, found {count}; refusing to patch')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/patch-rls-1035.yml').unlink()
+      - name: Commit exact source fix
+        run: |
+          set -euo pipefail
+          git config user.name 'OurMoney CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add supabase/rls_tests.sql .github/workflows/patch-rls-1035.yml
+          git diff --cached --check
+          git commit -m 'test: ignore owner privilege in trigger grant assertion'
+          git push origin HEAD:preview/iphone-local
