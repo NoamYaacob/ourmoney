@@ -19,6 +19,27 @@ import { DesktopSideRail } from './_layout'
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }))
+
+// DesktopSideRail is exported from the full authenticated layout module, so
+// importing it also evaluates hooks used only by AppLayout. Keep this unit
+// test focused on the rail and prevent those unrelated hooks from reaching
+// the real Supabase client/configuration.
+jest.mock('@/features/auth/hooks/useBiometricGuard', () => ({
+  useBiometricGuard: () => ({ isLocked: false }),
+}))
+jest.mock('@/features/auth/hooks/useAuth', () => ({
+  useAuth: () => ({ session: null, user: { id: 'user-1' }, isLoading: false }),
+}))
+jest.mock('@/features/household/hooks/useHousehold', () => ({
+  useHousehold: () => ({ householdId: 'household-1', household: null, isLoading: false, error: null }),
+}))
+jest.mock('@/features/transactions/hooks/useTransactionsRealtimeSync', () => ({
+  useTransactionsRealtimeSync: () => undefined,
+}))
+jest.mock('@/features/recurring/hooks/useGenerateRecurringTransactions', () => ({
+  useGenerateRecurringTransactions: () => undefined,
+}))
+
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
 // test verifies — same rationale as _layout.test.tsx's identical mock.
