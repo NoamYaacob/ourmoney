@@ -3917,18 +3917,28 @@ SAVEPOINT sp_9_17;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
 DO $$
-DECLARE v_transfer_id UUID; v_result JSONB; v_count INT;
+DECLARE v_transfer_id UUID; v_result JSONB;
 BEGIN
   v_transfer_id := current_setting('g9.transfer_id')::uuid;
   SELECT delete_transfer(v_transfer_id) INTO v_result;
   IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
     RAISE EXCEPTION 'FAIL 9.17: expected not_found for a cross-household transfer id (even from an admin), got %', v_result;
   END IF;
-  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
-  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.17: the transfer was deleted by another household''s admin'; END IF;
-  PERFORM _pass('9.17', 'delete_transfer() on another household''s transfer_id reports not_found even for that household''s own admin');
 END $$;
 RESET role;
+-- Verify persistence as postgres, not while impersonating User C:
+-- transfers_select correctly hides Household 1 from User C, so a
+-- COUNT(*) performed above would always be 0 even when the row still
+-- exists and would turn this isolation test into a false deletion
+-- alarm (same superuser post-check pattern used by 5.14 and others).
+DO $$
+DECLARE v_transfer_id UUID; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.17: the transfer was deleted by another household''s admin'; END IF;
+  PERFORM _pass('9.17', 'delete_transfer() on another household''s transfer_id reports not_found and the transfer remains intact');
+END $$;
 ROLLBACK TO SAVEPOINT sp_9_17;
 
 -- 9.18: delete_transfer() by the OWNING household's admin removes the
