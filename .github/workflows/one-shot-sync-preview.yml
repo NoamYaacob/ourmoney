@@ -1,0 +1,24 @@
+name: One-shot preview sync
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/responsive-qa-polish
+          fetch-depth: 0
+      - name: Merge main into preview branch
+        run: |
+          git config user.name "ourmoney-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git fetch origin main
+          git merge origin/main --no-edit
+          git push origin HEAD:agent/responsive-qa-polish
