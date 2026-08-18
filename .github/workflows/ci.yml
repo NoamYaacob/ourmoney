@@ -1,20 +1,7 @@
 name: CI — Trust Gate
 
 # The real gate on `main`. Runs automatically on every pull request targeting
-# `main`, and again on push to `main` for post-merge verification. Before
-# this workflow, none of the project's real checks (RLS suite, tsc, eslint,
-# jest, Expo export) ran on any PR or push to `main` — every prior workflow
-# in this directory triggered only on `workflow_dispatch` or a push to a
-# specific, disposable per-milestone branch. This consolidates that
-# generalized pattern (proven first in migration-007-db-validation.yml) into
-# one workflow that actually targets the branch it's meant to protect,
-# instead of adding a sixth milestone-specific file.
-#
-# Three independent jobs, not one, for the same reason
-# migration-007-db-validation.yml/milestone-9-db-validation.yml split theirs:
-# a slow, unrelated job must never starve or mask an already-decided result
-# from a different one. Each job's conclusion is independently visible in
-# the Actions UI/API regardless of what the others do.
+# `main`, and again on push to `main` for post-merge verification.
 
 on:
   pull_request:
@@ -45,17 +32,9 @@ jobs:
       - name: Start local Supabase in GitHub runner
         run: supabase start
 
-      # Applies every migration file present at this commit, from scratch —
-      # generic by construction, not tied to any one milestone's migration
-      # number. A future migration is covered automatically; nothing in this
-      # job needs updating when one is added.
       - name: Reset database and apply all migrations from scratch
         run: supabase db reset
 
-      # Structural proof this run never touched anything remote: local-only
-      # ports/host, and the remote-shaped env vars this app's client code
-      # needs are deliberately left unset here — nothing in this job can
-      # accidentally point the app at a real project.
       - name: Assert no remote Supabase configuration is present
         run: |
           if [ -n "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -n "$SUPABASE_ACCESS_TOKEN" ] || [ -n "$SUPABASE_DB_PASSWORD" ]; then
@@ -64,9 +43,6 @@ jobs:
           fi
           echo "Confirmed: no remote Supabase URL, access token, or DB password is set. Local stack only."
 
-      # Runs the full suite unweakened — every existing assertion, including
-      # the true-concurrency dblink sections, exactly as
-      # migration-007-db-validation.yml already proved works in CI.
       - name: Run full RLS/database test suite
         shell: bash
         run: |
@@ -97,12 +73,6 @@ jobs:
           grep -F "leave_household" /tmp/database.generated.ts
           grep -F "save_budget_allocations" /tmp/database.generated.ts
 
-      # Informational, not blocking — matches migration-007-db-validation.yml's
-      # existing precedent. types/database.ts is committed by hand after a
-      # real `supabase gen types` run (CLAUDE.md); this surfaces drift for a
-      # human to reconcile rather than failing a PR on it, since the local
-      # stack's schema can legitimately differ in incidental ways (extension
-      # versions, etc.) that aren't a real regression.
       - name: Diff generated types against the hand-authored types/database.ts
         shell: bash
         run: |
@@ -140,9 +110,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Full history, not just the pushed commit: needed so
-          # `git diff --check origin/main...HEAD` below can find a real
-          # merge base instead of diffing against nothing.
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -160,17 +127,6 @@ jobs:
       - name: Check for whitespace errors relative to main
         run: git diff --check origin/main...HEAD
 
-      # Jest itself reliably finishes in seconds, but on this project's CI
-      # runners the underlying npm/sh/node process tree does not reliably
-      # exit on its own afterward (confirmed via a custom onRunComplete
-      # reporter showing zero active handles/requests the instant Jest
-      # itself reports done — see migration-007-db-validation.yml/
-      # milestone-9-db-validation.yml's identical, more detailed comment for
-      # the full investigation). `timeout` bounds the whole step's process
-      # tree externally (unlike --forceExit, which only affects Jest's own
-      # process); pass/fail is judged from Jest's own printed summary line,
-      # not the wrapped process's exit code, so a slow-to-die-but-genuinely-
-      # passing run is never misreported as a failure.
       - name: Unit tests
         shell: bash
         run: |
@@ -219,3 +175,19 @@ jobs:
 
       - name: Expo export — Android
         run: npx expo export --platform android
+
+  secret-scan:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository for committed secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
