@@ -335,6 +335,34 @@ describe('Budgets', () => {
     expect(getAllByText('עדיין לא הוקצו קטגוריות לתקציב החודש.').length).toBe(2)
   })
 
+  // Desktop Visual/Responsive Design pass: the desktop zero-allocation
+  // state previously read as broken — a bare icon+message inside a small
+  // panel, with the only actionable control (add-category) in a completely
+  // separate box below it. Now includes an explanatory hint and the
+  // add-category control inline in the same card at desktop.
+  it('gives the desktop empty state an explanatory hint and an inline add-category control', async () => {
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START
+        ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+        : { ...DEFAULT_PROGRESS_RESULT, categories: [], totalAllocatedAgorot: 0, totalSpentAgorot: 0 }
+    )
+
+    const { getByText, getAllByText } = await render(<Budgets />)
+
+    expect(
+      getByText(
+        'תקציב חודשי הוא סכום שמוקצה לכל קטגוריית הוצאה, כדי לעקוב כמה נותר להוציא בה. הוסיפו קטגוריה ראשונה כדי להתחיל.'
+      )
+    ).toBeTruthy()
+    // Mobile-compact + desktop-full renders both exist in the RNTL tree
+    // simultaneously (CSS visibility can't be evaluated here) — same
+    // established pattern as the empty-state message assertion above, now
+    // also true for the add-category control itself since it's rendered
+    // both inline (desktop) and in its own block (mobile, and desktop once
+    // progress is non-empty — see the component's own comment).
+    expect(getAllByText('הוספת קטגוריה לתקציב').length).toBe(2)
+  })
+
   // Desktop polish pass: category budgets and the uncategorized-transactions
   // queue sit in a shared desktop grid (index.tsx's own comment). RNTL can't
   // evaluate real CSS media queries, so this asserts the structural things

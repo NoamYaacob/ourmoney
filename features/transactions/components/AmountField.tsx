@@ -19,7 +19,12 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
   const placeholderColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
   return (
-    <View className="mb-6 items-center border-b border-border-light pb-5 dark:border-border-dark">
+    // Desktop Visual/Responsive Design pass: trimmed vertical rhythm at
+    // desktop only (mb-6/pb-5 -> mb-4/pb-3) — this stays the visually
+    // dominant hero field (same text-display size, same centered symbol+
+    // digits row), just without claiming as much of a now-wider form's
+    // vertical space before the grouped fields below it. Mobile untouched.
+    <View className="mb-6 items-center border-b border-border-light pb-5 web:desktop:mb-4 web:desktop:pb-3 dark:border-border-dark">
       <Text className="mb-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">{label}</Text>
       {/* Native Yoga auto-mirrors flex-row under the forced-RTL flag
           (app/_layout.tsx), so "₪" (first JSX child) already lands on the

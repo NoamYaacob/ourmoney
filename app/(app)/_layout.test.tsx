@@ -3,7 +3,9 @@
 // explicitly opts out via `options={{ href: null }}` — every non-tab
 // screen (accounts, goals, recurring, settings/categories, and every
 // transactions/* screen except the list) was leaking into the tab bar as
-// an extra, unlabeled tab.
+// an extra, unlabeled tab. obligations/index and obligations/[id] had the
+// same bug (missed at the time obligations/ was built, found during the
+// Desktop Visual/Responsive Design pass) — now covered here too.
 //
 // `href: null`'s exclusion is a runtime react-navigation concept, not
 // something derivable from the file tree, and it isn't observable through
@@ -75,6 +77,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'goals/[id]': STUB_SCREEN,
         'recurring/index': STUB_SCREEN,
         'recurring/[id]': STUB_SCREEN,
+        'obligations/index': STUB_SCREEN,
+        'obligations/[id]': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
@@ -121,6 +125,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'goals/[id]': STUB_SCREEN,
         'recurring/index': STUB_SCREEN,
         'recurring/[id]': STUB_SCREEN,
+        'obligations/index': STUB_SCREEN,
+        'obligations/[id]': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )

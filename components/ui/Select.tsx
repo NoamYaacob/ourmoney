@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type ReactNode } from 'react'
+import { useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { FlatList, Modal, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -34,6 +34,23 @@ interface SelectProps {
   sheetTitle?: string
 }
 
+// Desktop Visual/Responsive Design pass: what a desktop-only render measures
+// from the trigger (via `measureInWindow` — real on-screen coordinates, cheap
+// and correct regardless of RTL since it reflects wherever the trigger
+// physically renders, not a logical left/right assumption) so the anchored
+// popover that replaces the centered dialog at desktop can size/position
+// itself off the control that opened it, not the screen.
+interface Anchor {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+const POPOVER_MAX_HEIGHT = 320
+const POPOVER_MIN_WIDTH = 260
+const POPOVER_MARGIN = 8
+
 export function Select({
   label,
   options,
@@ -45,8 +62,10 @@ export function Select({
   sheetTitle,
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [anchor, setAnchor] = useState<Anchor | null>(null)
+  const triggerRef = useRef<View>(null)
   const { colorScheme: scheme } = useColorScheme()
-  const { width: windowWidth } = useWindowDimensions()
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const selectedOption = options.find((option) => option.value === value)
   const selectedLabel = selectedOption?.label
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
@@ -54,15 +73,56 @@ export function Select({
   // Below `desktop`, this Modal stays the original bottom sheet (slide-up,
   // bottom-anchored, drag handle, top corners only) on both native and web —
   // unchanged from every pre-existing caller. At desktop width on web only,
-  // it becomes a centered dialog instead: a bottom sheet reads as a mobile
-  // pattern once there's a full desktop viewport around it.
+  // it becomes an anchored popover instead: a centered dialog (and before
+  // that, a bottom sheet) reads as a mobile pattern once there's a full
+  // desktop viewport around it, and — for a short list especially — opens a
+  // large box with no visual relationship to the control the user tapped.
   const isDesktopWeb = Platform.OS === 'web' && windowWidth >= DESKTOP_BREAKPOINT_PX
+
+  function openSelect() {
+    // Opening never waits on measurement — measureInWindow is a real
+    // native-bridge call with no guaranteed-synchronous callback (and no
+    // callback at all in a JS-only test renderer, which has no host view to
+    // measure), so gating `setIsOpen(true)` on it firing would mean the
+    // popover could silently never open. The anchor is instead applied
+    // opportunistically: it starts null (popoverStyle()'s null-anchor
+    // fallback below covers that render), and snaps to the trigger's real
+    // position the moment the callback does resolve.
+    setIsOpen(true)
+    if (isDesktopWeb && triggerRef.current) {
+      // measureInWindow gives real screen coordinates — used directly as
+      // `left`/`top` below (see the Anchor comment above for why that's
+      // correct regardless of RTL).
+      triggerRef.current.measureInWindow((x, y, width, height) => {
+        setAnchor({ x, y, width, height })
+      })
+    }
+  }
+
+  // Clamped so the popover never renders off the bottom/right/left edge of
+  // the viewport — flips above the trigger instead of below it when there
+  // isn't room underneath, and slides horizontally back onto screen rather
+  // than clipping. `anchor` is only ever set on a desktop-web open, so this
+  // is only consulted from the desktop branch below.
+  function popoverStyle() {
+    const popoverWidth = anchor ? Math.max(anchor.width, POPOVER_MIN_WIDTH) : POPOVER_MIN_WIDTH
+    if (!anchor) {
+      return { position: 'absolute' as const, top: 80, left: windowWidth / 2 - popoverWidth / 2, width: popoverWidth }
+    }
+    const fitsBelow = anchor.y + anchor.height + POPOVER_MARGIN + POPOVER_MAX_HEIGHT <= windowHeight
+    const top = fitsBelow
+      ? anchor.y + anchor.height + 4
+      : Math.max(POPOVER_MARGIN, anchor.y - POPOVER_MAX_HEIGHT - 4)
+    const left = Math.min(Math.max(anchor.x, POPOVER_MARGIN), windowWidth - popoverWidth - POPOVER_MARGIN)
+    return { position: 'absolute' as const, top, left, width: popoverWidth }
+  }
 
   return (
     <>
       {variant === 'row' ? (
         <Pressable
-          onPress={() => setIsOpen(true)}
+          ref={triggerRef}
+          onPress={openSelect}
           accessibilityRole="button"
           accessibilityLabel={label}
           accessibilityValue={{ text: selectedLabel ?? placeholder }}
@@ -87,7 +147,8 @@ export function Select({
         <View className="mb-4">
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{label}</Text>
           <Pressable
-            onPress={() => setIsOpen(true)}
+            ref={triggerRef}
+            onPress={openSelect}
             accessibilityRole="button"
             accessibilityLabel={label}
             // An explicit accessibilityLabel overrides the accessible name RN
@@ -112,31 +173,29 @@ export function Select({
         animationType={isDesktopWeb ? 'fade' : 'slide'}
         onRequestClose={() => setIsOpen(false)}
       >
-        <Pressable
-          className="flex-1 justify-end bg-black/40 web:desktop:justify-center"
-          onPress={() => setIsOpen(false)}
-        >
-          {variant === 'row' ? (
+        {isDesktopWeb ? (
+          // Anchored popover: the backdrop is still a full-screen Pressable
+          // (click-outside-to-close, same mechanism every other caller
+          // already relies on) and the Modal still owns Escape-to-close via
+          // onRequestClose (react-native-web's Modal attaches this on web) —
+          // both are inherited for free by staying inside the same Modal,
+          // rather than reimplemented with raw DOM listeners. Only the
+          // content's own position/size changes: anchored under (or, near
+          // the bottom edge, above) the trigger and sized to it, not
+          // centered/full-width like the mobile sheet or the old dialog.
+          <Pressable className="flex-1" onPress={() => setIsOpen(false)}>
             <View
-              className={`max-h-[70%] w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light web:desktop:rounded-2xl dark:bg-surface-dark`}
+              style={popoverStyle()}
+              className="max-h-[320px] rounded-xl border border-border-light bg-surface-light shadow-lg dark:border-border-dark dark:bg-surface-dark"
             >
-              {/* Drag-handle affordance — this Modal is a plain RN Modal, not
-                  a real gesture-driven bottom sheet, so there is nothing to
-                  wire up here beyond the visual cue (no new library added).
-                  A bottom-sheet-specific cue, so it's hidden once this
-                  becomes a centered desktop dialog. */}
-              <View className="items-center pb-1 pt-3 web:desktop:hidden">
-                <View className="h-1 w-9 rounded-full bg-border-light dark:bg-border-dark" />
-              </View>
               {sheetTitle && (
-                <Text className="px-4 pb-2 pt-1 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                <Text className="border-b border-border-light px-3 pb-2 pt-3 text-caption font-semibold text-ink-light dark:border-border-dark dark:text-ink-dark">
                   {sheetTitle}
                 </Text>
               )}
               <FlatList
                 data={options}
                 keyExtractor={(item) => item.value}
-                contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 8 : 16 }}
                 ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
                 renderItem={({ item }) => (
                   <Pressable
@@ -146,50 +205,93 @@ export function Select({
                     }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: item.value === value }}
-                    className="flex-row items-center gap-3 px-4 py-3.5"
+                    className="flex-row items-center gap-3 px-3 py-2.5"
                   >
                     {item.iconName && (
-                      <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                        <Ionicons name={item.iconName} size={18} color={mutedColor} />
+                      <View className="h-7 w-7 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                        <Ionicons name={item.iconName} size={15} color={mutedColor} />
                       </View>
                     )}
-                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
-                    {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
-                  </Pressable>
-                )}
-              />
-              <SafeAreaView edges={['bottom']} />
-            </View>
-          ) : (
-            <View
-              className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 web:desktop:rounded-2xl dark:bg-surface-dark`}
-            >
-              <FlatList
-                data={options}
-                keyExtractor={(item) => item.value}
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() => {
-                      onChange(item.value)
-                      setIsOpen(false)
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: item.value === value }}
-                    className="flex-row items-center gap-3 border-b border-border-light py-3 dark:border-border-dark"
-                  >
-                    {item.iconName && (
-                      <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                        <Ionicons name={item.iconName} size={16} color={mutedColor} />
-                      </View>
-                    )}
-                    <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
-                    {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
+                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {item.label}
+                    </Text>
+                    {item.value === value && <Ionicons name="checkmark" size={16} color={accentColor} />}
                   </Pressable>
                 )}
               />
             </View>
-          )}
-        </Pressable>
+          </Pressable>
+        ) : (
+          <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setIsOpen(false)}>
+            {variant === 'row' ? (
+              <View className={`max-h-[70%] w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light dark:bg-surface-dark`}>
+                {/* Drag-handle affordance — this Modal is a plain RN Modal, not
+                    a real gesture-driven bottom sheet, so there is nothing to
+                    wire up here beyond the visual cue (no new library added). */}
+                <View className="items-center pb-1 pt-3">
+                  <View className="h-1 w-9 rounded-full bg-border-light dark:bg-border-dark" />
+                </View>
+                {sheetTitle && (
+                  <Text className="px-4 pb-2 pt-1 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                    {sheetTitle}
+                  </Text>
+                )}
+                <FlatList
+                  data={options}
+                  keyExtractor={(item) => item.value}
+                  contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 8 : 16 }}
+                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      onPress={() => {
+                        onChange(item.value)
+                        setIsOpen(false)
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: item.value === value }}
+                      className="flex-row items-center gap-3 px-4 py-3.5"
+                    >
+                      {item.iconName && (
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={item.iconName} size={18} color={mutedColor} />
+                        </View>
+                      )}
+                      <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
+                      {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
+                    </Pressable>
+                  )}
+                />
+                <SafeAreaView edges={['bottom']} />
+              </View>
+            ) : (
+              <View className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark`}>
+                <FlatList
+                  data={options}
+                  keyExtractor={(item) => item.value}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      onPress={() => {
+                        onChange(item.value)
+                        setIsOpen(false)
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: item.value === value }}
+                      className="flex-row items-center gap-3 border-b border-border-light py-3 dark:border-border-dark"
+                    >
+                      {item.iconName && (
+                        <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={item.iconName} size={16} color={mutedColor} />
+                        </View>
+                      )}
+                      <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
+                      {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
+                    </Pressable>
+                  )}
+                />
+              </View>
+            )}
+          </Pressable>
+        )}
       </Modal>
     </>
   )

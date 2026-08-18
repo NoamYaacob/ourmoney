@@ -3,9 +3,14 @@
 // gated behind `Platform.OS === 'web'` at the mount site rather than tested
 // through the full router tree — this isolates it from that gating and from
 // `_layout.test.tsx`'s real-router harness, which mocks 'expo-router'
-// differently). Covers: exactly the same 4 primary destinations as the
-// mobile tab bar, no hidden route ever leaks in, and the active segment is
-// marked selected — never a fake pixel/viewport assertion.
+// differently).
+//
+// Desktop Visual/Responsive Design pass (section H): the rail grew from 4
+// flat destinations to 10, grouped by cadence (everyday / planning /
+// management) so it doesn't read as one list of equally-weighted rows. This
+// file now covers: every destination renders with the right label, the
+// group headers render (and the primary group has none), and the active
+// segment is marked selected — never a fake pixel/viewport assertion.
 import { describe, expect, it, jest } from '@jest/globals'
 import { render } from '@testing-library/react-native'
 import i18n from '@/i18n'
@@ -22,26 +27,41 @@ jest.mock('@expo/vector-icons', () => ({
 }))
 
 describe('DesktopSideRail', () => {
-  it('renders exactly the 4 primary destinations, matching the mobile tab bar, and no hidden route', async () => {
-    const { getByText, queryByText, getAllByRole } = await render(<DesktopSideRail activeSegment="dashboard" />)
+  it('renders all 10 destinations across the 3 cadence groups', async () => {
+    const { getByText, getAllByRole } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
+    // Everyday group (no header)
     expect(getByText(i18n.t('tabs.dashboard'))).toBeTruthy()
     expect(getByText(i18n.t('tabs.transactions'))).toBeTruthy()
     expect(getByText(i18n.t('tabs.budgets'))).toBeTruthy()
-    expect(getByText(i18n.t('tabs.settings'))).toBeTruthy()
-    expect(getAllByRole('button')).toHaveLength(4)
 
-    // None of the hidden routes (reached via Settings/a list row, never a
-    // primary destination) has any label this rail could render.
-    expect(queryByText('accounts')).toBeNull()
-    expect(queryByText('goals')).toBeNull()
-    expect(queryByText('recurring')).toBeNull()
+    // Planning & insights group
+    expect(getByText(i18n.t('nav.groups.planning'))).toBeTruthy()
+    expect(getByText(i18n.t('nav.cashFlow'))).toBeTruthy()
+    expect(getByText(i18n.t('nav.alerts'))).toBeTruthy()
+    expect(getByText(i18n.t('settings.financial.recurring'))).toBeTruthy()
+    expect(getByText(i18n.t('settings.financial.goals'))).toBeTruthy()
+    expect(getByText(i18n.t('settings.financial.obligations'))).toBeTruthy()
+
+    // Management group
+    expect(getByText(i18n.t('nav.groups.management'))).toBeTruthy()
+    expect(getByText(i18n.t('settings.financial.accounts'))).toBeTruthy()
+    expect(getByText(i18n.t('tabs.settings'))).toBeTruthy()
+
+    expect(getAllByRole('button')).toHaveLength(10)
   })
 
   it('marks the destination matching the current segment as selected, and no other', async () => {
     const { getByText } = await render(<DesktopSideRail activeSegment="budgets" />)
 
     expect(getByText(i18n.t('tabs.budgets')).parent?.props.accessibilityState).toEqual({ selected: true })
+    expect(getByText(i18n.t('tabs.dashboard')).parent?.props.accessibilityState).toEqual({ selected: false })
+  })
+
+  it('marks a planning-group destination (e.g. cash flow) as selected when it is the active segment', async () => {
+    const { getByText } = await render(<DesktopSideRail activeSegment="cash-flow" />)
+
+    expect(getByText(i18n.t('nav.cashFlow')).parent?.props.accessibilityState).toEqual({ selected: true })
     expect(getByText(i18n.t('tabs.dashboard')).parent?.props.accessibilityState).toEqual({ selected: false })
   })
 })

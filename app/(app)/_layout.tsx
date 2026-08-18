@@ -13,19 +13,102 @@ import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/use
 import { colors } from '@/constants/colors'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 
+type RailHref =
+  | '/dashboard'
+  | '/transactions'
+  | '/budgets'
+  | '/settings'
+  | '/cash-flow'
+  | '/alerts'
+  | '/recurring'
+  | '/goals'
+  | '/obligations'
+  | '/accounts'
+
 interface RailDestination {
   segment: string
-  href: '/dashboard' | '/transactions' | '/budgets' | '/settings'
-  labelKey: 'tabs.dashboard' | 'tabs.transactions' | 'tabs.budgets' | 'tabs.settings'
+  href: RailHref
+  labelKey: string
   icon: ComponentProps<typeof Ionicons>['name']
   iconActive: ComponentProps<typeof Ionicons>['name']
 }
 
-const RAIL_DESTINATIONS: RailDestination[] = [
-  { segment: 'dashboard', href: '/dashboard', labelKey: 'tabs.dashboard', icon: 'home-outline', iconActive: 'home' },
-  { segment: 'transactions', href: '/transactions', labelKey: 'tabs.transactions', icon: 'receipt-outline', iconActive: 'receipt' },
-  { segment: 'budgets', href: '/budgets', labelKey: 'tabs.budgets', icon: 'wallet-outline', iconActive: 'wallet' },
-  { segment: 'settings', href: '/settings', labelKey: 'tabs.settings', icon: 'settings-outline', iconActive: 'settings' },
+interface RailGroup {
+  key: string
+  // null for the first (primary/everyday) group — it reads as the rail's
+  // default top-level list; every group after it gets a header so a longer
+  // rail groups rather than reading as one flat list of equally-weighted
+  // rows (Desktop Visual/Responsive Design pass, section H).
+  labelKey: string | null
+  destinations: RailDestination[]
+}
+
+// Desktop Visual/Responsive Design pass (section H): before this, only
+// Dashboard/Transactions/Budgets/Settings were reachable from the sidebar —
+// Accounts/Recurring/Goals/Obligations/Cash Flow/Alerts existed only as
+// Settings cards or a Dashboard-card deep link, with no primary desktop
+// entry point. Grouped by cadence rather than flattened into one list of 10
+// equally-weighted rows: everyday actions, then planning/insight screens
+// checked less often, then account-level management.
+const RAIL_GROUPS: RailGroup[] = [
+  {
+    key: 'everyday',
+    labelKey: null,
+    destinations: [
+      { segment: 'dashboard', href: '/dashboard', labelKey: 'tabs.dashboard', icon: 'home-outline', iconActive: 'home' },
+      {
+        segment: 'transactions',
+        href: '/transactions',
+        labelKey: 'tabs.transactions',
+        icon: 'receipt-outline',
+        iconActive: 'receipt',
+      },
+      { segment: 'budgets', href: '/budgets', labelKey: 'tabs.budgets', icon: 'wallet-outline', iconActive: 'wallet' },
+    ],
+  },
+  {
+    key: 'planning',
+    labelKey: 'nav.groups.planning',
+    destinations: [
+      {
+        segment: 'cash-flow',
+        href: '/cash-flow',
+        labelKey: 'nav.cashFlow',
+        icon: 'trending-up-outline',
+        iconActive: 'trending-up',
+      },
+      { segment: 'alerts', href: '/alerts', labelKey: 'nav.alerts', icon: 'notifications-outline', iconActive: 'notifications' },
+      {
+        segment: 'recurring',
+        href: '/recurring',
+        labelKey: 'settings.financial.recurring',
+        icon: 'repeat-outline',
+        iconActive: 'repeat',
+      },
+      { segment: 'goals', href: '/goals', labelKey: 'settings.financial.goals', icon: 'flag-outline', iconActive: 'flag' },
+      {
+        segment: 'obligations',
+        href: '/obligations',
+        labelKey: 'settings.financial.obligations',
+        icon: 'calendar-outline',
+        iconActive: 'calendar',
+      },
+    ],
+  },
+  {
+    key: 'management',
+    labelKey: 'nav.groups.management',
+    destinations: [
+      {
+        segment: 'accounts',
+        href: '/accounts',
+        labelKey: 'settings.financial.accounts',
+        icon: 'card-outline',
+        iconActive: 'card',
+      },
+      { segment: 'settings', href: '/settings', labelKey: 'tabs.settings', icon: 'settings-outline', iconActive: 'settings' },
+    ],
+  },
 ]
 
 // Responsive/desktop pass: replaces the bottom tab bar with a right-side
@@ -57,24 +140,33 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
 
   return (
     <View className="hidden web:desktop:flex w-[220px] shrink-0 border-s border-border-light bg-surface-light px-3 pt-8 dark:border-border-dark dark:bg-surface-dark">
-      {RAIL_DESTINATIONS.map((dest) => {
-        const focused = dest.segment === activeSegment
-        const color = focused ? activeColor : inactiveColor
-        return (
-          <Pressable
-            key={dest.segment}
-            onPress={() => router.push(dest.href)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: focused }}
-            className={`mb-1 flex-row items-center gap-3 rounded-control px-3 py-2.5 ${focused ? 'bg-surfaceMuted-light dark:bg-surfaceMuted-dark' : ''}`}
-          >
-            <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={22} />
-            <Text className={focused ? 'text-body font-semibold' : 'text-body font-normal'} style={{ color }}>
-              {t(dest.labelKey)}
+      {RAIL_GROUPS.map((group) => (
+        <View key={group.key} className="mb-4">
+          {group.labelKey && (
+            <Text className="mb-1 px-3 text-caption font-semibold uppercase tracking-wide text-inkMuted-light dark:text-inkMuted-dark">
+              {t(group.labelKey)}
             </Text>
-          </Pressable>
-        )
-      })}
+          )}
+          {group.destinations.map((dest) => {
+            const focused = dest.segment === activeSegment
+            const color = focused ? activeColor : inactiveColor
+            return (
+              <Pressable
+                key={dest.segment}
+                onPress={() => router.push(dest.href)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: focused }}
+                className={`mb-1 flex-row items-center gap-3 rounded-control px-3 py-2.5 ${focused ? 'bg-surfaceMuted-light dark:bg-surfaceMuted-dark' : ''}`}
+              >
+                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={22} />
+                <Text className={focused ? 'text-body font-semibold' : 'text-body font-normal'} style={{ color }}>
+                  {t(dest.labelKey)}
+                </Text>
+              </Pressable>
+            )
+          })}
+        </View>
+      ))}
     </View>
   )
 }
@@ -269,6 +361,14 @@ export default function AppLayout() {
               <Tabs.Screen name="cash-flow/index" options={{ href: null }} />
               <Tabs.Screen name="alerts/index" options={{ href: null }} />
               <Tabs.Screen name="settings/categories" options={{ href: null }} />
+              {/* Desktop Visual/Responsive Design pass: these two were missing
+                  from this exclusion list — obligations was leaking into the
+                  mobile bottom tab bar as an extra, unlabeled tab (same root
+                  cause this file's own header comment documents for the other
+                  screens below; this pair was simply never added at the time
+                  obligations/ was built). */}
+              <Tabs.Screen name="obligations/index" options={{ href: null }} />
+              <Tabs.Screen name="obligations/[id]" options={{ href: null }} />
             </Tabs>
           </View>
         </View>

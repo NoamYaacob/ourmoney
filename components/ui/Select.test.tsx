@@ -1,10 +1,7 @@
-// Desktop polish pass: Select's bottom-sheet Modal becomes a centered
-// dialog at desktop web width (vertical centering, full corner rounding,
-// hidden drag handle, fade instead of slide) while staying the original
-// bottom sheet below that — verified for real in a headless browser
-// (getBoundingClientRect/getComputedStyle) during this pass; these tests
-// guard the structural inputs that produced those verified results
-// (animationType is a real prop assertion, not just a class string).
+// Desktop Visual/Responsive Design pass: Select's bottom-sheet Modal
+// becomes an anchored popover (positioned/sized off the trigger, not the
+// screen) at desktop web width, replacing the earlier centered-dialog
+// treatment — still the original bottom sheet below that breakpoint.
 import { describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import { Select } from './Select'
@@ -19,7 +16,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => ({ width: mockWidth, height: 800, scale: 1, fontScale: 1 }),
 }))
 
-// The desktop-dialog branch in Select.tsx is explicitly `Platform.OS ===
+// The desktop-popover branch in Select.tsx is explicitly `Platform.OS ===
 // 'web' && width >= breakpoint` (native never gets the desktop treatment,
 // even at a wide tablet width) — jest's RN preset otherwise resolves
 // Platform.OS to 'ios', so this is mocked to 'web' to exercise that branch.
@@ -63,7 +60,7 @@ async function renderOpenSelect(sheetTitle?: string) {
   return result
 }
 
-describe('Select desktop dialog conversion', () => {
+describe('Select desktop popover', () => {
   it('stays a bottom sheet (slide animation) below the desktop breakpoint', async () => {
     mockWidth = 900
     const { container } = await renderOpenSelect()
@@ -72,7 +69,7 @@ describe('Select desktop dialog conversion', () => {
     expect(modal?.props.animationType).toBe('slide')
   })
 
-  it('switches to a centered fade dialog at the desktop breakpoint', async () => {
+  it('switches to a fade-in anchored popover at the desktop breakpoint', async () => {
     mockWidth = 1200
     const { container } = await renderOpenSelect()
 
@@ -80,25 +77,59 @@ describe('Select desktop dialog conversion', () => {
     expect(modal?.props.animationType).toBe('fade')
   })
 
-  it('carries the desktop vertical-centering class on the backdrop regardless of current width (CSS-scoped, not JS-branched)', async () => {
-    mockWidth = 900
+  // The test renderer has no host view to measure (measureInWindow's
+  // callback never fires there — see Select.tsx's openSelect() comment for
+  // why opening never waits on it) — so the popover renders at its
+  // documented null-anchor fallback position. What this test actually
+  // guards is the real regression: opening must not silently no-op when
+  // measurement doesn't resolve.
+  it('still opens (renders the Modal visible) even when measureInWindow never resolves', async () => {
+    mockWidth = 1200
     const { container } = await renderOpenSelect()
 
     const modal = findModal(container)
-    const backdrop = modal?.props.children as { props: { className: string } }
-    expect(backdrop.props.className).toContain('web:desktop:justify-center')
+    expect(modal?.props.visible).toBe(true)
   })
 
-  it('rounds all four corners at desktop and hides the mobile drag-handle affordance there', async () => {
+  it('renders the options list inside a bounded, absolutely-positioned box, not a full-width/centered dialog', async () => {
     mockWidth = 1440
-    const { container } = await renderOpenSelect('Choose')
+    const { container, getByText } = await renderOpenSelect('Choose')
+
+    expect(getByText('Choose')).toBeTruthy()
+    expect(getByText('Option 1')).toBeTruthy()
 
     const modal = findModal(container)
-    const backdrop = modal?.props.children as { props: { children: { props: { className: string; children: unknown[] } } } }
-    const sheet = backdrop.props.children
-    expect(sheet.props.className).toContain('web:desktop:rounded-2xl')
+    const backdrop = modal?.props.children as { props: { children: { props: { style: Record<string, unknown> } } } }
+    const box = backdrop.props.children
+    expect(box.props.style).toMatchObject({ position: 'absolute' })
+  })
 
-    const handleWrapper = sheet.props.children[0] as { props: { className: string } }
-    expect(handleWrapper.props.className).toContain('web:desktop:hidden')
+  it('selecting an option still calls onChange with that value and closes the popover', async () => {
+    mockWidth = 1440
+    const onChange = jest.fn()
+    const { getByLabelText, getByText, queryByText } = await render(
+      <Select variant="row" label="pick" options={OPTIONS} value={null} onChange={onChange} placeholder="choose" />,
+    )
+    await fireEvent.press(getByLabelText('pick'))
+    await fireEvent.press(getByText('Option 2'))
+
+    expect(onChange).toHaveBeenCalledWith('2')
+    expect(queryByText('Option 2')).toBeNull()
+  })
+
+  it('closes on backdrop press, same as the mobile bottom sheet', async () => {
+    mockWidth = 1440
+    const { getByLabelText, getByText, queryByText, container } = await renderOpenSelect()
+    expect(getByText('Option 1')).toBeTruthy()
+
+    const modal = findModal(container)
+    const backdrop = (modal as unknown as { children: unknown[] }).children[0]
+    await fireEvent.press(backdrop as Parameters<typeof fireEvent.press>[0])
+
+    expect(queryByText('Option 1')).toBeNull()
+    // Re-opens cleanly afterward — nothing about closing left the trigger
+    // or open state stuck.
+    await fireEvent.press(getByLabelText('pick'))
+    expect(getByText('Option 1')).toBeTruthy()
   })
 })

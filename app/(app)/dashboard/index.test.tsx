@@ -450,7 +450,7 @@ describe('Dashboard Safe-to-Spend card', () => {
 // inside it.
 function climbToPanel(textNode: any) {
   let current = textNode
-  while (current && !(current.props?.className ?? '').includes('web:desktop:min-h-[360px]')) {
+  while (current && !(current.props?.className ?? '').includes('web:desktop:min-h-[300px]')) {
     current = current.parent
   }
   return current
@@ -476,6 +476,51 @@ describe('Dashboard responsive desktop layout', () => {
 
     const recentPanel = climbToPanel(getByText(i18n.t('dashboard.recentTitle')))
     expect(recentPanel?.parent?.parent).toBe(gridWrapper)
+  })
+
+  // Desktop Visual/Responsive Design pass: Safe-to-Spend and the month-
+  // navigator+budget-summary block previously stacked as separate
+  // full-width sections — paired into one row at desktop so the top of the
+  // page uses width instead of height.
+  it('pairs Safe-to-Spend and the budget-summary hero into one desktop row', async () => {
+    mockUseBudgetProgress.mockReturnValue({
+      categories: [
+        {
+          categoryId: 'cat-1',
+          categoryNameHe: 'מכולת',
+          categoryIcon: '🛒',
+          allocatedAgorot: 100000,
+          spentAgorot: 40000,
+          remainingAgorot: 60000,
+          percentSpent: 40,
+        },
+      ],
+      totalAllocatedAgorot: 100000,
+      totalSpentAgorot: 40000,
+      isLoading: false,
+      error: null,
+    })
+    mockAnalytics({ transactions: [] })
+
+    const { getByText } = await render(<Dashboard />)
+
+    const safeToSpendTitle = getByText(i18n.t('dashboard.safeToSpend.title'))
+    // Climb from the title up through the Card to the Pressable, then to
+    // its column wrapper, then to the shared row.
+    let node = safeToSpendTitle.parent
+    while (node && !(node.props?.className as string | undefined)?.includes('web:desktop:flex-row-reverse')) {
+      node = node.parent
+    }
+    expect(node).toBeTruthy()
+    expect(node?.props.className as string).toContain('web:desktop:items-start')
+
+    // The budget hero's own remaining-amount label sits in the row's other
+    // column — same shared row ancestor.
+    let otherNode = getByText(i18n.t('dashboard.remaining')).parent
+    while (otherNode && !(otherNode.props?.className as string | undefined)?.includes('web:desktop:flex-row-reverse')) {
+      otherNode = otherNode.parent
+    }
+    expect(otherNode).toBe(node)
   })
 
   // Desktop polish pass regression: a real-browser visual check found this

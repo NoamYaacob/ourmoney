@@ -200,6 +200,44 @@ describe('Transactions list', () => {
     expect(className).not.toContain('web:desktop:max-w-[1150px]')
   })
 
+  // Desktop Visual/Responsive Design pass (section C): search + the 3
+  // dropdown filters (period/account/category) merge into one row at
+  // desktop instead of reading as a stacked mobile filter panel. Mobile
+  // keeps the original stacked layout — the `web:desktop:` prefix on every
+  // class involved means nothing changes off that breakpoint.
+  it('merges the search field and the 3 filter selects into one row at desktop', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+    const { getByLabelText } = await render(<Transactions />)
+
+    const searchField = getByLabelText('חיפוש')
+    const row = climbTo(searchField, 'web:desktop:items-start')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const periodField = getByLabelText('תקופה')
+    const accountField = getByLabelText('חשבון')
+    const categoryField = getByLabelText('קטגוריה')
+    expect(climbTo(periodField, 'web:desktop:items-start')).toBe(row)
+    expect(climbTo(accountField, 'web:desktop:items-start')).toBe(row)
+    expect(climbTo(categoryField, 'web:desktop:items-start')).toBe(row)
+  })
+
+  // Desktop Visual/Responsive Design pass (section C): the type and
+  // shared/personal chip rows — each a full stacked row on mobile — merge
+  // into one denser row at desktop, since both are secondary filters.
+  it('merges the type and shared/personal chip rows into one row at desktop', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+    const { getByTestId } = await render(<Transactions />)
+
+    const typeChip = getByTestId('transactions-filter-type-expense')
+    const row = climbTo(typeChip, 'web:desktop:items-center')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const sharedChip = getByTestId('transactions-filter-shared-shared')
+    expect(climbTo(sharedChip, 'web:desktop:items-center')).toBe(row)
+  })
+
   it('gives an expense a neutral (non-positive) amount color, not accent', async () => {
     mockUseTransactions.mockReturnValue({
       transactions: [

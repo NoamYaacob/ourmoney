@@ -35,7 +35,13 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
 import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
-const DESKTOP_PANEL = `web:desktop:min-h-[360px] ${DESKTOP_PANEL_CLASS}`
+// Desktop Visual/Responsive Design pass: 360 -> 300, matching Budgets'
+// panel floor (constants/layout.ts's DESKTOP_PANEL_CLASS itself carries no
+// min-height — each screen picks its own). 360 was sized for when this row
+// sat directly under a full-width, taller hero stack; with the hero row
+// above now more compact, an equally tall floor here read as excess empty
+// space in panels with genuinely short content (e.g. a 2-category budget).
+const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
 
 // Real MVP-2 dashboard, replacing the M1 placeholder. Every figure here is
 // either a direct query result or derived via lib/money — never a bare `0`
@@ -176,94 +182,174 @@ export default function Dashboard() {
         </Text>
       </View>
 
-      {/* Safe-to-Spend — the household's own real cash position, not tied to
-          the month navigator below (always "from right now," fixed at the
-          'month' horizon here; the detail screen offers the other
-          horizons). Tapping opens the itemized breakdown at /cash-flow. */}
-      <Pressable
-        onPress={() => router.push('/cash-flow')}
-        accessibilityRole="button"
-        className="mb-6 web:desktop:mb-8"
-      >
-        <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-            {t('dashboard.safeToSpend.title')}
-          </Text>
-          {safeToSpendError ? (
-            <View className="mt-1">
-              <ErrorMessage message={t('cashFlow.errors.generic')} />
-            </View>
-          ) : isSafeToSpendLoading ? (
-            <View className="mt-1">
-              <SkeletonList rows={1} />
-            </View>
-          ) : safeToSpend.safeToSpendAgorot < 0 ? (
-            <Text className="mt-1 text-heading font-bold text-danger-light dark:text-danger-dark web:desktop:text-[24px]">
-              {t('dashboard.safeToSpend.shortfall', { amount: formatILS(safeToSpend.shortfallAgorot) })}
-            </Text>
+      {/* Desktop Visual/Responsive Design pass: Safe-to-Spend, the month
+          navigator, and the budget-summary hero previously stacked as three
+          separate full-width blocks — a lot of vertical space for what's
+          really two related "where do we stand right now" cards. Paired
+          into one row at desktop only; mobile/tablet keep the exact
+          original stacked order untouched. The alerts section (previously
+          sandwiched between Safe-to-Spend and the month navigator) now
+          renders directly after this row instead — the one position change
+          in this pass, made because pairing the two hero cards requires
+          them to be adjacent; alerts stays in the same relative place
+          otherwise (still the first full-width section below the hero
+          content, still before the category/analytics detail below it). */}
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-5">
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          {/* Safe-to-Spend — the household's own real cash position, not tied
+              to the month navigator alongside it (always "from right now,"
+              fixed at the 'month' horizon here; the detail screen offers the
+              other horizons). Tapping opens the itemized breakdown at
+              /cash-flow. */}
+          <Pressable onPress={() => router.push('/cash-flow')} accessibilityRole="button">
+            <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('dashboard.safeToSpend.title')}
+              </Text>
+              {safeToSpendError ? (
+                <View className="mt-1">
+                  <ErrorMessage message={t('cashFlow.errors.generic')} />
+                </View>
+              ) : isSafeToSpendLoading ? (
+                <View className="mt-1">
+                  <SkeletonList rows={1} />
+                </View>
+              ) : safeToSpend.safeToSpendAgorot < 0 ? (
+                <Text className="mt-1 text-heading font-bold text-danger-light dark:text-danger-dark web:desktop:text-[24px]">
+                  {t('dashboard.safeToSpend.shortfall', { amount: formatILS(safeToSpend.shortfallAgorot) })}
+                </Text>
+              ) : (
+                <>
+                  <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[36px]">
+                    {formatILS(safeToSpend.safeToSpendAgorot)}
+                  </Text>
+                  <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                    {t('dashboard.safeToSpend.subtitle')}
+                  </Text>
+                  {safeToSpend.safeToSpendAgorot === 0 && (
+                    <Text className="mt-1 text-caption text-danger-light dark:text-danger-dark">
+                      {t('dashboard.safeToSpend.zero')}
+                    </Text>
+                  )}
+                </>
+              )}
+
+              {!safeToSpendError && !isSafeToSpendLoading && (
+                <View className="mt-4 gap-1.5">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('cashFlow.availableCash')}
+                    </Text>
+                    <Text className="text-caption text-ink-light dark:text-ink-dark">
+                      {formatILS(safeToSpend.availableCashAgorot)}
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('cashFlow.plannedObligations')}
+                    </Text>
+                    <Text className="text-caption text-ink-light dark:text-ink-dark">
+                      {formatILS(-safeToSpend.plannedObligationsAgorot)}
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('cashFlow.recurringCharges')}
+                    </Text>
+                    <Text className="text-caption text-ink-light dark:text-ink-dark">
+                      {formatILS(-safeToSpend.recurringAgorot)}
+                    </Text>
+                  </View>
+                  <View className="my-1">
+                    <Divider />
+                  </View>
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
+                      {t('cashFlow.safeToSpend')}
+                    </Text>
+                    <Text
+                      className={`text-caption font-semibold ${
+                        safeToSpend.safeToSpendAgorot < 0
+                          ? 'text-danger-light dark:text-danger-dark'
+                          : 'text-ink-light dark:text-ink-dark'
+                      }`}
+                    >
+                      {formatILS(safeToSpend.safeToSpendAgorot)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </Card>
+          </Pressable>
+        </View>
+
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
+
+          {progressError ? (
+            <ErrorMessage message={t('dashboard.errors.generic')} />
+          ) : isProgressLoading ? (
+            <LoadingSpinner />
+          ) : progress.length === 0 ? (
+            // Same condition the category panel below already uses for its own
+            // empty state (UX-completeness audit finding: this hero card
+            // previously rendered "נותר החודש ₪0.00 · 0% נוצל" for a household
+            // with no budget set at all, reading as "you spent nothing against a
+            // ₪0 budget" rather than "no budget exists yet"). A distinct,
+            // hero-appropriate string (dashboard.noBudgetHero) is used instead
+            // of reusing dashboard.noBudget verbatim — the category panel below
+            // renders that exact message too, and showing the identical
+            // sentence twice on one screen is its own redundancy bug, not a fix.
+            <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
+              <EmptyState iconName="wallet-outline" message={t('dashboard.noBudgetHero')} compact />
+            </Card>
           ) : (
-            <>
-              <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[44px]">
-                {formatILS(safeToSpend.safeToSpendAgorot)}
+            // Desktop polish pass: extra padding + a larger hero figure at
+            // desktop only (unprefixed classes are pixel-identical to before —
+            // mobile is untouched). Desktop Visual/Responsive Design pass:
+            // now paired side by side with Safe-to-Spend in a half-width
+            // column instead of a full 1150px-wide card, so the hero figure
+            // size/padding was brought back in line with Safe-to-Spend's own
+            // (both were sized for a full-width card that no longer exists
+            // at desktop).
+            <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.remaining')}</Text>
+              <Text
+                className={`mt-1 text-display font-bold web:desktop:text-[36px] ${
+                  isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
+                }`}
+              >
+                {formatILS(remaining)}
               </Text>
-              <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                {t('dashboard.safeToSpend.subtitle')}
-              </Text>
-              {safeToSpend.safeToSpendAgorot === 0 && (
-                <Text className="mt-1 text-caption text-danger-light dark:text-danger-dark">
-                  {t('dashboard.safeToSpend.zero')}
+
+              <View className="mt-4">
+                <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
+              </View>
+              {overallPercent !== null && (
+                <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('dashboard.percentUsed', { percent: overallPercent })}
                 </Text>
               )}
-            </>
-          )}
 
-          {!safeToSpendError && !isSafeToSpendLoading && (
-            <View className="mt-4 gap-1.5">
-              <View className="flex-row items-center justify-between">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('cashFlow.availableCash')}
-                </Text>
-                <Text className="text-caption text-ink-light dark:text-ink-dark">
-                  {formatILS(safeToSpend.availableCashAgorot)}
-                </Text>
+              <View className="mt-4 flex-row items-center">
+                <View className="flex-1">
+                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
+                  <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                    {formatILS(totalSpentAgorot)}
+                  </Text>
+                </View>
+                <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
+                <View className="flex-1">
+                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.ofBudget')}</Text>
+                  <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                    {formatILS(totalAllocatedAgorot)}
+                  </Text>
+                </View>
               </View>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('cashFlow.plannedObligations')}
-                </Text>
-                <Text className="text-caption text-ink-light dark:text-ink-dark">
-                  {formatILS(-safeToSpend.plannedObligationsAgorot)}
-                </Text>
-              </View>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('cashFlow.recurringCharges')}
-                </Text>
-                <Text className="text-caption text-ink-light dark:text-ink-dark">
-                  {formatILS(-safeToSpend.recurringAgorot)}
-                </Text>
-              </View>
-              <View className="my-1">
-                <Divider />
-              </View>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
-                  {t('cashFlow.safeToSpend')}
-                </Text>
-                <Text
-                  className={`text-caption font-semibold ${
-                    safeToSpend.safeToSpendAgorot < 0
-                      ? 'text-danger-light dark:text-danger-dark'
-                      : 'text-ink-light dark:text-ink-dark'
-                  }`}
-                >
-                  {formatILS(safeToSpend.safeToSpendAgorot)}
-                </Text>
-              </View>
-            </View>
+            </Card>
           )}
-        </Card>
-      </Pressable>
+        </View>
+      </View>
 
       {/* Compact, optional section — renders nothing at all when there are
           no alerts (chosen over a persistent "everything's fine" banner:
@@ -279,7 +365,7 @@ export default function Dashboard() {
           renders when there's something to show, deliberately not adding an
           "everything's fine" banner no other screen in this app has. */}
       {!isAlertsLoading && (
-        <View className="mb-6 web:desktop:mb-8">
+        <View className="mb-6 mt-6 web:desktop:mb-8 web:desktop:mt-8">
           <View className="mb-2 flex-row items-center justify-between">
             <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
               {t('alerts.dashboardSectionTitle')}
@@ -325,70 +411,7 @@ export default function Dashboard() {
         </View>
       )}
 
-      <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
-
-      {progressError ? (
-        <ErrorMessage message={t('dashboard.errors.generic')} />
-      ) : isProgressLoading ? (
-        <LoadingSpinner />
-      ) : progress.length === 0 ? (
-        // Same condition the category panel below already uses for its own
-        // empty state (UX-completeness audit finding: this hero card
-        // previously rendered "נותר החודש ₪0.00 · 0% נוצל" for a household
-        // with no budget set at all, reading as "you spent nothing against a
-        // ₪0 budget" rather than "no budget exists yet"). A distinct,
-        // hero-appropriate string (dashboard.noBudgetHero) is used instead
-        // of reusing dashboard.noBudget verbatim — the category panel below
-        // renders that exact message too, and showing the identical
-        // sentence twice on one screen is its own redundancy bug, not a fix.
-        <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <EmptyState iconName="wallet-outline" message={t('dashboard.noBudgetHero')} compact />
-        </Card>
-      ) : (
-        // Desktop polish pass: extra padding + a larger hero figure at
-        // desktop only (unprefixed classes are pixel-identical to before —
-        // mobile is untouched). A single hero figure reads fine at phone
-        // width, but the same card only using p-4 on a wide desktop page
-        // looked like a mobile card stretched wide rather than a deliberate
-        // desktop KPI panel.
-        <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.remaining')}</Text>
-          <Text
-            className={`mt-1 text-display font-bold web:desktop:text-[52px] web:desktop:leading-[58px] ${
-              isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
-            }`}
-          >
-            {formatILS(remaining)}
-          </Text>
-
-          <View className="mt-4 web:desktop:mt-6">
-            <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
-          </View>
-          {overallPercent !== null && (
-            <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-              {t('dashboard.percentUsed', { percent: overallPercent })}
-            </Text>
-          )}
-
-          <View className="mt-4 web:desktop:mt-6 flex-row items-center">
-            <View className="flex-1">
-              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
-                {formatILS(totalSpentAgorot)}
-              </Text>
-            </View>
-            <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
-            <View className="flex-1">
-              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.ofBudget')}</Text>
-              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
-                {formatILS(totalAllocatedAgorot)}
-              </Text>
-            </View>
-          </View>
-        </Card>
-      )}
-
-      <View className="hidden web:desktop:mt-6 web:desktop:flex" />
+      <View className="hidden web:desktop:mt-2 web:desktop:flex" />
 
       {/* Desktop polish pass: three equally-weighted columns — לפי קטגוריה /
           תנועות אחרונות / תובנות החודש — replacing the previous 2/3-main +

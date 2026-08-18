@@ -41,12 +41,20 @@ export function EmptyState({ icon, iconName, message, actionLabel, onAction, com
   // (unprefixed classes) is pixel-identical to before.
   const badgeSize = compact ? 'h-11 w-11 web:desktop:h-14 web:desktop:w-14' : 'h-16 w-16'
 
+  // Desktop Visual/Responsive Design pass (section I): every caller of the
+  // non-compact variant sits inside a `wide` Screen (up to ~1150px) with no
+  // width of its own — a long message could wrap across nearly the full
+  // container width, reading as a stray line of text rather than a
+  // contained empty state. `mx-auto` + a fixed max-width self-bounds this
+  // shared component once, for every screen that renders it, instead of
+  // each screen adding its own wrapper (section A: shared primitives, not
+  // per-screen magic numbers). Desktop-only — mobile is unaffected.
   return (
     <View
       className={
         compact
-          ? 'items-center justify-center gap-2 px-6 py-4 web:desktop:gap-3 web:desktop:py-6'
-          : 'items-center justify-center gap-3 px-6 py-8'
+          ? 'items-center justify-center gap-2 px-6 py-4 web:desktop:gap-3 web:desktop:py-6 web:desktop:mx-auto web:desktop:max-w-[360px]'
+          : 'items-center justify-center gap-3 px-6 py-8 web:desktop:mx-auto web:desktop:max-w-[420px]'
       }
     >
       <View className={`${badgeSize} items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark`}>

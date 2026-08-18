@@ -236,12 +236,18 @@ export default function Settings() {
           exact same unbounded mobile sections side by side — a real-browser
           visual review found this read as "two independent mobile columns
           placed next to each other," not one desktop settings page. Each
-          column now gets one shared bounded panel (`DESKTOP_PANEL_CLASS` —
-          the same border/radius/fill token as Dashboard/Budgets' panels)
-          instead of floating loose in the grid; the existing per-section
-          headings inside each column (Household, financial nav, Appearance,
-          Security, Account) still do the sub-grouping, so no new heading was
-          added — just a shared boundary around each column's content. */}
+          column got one shared bounded panel (`DESKTOP_PANEL_CLASS` — the
+          same border/radius/fill token as Dashboard/Budgets' panels).
+          Desktop Visual/Responsive Design pass: that single monolithic
+          panel per column is what then made the columns' natural height
+          difference (profile+household is short; financial-nav+appearance+
+          security+account is long) read as one giant blank gap under the
+          shorter column's single box. Split each column into its own
+          existing sub-groups as separate panels instead (`items-start`
+          already prevents forced-equal-height columns — see below) — the
+          height mismatch is still there, but distributed across several
+          natural breaks instead of concentrated in one, so it reads as an
+          intentional multi-panel column rather than a rendering gap. */}
       <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <View className={DESKTOP_PANEL_CLASS}>
@@ -286,9 +292,16 @@ export default function Settings() {
           </View>
         </Card>
       )}
+      </View>
 
-      {/* Household */}
-      <Text className="mb-2 mt-6 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+      {/* Household — own panel at desktop (see the row's own comment above
+          for why splitting the column pays off); mobile is unaffected,
+          since the wrapping Views carry no unprefixed spacing of their
+          own — the mt-6 below is exactly the same margin this heading
+          already had before the split. */}
+      <View className="web:desktop:mt-4">
+      <View className={DESKTOP_PANEL_CLASS}>
+      <Text className="mb-2 mt-6 web:desktop:mt-0 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('settings.household.title')}
       </Text>
       <Card>
@@ -416,6 +429,7 @@ export default function Settings() {
       </View>
       </View>
       </View>
+      </View>
 
       <View className="web:desktop:flex-1">
       <View className={DESKTOP_PANEL_CLASS}>
@@ -435,12 +449,16 @@ export default function Settings() {
           onPress={() => router.push('/obligations')}
         />
       </SettingsSection>
+      </View>
 
-      {/* Appearance */}
+      {/* Appearance — own panel at desktop, same rationale as the right
+          column's split above. */}
+      <View className="web:desktop:mt-4">
+      <View className={DESKTOP_PANEL_CLASS}>
       <Text className="mb-2 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('settings.appearance.title')}
       </Text>
-      <View className="mb-6">
+      <View className="mb-6 web:desktop:mb-0">
         <SegmentedControl
           accessibilityLabel={t('settings.appearance.title')}
           options={APPEARANCE_OPTIONS.map((option) => ({
@@ -451,8 +469,14 @@ export default function Settings() {
           onChange={(next) => void setPreference(next)}
         />
       </View>
+      </View>
+      </View>
 
-      {/* Security */}
+      {/* Security + Account — grouped into one panel (both short) rather
+          than three separate panels, so the left column doesn't fragment
+          into more, tinier boxes than the height mismatch actually needs. */}
+      <View className="web:desktop:mt-4">
+      <View className={DESKTOP_PANEL_CLASS}>
       <SettingsSection title={t('settings.security.title')}>
         <SettingsRow
           iconName="finger-print-outline"
@@ -492,6 +516,7 @@ export default function Settings() {
           destructive
         />
       </SettingsSection>
+      </View>
       </View>
       </View>
       </View>

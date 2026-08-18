@@ -27,6 +27,20 @@ function climbToPanel(textNode: any) {
   return current
 }
 
+// Same climb-by-marker-class approach as climbToPanel, but for the outer
+// 2-column grid wrapper — the Desktop Visual/Responsive Design pass split
+// each column into several sibling panels (some wrapped in their own
+// `web:desktop:mt-4` spacer, some not), so a fixed `.parent.parent` hop
+// count from a given panel is no longer reliable; the two columns don't
+// nest their panels to the same depth.
+function climbToRow(node: any) {
+  let current = node
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:flex-row-reverse')) {
+    current = current.parent
+  }
+  return current
+}
+
 const mockRouterPush = jest.fn()
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockRouterPush }),
@@ -351,11 +365,11 @@ describe('Settings screen — household/profile management', () => {
     // wrapper Views (SettingsSection's own `mb-6`, this panel) sit between
     // the queried title and the grid.
     const primaryPanel = climbToPanel(getByText('משק הבית'))
-    const gridWrapper = primaryPanel?.parent?.parent
+    const gridWrapper = climbToRow(primaryPanel)
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
 
     const secondaryPanel = climbToPanel(getByText('ניהול כספים'))
-    expect(secondaryPanel?.parent?.parent).toBe(gridWrapper)
+    expect(climbToRow(secondaryPanel)).toBe(gridWrapper)
   })
 
   // Desktop polish pass regression: a real-browser visual check found the
@@ -373,7 +387,7 @@ describe('Settings screen — household/profile management', () => {
     const { getByText } = await render(<Settings />)
 
     const panel = climbToPanel(getByText('משק הבית'))
-    const gridWrapper = panel?.parent?.parent
+    const gridWrapper = climbToRow(panel)
     expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
   })
 
@@ -392,6 +406,50 @@ describe('Settings screen — household/profile management', () => {
 
     expect(climbToPanel(getByText('משק הבית'))?.props.className as string).toContain('web:desktop:border')
     expect(climbToPanel(getByText('ניהול כספים'))?.props.className as string).toContain('web:desktop:border')
+  })
+
+  // Desktop Visual/Responsive Design pass: splitting the two-column layout's
+  // single monolithic panel per column into several smaller, independently-
+  // sized panels is what distributes the natural-height mismatch between
+  // columns instead of concentrating it as one large gap under the shorter
+  // column. This asserts the split actually happened — each named section
+  // lands in its OWN panel instance, not sharing one big box per column.
+  it('splits each column into multiple distinct panels rather than one monolithic box', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByText, getAllByText } = await render(<Settings />)
+
+    // Right column: the profile panel (found via the displayed name, since
+    // the Profile card has no heading of its own) must be a different panel
+    // instance from the household panel. Dana Cohen is both the profile
+    // owner and the sole household member here, so it appears twice — the
+    // profile card renders first in source order.
+    const profilePanel = climbToPanel(getAllByText('Dana Cohen')[0])
+    const householdPanel = climbToPanel(getByText('משק הבית'))
+    const gridRow = climbToRow(householdPanel)
+    expect(profilePanel).not.toBe(householdPanel)
+
+    // Left column: three named sections must each resolve to a distinct
+    // panel instance.
+    const financialPanel = climbToPanel(getByText('ניהול כספים'))
+    const appearancePanel = climbToPanel(getByText('מראה'))
+    const securityPanel = climbToPanel(getByText('אבטחה'))
+    expect(financialPanel).not.toBe(appearancePanel)
+    expect(appearancePanel).not.toBe(securityPanel)
+    expect(financialPanel).not.toBe(securityPanel)
+
+    // Security and Account share one panel by design (both short sections)
+    // — confirms that grouping, rather than assuming every section got its
+    // own box.
+    const accountPanel = climbToPanel(getByText('חשבון'))
+    expect(accountPanel).toBe(securityPanel)
+
+    // All panels still belong to the same desktop grid row.
+    expect(climbToRow(financialPanel)).toBe(gridRow)
+    expect(climbToRow(appearancePanel)).toBe(gridRow)
+    expect(climbToRow(securityPanel)).toBe(gridRow)
   })
 
   // UX-completeness audit P2 fix: the biometric Switch could be flipped on

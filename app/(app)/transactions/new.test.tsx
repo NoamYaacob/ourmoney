@@ -10,6 +10,20 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import '@/i18n'
 import NewTransaction from './new'
 
+// Climbs from a field up to the nearest ancestor whose className contains
+// `substring`, or returns undefined if none exists up to the root. Robust to
+// exact nesting depth (Input's own wrapper View vs Select's Pressable have a
+// different number of hops to their shared row wrapper) — the same
+// climb-by-marker-class approach app/(app)/settings/index.test.tsx uses for
+// an identical reason.
+function climbToClass(node: any, substring: string) {
+  let current = node
+  while (current && !((current.props?.className as string | undefined) ?? '').includes(substring)) {
+    current = current.parent
+  }
+  return current
+}
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
 }))
@@ -238,14 +252,82 @@ describe('NewTransaction (Add Transaction)', () => {
   })
 
   // Responsive/desktop pass: unlike the dashboard/list screens, this form
-  // must stay a narrow, centered column on desktop rather than stretching
-  // across a wide browser window (see new.tsx's `width="narrow"` prop).
-  it('keeps the form in the narrow content-width variant, not the wide dashboard/list one', async () => {
+  // stays a centered, form-width column rather than stretching across a
+  // wide browser window like Dashboard/Transactions/Budgets do (see
+  // new.tsx's `width="form"` prop, constants/layout.ts's CONTENT_WIDTH.form
+  // tier). Desktop Visual/Responsive Design pass: `form` widens further
+  // than tablet's 600px cap (760px) specifically to give the 2-column field
+  // rows below room to breathe — still nowhere near the 1150px `wide` tier
+  // dashboard/list screens use.
+  it('keeps the form in the dedicated form content-width variant, not the wide dashboard/list one', async () => {
     const { getByText } = await render(<NewTransaction />)
 
     const scrollView = getByText('תנועה חדשה').parent?.parent
     const contentClassName = scrollView?.props.contentContainerClassName as string
     expect(contentClassName).toContain('max-w-[600px]')
+    expect(contentClassName).toContain('web:desktop:max-w-[760px]')
     expect(contentClassName).not.toContain('max-w-[1150px]')
+  })
+
+  // Desktop Visual/Responsive Design pass (section D): description+merchant
+  // pair into one row at desktop only — both are free-text detail about the
+  // same transaction, and pairing them buys back vertical space. Mobile
+  // stays a single stacked column (asserted by the absence of the desktop
+  // row class, not a separate mobile-width render — RNTL can't evaluate
+  // real CSS media queries, so the class itself is the source of truth).
+  it('pairs description and merchant into one row at desktop, in expense/income mode', async () => {
+    const { getByLabelText } = await render(<NewTransaction />)
+
+    const descriptionField = getByLabelText('תיאור')
+    const row = climbToClass(descriptionField, 'web:desktop:gap-4')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const merchantField = getByLabelText('בית עסק (אופציונלי)')
+    expect(climbToClass(merchantField, 'web:desktop:gap-4')).toBe(row)
+  })
+
+  // Transfer mode hides the merchant field entirely (it doesn't apply to an
+  // internal transfer) — description has nothing left to pair with, so the
+  // row wrapper must not force a desktop flex-row-reverse with only one
+  // child in it. `web:desktop:gap-4` is this specific row's own marker
+  // (distinct from the account/category row's `web:desktop:items-center`
+  // combo below), so its absence up the whole tree proves no pairing
+  // happened here, regardless of exact nesting depth.
+  it('does not force the description row into a desktop flex-row in transfer mode (merchant is hidden)', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(<NewTransaction />)
+
+    await fireEvent.press(getByText('העברה'))
+
+    expect(queryByLabelText('בית עסק (אופציונלי)')).toBeNull()
+    const descriptionField = getByLabelText('תיאור')
+    expect(climbToClass(descriptionField, 'web:desktop:gap-4')).toBeNull()
+  })
+
+  // Desktop Visual/Responsive Design pass (section D): account/category
+  // (expense/income mode) and from-account/to-account (transfer mode) are
+  // the other field pairing on this form — both pickers of the same kind,
+  // side by side at desktop with a vertical divider bar between them.
+  it('pairs account and category into one row at desktop, in expense/income mode', async () => {
+    const { getByLabelText } = await render(<NewTransaction />)
+
+    const accountField = getByLabelText('חשבון')
+    const row = climbToClass(accountField, 'web:desktop:items-center')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const categoryField = getByLabelText('קטגוריה (אופציונלי)')
+    expect(climbToClass(categoryField, 'web:desktop:items-center')).toBe(row)
+  })
+
+  it('pairs from-account and to-account into one row at desktop, in transfer mode', async () => {
+    const { getByLabelText, getByText } = await render(<NewTransaction />)
+
+    await fireEvent.press(getByText('העברה'))
+
+    const fromField = getByLabelText('מהחשבון')
+    const row = climbToClass(fromField, 'web:desktop:items-center')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+
+    const toField = getByLabelText('לחשבון')
+    expect(climbToClass(toField, 'web:desktop:items-center')).toBe(row)
   })
 })

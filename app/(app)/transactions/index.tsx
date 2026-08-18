@@ -265,68 +265,87 @@ export default function Transactions() {
         </Pressable>
       </View>
 
-      <Input
-        label={t('transactions.filters.searchLabel')}
-        value={filterState.search}
-        onChangeText={(text) => updateFilters({ search: text })}
-        placeholder={t('transactions.filters.searchPlaceholder')}
-      />
+      {/* Desktop Visual/Responsive Design pass: search + the 3 dropdown
+          filters read as a mobile filter panel stacked vertically — on a
+          wide desktop viewport they fit comfortably in one row instead.
+          Search gets more of the row (`flex-[2]`) than the 3 selects
+          combined (`flex-[3]` on their wrapper, `flex-1` each), and the
+          whole thing stops wrapping (`flex-nowrap`) once there's room.
+          Mobile/tablet keep the exact original stacked layout. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-3">
+        <View className="web:desktop:flex-[2]">
+          <Input
+            label={t('transactions.filters.searchLabel')}
+            value={filterState.search}
+            onChangeText={(text) => updateFilters({ search: text })}
+            placeholder={t('transactions.filters.searchPlaceholder')}
+          />
+        </View>
 
-      <View className="mb-2 flex-row flex-wrap gap-2">
-        <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Select
-            variant="row"
-            label={t('transactions.filters.periodLabel')}
-            options={periodOptions}
-            value={filterState.period}
-            onChange={(value) => updateFilters({ period: value as TransactionPeriod })}
-            placeholder={t('transactions.filters.periodLabel')}
-          />
-        </View>
-        <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Select
-            variant="row"
-            label={t('transactions.filters.accountLabel')}
-            options={accountOptions}
-            value={filterState.accountId ?? 'all'}
-            onChange={(value) => updateFilters({ accountId: value === 'all' ? null : value })}
-            placeholder={t('transactions.filters.accountLabel')}
-          />
-        </View>
-        <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Select
-            variant="row"
-            label={t('transactions.filters.categoryLabel')}
-            options={categoryOptions}
-            value={filterState.categoryId ?? 'all'}
-            onChange={(value) => updateFilters({ categoryId: value === 'all' ? null : value })}
-            placeholder={t('transactions.filters.categoryLabel')}
-            sheetTitle={t('transactions.filters.categoryLabel')}
-          />
+        <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-0 web:desktop:flex-[3] web:desktop:flex-nowrap">
+          <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <Select
+              variant="row"
+              label={t('transactions.filters.periodLabel')}
+              options={periodOptions}
+              value={filterState.period}
+              onChange={(value) => updateFilters({ period: value as TransactionPeriod })}
+              placeholder={t('transactions.filters.periodLabel')}
+            />
+          </View>
+          <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <Select
+              variant="row"
+              label={t('transactions.filters.accountLabel')}
+              options={accountOptions}
+              value={filterState.accountId ?? 'all'}
+              onChange={(value) => updateFilters({ accountId: value === 'all' ? null : value })}
+              placeholder={t('transactions.filters.accountLabel')}
+            />
+          </View>
+          <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <Select
+              variant="row"
+              label={t('transactions.filters.categoryLabel')}
+              options={categoryOptions}
+              value={filterState.categoryId ?? 'all'}
+              onChange={(value) => updateFilters({ categoryId: value === 'all' ? null : value })}
+              placeholder={t('transactions.filters.categoryLabel')}
+              sheetTitle={t('transactions.filters.categoryLabel')}
+            />
+          </View>
         </View>
       </View>
 
-      <View className="mb-2 flex-row flex-wrap gap-2">
-        {TYPE_FILTER_VALUES.map((value) => (
-          <Chip
-            key={value}
-            testID={`transactions-filter-type-${value}`}
-            label={t(`transactions.filters.type.${value}`)}
-            selected={filterState.type === value}
-            onPress={() => updateFilters({ type: value })}
-          />
-        ))}
-      </View>
-      <View className="mb-4 flex-row flex-wrap gap-2">
-        {SHARED_FILTER_VALUES.map((value) => (
-          <Chip
-            key={value}
-            testID={`transactions-filter-shared-${value}`}
-            label={t(`transactions.filters.shared.${value}`)}
-            selected={filterState.shared === value}
-            onPress={() => updateFilters({ shared: value })}
-          />
-        ))}
+      {/* Desktop Visual/Responsive Design pass: the two chip rows (type,
+          shared/personal) are secondary filters — combined into one denser
+          row at desktop with a small vertical separator between the two
+          groups, instead of two full rows each claiming their own line.
+          Mobile/tablet keep the original two stacked rows. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:items-center web:desktop:gap-3">
+        <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-4">
+          {TYPE_FILTER_VALUES.map((value) => (
+            <Chip
+              key={value}
+              testID={`transactions-filter-type-${value}`}
+              label={t(`transactions.filters.type.${value}`)}
+              selected={filterState.type === value}
+              onPress={() => updateFilters({ type: value })}
+            />
+          ))}
+        </View>
+        <View className="hidden web:desktop:mb-4 web:desktop:flex web:desktop:h-5 web:desktop:w-px web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+        <View className="mb-4 flex-row flex-wrap gap-2">
+          {SHARED_FILTER_VALUES.map((value) => (
+            <Chip
+              key={value}
+              testID={`transactions-filter-shared-${value}`}
+              label={t(`transactions.filters.shared.${value}`)}
+              selected={filterState.shared === value}
+              onPress={() => updateFilters({ shared: value })}
+            />
+          ))}
+        </View>
       </View>
 
       {!isPageLoading && !error && !isSelectionMode && (

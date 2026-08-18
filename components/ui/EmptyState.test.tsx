@@ -48,4 +48,20 @@ describe('EmptyState', () => {
     const { getByText } = await render(<EmptyState icon="📦" message="עדיין אין תנועות" compact />)
     expect(getByText('עדיין אין תנועות')).toBeTruthy()
   })
+
+  // Desktop Visual/Responsive Design pass (section I): every screen that
+  // renders this component sits inside a wide, unbounded desktop container
+  // — without a self-imposed max-width, a long message could wrap across
+  // nearly the full page width instead of reading as a contained empty
+  // state. Both size variants must self-bound at desktop; mobile (no
+  // `web:desktop:` classes match) is unaffected either way.
+  it('self-bounds its width at desktop, for both the compact and full-size variants', async () => {
+    const { getByText: getByTextCompact } = await render(<EmptyState icon="📦" message="עדיין אין תנועות" compact />)
+    const compactContainer = getByTextCompact('עדיין אין תנועות').parent
+    expect(compactContainer?.props.className as string).toContain('web:desktop:max-w-')
+
+    const { getByText: getByTextFull } = await render(<EmptyState icon="📦" message="עדיין אין תנועות" />)
+    const fullContainer = getByTextFull('עדיין אין תנועות').parent
+    expect(fullContainer?.props.className as string).toContain('web:desktop:max-w-')
+  })
 })

@@ -166,8 +166,10 @@ export default function NewTransaction() {
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
   return (
-    <Screen keyboardAvoiding width="narrow">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('transactions.form.title')}</Text>
+    <Screen keyboardAvoiding width="form">
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('transactions.form.title')}
+      </Text>
 
       {isHouseholdLoading || isAccountsLoading || isCategoriesLoading ? (
         <LoadingSpinner />
@@ -193,25 +195,38 @@ export default function NewTransaction() {
             placeholder={t('transactions.form.amountPlaceholder')}
           />
 
-          <Input
-            label={t('transactions.form.descriptionLabel')}
-            value={description}
-            onChangeText={setDescription}
-            placeholder={
-              isTransfer
-                ? t('transactions.form.transferDescriptionPlaceholder')
-                : t('transactions.form.descriptionPlaceholder')
-            }
-          />
+          {/* Desktop Visual/Responsive Design pass: description+merchant is
+              the one field pair on this form that logically groups (both
+              are free-text detail about the same transaction) and where
+              pairing them buys back real vertical space — paired in a row
+              only once there's room for it (`web:desktop:`), stacked
+              exactly as before on mobile/tablet and in transfer mode
+              (merchant doesn't apply there, so nothing to pair with). */}
+          <View className={isTransfer ? undefined : 'web:desktop:flex-row-reverse web:desktop:gap-4'}>
+            <View className={isTransfer ? undefined : 'web:desktop:flex-1'}>
+              <Input
+                label={t('transactions.form.descriptionLabel')}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={
+                  isTransfer
+                    ? t('transactions.form.transferDescriptionPlaceholder')
+                    : t('transactions.form.descriptionPlaceholder')
+                }
+              />
+            </View>
 
-          {!isTransfer && (
-            <Input
-              label={t('transactions.form.merchantLabel')}
-              value={merchantName}
-              onChangeText={setMerchantName}
-              placeholder={t('transactions.form.merchantPlaceholder')}
-            />
-          )}
+            {!isTransfer && (
+              <View className="web:desktop:flex-1">
+                <Input
+                  label={t('transactions.form.merchantLabel')}
+                  value={merchantName}
+                  onChangeText={setMerchantName}
+                  placeholder={t('transactions.form.merchantPlaceholder')}
+                />
+              </View>
+            )}
+          </View>
 
           {isTransfer ? (
             // Transfer mode: category/shared-personal/payer are meaningless
@@ -220,65 +235,93 @@ export default function NewTransaction() {
             // alongside the expense/income fields above.
             <View className="mb-4 mt-2">
               <Card>
-                <Select
-                  variant="row"
-                  label={t('transactions.form.fromAccountLabel')}
-                  options={accountOptions}
-                  value={accountId}
-                  onChange={setAccountIdOverride}
-                  placeholder={t('transactions.form.fromAccountPlaceholder')}
-                  sheetTitle={t('transactions.form.fromAccountLabel')}
-                  leadingIcon={
-                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                      <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
-                    </View>
-                  }
-                />
-                <Divider />
-                <Select
-                  variant="row"
-                  label={t('transactions.form.toAccountLabel')}
-                  options={accountOptions}
-                  value={toAccountId}
-                  onChange={setToAccountIdOverride}
-                  placeholder={t('transactions.form.toAccountPlaceholder')}
-                  sheetTitle={t('transactions.form.toAccountLabel')}
-                  leadingIcon={
-                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                      <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
-                    </View>
-                  }
-                />
+                {/* Desktop Visual/Responsive Design pass: from/to-account is
+                    the other pairing on this form (both are the same kind
+                    of field, picking the two ends of one movement) — side
+                    by side at desktop with a vertical divider, matching the
+                    stat-pair pattern Dashboard/Budgets' hero cards already
+                    use (a manual w-px bar, since Divider.tsx has no
+                    vertical variant to extend). Stacked with the existing
+                    horizontal Divider on mobile/tablet, unchanged. */}
+                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.fromAccountLabel')}
+                      options={accountOptions}
+                      value={accountId}
+                      onChange={setAccountIdOverride}
+                      placeholder={t('transactions.form.fromAccountPlaceholder')}
+                      sheetTitle={t('transactions.form.fromAccountLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                        </View>
+                      }
+                    />
+                  </View>
+                  <View className="web:desktop:hidden">
+                    <Divider />
+                  </View>
+                  <View className="hidden web:desktop:mx-4 web:desktop:flex web:desktop:h-9 web:desktop:w-px web:desktop:self-center web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.toAccountLabel')}
+                      options={accountOptions}
+                      value={toAccountId}
+                      onChange={setToAccountIdOverride}
+                      placeholder={t('transactions.form.toAccountPlaceholder')}
+                      sheetTitle={t('transactions.form.toAccountLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
+                        </View>
+                      }
+                    />
+                  </View>
+                </View>
               </Card>
             </View>
           ) : (
             <View className="mb-4 mt-2">
               <Card>
-                <Select
-                  variant="row"
-                  label={t('transactions.form.accountLabel')}
-                  options={accountOptions}
-                  value={accountId}
-                  onChange={setAccountIdOverride}
-                  placeholder={t('transactions.form.accountPlaceholder')}
-                  sheetTitle={t('transactions.form.accountLabel')}
-                  leadingIcon={
-                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                      <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
-                    </View>
-                  }
-                />
-                <Divider />
-                <Select
-                  variant="row"
-                  label={t('transactions.form.categoryLabel')}
-                  options={categoryOptions}
-                  value={categoryId}
-                  onChange={handleCategoryChange}
-                  placeholder={t('transactions.form.categoryPlaceholder')}
-                  sheetTitle={t('transactions.form.categorySheetTitle')}
-                  leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
-                />
+                {/* Same account/category pairing at desktop as the
+                    from/to-account block above. */}
+                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.accountLabel')}
+                      options={accountOptions}
+                      value={accountId}
+                      onChange={setAccountIdOverride}
+                      placeholder={t('transactions.form.accountPlaceholder')}
+                      sheetTitle={t('transactions.form.accountLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                        </View>
+                      }
+                    />
+                  </View>
+                  <View className="web:desktop:hidden">
+                    <Divider />
+                  </View>
+                  <View className="hidden web:desktop:mx-4 web:desktop:flex web:desktop:h-9 web:desktop:w-px web:desktop:self-center web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.categoryLabel')}
+                      options={categoryOptions}
+                      value={categoryId}
+                      onChange={handleCategoryChange}
+                      placeholder={t('transactions.form.categoryPlaceholder')}
+                      sheetTitle={t('transactions.form.categorySheetTitle')}
+                      leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
+                    />
+                  </View>
+                </View>
               </Card>
             </View>
           )}

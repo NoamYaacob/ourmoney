@@ -397,8 +397,52 @@ export default function Budgets() {
               <View className="web:desktop:hidden">
                 <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} compact />
               </View>
-              <View className="hidden web:desktop:flex">
-                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} />
+              {/* Desktop Visual/Responsive Design pass: the zero-allocation
+                  desktop state previously read as broken — a small icon +
+                  one line inside a min-h-[300px] panel, with the ONLY way
+                  to actually do something about it (the add-category
+                  control) sitting in a completely separate box below this
+                  panel. A second line explains what a monthly budget is
+                  (not just "no categories"), extra vertical padding gives
+                  the panel real weight instead of a thin sliver, and the
+                  same add-category Select now renders inline here, inside
+                  the same bounded card — the below-panel block further down
+                  is hidden at desktop for this specific empty case so the
+                  control isn't duplicated (mobile is untouched: it still
+                  only ever renders the control in the one place it always
+                  has). */}
+              <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:py-10">
+                <View className="web:desktop:w-full web:desktop:max-w-[360px]">
+                  <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} />
+                  <Text className="-mt-2 mb-4 text-center text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                    {t('budgets.noCategoriesHint')}
+                  </Text>
+                  {addableCategories.length > 0 && (
+                    <Card>
+                      <Select
+                        variant="row"
+                        label={t('budgets.addCategoryLabel')}
+                        options={addableCategories.map((c) => ({
+                          value: c.id,
+                          label: c.name_he,
+                          iconName: categoryIconName(c.icon),
+                        }))}
+                        value={null}
+                        onChange={(value) => {
+                          setEditingCategoryId(value)
+                          setEditingAmount('')
+                        }}
+                        placeholder={t('budgets.addCategoryPlaceholder')}
+                        sheetTitle={t('budgets.addCategoryLabel')}
+                        leadingIcon={
+                          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                            <Ionicons name="add-circle-outline" size={18} color={accentColor} />
+                          </View>
+                        }
+                      />
+                    </Card>
+                  )}
+                </View>
               </View>
             </>
           ) : (
@@ -503,7 +547,15 @@ export default function Budgets() {
             // Desktop polish pass: tightened from mt-3 to feel like part of
             // the same category-budgets area above it, rather than an
             // isolated control — mobile/tablet keep the original mt-3 gap.
-            <View className="mt-3 web:desktop:mt-2">
+            // Desktop Visual/Responsive Design pass: hidden at desktop
+            // specifically when progress is empty — the block above already
+            // renders this same control inline inside the empty-state card
+            // in that case, and showing it twice would be a duplicate
+            // control, not a fix. Mobile always renders it here regardless
+            // (unchanged), and it still renders here at desktop too once
+            // progress.length > 0 (the empty-state card above no longer
+            // exists in that case).
+            <View className={`mt-3 web:desktop:mt-2 ${progress.length === 0 ? 'web:desktop:hidden' : ''}`}>
               <Card>
                 <Select
                   variant="row"
