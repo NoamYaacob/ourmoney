@@ -6,8 +6,8 @@
 // current appearance until it opts into a wider variant.
 import { describe, expect, it } from '@jest/globals'
 import { render } from '@testing-library/react-native'
-import { ScrollView, Text } from 'react-native'
-import { Screen } from './Screen'
+import { Text } from 'react-native'
+import { Screen, screenBottomPaddingClass } from './Screen'
 
 describe('Screen width variants', () => {
   it('defaults to the narrow content-width clamp when no width prop is passed', async () => {
@@ -43,27 +43,16 @@ describe('Screen width variants', () => {
 })
 
 describe('Screen mobile-web bottom clearance', () => {
-  it('reserves mobile-web scroll space above the bottom tab bar', async () => {
-    const { UNSAFE_getByType } = await render(
-      <Screen>
-        <Text>content</Text>
-      </Screen>
-    )
-
-    const className = UNSAFE_getByType(ScrollView).props.contentContainerClassName as string
+  it('reserves mobile-web scroll space above the bottom tab bar', () => {
+    const className = screenBottomPaddingClass(false)
     expect(className).toContain('pb-10')
     expect(className).toContain('web:pb-24')
     expect(className).toContain('web:desktop:pb-10')
   })
 
-  it('reserves extra mobile-web scroll space when a floating action is present', async () => {
-    const { UNSAFE_getByType } = await render(
-      <Screen floatingAction={<Text>fab</Text>}>
-        <Text>content</Text>
-      </Screen>
-    )
-
-    const className = UNSAFE_getByType(ScrollView).props.contentContainerClassName as string
+  it('reserves extra mobile-web scroll space when a floating action is present', () => {
+    const className = screenBottomPaddingClass(true)
     expect(className).toContain('web:pb-32')
+    expect(className).toContain('web:desktop:pb-10')
   })
 })
