@@ -10,11 +10,10 @@ name: CI — Trust Gate
 # one workflow that actually targets the branch it's meant to protect,
 # instead of adding a sixth milestone-specific file.
 #
-# Three independent jobs, not one, for the same reason
-# migration-007-db-validation.yml/milestone-9-db-validation.yml split theirs:
-# a slow, unrelated job must never starve or mask an already-decided result
-# from a different one. Each job's conclusion is independently visible in
-# the Actions UI/API regardless of what the others do.
+# Four independent jobs, not one: database/RLS, app checks, Expo exports,
+# and committed-secret scanning. A slow or unrelated job must never starve
+# or mask an already-decided result from a different one. Each conclusion is
+# independently visible in the Actions UI/API.
 
 on:
   pull_request:
@@ -219,3 +218,19 @@ jobs:
 
       - name: Expo export — Android
         run: npx expo export --platform android
+
+  secret-scan:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository for committed secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
