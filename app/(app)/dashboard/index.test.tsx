@@ -223,6 +223,22 @@ describe('Dashboard month navigation and budget summary', () => {
     expect(getByText(NO_TRANSACTIONS_MESSAGE)).toBeTruthy()
   })
 
+  // UX-completeness audit P2 fix: this hero card previously rendered
+  // "נותר החודש ₪0.00 · 0% נוצל" for a household with no budget at all —
+  // reading as "you spent nothing against a real ₪0 budget" instead of "no
+  // budget exists yet." Distinct copy from the category panel's own
+  // dashboard.noBudget message below it (not a verbatim repeat — showing
+  // the identical sentence twice on one screen is its own bug).
+  it('shows a distinct no-budget message in the hero card, not a duplicate of the category panel below it', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getByText, getAllByText } = await render(<Dashboard />)
+
+    expect(getByText('הגדירו תקציב חודשי כדי לעקוב כאן אחר מה שנותר להוציא.')).toBeTruthy()
+    // The category panel's own message still appears exactly once.
+    expect(getAllByText(NO_BUDGET_MESSAGE)).toHaveLength(1)
+  })
+
   it('shows the remaining/spent figures and category progress once a budget and transactions exist', async () => {
     mockUseBudgetProgress.mockReturnValue({
       categories: [
@@ -556,13 +572,16 @@ describe('Dashboard alerts section', () => {
     jest.clearAllMocks()
   })
 
-  it('does not render the section at all when there are zero alerts', async () => {
+  it('still shows the header and "כל ההתראות" link with zero current alerts, but no alert list (UX-completeness audit fix: the /alerts screen was previously unreachable from a household with no active alerts)', async () => {
     mockAnalytics({ transactions: [] })
     mockUseFinancialAlerts.mockReturnValue({ alerts: [], isLoading: false, hasPartialError: false })
 
-    const { queryByText } = await render(<Dashboard />)
+    const { getByText, queryByRole } = await render(<Dashboard />)
 
-    expect(queryByText(i18n.t('alerts.dashboardSectionTitle'))).toBeNull()
+    expect(getByText(i18n.t('alerts.dashboardSectionTitle'))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.viewAll'))).toBeTruthy()
+    // No alert rows are rendered — no "everything's fine" banner either.
+    expect(queryByRole('button', { name: /ימים|היום|באיחור/ })).toBeNull()
   })
 
   it('renders a single alert with its title and description', async () => {

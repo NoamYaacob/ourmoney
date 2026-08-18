@@ -38,6 +38,12 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+// The edit form now offers an account picker (UX-completeness audit
+// finding: account_id/target_date were writable in the mutation hook but
+// unreachable from any UI) — same mock shape as obligations/[id].test.tsx.
+jest.mock('@/features/accounts/hooks/useAccounts', () => ({
+  useAccounts: () => ({ accounts: [{ id: 'acc-1', name: 'עו״ש', type: 'checking' }], isLoading: false }),
+}))
 
 const BASE_GOAL = {
   id: 'goal-1',
@@ -45,8 +51,8 @@ const BASE_GOAL = {
   name: 'חופשה משפחתית',
   target_agorot: 500000,
   current_agorot: 100000,
-  account_id: null,
-  target_date: null,
+  account_id: null as string | null,
+  target_date: null as string | null,
   icon: null,
   color: null,
   is_completed: false,
@@ -60,9 +66,16 @@ jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
   useSavingsGoals: () => ({ goals: [mockGoal], isLoading: false, refetch: mockRefetch }),
 }))
 
+// onSuccess is called with { version: expectedVersion + 1 } by default,
+// mirroring a real successful CAS bump — the fix under test
+// (onSuccess: (result) => setEditingVersion(result.version)) depends on the
+// mutate callback actually receiving the new version, not just firing.
 const mockUpdateGoalMutate = jest.fn(
-  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
-    callbacks?.onSuccess?.()
+  (
+    variables: { expectedVersion: number },
+    callbacks?: { onSuccess?: (result: { version: number }) => void; onError?: (error: unknown) => void }
+  ) => {
+    callbacks?.onSuccess?.({ version: variables.expectedVersion + 1 })
   }
 )
 jest.mock('@/features/savings/hooks/useUpdateSavingsGoal', () => ({
@@ -70,8 +83,11 @@ jest.mock('@/features/savings/hooks/useUpdateSavingsGoal', () => ({
 }))
 
 const mockUpdateProgressMutate = jest.fn(
-  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
-    callbacks?.onSuccess?.()
+  (
+    variables: { expectedVersion: number },
+    callbacks?: { onSuccess?: (result: { version: number }) => void; onError?: (error: unknown) => void }
+  ) => {
+    callbacks?.onSuccess?.({ version: variables.expectedVersion + 1 })
   }
 )
 jest.mock('@/features/savings/hooks/useUpdateSavingsGoalProgress', () => ({
@@ -130,6 +146,107 @@ describe('GoalDetail edit', () => {
 
     expect(mockUpdateProgressMutate).toHaveBeenCalledWith(
       expect.objectContaining({ goalId: 'goal-1', expectedVersion: 1, currentAgorot: 200000 }),
+      expect.anything()
+    )
+  })
+
+  // qa-adversarial-reviewer finding: a successful progress update never
+  // advanced the pinned progressExpectedVersion — only a fresh goal load or
+  // an explicit conflict-reload did. A second, entirely uncontested update
+  // later in the same visit would then submit the now-stale pre-first-
+  // update version and spuriously conflict against the server's own prior
+  // write, even though nobody else touched the row.
+  it('carries the just-updated version into a second, uncontested progress update in the same visit, not the stale pre-update version', async () => {
+    const { getByLabelText, getByText } = await render(<GoalDetail />)
+
+    await fireEvent.changeText(getByLabelText('עדכון סכום נוכחי'), '2000')
+    await fireEvent.press(getByText('עדכון'))
+    expect(mockUpdateProgressMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expectedVersion: 1 }),
+      expect.anything()
+    )
+
+    await fireEvent.changeText(getByLabelText('עדכון סכום נוכחי'), '3000')
+    await fireEvent.press(getByText('עדכון'))
+    expect(mockUpdateProgressMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expectedVersion: 2, currentAgorot: 300000 }),
+      expect.anything()
+    )
+  })
+
+  // Same fix, identity-edit form.
+  it('carries the just-saved version into a second, uncontested identity edit in the same visit, not the stale pre-save version', async () => {
+    const { getByDisplayValue, getByText } = await render(<GoalDetail />)
+
+    await fireEvent.changeText(getByDisplayValue('חופשה משפחתית'), 'טיול לחו״ל')
+    await fireEvent.press(getByText('שמירה'))
+    expect(mockUpdateGoalMutate).toHaveBeenLastCalledWith(expect.objectContaining({ expectedVersion: 1 }), expect.anything())
+
+    await fireEvent.changeText(getByDisplayValue('טיול לחו״ל'), 'טיול לחו״ל 2')
+    await fireEvent.press(getByText('שמירה'))
+    expect(mockUpdateGoalMutate).toHaveBeenLastCalledWith(expect.objectContaining({ expectedVersion: 2 }), expect.anything())
+  })
+
+  // UX-completeness audit P1 fix: account_id/target_date were writable by
+  // useUpdateSavingsGoal but there was no UI field for either — the create
+  // form had the same gap, fixed alongside this one.
+  it('lets the edit form set an account and an optional target date, sending both on save', async () => {
+    mockGoal = { ...BASE_GOAL, account_id: null, target_date: null }
+    const { getByText, getByLabelText } = await render(<GoalDetail />)
+
+    await fireEvent.press(getByLabelText('חשבון מקושר (אופציונלי)'))
+    await fireEvent.press(getByText('עו״ש'))
+    await fireEvent.press(getByText('עם תאריך יעד'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateGoalMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'goal-1', accountId: 'acc-1', targetDate: expect.any(String) }),
+      expect.anything()
+    )
+  })
+
+  it('sends a null targetDate when the "no target date" toggle is left selected, even though a goal has a previously-set date', async () => {
+    mockGoal = { ...BASE_GOAL, target_date: '2026-12-01' }
+    const { getByText } = await render(<GoalDetail />)
+
+    await fireEvent.press(getByText('ללא תאריך יעד'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateGoalMutate).toHaveBeenCalledWith(expect.objectContaining({ targetDate: null }), expect.anything())
+  })
+
+  // architecture-reviewer's required fix (raised during this milestone's
+  // design-stage review of item 2): without resetting
+  // progressExpectedVersion on a progress-conflict reload, the next
+  // progress submit would immediately re-conflict against the version it
+  // just reloaded, since the pinned value was never refreshed.
+  it('reloading from a progress-update conflict resets the progress form, so the next update carries the fresh version, not the stale one', async () => {
+    mockUpdateProgressMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new ConcurrencyError('conflict'))
+    })
+    const freshGoal = { ...BASE_GOAL, current_agorot: 300000, version: 2 }
+    mockRefetch.mockImplementationOnce(async () => {
+      mockGoal = freshGoal
+      return { data: [mockGoal] }
+    })
+
+    const { getByText, getByLabelText } = await render(<GoalDetail />)
+
+    await fireEvent.changeText(getByLabelText('עדכון סכום נוכחי'), '2000')
+    await fireEvent.press(getByText('עדכון'))
+
+    await waitFor(() => expect(getByText('טען את הגרסה החדשה')).toBeTruthy())
+    await fireEvent.press(getByText('טען את הגרסה החדשה'))
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalled())
+
+    // The stale draft is discarded (ADR-036's reload policy), and a fresh
+    // update now carries the newly-loaded version, not the one that just
+    // conflicted.
+    await fireEvent.changeText(getByLabelText('עדכון סכום נוכחי'), '3500')
+    await fireEvent.press(getByText('עדכון'))
+
+    expect(mockUpdateProgressMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ goalId: 'goal-1', expectedVersion: 2, currentAgorot: 350000 }),
       expect.anything()
     )
   })

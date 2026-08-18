@@ -43,8 +43,13 @@ jest.mock('@/features/accounts/hooks/useAccounts', () => ({
 jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: { 'acct-1': 543200 }, isLoading: false }),
 }))
+const mockArchiveMutate = jest.fn(
+  (_id: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
 jest.mock('@/features/accounts/hooks/useArchiveAccount', () => ({
-  useArchiveAccount: () => ({ mutate: jest.fn(), isPending: false }),
+  useArchiveAccount: () => ({ mutate: mockArchiveMutate, isPending: false }),
 }))
 jest.mock('@/features/accounts/hooks/useDeleteAccount', () => ({
   useDeleteAccount: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
@@ -57,6 +62,7 @@ jest.mock('@/features/accounts/hooks/useUpdateAccount', () => ({
 
 describe('AccountDetail', () => {
   beforeEach(() => {
+    jest.clearAllMocks()
     mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'admin', isLoading: false })
   })
 
@@ -100,5 +106,30 @@ describe('AccountDetail', () => {
     mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'member', isLoading: false })
     const { queryByText } = await render(<AccountDetail />)
     expect(queryByText('מחיקה')).toBeNull()
+  })
+
+  // UX-completeness audit P1 fix: archiving hides an account from every
+  // future transaction/transfer picker — a single un-confirmed tap for an
+  // action with that much reach was inconsistent with delete's existing
+  // confirm modal on the very same screen.
+  it('requires confirmation before archiving, matching the delete button\'s own confirm modal', async () => {
+    const { getByText, getAllByText } = await render(<AccountDetail />)
+
+    await fireEvent.press(getByText('העברה לארכיון'))
+    expect(mockArchiveMutate).not.toHaveBeenCalled()
+
+    const confirmButtons = getAllByText('העברה לארכיון')
+    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
+
+    expect(mockArchiveMutate).toHaveBeenCalledWith('acct-1', expect.anything())
+  })
+
+  it('lets the archive confirmation be cancelled without archiving', async () => {
+    const { getByText } = await render(<AccountDetail />)
+
+    await fireEvent.press(getByText('העברה לארכיון'))
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockArchiveMutate).not.toHaveBeenCalled()
   })
 })

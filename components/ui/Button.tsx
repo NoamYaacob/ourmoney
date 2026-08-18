@@ -37,6 +37,12 @@ interface ButtonProps {
   // reviewer finding, Milestone 10: a hardcoded cap here silently applied
   // to every button title in the app, not just Modal's).
   maxFontSizeMultiplier?: number
+  // Defaults to `title` (every existing caller's exact prior behavior,
+  // unchanged) — pass explicitly when several identically-titled buttons
+  // render adjacently (e.g. one "הסרה" per household member) so a screen
+  // reader announces which one, not just the shared generic label
+  // (UX-completeness audit finding).
+  accessibilityLabel?: string
 }
 
 // Design Phase 1: primary moved from a raw bg-slate-900/100 (no relation to
@@ -76,6 +82,7 @@ export function Button({
   loading = false,
   selected,
   maxFontSizeMultiplier,
+  accessibilityLabel,
 }: ButtonProps) {
   const { colorScheme: scheme } = useColorScheme()
   const isDisabled = disabled || loading
@@ -85,6 +92,7 @@ export function Button({
       onPress={onPress}
       disabled={isDisabled}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: isDisabled, busy: loading, selected }}
       className={containerByVariant[variant]}
     >

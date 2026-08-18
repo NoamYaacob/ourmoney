@@ -99,6 +99,50 @@ describe('Obligations list', () => {
     expect(queryByText('התחייבות ששולמה')).toBeNull()
   })
 
+  // UX-completeness audit P1 fix: completed/cancelled obligations vanished
+  // from this screen entirely with no way to look them up again — no way
+  // to confirm a mark-paid/cancel action actually took effect.
+  it('keeps completed/cancelled obligations out of view until the history toggle is pressed, then shows them most-recent first', async () => {
+    const { getByText, queryByText } = await render(<Obligations />)
+
+    expect(queryByText('התחייבות ששולמה')).toBeNull()
+
+    await fireEvent.press(getByText('היסטוריית התחייבויות'))
+
+    expect(getByText('התחייבות ששולמה')).toBeTruthy()
+  })
+
+  it('hides the history toggle entirely when there is no completed/cancelled history', async () => {
+    mockUsePlannedObligations.mockReturnValue({ obligations: [OBLIGATIONS[0], OBLIGATIONS[1]], isLoading: false, error: null })
+    const { queryByText } = await render(<Obligations />)
+
+    expect(queryByText('היסטוריית התחייבויות')).toBeNull()
+  })
+
+  it('toggles the history section closed again on a second press', async () => {
+    const { getByText, queryByText } = await render(<Obligations />)
+
+    await fireEvent.press(getByText('היסטוריית התחייבויות'))
+    expect(getByText('התחייבות ששולמה')).toBeTruthy()
+
+    await fireEvent.press(getByText('הסתרת היסטוריה'))
+    expect(queryByText('התחייבות ששולמה')).toBeNull()
+  })
+
+  // UX-completeness audit P2 fix: obligations was the one list among
+  // accounts/recurring/goals/obligations that never got the shared
+  // 2-column desktop grid treatment.
+  it('reverses the desktop 2-column obligations grid so the first (nearest-due) item renders on the right', async () => {
+    const { getByText } = await render(<Obligations />)
+
+    let node = getByText('ארנונה').parent
+    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
+      node = node.parent
+    }
+    const gridContainer = node?.parent
+    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+  })
+
   it('shows an empty state when there are no upcoming obligations', async () => {
     mockUsePlannedObligations.mockReturnValue({
       obligations: [{ ...OBLIGATIONS[2] }],

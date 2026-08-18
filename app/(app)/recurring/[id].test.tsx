@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import '@/i18n'
 import { ConcurrencyError } from '@/lib/mutations/concurrencyError'
+import type { RecurringFrequency } from '@/types/app'
 import RecurringDetail from './[id]'
 
 jest.mock('expo-router', () => ({
@@ -53,8 +54,8 @@ const BASE_ITEM = {
   description: 'ארנונה',
   is_shared: true,
   is_active: true,
-  frequency: 'monthly' as const,
-  day_of_month: 1,
+  frequency: 'monthly' as RecurringFrequency,
+  day_of_month: 1 as number | null,
   next_due_date: '2026-09-01',
   version: 1,
 }
@@ -134,6 +135,55 @@ describe('RecurringDetail', () => {
       }),
       expect.anything()
     )
+  })
+
+  // UX-completeness audit P0 fix: advance_recurring_due_date() (migration
+  // 003) computes LEAST(day_of_month, ...) for monthly/quarterly/yearly
+  // frequencies — LEAST(NULL, x) is NULL in Postgres, so a NULL
+  // day_of_month silently and permanently nulled next_due_date the moment
+  // any edit round-tripped it unchanged. A row with day_of_month already
+  // null (e.g. created before this fix, or via a path that never set it)
+  // must have it backfilled from the currently-rendered next_due_date
+  // instead of being sent through as null again.
+  it('backfills a null day_of_month from next_due_date on save, for a monthly template, instead of sending null through again', async () => {
+    mockItem = { ...BASE_ITEM, day_of_month: null, next_due_date: '2026-09-15' }
+    const { getByText } = await render(<RecurringDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ frequency: 'monthly', dayOfMonth: 15 }),
+      expect.anything()
+    )
+  })
+
+  it('sends dayOfMonth: null for a weekly template, never backfilling it from next_due_date', async () => {
+    mockItem = { ...BASE_ITEM, frequency: 'weekly', day_of_month: null, next_due_date: '2026-09-15' }
+    const { getByText } = await render(<RecurringDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ frequency: 'weekly', dayOfMonth: null }),
+      expect.anything()
+    )
+  })
+
+  // UX-completeness audit P2 fix: the edit form previously sent
+  // isShared: item.is_shared unconditionally — there was no field in the
+  // form to actually change it, unlike the create form's identical
+  // shared/personal chip pair.
+  it('lets the shared/personal chip pair in the edit form override is_shared on save', async () => {
+    mockItem = { ...BASE_ITEM, is_shared: true }
+    const { getByText } = await render(<RecurringDetail />)
+
+    await fireEvent.press(getByText('עריכה'))
+    await fireEvent.press(getByText('אישית'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateMutate).toHaveBeenCalledWith(expect.objectContaining({ isShared: false }), expect.anything())
   })
 
   it('leaves the edit form on cancel without saving anything', async () => {

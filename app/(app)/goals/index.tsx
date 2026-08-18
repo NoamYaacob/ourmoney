@@ -12,9 +12,13 @@ import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useCreateSavingsGoal } from '@/features/savings/hooks/useCreateSavingsGoal'
 import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Chip } from '@/components/ui/Chip'
+import { DatePickerField } from '@/components/ui/DatePickerField'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -26,7 +30,7 @@ export default function Goals() {
   const router = useRouter()
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { goals, isLoading: isGoalsLoading, error } = useSavingsGoals(householdId)
   const createGoal = useCreateSavingsGoal(householdId)
 
@@ -35,7 +39,19 @@ export default function Goals() {
   const [isAdding, setIsAdding] = useState(false)
   const [name, setName] = useState('')
   const [targetText, setTargetText] = useState('')
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [hasTargetDate, setHasTargetDate] = useState(false)
+  const [targetDateText, setTargetDateText] = useState(localDateString())
   const [validationError, setValidationError] = useState<string | null>(null)
+
+  function resetForm() {
+    setName('')
+    setTargetText('')
+    setAccountId(null)
+    setHasTargetDate(false)
+    setTargetDateText(localDateString())
+    setIsAdding(false)
+  }
 
   function handleCreate() {
     if (!householdId || createGoal.isPending) return
@@ -52,16 +68,18 @@ export default function Goals() {
     }
 
     createGoal.mutate(
-      { householdId, name: name.trim(), targetAgorot: parsed.agorot },
       {
-        onSuccess: () => {
-          setName('')
-          setTargetText('')
-          setIsAdding(false)
-        },
-      }
+        householdId,
+        name: name.trim(),
+        targetAgorot: parsed.agorot,
+        accountId,
+        targetDate: hasTargetDate ? targetDateText : null,
+      },
+      { onSuccess: resetForm }
     )
   }
+
+  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
     <Screen width="wide">
@@ -102,7 +120,7 @@ export default function Goals() {
                   <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
                     {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
                   </Text>
-                  <ProgressBar percent={percent} />
+                  <ProgressBar percent={percent} positiveAtLimit />
                 </Card>
               </Pressable>
             )
@@ -121,6 +139,21 @@ export default function Goals() {
             placeholder={t('transactions.form.amountPlaceholder')}
             keyboardType="decimal-pad"
           />
+          <Select
+            label={t('savings.form.accountLabel')}
+            options={accountOptions}
+            value={accountId}
+            onChange={setAccountId}
+            placeholder={t('transactions.form.accountPlaceholder')}
+          />
+          <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('savings.form.targetDateLabel')}</Text>
+          <View className="mb-4 flex-row gap-2">
+            <Chip label={t('savings.form.hasTargetDate')} selected={hasTargetDate} onPress={() => setHasTargetDate(true)} />
+            <Chip label={t('savings.form.noTargetDate')} selected={!hasTargetDate} onPress={() => setHasTargetDate(false)} />
+          </View>
+          {hasTargetDate && (
+            <DatePickerField label={t('savings.form.targetDateLabel')} value={targetDateText} onChange={setTargetDateText} />
+          )}
           {(validationError || createGoal.isError) && (
             <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
           )}

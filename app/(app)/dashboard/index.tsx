@@ -271,7 +271,14 @@ export default function Dashboard() {
           and the milestone's own brief explicitly allows either choice).
           Max 3, highest-priority first (buildFinancialAlerts.ts's own
           severity→date→id sort) — the full grouped list lives at /alerts. */}
-      {topAlerts.length > 0 && (
+      {/* The header + "כל ההתראות" link is always visible, even with zero
+          current alerts — the alerts screen (grouped by severity, with its
+          own well-built empty state) was previously unreachable from
+          anywhere in the app whenever a household had no alerts (UX-
+          completeness audit finding). The alert list itself still only
+          renders when there's something to show, deliberately not adding an
+          "everything's fine" banner no other screen in this app has. */}
+      {!isAlertsLoading && (
         <View className="mb-6 web:desktop:mb-8">
           <View className="mb-2 flex-row items-center justify-between">
             <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
@@ -283,36 +290,38 @@ export default function Dashboard() {
               </Text>
             </Pressable>
           </View>
-          <Card>
-            {topAlerts.map((alert, index) => (
-              <View key={alert.id}>
-                {index > 0 && (
-                  <View className="my-3">
-                    <Divider />
-                  </View>
-                )}
-                <Pressable
-                  onPress={() => router.push(alert.actionRoute)}
-                  accessibilityRole="button"
-                  className="flex-row items-center gap-3"
-                >
-                  <Ionicons
-                    name={severityIconName(alert.severity)}
-                    size={20}
-                    color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
-                  />
-                  <View className="flex-1">
-                    <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {alert.title}
-                    </Text>
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                      {alert.description}
-                    </Text>
-                  </View>
-                </Pressable>
-              </View>
-            ))}
-          </Card>
+          {topAlerts.length > 0 && (
+            <Card>
+              {topAlerts.map((alert, index) => (
+                <View key={alert.id}>
+                  {index > 0 && (
+                    <View className="my-3">
+                      <Divider />
+                    </View>
+                  )}
+                  <Pressable
+                    onPress={() => router.push(alert.actionRoute)}
+                    accessibilityRole="button"
+                    className="flex-row items-center gap-3"
+                  >
+                    <Ionicons
+                      name={severityIconName(alert.severity)}
+                      size={20}
+                      color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                    />
+                    <View className="flex-1">
+                      <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {alert.title}
+                      </Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                        {alert.description}
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
+              ))}
+            </Card>
+          )}
         </View>
       )}
 
@@ -322,6 +331,19 @@ export default function Dashboard() {
         <ErrorMessage message={t('dashboard.errors.generic')} />
       ) : isProgressLoading ? (
         <LoadingSpinner />
+      ) : progress.length === 0 ? (
+        // Same condition the category panel below already uses for its own
+        // empty state (UX-completeness audit finding: this hero card
+        // previously rendered "נותר החודש ₪0.00 · 0% נוצל" for a household
+        // with no budget set at all, reading as "you spent nothing against a
+        // ₪0 budget" rather than "no budget exists yet"). A distinct,
+        // hero-appropriate string (dashboard.noBudgetHero) is used instead
+        // of reusing dashboard.noBudget verbatim — the category panel below
+        // renders that exact message too, and showing the identical
+        // sentence twice on one screen is its own redundancy bug, not a fix.
+        <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <EmptyState iconName="wallet-outline" message={t('dashboard.noBudgetHero')} compact />
+        </Card>
       ) : (
         // Desktop polish pass: extra padding + a larger hero figure at
         // desktop only (unprefixed classes are pixel-identical to before —

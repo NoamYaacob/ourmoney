@@ -35,6 +35,7 @@ import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -96,6 +97,11 @@ export default function Budgets() {
   const [isCopyingBudget, setIsCopyingBudget] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const [copySuccessMessage, setCopySuccessMessage] = useState<string | null>(null)
+  // UX-completeness audit finding: there was no way to drop a category out
+  // of a budget once allocated, short of deleting the category entirely
+  // from Settings (a much heavier, unrelated action). Confirmed via a
+  // dedicated modal since this discards an amount without an undo.
+  const [removingCategoryId, setRemovingCategoryId] = useState<string | null>(null)
 
   // The edit form is keyed off editingCategoryId matching a category from
   // THIS month's `progress` list. Navigating the month without clearing it
@@ -112,6 +118,7 @@ export default function Budgets() {
     setIsCopyModalOpen(false)
     setCopyError(null)
     setCopySuccessMessage(null)
+    setRemovingCategoryId(null)
   }
 
   // save_budget_allocations() uses true-replace semantics (D3): the payload
@@ -156,6 +163,39 @@ export default function Budgets() {
           setSaveError(null)
         },
         onError: () => setSaveError(t('budgets.errors.generic')),
+      }
+    )
+  }
+
+  // Reuses save_budget_allocations()'s true-replace semantics (see the
+  // comment above handleSaveAllocation): omitting categoryId from the
+  // payload deletes that allocation row. No new engine or RPC logic —
+  // this is the existing create/update path with one category left out.
+  // Same fresh-refetch-before-payload guard for the same concurrent-
+  // partner-edit reason.
+  async function handleRemoveAllocation(categoryId: string) {
+    setIsPreparingSave(true)
+    const { data: freshData } = await refetchProgress()
+    setIsPreparingSave(false)
+    const freshCategories = freshData?.categories ?? progress
+
+    const nextAllocations = freshCategories
+      .filter((c) => c.categoryId !== categoryId)
+      .map((c) => ({ categoryId: c.categoryId, amountAgorot: c.allocatedAgorot }))
+
+    saveAllocations.mutate(
+      { periodStart, allocations: nextAllocations },
+      {
+        onSuccess: () => {
+          setEditingCategoryId(null)
+          setEditingAmount('')
+          setSaveError(null)
+          setRemovingCategoryId(null)
+        },
+        onError: () => {
+          setRemovingCategoryId(null)
+          setSaveError(t('budgets.errors.generic'))
+        },
       }
     )
   }
@@ -413,14 +453,44 @@ export default function Budgets() {
                           keyboardType="decimal-pad"
                         />
                         {saveError && <ErrorMessage message={saveError} />}
-                        <Button
-                          title={t('budgets.saveAllocation')}
-                          loading={isPreparingSave || saveAllocations.isPending}
+                        <View className="flex-row gap-2 web:flex-row-reverse">
+                          <View className="flex-1">
+                            <Button
+                              title={t('budgets.saveAllocation')}
+                              loading={isPreparingSave || saveAllocations.isPending}
+                              onPress={() => {
+                                if (isPreparingSave || saveAllocations.isPending) return
+                                void handleSaveAllocation(category.categoryId)
+                              }}
+                            />
+                          </View>
+                          <View className="flex-1">
+                            <Button
+                              title={t('common.cancel')}
+                              variant="secondary"
+                              disabled={isPreparingSave || saveAllocations.isPending}
+                              onPress={() => {
+                                setEditingCategoryId(null)
+                                setEditingAmount('')
+                                setSaveError(null)
+                              }}
+                            />
+                          </View>
+                        </View>
+                        <Pressable
                           onPress={() => {
                             if (isPreparingSave || saveAllocations.isPending) return
-                            void handleSaveAllocation(category.categoryId)
+                            setRemovingCategoryId(category.categoryId)
                           }}
-                        />
+                          disabled={isPreparingSave || saveAllocations.isPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('budgets.removeAllocationLabel', { name: category.categoryNameHe })}
+                          className="mt-3"
+                        >
+                          <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">
+                            {t('budgets.removeAllocation')}
+                          </Text>
+                        </Pressable>
                       </View>
                     )}
                   </View>
@@ -522,23 +592,36 @@ export default function Budgets() {
                           />
                         }
                       />
-                      <View className="mt-2">
-                        <Button
-                          title={t('budgets.assignCategorySubmit')}
-                          loading={updateTransaction.isPending}
-                          onPress={() => {
-                            if (!assignCategoryId || !householdId) return
-                            updateTransaction.mutate(
-                              { id: txn.id, householdId, categoryId: assignCategoryId },
-                              {
-                                onSuccess: () => {
-                                  setAssigningTxnId(null)
-                                  setAssignCategoryId(null)
-                                },
-                              }
-                            )
-                          }}
-                        />
+                      <View className="mt-2 flex-row gap-2 web:flex-row-reverse">
+                        <View className="flex-1">
+                          <Button
+                            title={t('budgets.assignCategorySubmit')}
+                            loading={updateTransaction.isPending}
+                            onPress={() => {
+                              if (!assignCategoryId || !householdId) return
+                              updateTransaction.mutate(
+                                { id: txn.id, householdId, categoryId: assignCategoryId },
+                                {
+                                  onSuccess: () => {
+                                    setAssigningTxnId(null)
+                                    setAssignCategoryId(null)
+                                  },
+                                }
+                              )
+                            }}
+                          />
+                        </View>
+                        <View className="flex-1">
+                          <Button
+                            title={t('common.cancel')}
+                            variant="secondary"
+                            disabled={updateTransaction.isPending}
+                            onPress={() => {
+                              setAssigningTxnId(null)
+                              setAssignCategoryId(null)
+                            }}
+                          />
+                        </View>
                       </View>
                     </View>
                   ) : (
@@ -572,6 +655,22 @@ export default function Budgets() {
         }}
       />
       {copyError && <ErrorMessage message={copyError} />}
+
+      <Modal
+        visible={removingCategoryId !== null}
+        title={t('budgets.removeConfirmTitle')}
+        message={t('budgets.removeConfirmMessage', {
+          name: progress.find((c) => c.categoryId === removingCategoryId)?.categoryNameHe ?? '',
+        })}
+        confirmLabel={t('budgets.removeAllocation')}
+        cancelLabel={t('common.cancel')}
+        destructive
+        loading={isPreparingSave || saveAllocations.isPending}
+        onCancel={() => setRemovingCategoryId(null)}
+        onConfirm={() => {
+          if (removingCategoryId) void handleRemoveAllocation(removingCategoryId)
+        }}
+      />
     </Screen>
   )
 }

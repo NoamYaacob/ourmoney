@@ -4,8 +4,8 @@
 // web-compiled CSS does not — the first goal (source order) must render
 // top-right, continuing the RTL reading order into the wrap. First test
 // coverage for this screen.
-import { describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Goals from './index'
 
@@ -22,10 +22,15 @@ jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
-  useAccounts: () => ({ accounts: [], isLoading: false }),
+  useAccounts: () => ({ accounts: [{ id: 'acc-1', name: 'עו״ש', type: 'checking' }], isLoading: false }),
 }))
+const mockCreateGoalMutate = jest.fn(
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
 jest.mock('@/features/savings/hooks/useCreateSavingsGoal', () => ({
-  useCreateSavingsGoal: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  useCreateSavingsGoal: () => ({ mutate: mockCreateGoalMutate, isPending: false, isError: false }),
 }))
 
 const GOALS = [
@@ -38,6 +43,44 @@ jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
 }))
 
 describe('Goals list', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  // UX-completeness audit P1 fix: account_id/target_date were writable by
+  // useCreateSavingsGoal but there was no UI field for either.
+  it('lets the create form set an account and an optional target date, sending both on create', async () => {
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+
+    const { getByText, getByLabelText, getByPlaceholderText } = await render(<Goals />)
+
+    await fireEvent.press(getByText('הוספת יעד חיסכון'))
+    await fireEvent.changeText(getByPlaceholderText('לדוגמה: חופשה משפחתית'), 'טיול')
+    await fireEvent.changeText(getByLabelText('סכום יעד'), '1000')
+    await fireEvent.press(getByLabelText('חשבון מקושר (אופציונלי)'))
+    await fireEvent.press(getByText('עו״ש'))
+    await fireEvent.press(getByText('עם תאריך יעד'))
+    await fireEvent.press(getByText('הוספת יעד'))
+
+    expect(mockCreateGoalMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'טיול', accountId: 'acc-1', targetDate: expect.any(String) }),
+      expect.anything()
+    )
+  })
+
+  it('defaults to no target date, sending targetDate: null on create', async () => {
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+
+    const { getByText, getByLabelText, getByPlaceholderText } = await render(<Goals />)
+
+    await fireEvent.press(getByText('הוספת יעד חיסכון'))
+    await fireEvent.changeText(getByPlaceholderText('לדוגמה: חופשה משפחתית'), 'טיול')
+    await fireEvent.changeText(getByLabelText('סכום יעד'), '1000')
+    await fireEvent.press(getByText('הוספת יעד'))
+
+    expect(mockCreateGoalMutate).toHaveBeenCalledWith(expect.objectContaining({ targetDate: null }), expect.anything())
+  })
+
   it('reverses the desktop 2-column goals grid so the first goal renders on the right', async () => {
     mockUseSavingsGoals.mockReturnValue({ goals: GOALS, isLoading: false, error: null })
 

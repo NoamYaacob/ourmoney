@@ -211,6 +211,63 @@ describe('Budgets', () => {
     expect(queryByText('סכום תקציב')).toBeNull()
   })
 
+  // UX-completeness audit P2 fix: there was no way to drop a category out
+  // of a budget once allocated (only overwrite its amount), and no way to
+  // back out of the inline editor without saving or navigating away.
+  it('closes the allocation editor via Cancel without saving anything', async () => {
+    const { getByText, queryByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(/מזון/))
+    expect(getByText('סכום תקציב')).toBeTruthy()
+
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(queryByText('סכום תקציב')).toBeNull()
+    expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
+  })
+
+  it('removes a category allocation after confirming, via the true-replace save RPC with that category omitted', async () => {
+    const { getByText, getAllByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(/מזון/))
+    await fireEvent.press(getByText('הסרת קטגוריה מהתקציב'))
+    expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
+
+    const confirmButtons = getAllByText('הסרת קטגוריה מהתקציב')
+    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
+
+    expect(mockSaveAllocationsMutate).toHaveBeenCalledWith(
+      { periodStart: TARGET_PERIOD_START, allocations: [] },
+      expect.anything()
+    )
+  })
+
+  it('lets the remove-allocation confirmation be cancelled without writing anything', async () => {
+    const { getByText, getAllByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText(/מזון/))
+    await fireEvent.press(getByText('הסרת קטגוריה מהתקציב'))
+    // The inline editor's own Cancel button is still mounted behind the
+    // confirm modal (editingCategoryId is untouched by opening it) — the
+    // modal's own Cancel is the last "ביטול" in the tree.
+    const cancelButtons = getAllByText('ביטול')
+    await fireEvent.press(cancelButtons[cancelButtons.length - 1]!)
+
+    expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
+  })
+
+  it('closes the assign-category form via Cancel without submitting', async () => {
+    mockUncategorized = [{ id: 'txn-1', description: 'קניות בסופר', amount_agorot: -5000, txn_date: '2026-08-10' }]
+    const { getByText, queryByText } = await render(<Budgets />)
+
+    await fireEvent.press(getByText('שיוך לקטגוריה'))
+    expect(getByText('שיוך')).toBeTruthy()
+
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(queryByText('שיוך')).toBeNull()
+  })
+
   it('shows the genuine empty state when the uncategorized queue really is empty', async () => {
     mockUncategorized = []
     mockUncategorizedError = null

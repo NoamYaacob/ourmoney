@@ -26,6 +26,7 @@ import { ConflictModal } from '@/components/ui/ConflictModal'
 import type { RecurringFrequency, RecurringTransaction } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
+const DAY_OF_MONTH_FREQUENCIES: RecurringFrequency[] = ['monthly', 'quarterly', 'yearly']
 
 export default function RecurringDetail() {
   const { t } = useTranslation()
@@ -50,6 +51,7 @@ export default function RecurringDetail() {
   const [description, setDescription] = useState('')
   const [accountId, setAccountId] = useState<string | null>(null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [isShared, setIsShared] = useState(true)
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
   const [editError, setEditError] = useState<string | null>(null)
   // Pinned at the exact moment startEditing() snapshots the other fields —
@@ -89,6 +91,7 @@ export default function RecurringDetail() {
     setDescription(source.description)
     setAccountId(source.account_id)
     setCategoryId(source.category_id)
+    setIsShared(source.is_shared)
     setFrequency(source.frequency)
     setEditingVersion(source.version)
     setIsEditing(true)
@@ -112,6 +115,21 @@ export default function RecurringDetail() {
       return
     }
 
+    // day_of_month must track the SELECTED frequency, not the template's
+    // stored value — sending the old value unchanged when switching e.g.
+    // daily (day_of_month always null) -> monthly persists a null
+    // day_of_month against a monthly template. advance_recurring_due_date()
+    // (migration 003) computes LEAST(NULL, x) = NULL, so the very next
+    // generate/skip silently sets next_due_date to NULL forever — the
+    // template stops generating with no error anywhere and no way to
+    // recover from the UI (bug found in the UX-completeness audit). Falls
+    // back to deriving from the template's own next_due_date, mirroring
+    // create's derivation (recurring/index.tsx) exactly, since the edit
+    // form has no separate date field to derive from directly.
+    const dayOfMonth = DAY_OF_MONTH_FREQUENCIES.includes(frequency)
+      ? (item.day_of_month ?? Number(item.next_due_date.slice(8, 10)))
+      : null
+
     updateRecurring.mutate(
       {
         id: item.id,
@@ -120,9 +138,9 @@ export default function RecurringDetail() {
         categoryId,
         amountAgorot: signedAmountAgorot(parsed.agorot, isIncome),
         description: description.trim(),
-        isShared: item.is_shared,
+        isShared,
         frequency,
-        dayOfMonth: item.day_of_month,
+        dayOfMonth,
       },
       {
         onSuccess: () => setIsEditing(false),
@@ -208,6 +226,12 @@ export default function RecurringDetail() {
             onChange={(value) => setFrequency(value as RecurringFrequency)}
             placeholder={t('recurring.form.frequencyLabel')}
           />
+
+          <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('transactions.form.sharedLabel')}</Text>
+          <View className="mb-4 flex-row gap-2">
+            <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
+            <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
+          </View>
 
           {(editError || updateRecurring.isError) && (
             <ErrorMessage message={editError ?? t('recurring.errors.generic')} />

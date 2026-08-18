@@ -30,14 +30,15 @@ jest.mock('@/features/household/hooks/useHousehold', () => ({
 jest.mock('@/features/household/hooks/useHouseholdMembers', () => ({
   useHouseholdMembers: () => ({ members: [{ userId: 'user-1', displayName: 'נועם', role: 'admin' }] }),
 }))
+const mockUseAccounts = jest.fn(() => ({
+  accounts: [
+    { id: 'acct-1', name: 'עו״ש', type: 'checking', is_active: true },
+    { id: 'acct-2', name: 'מזומן', type: 'cash', is_active: true },
+  ],
+  isLoading: false,
+}))
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
-  useAccounts: () => ({
-    accounts: [
-      { id: 'acct-1', name: 'עו״ש', type: 'checking' },
-      { id: 'acct-2', name: 'מזומן', type: 'cash' },
-    ],
-    isLoading: false,
-  }),
+  useAccounts: () => mockUseAccounts(),
 }))
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({
@@ -80,6 +81,41 @@ describe('NewTransaction (Add Transaction)', () => {
     mockCreateTransferMutate.mockClear()
     mockTransferIsPending = false
     mockTransferIsError = false
+    mockUseAccounts.mockReturnValue({
+      accounts: [
+        { id: 'acct-1', name: 'עו״ש', type: 'checking', is_active: true },
+        { id: 'acct-2', name: 'מזומן', type: 'cash', is_active: true },
+      ],
+      isLoading: false,
+    })
+  })
+
+  // UX-completeness audit P1 fix: archived (is_active: false) accounts were
+  // still offered — and could even be silently auto-selected as the
+  // default — in the account/transfer pickers on this screen, even though
+  // an archived account is meant to be hidden from new activity (matching
+  // accounts/[id].tsx's own archive-confirm copy: "יוסתר מרשימת החשבונות
+  // לבחירה בתנועות חדשות"). accounts/index.tsx and accounts/[id].tsx
+  // intentionally keep showing archived accounts for history/unarchive —
+  // only this screen's pickers exclude them.
+  it('excludes an archived account from the account picker and its default selection', async () => {
+    mockUseAccounts.mockReturnValue({
+      accounts: [
+        { id: 'acct-1', name: 'עו״ש', type: 'checking', is_active: false },
+        { id: 'acct-2', name: 'מזומן', type: 'cash', is_active: true },
+      ],
+      isLoading: false,
+    })
+    const { getByLabelText, getByText, queryByText } = await render(<NewTransaction />)
+
+    await fillRequiredFields(getByLabelText)
+    await fireEvent.press(getByText('שמירת תנועה'))
+
+    expect(mockCreateMutate).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'acct-2' }), expect.anything())
+
+    // The archived account never appears as a choosable option at all.
+    await fireEvent.press(getByLabelText('חשבון'))
+    expect(queryByText('עו״ש')).toBeNull()
   })
 
   it('defaults to expense, and submits a negative signed amount', async () => {

@@ -84,6 +84,10 @@ jest.mock('@/features/auth/hooks/useUpdateProfile', () => ({
 jest.mock('@/features/auth/hooks/useBiometricPreference', () => ({
   useBiometricPreference: () => ({ enabled: false, setEnabled: jest.fn(), isLoading: false }),
 }))
+const mockUseBiometricAvailability = jest.fn(() => ({ isAvailable: true, isLoading: false }))
+jest.mock('@/features/auth/hooks/useBiometricAvailability', () => ({
+  useBiometricAvailability: () => mockUseBiometricAvailability(),
+}))
 jest.mock('@/features/auth/hooks/useSignOut', () => ({
   useSignOut: () => ({ mutate: jest.fn() }),
 }))
@@ -197,6 +201,19 @@ describe('Settings screen — household/profile management', () => {
         expect.anything()
       )
     )
+  })
+
+  // UX-completeness audit P2 fix: every "הסרה" button in the household
+  // list shared the exact same generic accessible name — a screen reader
+  // user with more than one non-admin member couldn't tell them apart.
+  it('gives the remove button a per-member accessible name, not the shared generic label', async () => {
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER, OTHER_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByRole } = await render(<Settings />)
+
+    expect(getByRole('button', { name: 'הסרת Yossi Cohen ממשק הבית' })).toBeTruthy()
   })
 
   it('never shows a remove button for a member viewer (non-admin)', async () => {
@@ -375,5 +392,45 @@ describe('Settings screen — household/profile management', () => {
 
     expect(climbToPanel(getByText('משק הבית'))?.props.className as string).toContain('web:desktop:border')
     expect(climbToPanel(getByText('ניהול כספים'))?.props.className as string).toContain('web:desktop:border')
+  })
+
+  // UX-completeness audit P2 fix: the biometric Switch could be flipped on
+  // even on a device with no enrolled biometric hardware — expo-local-
+  // authentication would then fail at the next lock/unlock with no warning
+  // ever shown at the point of turning it on.
+  it('enables the biometric switch when the device has biometrics available', async () => {
+    mockUseBiometricAvailability.mockReturnValue({ isAvailable: true, isLoading: false })
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByLabelText, queryByText } = await render(<Settings />)
+
+    expect(getByLabelText('נעילה ביומטרית').props.disabled).toBeFalsy()
+    expect(queryByText('לא זמינה במכשיר זה')).toBeNull()
+  })
+
+  it('disables the biometric switch and shows a caption when the device has no biometrics enrolled', async () => {
+    mockUseBiometricAvailability.mockReturnValue({ isAvailable: false, isLoading: false })
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByLabelText, getByText } = await render(<Settings />)
+
+    expect(getByLabelText('נעילה ביומטרית').props.disabled).toBe(true)
+    expect(getByText('לא זמינה במכשיר זה')).toBeTruthy()
+  })
+
+  it('disables the biometric switch while availability is still resolving, without showing the unavailable caption', async () => {
+    mockUseBiometricAvailability.mockReturnValue({ isAvailable: false, isLoading: true })
+    setHousehold('admin')
+    setMembers([ADMIN_MEMBER])
+    mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
+
+    const { getByLabelText, queryByText } = await render(<Settings />)
+
+    expect(getByLabelText('נעילה ביומטרית').props.disabled).toBe(true)
+    expect(queryByText('לא זמינה במכשיר זה')).toBeNull()
   })
 })

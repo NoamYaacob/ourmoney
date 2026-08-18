@@ -9,6 +9,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useUpdateProfile } from '@/features/auth/hooks/useUpdateProfile'
 import { useBiometricPreference } from '@/features/auth/hooks/useBiometricPreference'
+import { useBiometricAvailability } from '@/features/auth/hooks/useBiometricAvailability'
 import { useSignOut } from '@/features/auth/hooks/useSignOut'
 import { useDeleteUserAccount } from '@/features/auth/hooks/useDeleteUserAccount'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -62,6 +63,7 @@ export default function Settings() {
   const [shareFailed, setShareFailed] = useState(false)
   const { preference, setPreference } = useTheme()
   const biometric = useBiometricPreference()
+  const biometricAvailability = useBiometricAvailability()
   const signOut = useSignOut()
   const deleteAccount = useDeleteUserAccount()
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false)
@@ -363,6 +365,7 @@ export default function Settings() {
                   {role === 'admin' && member.role !== 'admin' && (
                     <Button
                       title={t('settings.household.removeMember')}
+                      accessibilityLabel={t('settings.household.removeMemberLabel', { name: member.displayName })}
                       variant="ghost"
                       onPress={() => {
                         setRemoveMemberError(null)
@@ -454,11 +457,16 @@ export default function Settings() {
         <SettingsRow
           iconName="finger-print-outline"
           label={t('settings.security.biometricToggle')}
+          value={
+            !biometricAvailability.isLoading && !biometricAvailability.isAvailable
+              ? t('settings.security.biometricUnavailable')
+              : undefined
+          }
           trailing={
             <Switch
               value={biometric.enabled}
               onValueChange={biometric.setEnabled}
-              disabled={biometric.isLoading}
+              disabled={biometric.isLoading || biometricAvailability.isLoading || !biometricAvailability.isAvailable}
               accessibilityLabel={t('settings.security.biometricToggle')}
               trackColor={{
                 false: scheme === 'dark' ? colors.border.dark : colors.border.light,

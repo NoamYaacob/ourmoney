@@ -709,12 +709,16 @@ describe('Transactions list', () => {
       mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
       mockBulkIsPending = true
 
-      const { getByText, queryByRole } = await render(<Transactions />)
+      const { getByText, getByRole } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
       await fireEvent.press(getByText('קניות בסופר'))
 
-      // The category-picking trigger itself is not interactable while pending.
-      expect(queryByRole('button', { name: 'שינוי קטגוריה' })).toBeNull()
+      // The category-picking trigger keeps its accessible name (Button now
+      // always exposes accessibilityLabel, UX-completeness audit finding)
+      // but is disabled and marked busy — not interactable while pending.
+      const trigger = getByRole('button', { name: 'שינוי קטגוריה' })
+      expect(trigger.props.accessibilityState.disabled).toBe(true)
+      expect(trigger.props.accessibilityState.busy).toBe(true)
     })
 
     it('gives a selected row a non-color-only, screen-reader-visible selected state (accessibilityRole/State, not color alone)', async () => {

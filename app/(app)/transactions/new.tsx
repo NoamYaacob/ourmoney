@@ -82,11 +82,20 @@ export default function NewTransaction() {
   const [payerIdOverride, setPayerIdOverride] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const accountId = accountIdOverride ?? accounts[0]?.id ?? null
+  // Archiving an account is meant to remove it from every picker a new
+  // transaction/transfer could attribute money to (UX-completeness audit
+  // finding: an archived account previously stayed selectable here,
+  // contradicting useArchiveAccount.ts's own stated purpose). accounts/
+  // [id].tsx and accounts/index.tsx intentionally keep showing archived
+  // accounts for history/unarchive — only this create-flow's pickers filter
+  // them out.
+  const activeAccounts = accounts.filter((a) => a.is_active)
+
+  const accountId = accountIdOverride ?? activeAccounts[0]?.id ?? null
   // Default destination is the first account that isn't already the
   // default source — never the same account twice, so the same-account
   // validation error never greets a user who hasn't touched either picker.
-  const toAccountId = toAccountIdOverride ?? accounts.find((a) => a.id !== accountId)?.id ?? null
+  const toAccountId = toAccountIdOverride ?? activeAccounts.find((a) => a.id !== accountId)?.id ?? null
   const payerId = payerIdOverride ?? user?.id ?? null
   const selectedAccount = accounts.find((a) => a.id === accountId)
   const selectedToAccount = accounts.find((a) => a.id === toAccountId)
@@ -152,7 +161,7 @@ export default function NewTransaction() {
     )
   }
 
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
+  const accountOptions = activeAccounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 

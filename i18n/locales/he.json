@@ -189,6 +189,8 @@
       "save": "שמירה",
       "archive": "העברה לארכיון",
       "archived": "בארכיון",
+      "archiveConfirmTitle": "העברת חשבון לארכיון",
+      "archiveConfirmMessage": "החשבון יוסתר מרשימת החשבונות לבחירה בתנועות חדשות. אפשר יהיה עדיין לראות אותו ואת התנועות שלו.",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת חשבון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
@@ -297,6 +299,10 @@
       "nameLabel": "שם היעד",
       "namePlaceholder": "לדוגמה: חופשה משפחתית",
       "targetLabel": "סכום יעד",
+      "accountLabel": "חשבון מקושר (אופציונלי)",
+      "targetDateLabel": "תאריך יעד",
+      "hasTargetDate": "עם תאריך יעד",
+      "noTargetDate": "ללא תאריך יעד",
       "submit": "הוספת יעד",
       "errors": {
         "missingName": "יש להזין שם ליעד"
@@ -341,10 +347,18 @@
       "edit": "עריכה",
       "save": "שמירה",
       "markPaid": "סימון כשולם",
+      "markPaidConfirmTitle": "סימון כשולם",
+      "markPaidConfirmMessage": "ההתחייבות תסומן כשולמה ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
       "cancelObligation": "ביטול ההתחייבות",
+      "cancelConfirmTitle": "ביטול ההתחייבות",
+      "cancelConfirmMessage": "ההתחייבות תסומן כמבוטלת ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת התחייבות",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    },
+    "history": {
+      "showButton": "היסטוריית התחייבויות",
+      "hideButton": "הסתרת היסטוריה"
     }
   },
   "import": {
@@ -401,6 +415,10 @@
     "saveAllocation": "שמירה",
     "addCategoryLabel": "הוספת קטגוריה לתקציב",
     "addCategoryPlaceholder": "בחירת קטגוריה",
+    "removeAllocation": "הסרת קטגוריה מהתקציב",
+    "removeAllocationLabel": "הסרת {{name}} מהתקציב",
+    "removeConfirmTitle": "הסרת קטגוריה מהתקציב",
+    "removeConfirmMessage": "הסרת \"{{name}}\" מהתקציב החודש תמחק את הסכום שהוקצה לה. ניתן להוסיף אותה שוב בהמשך.",
     "uncategorizedTitle": "תנועות ללא קטגוריה",
     "uncategorizedEmpty": "כל התנועות מסווגות",
     "assignCategoryButton": "שיוך לקטגוריה",
@@ -539,6 +557,7 @@
     "categoryRemaining": "נותרו {{amount}}",
     "categoryExceeded": "חריגה של {{amount}}",
     "noBudget": "עדיין לא הוגדר תקציב לחודש זה.",
+    "noBudgetHero": "הגדירו תקציב חודשי כדי לעקוב כאן אחר מה שנותר להוציא.",
     "recentTitle": "תנועות אחרונות",
     "viewAll": "כל התנועות",
     "noTransactions": "עדיין אין תנועות החודש.",
@@ -712,7 +731,8 @@
     },
     "security": {
       "title": "אבטחה",
-      "biometricToggle": "נעילה ביומטרית"
+      "biometricToggle": "נעילה ביומטרית",
+      "biometricUnavailable": "לא זמינה במכשיר זה"
     },
     "account": {
       "title": "חשבון"

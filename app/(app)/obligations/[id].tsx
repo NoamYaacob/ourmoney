@@ -38,6 +38,11 @@ export default function ObligationDetail() {
   const deleteObligation = useDeletePlannedObligation(householdId)
 
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
+  // UX-completeness audit finding: mark-paid/cancel were the only status
+  // transitions in the app with no confirmation — both are one-way from the
+  // UI (the action buttons only render for status === 'upcoming', so there
+  // is no way back once tapped) yet had less friction than deleting.
+  const [confirmStatusAction, setConfirmStatusAction] = useState<'completed' | 'cancelled' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const [isEditing, setIsEditing] = useState(false)
@@ -152,6 +157,27 @@ export default function ObligationDetail() {
     }
   }
 
+  function handleConfirmStatusChange() {
+    if (!obligation || !confirmStatusAction || setStatus.isPending) return
+    setActionError(null)
+    setStatus.mutate(
+      { id: obligation.id, expectedVersion: obligation.version, status: confirmStatusAction },
+      {
+        onSuccess: () => setConfirmStatusAction(null),
+        onError: (error) => {
+          setConfirmStatusAction(null)
+          if (isConflictError(error)) {
+            setConflict({ kind: 'conflict' })
+          } else if (isNotFoundError(error)) {
+            setConflict({ kind: 'not_found' })
+          } else {
+            setActionError(t('obligations.errors.generic'))
+          }
+        },
+      }
+    )
+  }
+
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he }))
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const category = obligation.category_id ? categories.find((c) => c.id === obligation.category_id) : undefined
@@ -236,27 +262,7 @@ export default function ObligationDetail() {
 
           {obligation.status === 'upcoming' && (
             <View className="mb-3">
-              <Button
-                title={t('obligations.detail.markPaid')}
-                loading={setStatus.isPending}
-                onPress={() => {
-                  setActionError(null)
-                  setStatus.mutate(
-                    { id: obligation.id, expectedVersion: obligation.version, status: 'completed' },
-                    {
-                      onError: (error) => {
-                        if (isConflictError(error)) {
-                          setConflict({ kind: 'conflict' })
-                        } else if (isNotFoundError(error)) {
-                          setConflict({ kind: 'not_found' })
-                        } else {
-                          setActionError(t('obligations.errors.generic'))
-                        }
-                      },
-                    }
-                  )
-                }}
-              />
+              <Button title={t('obligations.detail.markPaid')} onPress={() => setConfirmStatusAction('completed')} />
             </View>
           )}
 
@@ -265,24 +271,7 @@ export default function ObligationDetail() {
               <Button
                 title={t('obligations.detail.cancelObligation')}
                 variant="secondary"
-                loading={setStatus.isPending}
-                onPress={() => {
-                  setActionError(null)
-                  setStatus.mutate(
-                    { id: obligation.id, expectedVersion: obligation.version, status: 'cancelled' },
-                    {
-                      onError: (error) => {
-                        if (isConflictError(error)) {
-                          setConflict({ kind: 'conflict' })
-                        } else if (isNotFoundError(error)) {
-                          setConflict({ kind: 'not_found' })
-                        } else {
-                          setActionError(t('obligations.errors.generic'))
-                        }
-                      },
-                    }
-                  )
-                }}
+                onPress={() => setConfirmStatusAction('cancelled')}
               />
             </View>
           )}
@@ -323,6 +312,25 @@ export default function ObligationDetail() {
             }
           )
         }
+      />
+
+      <Modal
+        visible={confirmStatusAction !== null}
+        title={t(
+          confirmStatusAction === 'cancelled' ? 'obligations.detail.cancelConfirmTitle' : 'obligations.detail.markPaidConfirmTitle'
+        )}
+        message={t(
+          confirmStatusAction === 'cancelled'
+            ? 'obligations.detail.cancelConfirmMessage'
+            : 'obligations.detail.markPaidConfirmMessage'
+        )}
+        confirmLabel={t(
+          confirmStatusAction === 'cancelled' ? 'obligations.detail.cancelObligation' : 'obligations.detail.markPaid'
+        )}
+        cancelLabel={t('common.cancel')}
+        loading={setStatus.isPending}
+        onCancel={() => setConfirmStatusAction(null)}
+        onConfirm={handleConfirmStatusChange}
       />
 
       <ConflictModal

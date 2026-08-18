@@ -25,6 +25,7 @@ import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
+import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
@@ -46,6 +47,13 @@ export default function Obligations() {
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
 
+  // UX-completeness audit finding: completed/cancelled obligations vanished
+  // from this screen entirely with no way to look them up again — there
+  // was no audit trail confirming a mark-paid/cancel actually took effect.
+  // Reuses the household's already-loaded obligations list (no new query,
+  // no new index) — just an additional client-side filter alongside
+  // filterUpcomingObligations below.
+  const [isHistoryVisible, setIsHistoryVisible] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
   const [name, setName] = useState('')
   const [amountText, setAmountText] = useState('')
@@ -106,6 +114,11 @@ export default function Obligations() {
   const upcomingById = new Map(obligations.map((o) => [o.id, o]))
   const today = localDateString()
 
+  const history = obligations
+    .filter((o) => o.status !== 'upcoming')
+    .slice()
+    .sort((a, b) => b.due_date.localeCompare(a.due_date))
+
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
@@ -122,7 +135,17 @@ export default function Obligations() {
       ) : (
         <>
           {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} />}
-          <View>
+          {/* Responsive/desktop pass: same 2-column card grid as
+              accounts/recurring/goals once there's more than one obligation,
+              desktop only — `w-[48%]` + `justify-between` on a `flex-row
+              flex-wrap` container is a calc()-free way to get two even
+              columns in Yoga/RN's flexbox. Mobile/tablet keep the original
+              single-column list untouched. */}
+          <View
+            className={
+              upcoming.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
+            }
+          >
             {upcoming.map((item) => {
               const obligation = upcomingById.get(item.id)
               if (!obligation) return null
@@ -133,7 +156,7 @@ export default function Obligations() {
                   key={obligation.id}
                   onPress={() => router.push(`/obligations/${obligation.id}`)}
                   accessibilityRole="button"
-                  className="mb-2"
+                  className={upcoming.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
                 >
                   <Card>
                     <View className="flex-row items-center justify-between web:flex-row-reverse">
@@ -164,6 +187,65 @@ export default function Obligations() {
               )
             })}
           </View>
+
+          {history.length > 0 && (
+            <View className="mt-4">
+              <Pressable
+                onPress={() => setIsHistoryVisible((v) => !v)}
+                accessibilityRole="button"
+                className="flex-row items-center gap-1 web:flex-row-reverse"
+              >
+                <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                  {t(isHistoryVisible ? 'obligations.history.hideButton' : 'obligations.history.showButton')}
+                </Text>
+              </Pressable>
+              {isHistoryVisible && (
+                <View className="mt-2">
+                  <Card>
+                    {history.map((obligation, index) => {
+                      const category = obligation.category_id
+                        ? categories.find((c) => c.id === obligation.category_id)
+                        : undefined
+                      return (
+                        <Pressable
+                          key={obligation.id}
+                          onPress={() => router.push(`/obligations/${obligation.id}`)}
+                          accessibilityRole="button"
+                        >
+                          {index > 0 && (
+                            <View className="my-3">
+                              <Divider />
+                            </View>
+                          )}
+                          <View className="flex-row items-center justify-between web:flex-row-reverse">
+                            <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
+                              <CategoryIcon icon={category?.icon} size="sm" />
+                              <View className="flex-1">
+                                <Text
+                                  className="text-base font-semibold text-ink-light dark:text-ink-dark"
+                                  numberOfLines={1}
+                                >
+                                  {obligation.name}
+                                </Text>
+                                <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                                  {obligation.due_date}
+                                  {' · '}
+                                  {t(`obligations.status.${obligation.status}`)}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+                              {formatILS(obligation.amount_agorot)}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      )
+                    })}
+                  </Card>
+                </View>
+              )}
+            </View>
+          )}
         </>
       )}
 

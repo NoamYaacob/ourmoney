@@ -108,10 +108,13 @@ describe('Obligation detail', () => {
     expect(variables.expectedVersion).toBe(1)
   })
 
-  it('marks the obligation as paid via the narrow status RPC, sending the currently-rendered version', async () => {
-    const { getByText } = await render(<ObligationDetail />)
+  it('marks the obligation as paid via the narrow status RPC, sending the currently-rendered version, after confirming (UX-completeness audit fix: this was previously a single un-confirmed tap)', async () => {
+    const { getByText, getAllByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('סימון כשולם'))
+    expect(mockSetStatusMutate).not.toHaveBeenCalled()
+    const confirmButtons = getAllByText('סימון כשולם')
+    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
 
     expect(mockSetStatusMutate).toHaveBeenCalledWith(
       { id: 'ob-1', expectedVersion: 1, status: 'completed' },
@@ -120,10 +123,13 @@ describe('Obligation detail', () => {
     expect(mockUpdateMutate).not.toHaveBeenCalled()
   })
 
-  it('cancels the obligation via the narrow status RPC, sending the currently-rendered version', async () => {
-    const { getByText } = await render(<ObligationDetail />)
+  it('cancels the obligation via the narrow status RPC, sending the currently-rendered version, after confirming (UX-completeness audit fix)', async () => {
+    const { getByText, getAllByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('ביטול ההתחייבות'))
+    expect(mockSetStatusMutate).not.toHaveBeenCalled()
+    const confirmButtons = getAllByText('ביטול ההתחייבות')
+    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
 
     expect(mockSetStatusMutate).toHaveBeenCalledWith(
       { id: 'ob-1', expectedVersion: 1, status: 'cancelled' },
@@ -190,9 +196,11 @@ describe('Obligation detail', () => {
     mockSetStatusMutate.mockImplementationOnce((_variables, callbacks) => {
       callbacks?.onError?.(new ConcurrencyError('not_found'))
     })
-    const { getByText } = await render(<ObligationDetail />)
+    const { getByText, getAllByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('סימון כשולם'))
+    const confirmButtons = getAllByText('סימון כשולם')
+    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
 
     await waitFor(() => expect(getByText('הפריט הזה נמחק או שאינו זמין יותר.')).toBeTruthy())
   })

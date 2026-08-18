@@ -96,6 +96,34 @@ describe('Recurring list', () => {
     expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
   })
 
+  // UX-completeness audit P2 fix: a paused (is_active: false) card rendered
+  // with the exact same styling as an active one, indistinguishable at a
+  // glance beyond the small "· מושהית" text suffix.
+  it('gives a paused template a visually muted card and a bold inactive suffix, leaving an active one untouched', async () => {
+    mockUseRecurringTransactions.mockReturnValue({
+      recurringTransactions: [{ ...RECURRING[0], id: 'rec-1', is_active: false }, RECURRING[1]],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText } = await render(<Recurring />)
+
+    expect(getByText('· מושהית').props.className).toContain('font-semibold')
+
+    let pausedCard = getByText('שכירות').parent
+    while (pausedCard && !(pausedCard.props.className as string | undefined)?.includes('opacity-60')) {
+      pausedCard = pausedCard.parent
+    }
+    expect(pausedCard).toBeTruthy()
+
+    let activeCard = getByText('ביטוח').parent
+    while (activeCard && !(activeCard.props.className as string | undefined)?.includes('rounded-card')) {
+      activeCard = activeCard.parent
+    }
+    expect(activeCard).toBeTruthy()
+    expect(activeCard?.props.className as string).not.toContain('opacity-60')
+  })
+
   it('renders a detected price increase with previous/current amounts and percent', async () => {
     mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [PRICE_INCREASE_DETECTION], isLoading: false, error: null })

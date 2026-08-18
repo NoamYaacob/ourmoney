@@ -178,7 +178,17 @@ export default function Recurring() {
               accessibilityRole="button"
               className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
             >
-              <Card>
+              {/* Paused items are dimmed and get a bolded status word instead
+                  of blending into the muted caption — the inline "· מושהית"
+                  suffix alone was too easy to miss when scanning the list
+                  (UX-completeness audit finding). */}
+              <Card
+                className={
+                  !item.is_active
+                    ? 'rounded-card border border-border-light bg-surfaceMuted-light p-3 opacity-60 dark:border-border-dark dark:bg-surfaceMuted-dark'
+                    : undefined
+                }
+              >
                 <View className="flex-row items-center justify-between">
                   <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">
                     {item.description}
@@ -189,7 +199,9 @@ export default function Recurring() {
                 </View>
                 <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
                   {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
-                  {!item.is_active ? ` · ${t('recurring.inactive')}` : ''}
+                  {!item.is_active && (
+                    <Text className="font-semibold text-ink-light dark:text-ink-dark"> · {t('recurring.inactive')}</Text>
+                  )}
                 </Text>
               </Card>
             </Pressable>

@@ -36,6 +36,7 @@ export default function AccountDetail() {
 
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [confirmArchiveVisible, setConfirmArchiveVisible] = useState(false)
 
   const account = accounts.find((a) => a.id === id)
 
@@ -107,7 +108,7 @@ export default function AccountDetail() {
         variant="secondary"
         disabled={!account.is_active}
         loading={archiveAccount.isPending}
-        onPress={() => archiveAccount.mutate(account.id)}
+        onPress={() => setConfirmArchiveVisible(true)}
       />
 
       {/* accounts_delete RLS (is_household_admin(household_id)) is the real
@@ -123,6 +124,22 @@ export default function AccountDetail() {
       )}
 
       {deleteError && <ErrorMessage message={t(deleteError)} />}
+
+      <Modal
+        visible={confirmArchiveVisible}
+        title={t('accounts.detail.archiveConfirmTitle')}
+        message={t('accounts.detail.archiveConfirmMessage')}
+        confirmLabel={t('accounts.detail.archive')}
+        cancelLabel={t('common.cancel')}
+        loading={archiveAccount.isPending}
+        onCancel={() => setConfirmArchiveVisible(false)}
+        onConfirm={() =>
+          archiveAccount.mutate(account.id, {
+            onSuccess: () => setConfirmArchiveVisible(false),
+            onError: () => setConfirmArchiveVisible(false),
+          })
+        }
+      />
 
       <Modal
         visible={confirmDeleteVisible}
