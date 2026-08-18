@@ -1,20 +1,9 @@
-name: Migration History Reconciliation
+name: Migration History Alignment Check
 
-# One-off, manually-dispatched (via scoped push trigger — see README.md in
-# supabase/ci_verification/) task: make OurMoney Preview's
-# supabase_migrations.schema_migrations recognize local migrations
-# 001-005 as applied, WITHOUT changing any schema object. Companion to
-# migration-005-preview-validation.yml, which already applied migration
-# 005's SQL directly (bypassing `supabase db push`, since the remote's
-# history uses four unrecognized timestamp versions with no local
-# counterpart even though the schema they produced is identical to what
-# 001-004 would produce).
-#
-# Phased, like the prior workflow: this file grows across commits as each
-# phase's findings inform the next. Nothing in Phase 1 writes anything —
-# it only reads supabase_migrations.schema_migrations' exact structure
-# and content so the reconciliation SQL proposed afterward is backed by
-# real evidence, not inference from object presence alone.
+# The OurMoney Preview migration history was reconciled on 2026-08-18 so the
+# hosted project now records the same numeric versions as this branch:
+# 001..009. This workflow is intentionally READ-ONLY. It must never repair,
+# insert, update, delete, or otherwise mutate migration history.
 
 on:
   workflow_dispatch:
@@ -22,14 +11,14 @@ on:
     branches:
       - preview/iphone-local
     paths:
-      - 'supabase/ci_verification/history_*.sql'
+      - 'supabase/migrations/**'
       - '.github/workflows/migration-history-reconciliation.yml'
 
 permissions:
   contents: read
 
 jobs:
-  reconcile-migration-history:
+  verify-migration-history:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -47,209 +36,46 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Confirm project identity via Management API (hard gate)
-        run: |
-          set -euo pipefail
-          RESP=$(curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects")
-          echo "$RESP" > /tmp/projects.json
-          node -e "
-            const fs = require('fs');
-            const projects = JSON.parse(fs.readFileSync('/tmp/projects.json', 'utf8'));
-            if (!Array.isArray(projects)) {
-              console.error('Unexpected response from /v1/projects:', JSON.stringify(projects).slice(0, 500));
-              process.exit(1);
-            }
-            const p = projects.find(x => x.id === process.env.SUPABASE_PROJECT_REF);
-            if (!p) {
-              console.error('Project ref ' + process.env.SUPABASE_PROJECT_REF + ' not found among accessible projects.');
-              process.exit(1);
-            }
-            console.log('Found project:', JSON.stringify({ id: p.id, name: p.name, region: p.region, status: p.status }));
-            if (p.name !== 'OurMoney Preview.') {
-              console.error('ABORT: project name is \"' + p.name + '\", expected exactly \"OurMoney Preview.\" Refusing to proceed.');
-              process.exit(1);
-            }
-            fs.appendFileSync(process.env.GITHUB_ENV, 'PROJECT_REGION=' + p.region + '\n');
-          "
-
       - name: Install Supabase CLI
         run: npm install -g supabase
 
-      - name: Link Supabase project
+      - name: Link exact Preview project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
-      - name: Discover a reachable direct SQL connection
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Verify local and remote migration versions are exactly aligned
         run: |
-          set -uo pipefail
-          CANDIDATES=(
-            "aws-1-eu-west-1.pooler.supabase.com|postgres.$SUPABASE_PROJECT_REF"
-            "aws-0-$PROJECT_REGION.pooler.supabase.com|postgres.$SUPABASE_PROJECT_REF"
-            "aws-1-$PROJECT_REGION.pooler.supabase.com|postgres.$SUPABASE_PROJECT_REF"
-            "db.$SUPABASE_PROJECT_REF.supabase.co|postgres"
-          )
-          FOUND=""
-          for c in "${CANDIDATES[@]}"; do
-            HOST="${c%%|*}"
-            USR="${c##*|}"
-            echo "Probing $HOST as $USR ..."
-            if PGCONNECT_TIMEOUT=10 psql "host=$HOST port=5432 dbname=postgres user=$USR sslmode=require" -c 'SELECT 1' >/tmp/probe.log 2>&1; then
-              echo "OK: $HOST reachable"
-              FOUND="$c"
-              break
-            else
-              tail -5 /tmp/probe.log
-            fi
+          set -euo pipefail
+          supabase migration list 2>&1 | tee /tmp/migration-list.txt
+
+          for v in 001 002 003 004 005 006 007 008 009; do
+            # Supabase CLI formatting varies slightly across releases, so
+            # require the version to appear twice on one row: local + remote.
+            awk -v v="$v" '$0 ~ v { n=gsub(v,v); if (n >= 2) ok=1 } END { exit(ok ? 0 : 1) }' /tmp/migration-list.txt \
+              || { echo "ABORT: migration $v is not aligned local/remote"; exit 1; }
           done
-          if [ -z "$FOUND" ]; then
-            echo "ABORT: no candidate connection string was reachable from this runner."
+
+          # No old timestamp-only migration history should remain.
+          if grep -Eq '20260818183746|20260818183853|20260818184029|20260818184149' /tmp/migration-list.txt; then
+            echo 'ABORT: obsolete timestamp migration versions are still present.'
             exit 1
           fi
-          {
-            echo "SQL_HOST=${FOUND%%|*}"
-            echo "SQL_USER=${FOUND##*|}"
-          } >> "$GITHUB_ENV"
 
-      - name: Phase 1a — inspect schema_migrations table structure (read-only)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          echo 'OK: OurMoney Preview migration history is aligned at 001-009.'
+
+      - name: Prove db push proposes no migration
         run: |
           set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_001_table_structure.sql 2>&1 | tee /tmp/history_structure.txt
-
-      - name: Phase 1b — read exact row metadata (read-only)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_002_read_rows.sql 2>&1 | tee /tmp/history_rows.txt
-
-      - name: Phase 1c — dump full statements content for content-level comparison (read-only)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_003_dump_statements.sql > /tmp/history_statements.csv
-          wc -l /tmp/history_statements.csv
-          echo "===BEGIN-STATEMENTS-CSV==="
-          cat /tmp/history_statements.csv
-          echo "===END-STATEMENTS-CSV==="
-
-      - name: Phase 2/3 — apply reconciliation (single transaction)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -1 -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_004_reconciliation.sql 2>&1 | tee /tmp/history_reconciliation_apply.txt
-
-      - name: Phase 3 — re-read migration history (read-only)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/history_002_read_rows.sql 2>&1 | tee /tmp/history_rows_after.txt
-
-      - name: Phase 3 — supabase migration list after reconciliation
-        run: |
-          set -euo pipefail
-          supabase migration list 2>&1 | tee /tmp/migration_list_after.txt
-
-      - name: Phase 3 — prove future db push is a no-op for 001-005 (dry run, no schema-changing statement)
-        run: |
-          set -euo pipefail
-          echo "Attempting supabase db push --dry-run ..."
-          if supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" > /tmp/db_push_dry_run.txt 2>&1; then
-            echo "--dry-run supported, output:"
-            cat /tmp/db_push_dry_run.txt
+          if supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" > /tmp/db-push-dry-run.txt 2>&1; then
+            cat /tmp/db-push-dry-run.txt
           else
-            echo "--dry-run not supported by this CLI version or failed; output:"
-            cat /tmp/db_push_dry_run.txt
-            echo "Falling back to migration_list_after.txt as the proof: every local 001-005 row must show a non-blank Remote column (see previous step's output)."
-          fi
-        env:
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-
-      - name: "Phase 3 — post-check: schema/RLS unchanged (read-only)"
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection_post_reconciliation.txt
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rls_policy.sql 2>&1 | tee -a /tmp/schema_inspection_post_reconciliation.txt
-
-      - name: Phase 4 — migration list BEFORE repair
-        run: |
-          set -euo pipefail
-          supabase migration list 2>&1 | tee /tmp/migration_list_before_repair.txt
-          for v in 001 002 003 004 005; do
-            grep -qE "\`${v}\`[[:space:]]*\|[[:space:]]*\`${v}\`" /tmp/migration_list_before_repair.txt || { echo "ABORT: local $v not shown aligned with remote $v before repair"; exit 1; }
-          done
-          for v in 20260812143917 20260812144427 20260812144458 20260812144531; do
-            grep -qF "$v" /tmp/migration_list_before_repair.txt || { echo "ABORT: expected remote-only version $v not found before repair"; exit 1; }
-          done
-          echo "OK: 001-005 aligned, all 4 remote-only timestamp versions present, before repair."
-
-      - name: Phase 4 — repair the 4 obsolete remote-only versions as reverted
-        run: |
-          set -euo pipefail
-          supabase migration repair --status reverted \
-            20260812143917 20260812144427 20260812144458 20260812144531 \
-            --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee /tmp/migration_repair_output.txt
-        env:
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-
-      - name: Phase 4 — migration list AFTER repair
-        run: |
-          set -euo pipefail
-          supabase migration list 2>&1 | tee /tmp/migration_list_after_repair.txt
-          for v in 001 002 003 004 005; do
-            grep -qE "\`${v}\`[[:space:]]*\|[[:space:]]*\`${v}\`" /tmp/migration_list_after_repair.txt || { echo "ABORT: local $v no longer shown aligned with remote $v after repair"; exit 1; }
-          done
-          echo "OK: 001-005 still aligned after repair."
-
-      - name: Phase 4 — prove db push --dry-run is now a TRUE no-op
-        run: |
-          set -euo pipefail
-          if ! supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" > /tmp/db_push_dry_run_after_repair.txt 2>&1; then
-            echo "STOP: supabase db push --dry-run failed/errored after repair — reporting, not applying anything."
-            cat /tmp/db_push_dry_run_after_repair.txt
+            cat /tmp/db-push-dry-run.txt
+            echo 'ABORT: dry-run failed; do not perform a real push.'
             exit 1
           fi
-          cat /tmp/db_push_dry_run_after_repair.txt
-          if grep -qiE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE)\b' /tmp/db_push_dry_run_after_repair.txt; then
-            echo "STOP: dry-run output contains what looks like a schema-changing or data-changing statement — reporting, not applying anything."
+
+          if grep -qiE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE)\b' /tmp/db-push-dry-run.txt; then
+            echo 'ABORT: dry-run appears to propose a database-changing statement.'
             exit 1
           fi
-          echo "OK: db push --dry-run succeeded and proposes no schema-changing statement — true no-op."
-        env:
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
-      - name: "Phase 4 — post-check: schema/RLS unchanged after repair (read-only)"
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          set -euo pipefail
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection_post_repair.txt
-          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rls_policy.sql 2>&1 | tee -a /tmp/schema_inspection_post_repair.txt
-
-      - name: Upload Phase 1-4 output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: migration-history-reconciliation-output
-          path: |
-            /tmp/history_structure.txt
-            /tmp/history_rows.txt
-            /tmp/history_statements.csv
-            /tmp/history_reconciliation_apply.txt
-            /tmp/history_rows_after.txt
-            /tmp/migration_list_after.txt
-            /tmp/db_push_dry_run.txt
-            /tmp/schema_inspection_post_reconciliation.txt
-            /tmp/migration_list_before_repair.txt
-            /tmp/migration_repair_output.txt
-            /tmp/migration_list_after_repair.txt
-            /tmp/db_push_dry_run_after_repair.txt
-            /tmp/schema_inspection_post_repair.txt
-          if-no-files-found: warn
+          echo 'OK: db push dry-run is a no-op.'
