@@ -1,9 +1,6 @@
 // Responsive/desktop pass: Screen's `width` prop selects one of the shared
 // CONTENT_WIDTH tokens (constants/layout.ts). RNTL can't evaluate real CSS
-// media queries, so this asserts the structural thing that actually matters
-// — the right className reaches the rendered tree for each variant, and the
-// default (no prop passed) is 'narrow', preserving every existing screen's
-// current appearance until it opts into a wider variant.
+// media queries, so this asserts the structural thing that actually matters.
 import { describe, expect, it } from '@jest/globals'
 import { render } from '@testing-library/react-native'
 import { Text } from 'react-native'
@@ -47,12 +44,12 @@ describe('Screen mobile-web bottom clearance', () => {
     const className = screenBottomPaddingClass(false)
     expect(className).toContain('pb-10')
     expect(className).toContain('web:pb-24')
-    expect(className).toContain('web:desktop:pb-10')
+    expect(className).toContain('web:desktop:pb-12')
   })
 
   it('reserves extra mobile-web scroll space when a floating action is present', () => {
     const className = screenBottomPaddingClass(true)
     expect(className).toContain('web:pb-32')
-    expect(className).toContain('web:desktop:pb-10')
+    expect(className).toContain('web:desktop:pb-12')
   })
 })
