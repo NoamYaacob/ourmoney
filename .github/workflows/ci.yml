@@ -194,7 +194,7 @@ jobs:
           if-no-files-found: ignore
 
   expo-export:
-    name: Expo export (web + iOS)
+    name: Expo export (web + iOS + Android)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -216,3 +216,6 @@ jobs:
 
       - name: Expo export — iOS
         run: npx expo export --platform ios
+
+      - name: Expo export — Android
+        run: npx expo export --platform android
