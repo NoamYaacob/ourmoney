@@ -1,0 +1,75 @@
+name: One-off Expo 57 Alignment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-off-expo57-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  align-preview-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release-health branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/release-health-gates
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Remove obsolete SDK 55+ app-config field
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = 'app.json';
+          const json = JSON.parse(fs.readFileSync(path, 'utf8'));
+          delete json.expo.newArchEnabled;
+          fs.writeFileSync(path, JSON.stringify(json, null, 2) + '\n');
+
+      - name: Align packages to installed Expo SDK
+        env:
+          CI: '1'
+        run: npx expo install --fix
+
+      - name: Verify Expo Doctor is clean
+        run: npx expo-doctor
+
+      - name: Commit exact alignment back to PR branch
+        run: |
+          set -euo pipefail
+          git config user.name 'OurMoney CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app.json package.json package-lock.json
+          git diff --cached --check
+          git diff --cached --exit-code && { echo 'No changes produced; refusing empty commit'; exit 1; } || true
+          git commit -m 'fix: align Expo 57 config and dependencies'
+          git push origin HEAD:agent/release-health-gates
+
+  remove-self:
+    needs: align-preview-branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Remove one-off workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'OurMoney CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/one-off-expo57-fix.yml
+          git commit -m 'ci: remove one-off Expo alignment workflow'
+          git push origin HEAD:main
