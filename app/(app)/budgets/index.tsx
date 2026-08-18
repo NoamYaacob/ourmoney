@@ -497,7 +497,7 @@ export default function Budgets() {
                           keyboardType="decimal-pad"
                         />
                         {saveError && <ErrorMessage message={saveError} />}
-                        <View className="flex-row gap-2 web:flex-row-reverse">
+                        <View className="flex-row gap-2 web:flex-row">
                           <View className="flex-1">
                             <Button
                               title={t('budgets.saveAllocation')}
@@ -615,7 +615,7 @@ export default function Budgets() {
                       <Divider />
                     </View>
                   )}
-                  <View className="flex-row items-center justify-between web:flex-row-reverse">
+                  <View className="flex-row items-center justify-between web:flex-row">
                     <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                       {txn.description}
                     </Text>
@@ -644,7 +644,7 @@ export default function Budgets() {
                           />
                         }
                       />
-                      <View className="mt-2 flex-row gap-2 web:flex-row-reverse">
+                      <View className="mt-2 flex-row gap-2 web:flex-row">
                         <View className="flex-1">
                           <Button
                             title={t('budgets.assignCategorySubmit')}

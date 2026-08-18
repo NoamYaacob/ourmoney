@@ -282,7 +282,7 @@ export default function Settings() {
         </Card>
       ) : (
         <Card>
-          <View className="flex-row items-center gap-3 web:flex-row-reverse">
+          <View className="flex-row items-center gap-3 web:flex-row">
             <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={56} />
             <View className="flex-1">
               <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">{displayName}</Text>
@@ -336,7 +336,7 @@ export default function Settings() {
                 </View>
               </View>
             ) : (
-              <View className="flex-row items-center justify-between web:flex-row-reverse">
+              <View className="flex-row items-center justify-between web:flex-row">
                 <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{household?.name}</Text>
                 {/* Admin-only (Fix 1) — households_update's RLS
                     (is_household_admin(id)) is the real gate; `role` here
@@ -363,7 +363,7 @@ export default function Settings() {
               <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
             ) : (
               members.map((member) => (
-                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row-reverse">
+                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row">
                   <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size={28} />
                   <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{member.displayName}</Text>
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">

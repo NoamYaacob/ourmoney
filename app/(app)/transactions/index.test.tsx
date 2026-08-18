@@ -182,7 +182,7 @@ describe('Transactions list', () => {
     const { getByText } = await render(<Transactions />)
 
     const header = getByText('תנועות').parent
-    expect(header?.props.className as string).toContain('web:flex-row-reverse')
+    expect(header?.props.className as string).toContain('web:flex-row')
   })
 
   // Desktop polish pass: a simple 3-column row list (icon, description,

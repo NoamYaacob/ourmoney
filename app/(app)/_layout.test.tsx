@@ -141,6 +141,6 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
       return findByClassName(asRecord.children, substring)
     }
 
-    expect(findByClassName(result.toJSON(), 'web:flex-row-reverse')).toBe(true)
+    expect(findByClassName(result.toJSON(), 'web:flex-row')).toBe(true)
   })
 })

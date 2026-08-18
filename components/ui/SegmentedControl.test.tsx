@@ -25,6 +25,6 @@ describe('SegmentedControl', () => {
     )
 
     const container = getByLabelText('type')
-    expect(container.props.className as string).toContain('web:flex-row-reverse')
+    expect(container.props.className as string).toContain('web:flex-row')
   })
 })

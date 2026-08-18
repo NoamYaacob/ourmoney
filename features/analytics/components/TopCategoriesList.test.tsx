@@ -23,6 +23,6 @@ describe('TopCategoriesList', () => {
     )
 
     const row = getByText('מזון').parent
-    expect(row?.props.className as string).toContain('web:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:flex-row')
   })
 })

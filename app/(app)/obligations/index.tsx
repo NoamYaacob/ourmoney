@@ -159,8 +159,8 @@ export default function Obligations() {
                   className={upcoming.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
                 >
                   <Card>
-                    <View className="flex-row items-center justify-between web:flex-row-reverse">
-                      <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
+                    <View className="flex-row items-center justify-between web:flex-row">
+                      <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                         <CategoryIcon icon={category?.icon} size="sm" />
                         <View className="flex-1">
                           <Text className="text-base font-semibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
@@ -193,7 +193,7 @@ export default function Obligations() {
               <Pressable
                 onPress={() => setIsHistoryVisible((v) => !v)}
                 accessibilityRole="button"
-                className="flex-row items-center gap-1 web:flex-row-reverse"
+                className="flex-row items-center gap-1 web:flex-row"
               >
                 <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
                   {t(isHistoryVisible ? 'obligations.history.hideButton' : 'obligations.history.showButton')}
@@ -217,8 +217,8 @@ export default function Obligations() {
                               <Divider />
                             </View>
                           )}
-                          <View className="flex-row items-center justify-between web:flex-row-reverse">
-                            <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
+                          <View className="flex-row items-center justify-between web:flex-row">
+                            <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                               <CategoryIcon icon={category?.icon} size="sm" />
                               <View className="flex-1">
                                 <Text

@@ -20,6 +20,6 @@ describe('MonthNavigator', () => {
     )
 
     const row = getByLabelText('חודש קודם').parent
-    expect(row?.props.className as string).toContain('web:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:flex-row')
   })
 })

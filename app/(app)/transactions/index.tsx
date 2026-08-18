@@ -245,7 +245,7 @@ export default function Transactions() {
       width="medium"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <View className="mb-6 flex-row items-center justify-between web:flex-row-reverse">
+      <View className="mb-6 flex-row items-center justify-between web:flex-row">
         <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
           {t('transactions.title')}
         </Text>
@@ -349,7 +349,7 @@ export default function Transactions() {
       </View>
 
       {!isPageLoading && !error && !isSelectionMode && (
-        <View className="mb-4 flex-row items-center justify-between web:flex-row-reverse">
+        <View className="mb-4 flex-row items-center justify-between web:flex-row">
           <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.filters.resultCount', { count: filteredTransactions.length })}
           </Text>
@@ -374,7 +374,7 @@ export default function Transactions() {
 
       {isSelectionMode && (
         <View className="mb-4">
-          <View className="mb-2 flex-row items-center justify-between web:flex-row-reverse">
+          <View className="mb-2 flex-row items-center justify-between web:flex-row">
             <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
               {t('transactions.selection.selectedCount', { count: selectedIds.size })}
             </Text>
