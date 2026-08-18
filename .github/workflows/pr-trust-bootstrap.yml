@@ -1,0 +1,79 @@
+name: PR Trust Bootstrap
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  db-validation:
+    name: Real database / RLS gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local Supabase
+        run: supabase start
+      - name: Reset database and apply all migrations
+        run: supabase db reset
+      - name: Run full RLS/database suite
+        shell: bash
+        run: |
+          set -o pipefail
+          PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/rls_tests.sql 2>&1 | tee rls-test-output.txt
+          grep -F "=== ALL RLS TESTS PASSED" rls-test-output.txt
+          grep -F "PASS RECURRING.CONCURRENT" rls-test-output.txt
+          grep -F "PASS DELETE_ACCOUNT.CONCURRENT" rls-test-output.txt
+          grep -F "PASS LEAVE.CONCURRENT" rls-test-output.txt
+      - name: Generate types and verify core RPCs
+        run: |
+          supabase gen types typescript --local > /tmp/database.generated.ts
+          grep -F "create_household" /tmp/database.generated.ts
+          grep -F "accept_invitation" /tmp/database.generated.ts
+          grep -F "delete_own_account" /tmp/database.generated.ts
+          grep -F "leave_household" /tmp/database.generated.ts
+          grep -F "save_budget_allocations" /tmp/database.generated.ts
+
+  app-checks:
+    name: App-layer checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: git fetch origin main && git diff --check origin/main...HEAD
+      - name: Unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout --signal=TERM 90 npm test -- --runInBand 2>&1 | tee jest-output.txt || true
+          grep -qE "^Test Suites: [0-9]+ passed, [0-9]+ total$" jest-output.txt
+          grep -qE "^Tests:       [0-9]+ passed, [0-9]+ total$" jest-output.txt
+      - run: npm run typecheck
+      - run: npm run lint
+
+  expo-export:
+    name: Expo export
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx expo export --platform web
+      - run: npx expo export --platform ios
