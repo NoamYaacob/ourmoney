@@ -23,7 +23,8 @@ jest.mock('expo-router', () => ({
 // DesktopSideRail is exported from the full authenticated layout module, so
 // importing it also evaluates hooks used only by AppLayout. Keep this unit
 // test focused on the rail and prevent those unrelated hooks from reaching
-// the real Supabase client/configuration.
+// the real Supabase client/configuration. These mocks are deliberately the
+// same isolation boundary used by the full _layout router regression test.
 jest.mock('@/features/auth/hooks/useBiometricGuard', () => ({
   useBiometricGuard: () => ({ isLocked: false }),
 }))
