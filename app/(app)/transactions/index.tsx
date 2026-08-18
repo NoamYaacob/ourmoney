@@ -272,7 +272,7 @@ export default function Transactions() {
           combined (`flex-[3]` on their wrapper, `flex-1` each), and the
           whole thing stops wrapping (`flex-nowrap`) once there's room.
           Mobile/tablet keep the exact original stacked layout. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-3">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-3">
         <View className="web:desktop:flex-[2]">
           <Input
             label={t('transactions.filters.searchLabel')}
@@ -322,7 +322,7 @@ export default function Transactions() {
           row at desktop with a small vertical separator between the two
           groups, instead of two full rows each claiming their own line.
           Mobile/tablet keep the original two stacked rows. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:items-center web:desktop:gap-3">
+      <View className="web:desktop:flex-row web:desktop:flex-wrap web:desktop:items-center web:desktop:gap-3">
         <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-4">
           {TYPE_FILTER_VALUES.map((value) => (
             <Chip

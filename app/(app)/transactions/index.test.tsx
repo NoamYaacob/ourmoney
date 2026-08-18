@@ -212,7 +212,7 @@ describe('Transactions list', () => {
 
     const searchField = getByLabelText('חיפוש')
     const row = climbTo(searchField, 'web:desktop:items-start')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const periodField = getByLabelText('תקופה')
     const accountField = getByLabelText('חשבון')
@@ -232,7 +232,7 @@ describe('Transactions list', () => {
 
     const typeChip = getByTestId('transactions-filter-type-expense')
     const row = climbTo(typeChip, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const sharedChip = getByTestId('transactions-filter-shared-shared')
     expect(climbTo(sharedChip, 'web:desktop:items-center')).toBe(row)

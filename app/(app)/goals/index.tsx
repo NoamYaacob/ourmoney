@@ -98,7 +98,7 @@ export default function Goals() {
           {/* Responsive/desktop pass: a 2-column card grid once there's more
               than one goal, desktop only — same calc()-free pattern as
               accounts/index.tsx. */}
-          <View className={goals.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
+          <View className={goals.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {goals.map((goal) => {
             const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
             return (

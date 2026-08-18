@@ -84,7 +84,7 @@ export default function Accounts() {
               two even columns with a natural gap between them in Yoga/RN's
               flexbox (there is no CSS Grid on native). Mobile/tablet keep
               the original single-column list untouched. */}
-          <View className={accounts.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
+          <View className={accounts.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {accounts.map((account) => (
             <Pressable
               key={account.id}

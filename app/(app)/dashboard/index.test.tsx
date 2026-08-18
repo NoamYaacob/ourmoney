@@ -442,7 +442,7 @@ describe('Dashboard Safe-to-Spend card', () => {
 // category budgets, recent transactions, and insights — replaced the
 // previous 2/3-main + 1/3-sidebar split. RNTL can't evaluate real CSS media
 // queries, so this asserts the structural thing that matters — the
-// `web:desktop:flex-row-reverse` grid wrapper genuinely contains all three
+// `web:desktop:flex-row` grid wrapper genuinely contains all three
 // panels, each independently bounded — not a fake pixel/viewport assertion.
 // Climbs from a section's title up to its panel wrapper by matching the
 // panel's own marker class, rather than a fixed number of `.parent` hops —
@@ -508,7 +508,7 @@ describe('Dashboard responsive desktop layout', () => {
     // Climb from the title up through the Card to the Pressable, then to
     // its column wrapper, then to the shared row.
     let node = safeToSpendTitle.parent
-    while (node && !(node.props?.className as string | undefined)?.includes('web:desktop:flex-row-reverse')) {
+    while (node && !(node.props?.className as string | undefined)?.includes('web:desktop:flex-row')) {
       node = node.parent
     }
     expect(node).toBeTruthy()
@@ -517,7 +517,7 @@ describe('Dashboard responsive desktop layout', () => {
     // The budget hero's own remaining-amount label sits in the row's other
     // column — same shared row ancestor.
     let otherNode = getByText(i18n.t('dashboard.remaining')).parent
-    while (otherNode && !(otherNode.props?.className as string | undefined)?.includes('web:desktop:flex-row-reverse')) {
+    while (otherNode && !(otherNode.props?.className as string | undefined)?.includes('web:desktop:flex-row')) {
       otherNode = otherNode.parent
     }
     expect(otherNode).toBe(node)
@@ -560,7 +560,7 @@ describe('Dashboard responsive desktop layout', () => {
     function climbToRowAndChild(node: any) {
       let current = node
       let child = null
-      while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:flex-row-reverse')) {
+      while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:flex-row')) {
         child = current
         current = current.parent
       }
@@ -603,7 +603,7 @@ describe('Dashboard responsive desktop layout', () => {
 
     const categoriesPanel = climbToPanel(getByText(i18n.t('dashboard.categoriesTitle')))
     const gridWrapper = categoriesPanel?.parent?.parent
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
   })
 
   // Desktop polish pass: each lower section (category budgets, recent

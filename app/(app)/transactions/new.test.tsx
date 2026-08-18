@@ -280,7 +280,7 @@ describe('NewTransaction (Add Transaction)', () => {
 
     const descriptionField = getByLabelText('תיאור')
     const row = climbToClass(descriptionField, 'web:desktop:gap-4')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const merchantField = getByLabelText('בית עסק (אופציונלי)')
     expect(climbToClass(merchantField, 'web:desktop:gap-4')).toBe(row)
@@ -312,7 +312,7 @@ describe('NewTransaction (Add Transaction)', () => {
 
     const accountField = getByLabelText('חשבון')
     const row = climbToClass(accountField, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const categoryField = getByLabelText('קטגוריה (אופציונלי)')
     expect(climbToClass(categoryField, 'web:desktop:items-center')).toBe(row)
@@ -325,7 +325,7 @@ describe('NewTransaction (Add Transaction)', () => {
 
     const fromField = getByLabelText('מהחשבון')
     const row = climbToClass(fromField, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const toField = getByLabelText('לחשבון')
     expect(climbToClass(toField, 'web:desktop:items-center')).toBe(row)

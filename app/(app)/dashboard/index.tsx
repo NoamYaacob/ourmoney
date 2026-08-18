@@ -206,7 +206,7 @@ export default function Dashboard() {
           Mobile/tablet render exactly the original stacked order — every
           class this depends on (`order-*`, `flex-wrap`) is `web:desktop:`
           prefixed. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:items-start web:desktop:gap-5">
+      <View className="web:desktop:flex-row web:desktop:flex-wrap web:desktop:items-start web:desktop:gap-5">
         <View className="mb-6 web:desktop:order-1 web:desktop:mb-0 web:desktop:flex-1">
           {/* Safe-to-Spend — the household's own real cash position, not tied
               to the month navigator alongside it (always "from right now,"
@@ -442,7 +442,7 @@ export default function Dashboard() {
           recent, insights] — categories (primary) lands rightmost, insights
           (secondary) leftmost. Mobile/tablet stay a single stacked column,
           unchanged. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
+      <View className="web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
         <View className="web:desktop:flex-1">
           <View className={DESKTOP_PANEL}>
             <DesktopPanelHeader icon="pie-chart-outline" title={t('dashboard.categoriesTitle')} />
@@ -594,7 +594,7 @@ export default function Dashboard() {
                 {categoryBreakdown.length === 0 ? (
                   <EmptyState iconName="pie-chart-outline" message={t('dashboard.analytics.empty')} compact />
                 ) : (
-                  <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-5">
+                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-5">
                     <CategoryDonutChart breakdown={categoryBreakdown} categoryNameById={categoryNameById} size={104} />
                     <View className="mt-4 web:desktop:mt-0 web:desktop:flex-1">
                       <TopCategoriesList

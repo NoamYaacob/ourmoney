@@ -35,7 +35,7 @@ function climbToPanel(textNode: any) {
 // nest their panels to the same depth.
 function climbToRow(node: any) {
   let current = node
-  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:flex-row-reverse')) {
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:flex-row')) {
     current = current.parent
   }
   return current
@@ -350,7 +350,7 @@ describe('Settings screen — household/profile management', () => {
   // management/appearance/security/account form a second — desktop only
   // (see index.tsx's own comment). RNTL can't evaluate real CSS media
   // queries, so this asserts the structural thing that matters — both
-  // columns are direct children of the same `web:desktop:flex-row-reverse`
+  // columns are direct children of the same `web:desktop:flex-row`
   // grid wrapper, not a fake pixel/viewport assertion.
   it('groups profile/household and money-management/appearance/security/account into the same desktop grid container', async () => {
     setHousehold('admin')
@@ -388,7 +388,7 @@ describe('Settings screen — household/profile management', () => {
 
     const panel = climbToPanel(getByText('משק הבית'))
     const gridWrapper = climbToRow(panel)
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
   })
 
   // Desktop polish pass (round 2): each column previously reflowed the same

@@ -91,6 +91,6 @@ describe('Goals list', () => {
       node = node.parent
     }
     const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
   })
 })

@@ -204,7 +204,7 @@ describe('Categories settings screen', () => {
 
     const categoriesColumn = getByText('קטגוריות מותאמות אישית').parent
     const splitContainer = categoriesColumn?.parent
-    expect(splitContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(splitContainer?.props.className as string).toContain('web:desktop:flex-row')
 
     const rulesColumn = getByText('כללי סיווג').parent
     expect(rulesColumn?.parent).toBe(splitContainer)

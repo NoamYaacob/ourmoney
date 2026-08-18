@@ -375,7 +375,7 @@ describe('Budgets', () => {
 
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
     const gridWrapper = categoriesPanel?.parent?.parent
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
 
     const uncategorizedPanel = climbToPanel(getByText('תנועות ללא קטגוריה'))
     expect(uncategorizedPanel?.parent?.parent).toBe(gridWrapper)

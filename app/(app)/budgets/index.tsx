@@ -337,14 +337,14 @@ export default function Budgets() {
 
           {/* Responsive/desktop pass: category budgets and the uncategorized
               queue sit side by side at desktop
-              (`web:desktop:flex-row-reverse` — see _layout.tsx's
+              (`web:desktop:flex-row` — see _layout.tsx's
               DesktopSideRail comment for why `-reverse` is needed on web).
               Reversing keeps source/DOM order as [categories,
               uncategorized] while visually placing categories (primary) on
               the right and uncategorized (secondary) on the left — the
               correct RTL reading order. Mobile/tablet stay stacked in the
               original order (plain View column default). */}
-          <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+          <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
           <View className="web:desktop:flex-1">
           {/* Desktop polish pass: the category-budgets column (list + the
               add-category control) becomes one bounded panel, so it reads

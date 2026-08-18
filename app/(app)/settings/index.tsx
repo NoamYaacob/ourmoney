@@ -225,7 +225,7 @@ export default function Settings() {
 
       {/* Responsive/desktop pass: profile+household in one column, the rest
           (money management/appearance/security/account) in a second column
-          — desktop only (`web:desktop:flex-row-reverse`; see _layout.tsx's
+          — desktop only (`web:desktop:flex-row`; see _layout.tsx's
           DesktopSideRail comment for why `-reverse` is needed on web).
           Reversing keeps source/DOM order as [profile+household, the rest]
           (primary content announced first) while visually placing
@@ -248,7 +248,7 @@ export default function Settings() {
           height mismatch is still there, but distributed across several
           natural breaks instead of concentrated in one, so it reads as an
           intentional multi-panel column rather than a rendering gap. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <View className={DESKTOP_PANEL_CLASS}>
       {/* Profile */}

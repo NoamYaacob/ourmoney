@@ -202,7 +202,7 @@ export default function NewTransaction() {
               only once there's room for it (`web:desktop:`), stacked
               exactly as before on mobile/tablet and in transfer mode
               (merchant doesn't apply there, so nothing to pair with). */}
-          <View className={isTransfer ? undefined : 'web:desktop:flex-row-reverse web:desktop:gap-4'}>
+          <View className={isTransfer ? undefined : 'web:desktop:flex-row web:desktop:gap-4'}>
             <View className={isTransfer ? undefined : 'web:desktop:flex-1'}>
               <Input
                 label={t('transactions.form.descriptionLabel')}
@@ -243,7 +243,7 @@ export default function NewTransaction() {
                     use (a manual w-px bar, since Divider.tsx has no
                     vertical variant to extend). Stacked with the existing
                     horizontal Divider on mobile/tablet, unchanged. */}
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                <View className="web:desktop:flex-row web:desktop:items-center">
                   <View className="web:desktop:flex-1">
                     <Select
                       variant="row"
@@ -288,7 +288,7 @@ export default function NewTransaction() {
               <Card>
                 {/* Same account/category pairing at desktop as the
                     from/to-account block above. */}
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                <View className="web:desktop:flex-row web:desktop:items-center">
                   <View className="web:desktop:flex-1">
                     <Select
                       variant="row"

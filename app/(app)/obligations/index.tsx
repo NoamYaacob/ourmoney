@@ -143,7 +143,7 @@ export default function Obligations() {
               single-column list untouched. */}
           <View
             className={
-              upcoming.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
+              upcoming.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined
             }
           >
             {upcoming.map((item) => {
