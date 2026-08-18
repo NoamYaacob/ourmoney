@@ -47,9 +47,22 @@ export function Screen({
   // applied here, once, so it covers every screen through the shared
   // primitive rather than each screen needing its own wrapper.
   const widthClamp = CONTENT_WIDTH[width]
+
+  // Mobile-web polish: React Navigation's bottom tab bar occupies the bottom
+  // of the viewport while Safari's dynamic browser chrome reduces the usable
+  // visual area. The old pb-10 left the final card/form controls underneath
+  // the tab bar, and a fixed FAB could cover the last meaningful row even
+  // after scrolling. Keep native and desktop exactly as before, but reserve
+  // extra scroll runway on web below the desktop breakpoint. A screen with a
+  // floating action gets a little more so its final control can clear both
+  // the tab bar and the FAB.
+  const mobileWebBottomPadding = floatingAction
+    ? 'pb-10 web:pb-32 web:desktop:pb-10'
+    : 'pb-10 web:pb-24 web:desktop:pb-10'
+
   const content = scroll ? (
     <ScrollView
-      contentContainerClassName={`${widthClamp} px-6 pb-10 pt-6${center ? ' grow justify-center' : ''}`}
+      contentContainerClassName={`${widthClamp} px-6 ${mobileWebBottomPadding} pt-6${center ? ' grow justify-center' : ''}`}
       keyboardShouldPersistTaps="handled"
     >
       {children}
