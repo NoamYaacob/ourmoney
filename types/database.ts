@@ -317,7 +317,7 @@ export type Database = {
       households: {
         Row: {
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: string
           id: string
           name: string
@@ -325,7 +325,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: string
           id?: string
           name: string
@@ -333,7 +333,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: string
           id?: string
           name?: string
@@ -348,7 +348,7 @@ export type Database = {
           expires_at: string
           household_id: string
           id: string
-          invited_by: string
+          invited_by: string | null
           status: string
           token: string
         }
@@ -358,7 +358,7 @@ export type Database = {
           expires_at?: string
           household_id: string
           id?: string
-          invited_by: string
+          invited_by?: string | null
           status?: string
           token?: string
         }
@@ -368,13 +368,86 @@ export type Database = {
           expires_at?: string
           household_id?: string
           id?: string
-          invited_by?: string
+          invited_by?: string | null
           status?: string
           token?: string
         }
         Relationships: [
           {
             foreignKeyName: "invitations_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planned_obligations: {
+        Row: {
+          account_id: string | null
+          amount_agorot: number
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          due_date: string
+          household_id: string
+          id: string
+          is_shared: boolean
+          name: string
+          notes: string | null
+          status: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          account_id?: string | null
+          amount_agorot: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_date: string
+          household_id: string
+          id?: string
+          is_shared?: boolean
+          name: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          account_id?: string | null
+          amount_agorot?: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_date?: string
+          household_id?: string
+          id?: string
+          is_shared?: boolean
+          name?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planned_obligations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planned_obligations_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planned_obligations_household_id_fkey"
             columns: ["household_id"]
             isOneToOne: false
             referencedRelation: "households"
@@ -418,7 +491,7 @@ export type Database = {
           amount_agorot: number
           category_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: string
           day_of_month: number | null
           description: string
@@ -429,13 +502,14 @@ export type Database = {
           is_shared: boolean
           last_generated_at: string | null
           next_due_date: string
+          version: number
         }
         Insert: {
           account_id: string
           amount_agorot: number
           category_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: string
           day_of_month?: number | null
           description: string
@@ -446,13 +520,14 @@ export type Database = {
           is_shared?: boolean
           last_generated_at?: string | null
           next_due_date: string
+          version?: number
         }
         Update: {
           account_id?: string
           amount_agorot?: number
           category_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: string
           day_of_month?: number | null
           description?: string
@@ -463,6 +538,7 @@ export type Database = {
           is_shared?: boolean
           last_generated_at?: string | null
           next_due_date?: string
+          version?: number
         }
         Relationships: [
           {
@@ -493,7 +569,7 @@ export type Database = {
           account_id: string | null
           color: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           current_agorot: number
           household_id: string
           icon: string | null
@@ -503,12 +579,13 @@ export type Database = {
           target_agorot: number
           target_date: string | null
           updated_at: string
+          version: number
         }
         Insert: {
           account_id?: string | null
           color?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           current_agorot?: number
           household_id: string
           icon?: string | null
@@ -518,12 +595,13 @@ export type Database = {
           target_agorot: number
           target_date?: string | null
           updated_at?: string
+          version?: number
         }
         Update: {
           account_id?: string | null
           color?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           current_agorot?: number
           household_id?: string
           icon?: string | null
@@ -533,6 +611,7 @@ export type Database = {
           target_agorot?: number
           target_date?: string | null
           updated_at?: string
+          version?: number
         }
         Relationships: [
           {
@@ -557,19 +636,21 @@ export type Database = {
           amount_agorot: number
           category_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: string
           description: string
           household_id: string
           id: string
           is_excluded: boolean
           is_shared: boolean
+          matched_rule_id: string | null
           merchant_name: string | null
           note: string | null
           payer_id: string | null
           receipt_url: string | null
           recurring_id: string | null
           source: string
+          transfer_id: string | null
           txn_date: string
           updated_at: string
         }
@@ -578,19 +659,21 @@ export type Database = {
           amount_agorot: number
           category_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: string
           description: string
           household_id: string
           id?: string
           is_excluded?: boolean
           is_shared?: boolean
+          matched_rule_id?: string | null
           merchant_name?: string | null
           note?: string | null
           payer_id?: string | null
           receipt_url?: string | null
           recurring_id?: string | null
           source?: string
+          transfer_id?: string | null
           txn_date: string
           updated_at?: string
         }
@@ -599,19 +682,21 @@ export type Database = {
           amount_agorot?: number
           category_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: string
           description?: string
           household_id?: string
           id?: string
           is_excluded?: boolean
           is_shared?: boolean
+          matched_rule_id?: string | null
           merchant_name?: string | null
           note?: string | null
           payer_id?: string | null
           receipt_url?: string | null
           recurring_id?: string | null
           source?: string
+          transfer_id?: string | null
           txn_date?: string
           updated_at?: string
         }
@@ -638,10 +723,85 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transactions_matched_rule_id_fkey"
+            columns: ["matched_rule_id"]
+            isOneToOne: false
+            referencedRelation: "category_rules"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "transactions_recurring_id_fkey"
             columns: ["recurring_id"]
             isOneToOne: false
             referencedRelation: "recurring_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transfers: {
+        Row: {
+          amount_agorot: number
+          created_at: string
+          created_by: string | null
+          description: string
+          from_account_id: string
+          household_id: string
+          id: string
+          to_account_id: string
+          txn_date: string
+          updated_at: string
+        }
+        Insert: {
+          amount_agorot: number
+          created_at?: string
+          created_by?: string | null
+          description: string
+          from_account_id: string
+          household_id: string
+          id?: string
+          to_account_id: string
+          txn_date: string
+          updated_at?: string
+        }
+        Update: {
+          amount_agorot?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          from_account_id?: string
+          household_id?: string
+          id?: string
+          to_account_id?: string
+          txn_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfers_from_account_id_fkey"
+            columns: ["from_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -661,6 +821,16 @@ export type Database = {
         Returns: string
       }
       create_household: { Args: { p_name: string }; Returns: Json }
+      create_transfer: {
+        Args: {
+          p_amount_agorot: number
+          p_description: string
+          p_from_account_id: string
+          p_to_account_id: string
+          p_txn_date: string
+        }
+        Returns: Json
+      }
       dblink: { Args: { "": string }; Returns: Record<string, unknown>[] }
       dblink_cancel_query: { Args: { "": string }; Returns: string }
       dblink_close: { Args: { "": string }; Returns: string }
@@ -695,15 +865,94 @@ export type Database = {
         Returns: Record<string, unknown>[]
       }
       dblink_is_busy: { Args: { "": string }; Returns: number }
+      delete_own_account: { Args: never; Returns: Json }
+      delete_planned_obligation: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
+      delete_recurring_transaction: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
+      delete_savings_goal: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
+      delete_transfer: { Args: { p_transfer_id: string }; Returns: Json }
       generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
       is_household_member: { Args: { hid: string }; Returns: boolean }
+      leave_household: { Args: never; Returns: Json }
       save_budget_allocations: {
         Args: { p_allocations: Json; p_period_start: string }
         Returns: Json
       }
+      set_planned_obligation_status: {
+        Args: { p_expected_version: number; p_id: string; p_status: string }
+        Returns: Json
+      }
+      set_recurring_transaction_active: {
+        Args: { p_expected_version: number; p_id: string; p_is_active: boolean }
+        Returns: Json
+      }
       skip_recurring_occurrence: {
         Args: { p_recurring_id: string }
+        Returns: Json
+      }
+      update_planned_obligation: {
+        Args: {
+          p_account_id: string | null
+          p_amount_agorot: number
+          p_category_id: string | null
+          p_due_date: string
+          p_expected_version: number
+          p_id: string
+          p_is_shared: boolean
+          p_name: string
+          p_notes: string | null
+        }
+        Returns: Json
+      }
+      update_recurring_transaction: {
+        Args: {
+          p_account_id: string
+          p_amount_agorot: number
+          p_category_id: string | null
+          p_day_of_month: number | null
+          p_description: string
+          p_expected_version: number
+          p_frequency: string
+          p_id: string
+          p_is_shared: boolean
+        }
+        Returns: Json
+      }
+      update_savings_goal: {
+        Args: {
+          p_account_id: string | null
+          p_color: string | null
+          p_expected_version: number
+          p_icon: string | null
+          p_id: string
+          p_name: string
+          p_target_agorot: number
+          p_target_date: string | null
+        }
+        Returns: Json
+      }
+      update_savings_goal_progress: {
+        Args: { p_current_agorot: number; p_expected_version: number; p_id: string }
+        Returns: Json
+      }
+      update_transfer: {
+        Args: {
+          p_amount_agorot: number
+          p_description: string
+          p_from_account_id: string
+          p_to_account_id: string
+          p_transfer_id: string
+          p_txn_date: string
+        }
         Returns: Json
       }
     }

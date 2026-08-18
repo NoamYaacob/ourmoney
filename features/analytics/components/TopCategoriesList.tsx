@@ -1,6 +1,7 @@
 import { Text, View } from 'react-native'
 import { Divider } from '@/components/ui/Divider'
 import { formatILS } from '@/lib/money/format'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import type { CategoryBreakdownEntry } from '../lib/categoryBreakdown'
 
 interface TopCategoriesListProps {
@@ -19,11 +20,12 @@ export function TopCategoriesList({ entries, categoryNameById, categoryIconById 
               <Divider />
             </View>
           )}
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm text-ink-light dark:text-ink-dark">
-              {categoryIconById[entry.categoryId] ?? '📦'} {categoryNameById[entry.categoryId] ?? ''}
+          <View className="flex-row items-center gap-3 web:flex-row-reverse">
+            <CategoryIcon icon={categoryIconById[entry.categoryId]} size="sm" />
+            <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">
+              {categoryNameById[entry.categoryId] ?? ''}
             </Text>
-            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+            <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">
               {formatILS(entry.spentAgorot)}
             </Text>
           </View>

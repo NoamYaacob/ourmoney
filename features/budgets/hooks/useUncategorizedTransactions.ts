@@ -18,6 +18,11 @@ export function useUncategorizedTransactions(householdId: string | null | undefi
         .select('id, description, amount_agorot, txn_date')
         .eq('household_id', householdId as string)
         .is('category_id', null)
+        // Migration 008 (ADR-035): a transfer leg's category_id is always
+        // NULL by design (it is never "uncategorized," it is never
+        // categorizable at all) — without this it would surface here
+        // permanently, since nothing can ever assign it a category.
+        .is('transfer_id', null)
         .order('txn_date', { ascending: false })
       if (error) throw error
       return data
@@ -25,5 +30,13 @@ export function useUncategorizedTransactions(householdId: string | null | undefi
     enabled: !!householdId,
   })
 
-  return { uncategorized: query.data ?? [], isLoading: !!householdId && query.isPending }
+  return {
+    uncategorized: query.data ?? [],
+    isLoading: !!householdId && query.isPending,
+    // Exposed so callers can distinguish a genuinely empty queue from a
+    // failed fetch — data falls back to [] on error, which would otherwise
+    // render the same "all categorized" success state as a real empty
+    // queue (see app/(app)/budgets/index.tsx's uncategorizedError branch).
+    error: query.error,
+  }
 }

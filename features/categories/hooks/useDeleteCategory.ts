@@ -4,6 +4,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 import { categoriesQueryKey } from './useCategories'
+import { categoryRulesQueryKey } from './useCategoryRules'
 
 export function useDeleteCategory(householdId: string | null | undefined) {
   const queryClient = useQueryClient()
@@ -15,6 +16,13 @@ export function useDeleteCategory(householdId: string | null | undefined) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: categoriesQueryKey(householdId) })
+      // category_rules.category_id is ON DELETE CASCADE (migration 002) —
+      // deleting a category deletes its rules server-side in the same
+      // statement. Without also invalidating this key, the Rules card kept
+      // showing the now-orphaned rule (its "THEN" line rendering `undefined`
+      // for the deleted category's name) until something else happened to
+      // refetch it — a real, reproducible stale-UI bug, not just staleness.
+      void queryClient.invalidateQueries({ queryKey: categoryRulesQueryKey(householdId) })
     },
   })
 }

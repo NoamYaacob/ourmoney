@@ -280,6 +280,12 @@ Budget progress recalculates on the client when the transaction list updates.
     rule 4). Zero parameters — resolves only `auth.uid()`, never a caller-supplied id — which makes
     cross-account/cross-household deletion structurally impossible. See
     [ADR-032](DECISIONS.md#adr-032).
+11. Shared, editable financial records (`planned_obligations`, `recurring_transactions`,
+    `savings_goals`) carry a DB-owned `version` column and are compare-and-swapped on every mutation —
+    a stale client can never silently overwrite or delete a newer edit. Two tables achieve this by
+    dropping their direct-client `UPDATE`/`DELETE` policies entirely (RPC-only, `SECURITY DEFINER`);
+    `recurring_transactions` keeps `UPDATE` open (its own generation/skip functions depend on it) and
+    is instead enforced by a `BEFORE UPDATE` trigger. See [ADR-036](DECISIONS.md#adr-036).
 
 ---
 
@@ -337,6 +343,9 @@ naming them early is the entire point.
 | `bank.connection_expiring` | Consent nears its 90-day expiry | future |
 | `loan.rate_opportunity_detected` | A loan's rate is materially above benchmark | future |
 | `mortgage.refinance_opportunity_detected` | Refinancing would materially improve the position | future |
+| `transfer.created` | `create_transfer()` succeeds ([ADR-035](DECISIONS.md#adr-035)) | ✅ |
+| `transfer.updated` | `update_transfer()` succeeds | ✅ |
+| `transfer.deleted` | `delete_transfer()` succeeds | ✅ |
 
 ### Event shape
 

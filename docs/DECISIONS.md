@@ -1375,6 +1375,373 @@ own header comment for the full implementation detail.
 
 ---
 
+## ADR-034
+### Leave household: admin succession without account deletion
+
+**Status:** Accepted — closes the gap [ADR-032](#adr-032) named as deferred future work
+
+**Context.** ADR-032 built `delete_own_account()` with real admin-succession and sole-member-cascade
+logic, but deliberately did not build a "leave household without deleting your account" flow — the
+existing `household_members_delete` RLS policy (migration 001) already technically permitted a raw
+self-removal (`user_id = auth.uid()`), but with none of ADR-032's safety logic: an admin using that raw
+path in a multi-member household would leave it with zero admins, permanently unable to rename itself,
+remove members, or hard-delete shared data (no admin-promotion mechanism exists outside an audited
+`SECURITY DEFINER` function, per [ADR-022](#adr-022)). A prior functional-completeness pass (see the
+Functional Completeness Pass session history) shipped the safe subset of that raw path — a member
+leaving, or an admin removing a *non-admin* member — gated entirely client-side, and explicitly did not
+give an admin any way to leave a household they don't want to delete their account from. This ADR
+closes that gap, exactly as ADR-032 anticipated: *"routing a voluntary leave through the same
+succession/cascade logic `delete_own_account()` uses is a reasonable future addition."*
+
+**Decision.**
+
+1. **Reuse, don't reinvent.** `leave_household()` (migration 005) is structurally `delete_own_account()`
+   with one line of logic removed: it never issues `DELETE FROM auth.users`. Every other decision —
+   admin succession via longest-tenured remaining member, sole-member household cascade, attribution-FK
+   nulling — is identical, for the same reasons ADR-032 gives for each.
+2. **Sole member leaving deletes the household, not the account.** An unreachable, member-less household
+   is exactly the same permanent RLS-orphaned row ADR-032's decision 2 exists to prevent, and a plain
+   "leave" can produce that state exactly as easily as account deletion can. The caller's own account is
+   untouched — they simply have no household anymore, same as a fresh signup. This was the one place
+   real ambiguity existed (blocking the action entirely, rather than cascading, was the conservative
+   alternative), resolved in favor of the cascade because ADR-032 already names this exact mechanism
+   ("the same succession/cascade logic") as the intended shape of this feature, not a novel invention.
+3. **Attribution nulling is required for a reason `delete_own_account()` doesn't have.** There, nulling
+   `created_by`/`payer_id`/etc. is arguably defensive — the FK's `ON DELETE SET NULL` (migration 004)
+   would achieve the same result once `auth.users` is deleted regardless. Here, `auth.users` is never
+   touched, so that automatic path never fires. Without the explicit nulling, a departed member's
+   `created_by` would still point at a real, existing user — but one no longer present in
+   `household_members` for this household, which is exactly the condition
+   `transactions_update`/`recurring_update`/`savings_goals_update`'s `WITH CHECK` (migration 004 Part 2)
+   already treats as unauthorized for a future edit by a remaining member. Skipping the nulling here
+   would silently freeze every row the departed member ever created, the identical bug migration 004
+   fixed, reached through a different door.
+4. **Admin self-leave is intentionally still not built.** A single-member-of-two admin leaving is fully
+   safe (covered above). An admin leaving a household where they are the admin and other members
+   remain is *also* safe — decision 1 handles it via succession. The one case that remains genuinely out
+   of scope: nothing in this ADR changes — an admin was never blocked from leaving a multi-member
+   household by this feature; succession makes it safe. (Earlier drafts of this feature's scoping
+   considered blocking admin self-leave entirely; that concern turned out to be about the sole-member
+   case only, resolved by decision 2 above, not about the multi-member case, which succession already
+   makes safe — recorded here so a future reader doesn't reintroduce a block that isn't needed.)
+5. **CORRECTED during `database-security-reviewer` review of this migration: the succession SELECT must
+   lock its candidate row, and the raw member-removal RLS policy must exclude admin rows.** The first
+   draft of decision 1 assumed reusing `delete_own_account()`'s succession block verbatim was sufficient
+   ("reuse, don't reinvent"). It was not — and the same defect existed identically in the already-shipped
+   `delete_own_account()` (migration 004), not just the new function. Two independent findings, both
+   fixed in migration 005 rather than deferred:
+   - **CRITICAL — zero-admin race.** The succession block issued `SELECT user_id ... ORDER BY joined_at
+     ASC LIMIT 1` (no row lock) followed by a separate `UPDATE ... WHERE user_id = v_new_admin_id`, with
+     no check that the `UPDATE` actually touched a row. The `72702` advisory lock (mechanism below)
+     serializes calls to `leave_household()`/`delete_own_account()` against each other, but does nothing
+     against `useRemoveHouseholdMember`'s raw, unlocked `household_members` `DELETE` — which the original
+     header comment for this migration claimed "can never race this function's succession logic" because
+     it "only ever targets a non-admin row." That reasoning is false: the succession *candidate* selected
+     by the `ORDER BY joined_at ASC LIMIT 1` is itself a non-admin row, and is exactly the row that raw
+     path is permitted to target. If it commits its `DELETE` between the `SELECT` and the `UPDATE`, the
+     `UPDATE` silently affects zero rows, `leave_household()` still returns `{ok: true, new_admin_id: X}`,
+     and the household is left with zero admins permanently — unable to rename itself, manage members, or
+     do anything gated on `is_household_admin()`. **Fix:** the candidate `SELECT` now takes
+     `FOR UPDATE`, and the code branches on `IF FOUND` — if the locked candidate vanished before the lock
+     was acquired, standard Postgres `SELECT ... FOR UPDATE ... ORDER BY ... LIMIT 1` semantics continue
+     scanning to the next-ordered candidate to satisfy `LIMIT 1` (no explicit retry loop needed); if truly
+     no candidate remains, `v_new_admin_id` is correctly set to `NULL` instead of silently misreporting a
+     promotion that didn't happen. Applied to **both** `leave_household()` (Part 1) and, via
+     `CREATE OR REPLACE FUNCTION` (migrations are immutable history — a shipped migration is never
+     edited), `delete_own_account()` (Part 2), since the identical unlocked-SELECT pattern in migration
+     004 had the identical defect.
+   - **HIGH — RLS bypass of succession entirely.** Independent of the race above, the migration 001
+     `household_members_delete` policy's `user_id = auth.uid()` clause let an admin self-delete their own
+     row via a raw authenticated REST call with no succession logic at all — bypassing both
+     `leave_household()` and `delete_own_account()` outright, guaranteed zero-admin outcome, no race
+     required. **Fix (Part 3):** the policy is tightened to
+     `(user_id = auth.uid() AND role <> 'admin') OR (is_household_admin(household_id) AND user_id <>
+     auth.uid())` — an admin can no longer delete their own row through any path except the two
+     `SECURITY DEFINER` functions, which bypass RLS for their own writes.
+
+**Mechanism.** Same security posture as `delete_own_account()`: zero parameters, `SECURITY DEFINER`
+(role promotion has no client-writable path, ADR-022), fixed `search_path`, `EXECUTE` revoked from
+`PUBLIC`/`anon`, granted only to `authenticated`. **Lock class is deliberately shared with
+`delete_own_account()`** (`72702`, not a new namespace) — both functions protect the identical resource
+(a consistent `household_members` view for a given household, for succession/cascade purposes), so a
+concurrent `leave_household()` and `delete_own_account()` call for the *same* household must serialize
+against each other, not merely against calls to the same function; a distinct lock class would let both
+read pre-lock state and disagree about who the successor is. Proven by the `LEAVE.CONCURRENT` test
+(`supabase/rls_tests.sql`) for two concurrent `leave_household()` calls; the cross-function race (one
+member calling `leave_household()` while another calls `delete_own_account()` for the same household at
+the same instant) is covered by the shared lock class itself but has no dedicated dblink test in this
+migration — accepted, since both individual functions' concurrency behavior is separately proven, and
+the lock-sharing argument is a structural guarantee, not a probabilistic one.
+
+The `72702` lock alone does **not** close decision 5's CRITICAL finding — it only serializes calls to
+these two functions against each other, never against the client's separate, unlocked
+`useRemoveHouseholdMember` raw `DELETE`. That race is closed by the succession candidate's `FOR UPDATE`
+row lock instead (a genuinely different mechanism from the advisory lock, deliberately narrower — it
+locks one `household_members` row, not the whole household). Proven deterministically by test 8.13
+(`supabase/rls_tests.sql`): the would-be successor is deleted before `leave_household()` is called, and
+the next-ordered candidate is promoted instead. Decision 5's HIGH finding (RLS bypass) is proven by test
+8.12: an admin's raw self-`DELETE` against `household_members` now affects zero rows. Neither test needs
+dblink — both are deterministic (SELECT/DELETE ordering within one transaction), unlike
+`LEAVE.CONCURRENT`, which needs two genuinely simultaneous connections to prove the advisory lock itself.
+
+**Rationale.**
+- A new, separate lock namespace was the tempting default (matching `create_household`/
+  `accept_invitation`'s pattern of "different resource, different namespace") but would have been wrong
+  here — those two functions protect a genuinely different resource (per-user membership *existence*,
+  keyed on `user_id`) from what `delete_own_account()`/`leave_household()` protect (a household's
+  membership *consistency*, keyed on `household_id`). Sharing the lock class is the correct
+  generalization of the existing pattern, not an exception to it.
+- Blocking sole-admin leave outright (rather than cascading) was considered and rejected: ADR-032
+  already commits this codebase to "leave reuses the same succession/cascade logic," and a block would
+  mean two different, undocumented behaviors for what is conceptually the same action (leaving a
+  household you're the only member of) depending on whether it happens via account deletion or via a
+  plain leave — worse, not safer.
+
+**Consequences.**
+- The client's `useRemoveHouseholdMember` hook (raw `household_members` `DELETE`, gated to non-admin
+  targets/self-as-member only) is unchanged and still used for "admin removes a non-admin member" — that
+  case was already fully safe under the raw RLS policy and needs no succession logic. Only the
+  Settings "leave household" affordance is rewired to call `leave_household()`, and is now shown to
+  admins too (previously hidden for any admin, since the raw path had no succession logic to make that
+  safe).
+- Decision 5's fix also changed `delete_own_account()`'s behavior (migration 004's function, re-created
+  in migration 005 Part 2): its succession block now carries the same `FOR UPDATE`/`IF FOUND` guard. This
+  is a bugfix to already-shipped logic, not a new decision — `delete_own_account()`'s own ADR-032
+  decisions are unchanged; only its robustness against the same concurrent-raw-DELETE race is improved.
+- **Needs live verification**, same standing caveat as every schema-touching migration in this project
+  where the DB gate could not actually run in the authoring environment (no Docker/Supabase available):
+  that `LEAVE.CONCURRENT` actually passes against a live Postgres, and that the shared-lock-class
+  argument above holds in practice, not just in the SQL as written. Tests 8.12 and 8.13 (decision 5's
+  fixes) are deterministic and were checked for logical correctness by both `database-security-reviewer`
+  and manual trace-through, but — like every SQL test in this project's authoring environment — were not
+  executed against a live Postgres, since none was available.
+
+**Related:** [ADR-032](#adr-032) (the account-deletion decisions this migration reuses in full),
+[ADR-022](#adr-022) (no role-change policy — the reason both functions must be `SECURITY DEFINER`),
+[ADR-006](#adr-006) (household as the core entity, never assume exactly two members). See
+`docs/DATABASE_SCHEMA.md`'s Migration 005 section and `supabase/migrations/005_leave_household.sql`'s
+own header for the full implementation detail.
+
+---
+
+## ADR-035
+### Internal account transfers: a `transfers` table plus two linked transaction rows
+
+**Status:** Accepted
+
+**Context.** Moving money between two accounts the same household owns (e.g. checking → savings) was
+previously only representable as an ordinary transaction — which is wrong on both sides: an expense row
+on the source account inflates spending analytics/budgets that never actually left the household, and
+an income row on the destination account inflates income analytics the same way, while a household's
+*net* position never changed. This ADR pulls "internal transfer" into MVP-2 scope ([ROADMAP.md](
+../ROADMAP.md#mvp-2--core-financial-loop), [FEATURES.md](FEATURES.md#accounts-and-financial-position))
+as a correctness fix for account balances and budget/analytics attribution, not a new financial
+capability — no engine gains a new formula; several existing computations gain an exclusion.
+
+**Decision.**
+
+1. **A transfer is exactly two `transactions` rows, linked by a new `transfers` parent table** — not a
+   `transfer_group_id`-only design. A parent row (`from_account_id`, `to_account_id`, `amount_agorot`,
+   `txn_date`, `description`) is the single source of truth for shared metadata; `transactions.transfer_id`
+   (nullable FK, `ON DELETE CASCADE`) links each leg back to it. This honors [ADR-029](#adr-029)'s
+   transaction identity invariants directly: I1 ("one row = one movement of money") is *better* satisfied
+   by two real, independently signed movements than by one row carrying dual semantics; I2/I4 are
+   unaffected (`transfer_id` is a plain FK, not a uniqueness constraint, and it is used immediately by
+   this feature, not spec'd speculatively ahead of it — the kind of column ADR-029 forbids).
+2. **All transfer mutation goes through three `SECURITY DEFINER` RPCs** (`create_transfer`,
+   `update_transfer`, `delete_transfer`), never a client-side multi-statement write — the only way three
+   row-writes (parent + 2 legs) are guaranteed all-or-nothing, matching the established convention
+   (`create_household`, `accept_invitation`, `delete_own_account`, `leave_household`). `delete_transfer`
+   is a single `DELETE FROM transfers` relying on cascade for the two legs — atomic by construction.
+   `delete_transfer` requires household-admin, matching every other hard-delete of a shared resource in
+   this schema (`docs/ARCHITECTURE.md`'s Security Model Summary).
+3. **The existing `transactions_insert`/`_update`/`_delete` RLS policies are tightened to require
+   `transfer_id IS NULL`** — on `_update`, in *both* `USING` and `WITH CHECK`, not `WITH CHECK` alone.
+   `WITH CHECK` only constrains the row's state *after* a write; without the same restriction in `USING`,
+   a single `UPDATE transactions SET transfer_id = NULL, amount_agorot = ... WHERE id = <a leg>` detaches
+   a leg from its transfer and mutates it in the same statement, defeating the RPC-only guarantee this
+   whole design rests on. (Caught in review before the migration was written, not after.) The `transfers`
+   table itself carries a `SELECT` policy only — no `INSERT`/`UPDATE`/`DELETE` policy exists at all,
+   mirroring `household_members`' no-role-change-policy precedent ([ADR-022](#adr-022)); its table grant
+   is `SELECT` only for `authenticated`, matching policy exactly rather than relying on RLS alone to deny
+   what a wider grant would permit.
+4. **One new domain event per transfer action** (`transfer.created`/`transfer.updated`/`transfer.deleted`),
+   never `transaction.created` for either leg. `features/budgets/lib/budgetThresholdSubscriber.ts`
+   already no-ops on a null `category_id`, so reuse would be harmless *today* — but a dedicated event is
+   the architecturally honest choice: a transfer is one domain occurrence, not two, and no current or
+   future `transaction.created` subscriber has to remember to special-case transfer legs. This is exactly
+   [ADR-013](#adr-013)'s "add new event types freely" pattern, already used for zero-subscriber events like
+   `income.received`.
+5. **No advisory lock, unlike [ADR-032](#adr-032)/[ADR-034](#adr-034)'s `pg_advisory_xact_lock`.** The
+   succession race those ADRs close exists because the contended state is a *candidate selected from a
+   set* (`ORDER BY joined_at LIMIT 1`) that can vanish between selection and use. Here the contended
+   invariant — "a transfer has exactly two balanced legs" — is anchored to one row, `transfers.id`, and
+   `update_transfer`/`delete_transfer` each take their row lock as the *first* statement that touches
+   `transfers` (a locking `UPDATE`/`DELETE ... WHERE id = ... AND household_id = ...`, never an earlier
+   unlocked `SELECT` used only to validate). A second concurrent call on the same `transfer_id` blocks on
+   that row lock for the duration of the transaction, then re-evaluates. Every mutating statement inlines
+   `AND household_id = v_household_id` rather than trusting an earlier isolated membership check (the
+   "structural guards over enumerated assertions" discipline, [ADR-023](#adr-023)), and every write checks
+   its affected-row count via `GET DIAGNOSTICS`, returning `not_found` rather than a silent no-op —
+   closing the exact "ghost success" failure class [ADR-034](#adr-034) found and fixed twice for
+   `leave_household()`/`delete_own_account()`'s admin-succession queries.
+6. **`transfers.created_by` uses `ON DELETE SET NULL`, from day one** — not retrofitted later like
+   `recurring_transactions.created_by`/`savings_goals.created_by` needed in [ADR-032](#adr-032). Both
+   `leave_household()` and `delete_own_account()` are re-created in the same migration (immutable-history
+   convention: re-create, don't edit a shipped migration) with one added statement each, nulling
+   `transfers.created_by` for a departing member in a continuing household — otherwise a user who ever
+   created a transfer could never delete their own account, an App-Store-compliance regression.
+7. **Zero changes to `calculateSafeToSpend.ts`/`calculateCashFlowForecast.ts`.** Both already treat
+   `computeAccountBalances()`'s output as opaque input and never query `transactions` directly; since that
+   function sums *all* `transactions.amount_agorot` per account with no special-casing, correctness flows
+   through automatically once transfer legs exist as ordinary signed rows — a transfer's net effect on
+   total household balance is zero by construction (`-amount + amount`), which is exactly the emergent
+   property this design should produce.
+
+**Consequences.** `filterForAnalytics.ts`, `useBudgetProgress.ts`, `usePriceIncreaseDetections.ts`,
+`useUncategorizedTransactions.ts`, and `useApplyRulesRetroactively.ts` all gain a `transfer_id IS NOT NULL`
+exclusion — a DB-level `CHECK (transfer_id IS NULL OR category_id IS NULL)` backs this as defense-in-depth,
+so a bug in any one query-side exclusion cannot let a transfer leg be silently categorized. No engine
+formula changes anywhere. No historical-transfer auto-detection is introduced — existing data is untouched,
+and manual creation bypasses rule-matching entirely (a transfer is never "categorized," so there is nothing
+for a rule to match).
+
+**Related:** [ADR-029](#adr-029) (transaction identity invariants this design must honor), [ADR-013](
+#adr-013)/[ADR-014](#adr-014) (domain events, channel independence), [ADR-022](#adr-022) (no-mutation-
+policy precedent for a table whose writes are RPC-only), [ADR-023](#adr-023) (structural RLS guards,
+inline household scoping), [ADR-032](#adr-032)/[ADR-034](#adr-034) (the `SECURITY DEFINER` RPC and
+advisory-lock conventions this design follows and, for locking, deliberately departs from with reasoning).
+See `supabase/migrations/008_internal_transfers.sql` for the full implementation.
+
+---
+
+## ADR-036
+### Optimistic concurrency for shared financial-record edits: a `version` column, not `updated_at`
+
+**Status:** Accepted
+
+**Context.** `planned_obligations`, `recurring_transactions`, and `savings_goals` are all editable by any
+household member, and until this ADR, none of the three had any concurrency protection at all — two members
+opening the same record and saving in sequence would silently overwrite each other, with the second save
+winning regardless of which edit was newer. This is distinct from every prior `SECURITY DEFINER`/locking ADR
+in this document ([ADR-032](#adr-032)/[ADR-034](#adr-034)/[ADR-035](#adr-035)): those protect *system-driven*
+atomicity (succession, cascades, a transfer's two legs). This one protects against *two humans editing the
+same row*, which requires the write itself to carry a claim about which version of the row the edit was
+based on, and the database to reject that claim if it's stale.
+
+**Decision.**
+
+1. **A monotonically increasing `version BIGINT NOT NULL DEFAULT 1`, not `updated_at`.** `updated_at`
+   (already present on all three tables via the existing `set_updated_at` trigger) has clock-precision
+   ambiguity and no clean "next value" semantics — comparing it for equality invites off-by-a-network-hop
+   bugs. An integer version gives an unambiguous compare-and-swap predicate (`version = expected`) and a
+   trivially correct next value (`version + 1`), matching the brief's explicit preference and this project's
+   general preference for explicit integer invariants over timestamp comparisons.
+2. **The database is the sole owner of the version.** A client sends only `expectedVersion`; it never
+   computes or sends the next version. Every mutating statement's own `SET version = version + 1` is a SQL
+   expression evaluated against the row's true current value at write time — a client cannot inject an
+   arbitrary next version even if it tried, since the REST/RPC layer only accepts literal parameter values,
+   never a SQL expression.
+3. **The compare-and-swap is one atomic statement, never SELECT-then-compare-then-UPDATE.** Every mutating
+   RPC's `WHERE id = p_id AND household_id = v_household_id AND version = p_expected_version` clause *is*
+   the atomicity guarantee — there is no window between reading a version and writing against it. Zero
+   affected rows are disambiguated into `not_found` vs. `conflict` by a second, purely diagnostic read
+   *after* the write already atomically succeeded or failed — this does not reintroduce a race, because
+   nothing further is written based on that second read.
+4. **`planned_obligations` and `savings_goals`: RLS-closed, `SECURITY DEFINER` RPCs — the same shape ADR-035
+   established for `transfers`.** Neither table has a competing system writer, so their direct-client
+   `UPDATE`/`DELETE` policies are dropped entirely (`SELECT`/`INSERT` untouched), and every mutation goes
+   through a narrowly-scoped `SECURITY DEFINER` RPC deriving `household_id` server-side from `auth.uid()` —
+   never trusting client input for it, matching every RPC in this codebase since [ADR-010](#adr-010).
+5. **`recurring_transactions` is a deliberate, documented asymmetry: RLS stays open, enforcement moves into
+   a trigger.** `generate_recurring_transactions()`/`skip_recurring_occurrence()` (migration 003) are
+   established **`SECURITY INVOKER`** functions whose own `UPDATE
+   recurring_transactions SET next_due_date = …, last_generated_at = NOW()` statements rely on the *existing*
+   `recurring_update` RLS policy to succeed. Closing that policy to force RPC-only mutation would silently
+   break both — a large, out-of-scope rewrite of already-shipped, already-tested code for zero correctness
+   benefit, since neither function ever touches a human-edited field or needs version protection (and
+   *shouldn't* participate in it: if their own housekeeping bumped `version`, a human's in-progress edit
+   would spuriously "conflict" against nothing a human actually changed). Instead: `recurring_update` stays
+   open and unchanged; the new `update_recurring_transaction`/`set_recurring_transaction_active` RPCs are
+   `SECURITY INVOKER` (RLS already correctly scopes household membership — no privilege escalation needed,
+   matching `generate_recurring_transactions()`'s own precedent exactly); a new `BEFORE UPDATE` trigger,
+   `enforce_recurring_transaction_version()`, closes the "raw client bypass" gap that leaving RLS open would
+   otherwise leave open, via two rules checked on *every* update to the row, not only ones a human-facing RPC
+   issues:
+   - **Unconditionally**, `NEW.version` must be `OLD.version` or `OLD.version + 1` — nothing else. Database-
+     security-review of this ADR's design found this rule cannot be conditional on "did a protected column
+     change": a caller could otherwise issue `UPDATE recurring_transactions SET version = 1 WHERE id = X`
+     with no other column touched, rolling `version` backward (or jumping it forward) with impunity, since a
+     purely conditional rule never even inspects the statement. That would let a since-stale
+     `expected_version` from *before* several real edits spuriously succeed later — a genuine lost update,
+     defeating the entire feature. Confirmed and fixed before this migration was written, not after.
+   - **Conditionally**, if any of the eight human-editable columns actually changed (`account_id,
+     category_id, amount_agorot, description, is_shared, frequency, day_of_month, is_active` — deliberately
+     excluding `next_due_date`, `last_generated_at`, and `currency`, the last because MVP has no
+     multi-currency support at all), `NEW.version` must be exactly `OLD.version + 1`, not merely unchanged —
+     this is what makes a naive raw client update (one that changes `amount_agorot` but never touches
+     `version` at all) fail.
+   Together these two rules are a genuine compare-and-swap enforced by the database itself, regardless of
+   caller — not merely "the app happens to call the right RPC." `DELETE` on `recurring_transactions` has no
+   competing system writer (nothing ever deletes a template automatically), so unlike `UPDATE` it *is*
+   closed the same way as the other two tables' deletes: `delete_recurring_transaction()` is `SECURITY
+   DEFINER`, and it too takes `p_expected_version` — a stale delete is exactly as dangerous as a stale
+   update (see point 7), and there is no asymmetry-forcing reason to leave it unprotected the way `UPDATE`
+   has one.
+6. **Every protected mutation is split into a narrow, single-purpose RPC, matching an existing precedent —
+   not inventing one.** `useUpdateSavingsGoal` vs. `useUpdateSavingsGoalProgress` were already two separate
+   hooks writing the same row's different field subsets, specifically so the identity-edit hook never has
+   to reason about `goal.completed`/`goal.progress_updated`. This ADR extends the identical split to
+   `planned_obligations` (`update_planned_obligation` for the edit form vs. `set_planned_obligation_status`
+   for the one-tap mark-paid/cancel actions) and newly to `recurring_transactions`
+   (`update_recurring_transaction` vs. `set_recurring_transaction_active` for the one-tap pause/resume
+   action) — every existing mutation call site maps to exactly one new RPC.
+7. **Delete requires `expectedVersion` too, on all three tables.** A stale-viewing member deleting a row
+   someone else has since edited is *worse* than a silent overwrite: it is irreversible destruction of
+   the newer edit, not merely its replacement. The same atomic `WHERE id = … AND household_id = … AND
+   version = expected` + row-count-verified pattern applies to every delete RPC.
+8. **`expectedVersion` is pinned client-side at the exact moment each screen's existing edit-session snapshot
+   already happens — never re-read from a live query result at submit time.** `obligations/[id].tsx` and
+   `recurring/[id].tsx` snapshot into local state when `startEditing()` is pressed; `goals/[id].tsx` snapshots
+   via its `loadedGoalId` guard on first load. Both existing idioms are preserved exactly, not unified — this
+   ADR only adds a `version` field to what each already snapshots. The one-tap actions (mark-paid, cancel,
+   pause/resume) have no separate edit session at all: their `expectedVersion` is read from the currently-
+   rendered row at the moment of the tap, which is correct because render time and intent-formation time are
+   the same instant for those actions — there is no earlier snapshot to go stale against.
+9. **No new realtime subscription.** Only `transactions` has a realtime channel today (migration 002 §15);
+   none of these three tables do. Save-time compare-and-swap is authoritative and sufficient on its own to
+   satisfy the invariant this ADR exists for — a realtime push would only improve the UX of *warning* before
+   save, which the milestone's own scope guards explicitly exclude ("no collaborative real-time editing," "no
+   notifications for every concurrent edit"). Adding one would be net-new infrastructure scope this ADR does
+   not need, matching [ADR-013](#adr-013)'s "no broker, no queue" discipline.
+10. **A stale save or delete never destroys the user's own unsaved draft.** On `conflict`, a shared
+    `ConflictModal` (wrapping the existing `Modal` component) offers exactly two actions: reload the latest
+    server version (refetches and re-populates the form, including a fresh `expectedVersion`, discarding the
+    stale draft) or cancel. No automatic merge, no automatic retry of the stale mutation with the new
+    version — both would defeat the protection this ADR exists to provide, and are explicitly out of scope.
+
+**Consequences.** `planned_obligations`/`savings_goals` lose their direct-client `UPDATE`/`DELETE` RLS
+policies entirely; every mutation to those two tables is now RPC-only, enforced at the database layer, not by
+convention. `recurring_transactions` keeps its open `UPDATE` policy but gains a `BEFORE UPDATE` trigger that
+makes *any* update — RPC-issued or raw — provably respect the version invariant; only its `DELETE` policy is
+closed. The new `SECURITY INVOKER` RPCs and the new trigger function are **not** covered by the existing
+Group 6.5/6.6 structural guards, which scan only `SECURITY DEFINER` functions — dedicated
+`supabase/rls_tests.sql` assertions were added for their `search_path`/grant hygiene specifically, since no
+existing guard would have caught a regression there. `useUpdateSavingsGoalProgress.ts`'s existing
+`goal.completed`/`goal.progress_updated` event-emission logic is preserved unchanged in shape; the new
+`update_savings_goal_progress()` RPC returns `current_agorot`/`is_completed`/`version` so that client-side
+logic keeps working against the RPC's result exactly as it did against the old raw `.update().select()`
+call's result.
+
+**Related:** [ADR-032](#adr-032)/[ADR-034](#adr-034)/[ADR-035](#adr-035) (the `SECURITY DEFINER`/RLS-closure/
+`GET DIAGNOSTICS` conventions this design reuses for two of three tables, and deliberately departs from for
+`recurring_transactions`'s `UPDATE` with reasoning), [ADR-010](#adr-010) (no information-leak discipline —
+`not_found` and cross-household-invisible collapse to the identical response here too), [ADR-013](#adr-013)
+(no broker/queue — why no new realtime channel was added). See
+`supabase/migrations/009_concurrency_protection.sql` for the full implementation.
+
+---
+
 ## Release versioning convention
 
 Not an ADR (no architectural reversal is at stake) — documented here, alongside the ADRs, because no

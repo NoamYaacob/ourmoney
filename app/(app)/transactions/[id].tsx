@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +6,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
+import { useCategoryRules } from '@/features/categories/hooks/useCategoryRules'
 import { useTransaction } from '@/features/transactions/hooks/useTransaction'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 import { useExcludeTransaction } from '@/features/transactions/hooks/useExcludeTransaction'
@@ -26,9 +27,13 @@ export default function TransactionDetail() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuth()
-  const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  const { householdId, role, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
+  // Rule provenance lookup (ADR-027): matched_rule_id is only an id on the
+  // transaction row, so the rule it names — and whether it still exists —
+  // is resolved client-side against the household's full rule set.
+  const { rules } = useCategoryRules(householdId)
   const { transaction, isLoading } = useTransaction(id)
   const updateTransaction = useUpdateTransaction(householdId)
   const excludeTransaction = useExcludeTransaction(householdId)
@@ -37,6 +42,8 @@ export default function TransactionDetail() {
   const [amountText, setAmountText] = useState('')
   const [isIncome, setIsIncome] = useState(false)
   const [description, setDescription] = useState('')
+  const [merchantName, setMerchantName] = useState('')
+  const [isShared, setIsShared] = useState(true)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -52,15 +59,31 @@ export default function TransactionDetail() {
     setAmountText(String(Math.abs(transaction.amount_agorot) / 100))
     setIsIncome(transaction.amount_agorot > 0)
     setDescription(transaction.description)
+    setMerchantName(transaction.merchant_name ?? '')
+    setIsShared(transaction.is_shared)
     setCategoryId(transaction.category_id)
     setAccountId(transaction.account_id)
   }
+
+  // A transfer leg is never editable here — RLS forces this
+  // (transactions_update's USING clause excludes transfer_id IS NOT NULL
+  // rows entirely, migration 008/ADR-035) — so a leg opened directly (e.g.
+  // a deep link, or a stale list row from before this milestone) redirects
+  // to the dedicated transfer detail screen instead of rendering a form
+  // that could never save. useEffect, not adjust-during-render: this is a
+  // navigation side effect, not a state sync, matching
+  // useAuthGuard.ts's own router.replace pattern.
+  useEffect(() => {
+    if (transaction?.transfer_id) {
+      router.replace(`/transfers/${transaction.transfer_id}`)
+    }
+  }, [transaction?.transfer_id, router])
 
   // Folds in isHouseholdLoading: accounts/categories used for the Select
   // pickers below are gated on householdId, so without this the pickers
   // would briefly render with zero options while useHousehold is still
   // resolving (mobile-expo-reviewer finding).
-  if (isLoading || isHouseholdLoading) {
+  if (isLoading || isHouseholdLoading || transaction?.transfer_id) {
     return (
       <Screen center>
         <LoadingSpinner />
@@ -95,13 +118,37 @@ export default function TransactionDetail() {
         id: transaction.id,
         householdId: transaction.household_id,
         accountId: accountId ?? transaction.account_id,
-        categoryId,
+        // Omitted (not passed as null/unchanged value) unless the user
+        // actually changed the category picker from what loaded — sending
+        // it unconditionally would clear matched_rule_id (useUpdateTransaction.ts)
+        // on every save, even ones that never touched the category.
+        categoryId: categoryId !== transaction.category_id ? categoryId : undefined,
         amountAgorot: signedAmountAgorot(parsed.agorot, isIncome),
         description: description.trim(),
+        merchantName: merchantName.trim() || null,
+        isShared,
       },
       { onSuccess: () => router.back() }
     )
   }
+
+  // transactions_delete RLS restricts hard delete to household admins
+  // (useDeleteTransaction.ts's own header comment) — hiding the button for
+  // non-admins avoids offering an action that would always fail server-side.
+  const canDelete = role === 'admin'
+
+  // Rule provenance (ADR-027): matched_rule_id is set only when a rule
+  // auto-categorized this row (useCreateTransaction.ts /
+  // useApplyRulesRetroactively.ts) and cleared on manual override
+  // (useUpdateTransaction.ts). A missing lookup — null id, or an id the
+  // rule list no longer contains because the rule was deleted (the FK's
+  // ON DELETE SET NULL means this second case is actually unreachable, but
+  // is handled the same as "no provenance" regardless) — renders nothing,
+  // never a crash.
+  const matchedRule = transaction.matched_rule_id
+    ? rules.find((r) => r.id === transaction.matched_rule_id)
+    : undefined
+  const matchedRuleCategory = matchedRule ? categories.find((c) => c.id === matchedRule.category_id) : undefined
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
@@ -119,6 +166,12 @@ export default function TransactionDetail() {
 
       <Input label={t('transactions.form.amountLabel')} value={amountText} onChangeText={setAmountText} keyboardType="decimal-pad" />
       <Input label={t('transactions.form.descriptionLabel')} value={description} onChangeText={setDescription} />
+      <Input
+        label={t('transactions.form.merchantLabel')}
+        value={merchantName}
+        onChangeText={setMerchantName}
+        placeholder={t('transactions.form.merchantPlaceholder')}
+      />
       <Select
         label={t('transactions.form.accountLabel')}
         options={accountOptions}
@@ -133,6 +186,39 @@ export default function TransactionDetail() {
         onChange={setCategoryId}
         placeholder={t('transactions.form.categoryPlaceholder')}
       />
+
+      {matchedRule && (
+        <View className="mb-4 rounded-card border border-border-light bg-surfaceMuted-light p-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <Text className="text-caption font-medium text-inkMuted-light dark:text-inkMuted-dark">
+            {t('transactions.detail.categorizedByRule')}
+          </Text>
+          <View className="mt-1 flex-row flex-wrap items-baseline gap-1.5">
+            <Text className="text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+              {t('categories.rules.ifLabel')}
+            </Text>
+            <Text className="text-body text-ink-light dark:text-ink-dark">
+              {t(`categories.rules.field.${matchedRule.field}`)} {t(`categories.rules.operator.${matchedRule.operator}`)} &quot;
+              {matchedRule.value}&quot;
+              {matchedRuleCategory ? ` → ${matchedRuleCategory.icon} ${matchedRuleCategory.name_he}` : ''}
+            </Text>
+          </View>
+          <View className="mt-2">
+            <Button
+              title={t('transactions.detail.editRule')}
+              variant="ghost"
+              onPress={() => router.push({ pathname: '/settings/categories', params: { editRuleId: matchedRule.id } })}
+            />
+          </View>
+        </View>
+      )}
+
+      <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+        {t('transactions.form.sharedLabel')}
+      </Text>
+      <View className="mb-4 flex-row gap-2">
+        <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
+        <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
+      </View>
 
       {(validationError || updateTransaction.isError) && (
         <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
@@ -155,36 +241,42 @@ export default function TransactionDetail() {
         />
       </View>
 
-      <View className="mt-3">
-        <Button
-          title={t('transactions.detail.delete')}
-          variant="ghost"
-          onPress={() => setConfirmDeleteVisible(true)}
-        />
-      </View>
+      {canDelete && (
+        <View className="mt-3">
+          <Button
+            title={t('transactions.detail.delete')}
+            variant="ghost"
+            onPress={() => setConfirmDeleteVisible(true)}
+          />
+        </View>
+      )}
+
+      {deleteTransaction.isError && <ErrorMessage message={t('transactions.detail.deleteError')} />}
 
       <Text className="mt-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(transaction.amount_agorot)}
       </Text>
 
-      <Modal
-        visible={confirmDeleteVisible}
-        title={t('transactions.detail.deleteConfirmTitle')}
-        message={t('transactions.detail.deleteConfirmMessage')}
-        confirmLabel={t('transactions.detail.delete')}
-        cancelLabel={t('common.cancel')}
-        destructive
-        loading={deleteTransaction.isPending}
-        onCancel={() => setConfirmDeleteVisible(false)}
-        onConfirm={() =>
-          deleteTransaction.mutate(transaction.id, {
-            onSuccess: () => {
-              setConfirmDeleteVisible(false)
-              router.back()
-            },
-          })
-        }
-      />
+      {canDelete && (
+        <Modal
+          visible={confirmDeleteVisible}
+          title={t('transactions.detail.deleteConfirmTitle')}
+          message={t('transactions.detail.deleteConfirmMessage')}
+          confirmLabel={t('transactions.detail.delete')}
+          cancelLabel={t('common.cancel')}
+          destructive
+          loading={deleteTransaction.isPending}
+          onCancel={() => setConfirmDeleteVisible(false)}
+          onConfirm={() =>
+            deleteTransaction.mutate(transaction.id, {
+              onSuccess: () => {
+                setConfirmDeleteVisible(false)
+                router.back()
+              },
+            })
+          }
+        />
+      )}
     </Screen>
   )
 }

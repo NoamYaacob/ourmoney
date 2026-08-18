@@ -11,24 +11,26 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
-import { useTransactions } from '@/features/transactions/hooks/useTransactions'
+import { useTransactions, fetchFreshTransactionsForAccount } from '@/features/transactions/hooks/useTransactions'
 import { useCreateTransaction } from '@/features/transactions/hooks/useCreateTransaction'
 import { pickAndReadCsvFile } from '@/features/import/lib/readCsvFile'
 import { decodeCsvBytes, type DetectedEncoding } from '@/features/import/lib/decodeCsvBytes'
 import { parseCsv } from '@/features/import/lib/parseCsv'
+import { applyHeaderOffset } from '@/features/import/lib/applyHeaderOffset'
 import { mapCsvColumns, type CsvColumnRole } from '@/features/import/lib/mapCsvColumns'
 import { validateImportRow, type ValidatedImportRow } from '@/features/import/lib/validateImportRow'
-import { isDuplicateCandidate } from '@/features/import/lib/detectDuplicates'
+import { isDuplicateCandidate, type ExistingTransactionForDedup } from '@/features/import/lib/detectDuplicates'
 import { formatILS } from '@/lib/money/format'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
+import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 
-const COLUMN_ROLES: CsvColumnRole[] = ['ignore', 'date', 'description', 'amount', 'debit', 'credit']
+const COLUMN_ROLES: CsvColumnRole[] = ['ignore', 'date', 'description', 'merchant', 'amount', 'debit', 'credit']
 
 interface PreviewRow {
   index: number
@@ -49,6 +51,12 @@ export default function TransactionsImport() {
   const [pickError, setPickError] = useState<string | null>(null)
   const [fileName, setFileName] = useState('')
   const [detectedEncoding, setDetectedEncoding] = useState<DetectedEncoding | null>(null)
+  // fullTable holds the ENTIRE parsed file (header row + data rows
+  // together, nothing pre-split) so headerOffset can be changed after the
+  // fact and re-sliced — see applyHeaderOffset.ts. headers/rawRows below
+  // are always the current derived view of fullTable at headerOffset.
+  const [fullTable, setFullTable] = useState<string[][]>([])
+  const [headerOffset, setHeaderOffset] = useState(0)
   const [headers, setHeaders] = useState<string[]>([])
   const [rawRows, setRawRows] = useState<string[][]>([])
   const [columnMapping, setColumnMapping] = useState<Record<number, CsvColumnRole>>({})
@@ -57,10 +65,13 @@ export default function TransactionsImport() {
   const [commitError, setCommitError] = useState<string | null>(null)
   const [isCommitting, setIsCommitting] = useState(false)
   const [importedCount, setImportedCount] = useState(0)
+  const [skippedDuplicateCount, setSkippedDuplicateCount] = useState(0)
 
   // A wide window of existing transactions for the chosen account, used
   // purely for client-side duplicate detection — no DB write involved.
-  const { transactions: existingTransactions } = useTransactions(
+  // isLoading gates the map->preview transition below (Milestone A fix):
+  // the importer must never compute duplicates from a still-loading query.
+  const { transactions: existingTransactions, isLoading: isLoadingExistingTransactions } = useTransactions(
     householdId,
     accountId ? { accountId } : {}
   )
@@ -72,8 +83,23 @@ export default function TransactionsImport() {
       if (!picked) return // user cancelled
       const decoded = decodeCsvBytes(picked.bytes)
       const parsed = parseCsv(decoded.text)
+      // An empty file (or one with no parseable header row at all) has no
+      // columns to map — proceeding to the map step would show a
+      // column-less screen with no way forward. Report it as a file error
+      // instead of a silent dead end.
+      if (parsed.headers.length === 0) {
+        setPickError(t('import.errors.emptyFile'))
+        return
+      }
       setFileName(picked.name)
       setDetectedEncoding(decoded.detectedEncoding)
+      // Reassembled as one table (header row + data rows together) rather
+      // than kept split, so a later header-offset change can re-slice from
+      // scratch — see applyHeaderOffset.ts's own comment for why parseCsv.ts
+      // itself is left untouched (it always treats row 0 as the header).
+      const table = [parsed.headers, ...parsed.rows]
+      setFullTable(table)
+      setHeaderOffset(0)
       setHeaders(parsed.headers)
       setRawRows(parsed.rows)
       setColumnMapping({})
@@ -83,8 +109,21 @@ export default function TransactionsImport() {
     }
   }
 
+  // Generic preamble tolerance (Milestone A): re-slices the already-parsed
+  // full table at the user-specified offset. No bank-specific detection —
+  // a plain "how many rows come before the real header" number, defaulting
+  // to 0. Resets columnMapping since the columns' meanings likely changed.
+  function handleHeaderOffsetChange(text: string) {
+    const n = Math.max(0, Math.trunc(Number(text)) || 0)
+    setHeaderOffset(n)
+    const { headers: newHeaders, rows: newRows } = applyHeaderOffset(fullTable, n)
+    setHeaders(newHeaders)
+    setRawRows(newRows)
+    setColumnMapping({})
+  }
+
   function handleConfirmMapping() {
-    if (!accountId) return
+    if (!accountId || isLoadingExistingTransactions) return
     const mapped = mapCsvColumns(rawRows, columnMapping)
     const rows: PreviewRow[] = mapped.map((row, index) => {
       const validation = validateImportRow(row)
@@ -119,7 +158,39 @@ export default function TransactionsImport() {
     setCommitError(null)
     setIsCommitting(true)
 
-    const toImport = previewRows.filter((r) => r.selected && r.validation.valid)
+    // Milestone A fix: the preview-time dedup pass (handleConfirmMapping,
+    // above) only ever reads the possibly-stale TanStack Query cache. A
+    // normal immediate second import in the same client session — e.g. the
+    // user re-opens this screen and re-picks the same file right after a
+    // successful import — must not slip past that stale snapshot. Right
+    // before any write, fetch a definitely-current snapshot straight from
+    // the server and re-run duplicate detection against it. This does not
+    // add DB-level idempotency (no UNIQUE constraint, no upsert) — true
+    // protection against a genuinely concurrent second client (two tabs,
+    // a retried request) remains unresolved; see this file's own note
+    // below and the milestone report.
+    let freshExisting: ExistingTransactionForDedup[]
+    try {
+      const fresh = await fetchFreshTransactionsForAccount(householdId, accountId)
+      freshExisting = fresh.map((t) => ({
+        accountId: t.account_id,
+        txnDate: t.txn_date,
+        amountAgorot: t.amount_agorot,
+        description: t.description,
+      }))
+    } catch {
+      setIsCommitting(false)
+      setCommitError(t('import.errors.dedupRecheckFailed'))
+      return
+    }
+
+    const candidateRows = previewRows.filter((r) => r.selected && r.validation.valid)
+    const toImport = candidateRows.filter((r) => {
+      if (!r.validation.valid) return false
+      return !isDuplicateCandidate(r.validation.row, accountId, freshExisting)
+    })
+    const skippedAsDuplicate = candidateRows.length - toImport.length
+
     let succeeded = 0
     const CONCURRENCY = 4
     for (let i = 0; i < toImport.length; i += CONCURRENCY) {
@@ -133,6 +204,7 @@ export default function TransactionsImport() {
             accountId,
             amountAgorot: row.amountAgorot,
             description: row.description,
+            merchantName: row.merchantName,
             txnDate: row.txnDate,
             isShared: true,
             source: 'csv_import',
@@ -143,12 +215,24 @@ export default function TransactionsImport() {
     }
 
     setImportedCount(succeeded)
+    setSkippedDuplicateCount(skippedAsDuplicate)
     setIsCommitting(false)
     if (succeeded < toImport.length) {
       setCommitError(t('import.errors.partialFailure', { succeeded, total: toImport.length }))
     }
     setStep('done')
   }
+
+  // KNOWN LIMITATION (Milestone A, documented per the approved scope —
+  // not fixed here): this commit-time recheck closes the same-session
+  // stale-cache race, but transactions has no DB-level uniqueness
+  // constraint or upsert-on-conflict (deliberately, per migration
+  // 002_financial_schema.sql's own comment — dedup is scored application
+  // logic, not a DB constraint). Two genuinely concurrent clients (two
+  // browser tabs, or a retried request racing this exact recheck) can
+  // still both pass this check and both write. True concurrent-client
+  // idempotency requires a database-level change and is out of scope for
+  // this milestone.
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
@@ -178,6 +262,28 @@ export default function TransactionsImport() {
             onChange={setAccountId}
             placeholder={t('import.accountLabel')}
           />
+          {isLoadingExistingTransactions && (
+            <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+              {t('import.checkingExistingTransactions')}
+            </Text>
+          )}
+
+          {/* Generic preamble tolerance (Milestone A) — no bank
+              auto-detection, just a user-specified "rows before the real
+              header" count. Re-slices fullTable, which already holds the
+              whole parsed file. */}
+          <Input
+            label={t('import.headerOffsetLabel')}
+            value={String(headerOffset)}
+            onChangeText={handleHeaderOffsetChange}
+            keyboardType="number-pad"
+          />
+          <Text className="-mt-2 mb-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+            {t('import.headerOffsetHint')}
+          </Text>
+          {fullTable.length > 0 && headers.length === 0 && (
+            <ErrorMessage message={t('import.headerOffsetNoHeaderWarning')} />
+          )}
 
           <Text className="mb-2 mt-4 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.mapColumnsTitle')}
@@ -189,6 +295,7 @@ export default function TransactionsImport() {
                 {COLUMN_ROLES.map((role) => (
                   <Chip
                     key={role}
+                    testID={`import-column-role-${index}-${role}`}
                     label={t(`import.columnRole.${role}`)}
                     selected={(columnMapping[index] ?? 'ignore') === role}
                     onPress={() => setColumnMapping((m) => ({ ...m, [index]: role }))}
@@ -201,7 +308,7 @@ export default function TransactionsImport() {
           <Button
             title={t('import.mapColumnsSubmit')}
             onPress={handleConfirmMapping}
-            disabled={!accountId}
+            disabled={!accountId || isLoadingExistingTransactions}
           />
         </View>
       )}
@@ -220,6 +327,7 @@ export default function TransactionsImport() {
                       <View className="flex-1">
                         <Text className="text-sm text-ink-light dark:text-ink-dark">
                           {row.validation.row.description}
+                          {row.validation.row.merchantName ? ` · ${row.validation.row.merchantName}` : ''}
                         </Text>
                         <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
                           {row.validation.row.txnDate} · {formatILS(row.validation.row.amountAgorot)}
@@ -257,6 +365,11 @@ export default function TransactionsImport() {
           <Text className="mb-4 text-base text-ink-light dark:text-ink-dark">
             {t('import.doneMessage', { count: importedCount })}
           </Text>
+          {skippedDuplicateCount > 0 && (
+            <Text className="mb-4 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+              {t('import.duplicatesSkippedAtCommit', { count: skippedDuplicateCount })}
+            </Text>
+          )}
           {commitError && <ErrorMessage message={commitError} />}
           <Button title={t('import.backToTransactions')} onPress={() => router.back()} />
         </View>

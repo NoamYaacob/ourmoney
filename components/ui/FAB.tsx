@@ -18,9 +18,10 @@ export function FAB({ onPress, accessibilityLabel }: FABProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      className="absolute bottom-6 end-6 h-14 w-14 items-center justify-center rounded-full bg-slate-900 shadow-lg active:opacity-80 dark:bg-slate-100"
+      className="absolute bottom-6 end-6 h-14 w-14 items-center justify-center rounded-full bg-accent-light shadow-lg active:opacity-80 dark:bg-accent-dark"
     >
-      <Ionicons name="add" size={28} color={scheme === 'dark' ? colors.surface.dark : colors.surface.light} />
+      {/* Same white/ink.light flip as Button's primary variant — accent.dark is a bright fill, not a dark one. */}
+      <Ionicons name="add" size={28} color={scheme === 'dark' ? colors.ink.light : '#ffffff'} />
     </Pressable>
   )
 }

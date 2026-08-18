@@ -94,6 +94,9 @@ not a blocker, routes to Expo Go or an EAS build once Milestone 3 needs real int
 - Realtime partner sync
 - Push notifications for budget thresholds (single channel behind the notification interface —
   [ADR-014](docs/DECISIONS.md#adr-014))
+- Internal transfers between a household's own accounts, modeled distinctly from income/expense so
+  balances stay correct without inflating spending/income analytics or budgets
+  ([ADR-035](docs/DECISIONS.md#adr-035))
 
 **Exit criteria**
 - [ ] Two users log a full month of real spending without hitting a blocker

@@ -19,4 +19,23 @@ describe('Modal', () => {
     const alert = getByRole('alert')
     expect(alert.props.children).toBe('מחיקת חשבון')
   })
+
+  // Responsive/desktop pass: on a wide desktop browser this dialog should
+  // read as a centered ~560px panel, not stretch edge to edge — `web:`
+  // scoped, so native mobile's full-width dialog is untouched.
+  it('caps the dialog to a centered width on web, via the shared dialog-width token', async () => {
+    const { getByRole } = await render(
+      <Modal
+        visible
+        title="מחיקת חשבון"
+        confirmLabel="מחיקה"
+        cancelLabel="ביטול"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    )
+    const className = getByRole('alert').parent?.props.className as string
+    expect(className).toContain('web:max-w-[560px]')
+    expect(className).toContain('web:self-center')
+  })
 })

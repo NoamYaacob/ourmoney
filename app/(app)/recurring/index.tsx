@@ -10,11 +10,13 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useCreateRecurringTransaction } from '@/features/recurring/hooks/useCreateRecurringTransaction'
+import { usePriceIncreaseDetections } from '@/features/recurring/hooks/usePriceIncreaseDetections'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
+import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
@@ -37,6 +39,7 @@ export default function Recurring() {
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const { recurringTransactions, isLoading: isRecurringLoading, error } = useRecurringTransactions(householdId)
   const createRecurring = useCreateRecurringTransaction(householdId)
+  const { detections: priceIncreaseDetections } = usePriceIncreaseDetections(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
 
@@ -102,8 +105,53 @@ export default function Recurring() {
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="wide">
       <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('recurring.title')}</Text>
+
+      {priceIncreaseDetections.length > 0 && (
+        <View className="mb-4 web:desktop:max-w-[600px]">
+          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
+            {t('recurring.priceIncrease.sectionTitle')}
+          </Text>
+          <Card>
+            {priceIncreaseDetections.map((d, index) => (
+              <View key={d.identityKey}>
+                {index > 0 && (
+                  <View className="my-3">
+                    <Divider />
+                  </View>
+                )}
+                <Pressable
+                  onPress={() =>
+                    d.recurringId
+                      ? router.push(`/recurring/${d.recurringId}`)
+                      : router.push(`/transactions/${d.currentTransactionId}`)
+                  }
+                  accessibilityRole="button"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-base text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {d.description}
+                    </Text>
+                    <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
+                      {t('recurring.priceIncrease.badge')}
+                    </Text>
+                  </View>
+                  <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                    {formatILS(d.previousAmountAgorot)} → {formatILS(d.currentAmountAgorot)}
+                  </Text>
+                  <Text className="mt-0.5 text-xs text-danger-light dark:text-danger-dark">
+                    {t('recurring.priceIncrease.increaseLine', {
+                      amount: formatILS(d.increaseAgorot),
+                      percent: d.increasePercent,
+                    })}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
 
       {error ? (
         <ErrorMessage message={t('recurring.errors.generic')} />
@@ -115,14 +163,32 @@ export default function Recurring() {
               button below already covers it (mobile-expo-reviewer finding,
               same as accounts/index.tsx and goals/index.tsx). */}
           {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
+          {/* Responsive/desktop pass: a 2-column card grid once there's more
+              than one recurring item, desktop only — same calc()-free
+              pattern as accounts/index.tsx. */}
+          <View
+            className={
+              recurringTransactions.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
+            }
+          >
           {recurringTransactions.map((item) => (
             <Pressable
               key={item.id}
               onPress={() => router.push(`/recurring/${item.id}`)}
               accessibilityRole="button"
-              className="mb-2"
+              className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
             >
-              <Card>
+              {/* Paused items are dimmed and get a bolded status word instead
+                  of blending into the muted caption — the inline "· מושהית"
+                  suffix alone was too easy to miss when scanning the list
+                  (UX-completeness audit finding). */}
+              <Card
+                className={
+                  !item.is_active
+                    ? 'rounded-card border border-border-light bg-surfaceMuted-light p-3 opacity-60 dark:border-border-dark dark:bg-surfaceMuted-dark'
+                    : undefined
+                }
+              >
                 <View className="flex-row items-center justify-between">
                   <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">
                     {item.description}
@@ -133,16 +199,19 @@ export default function Recurring() {
                 </View>
                 <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
                   {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
-                  {!item.is_active ? ` · ${t('recurring.inactive')}` : ''}
+                  {!item.is_active && (
+                    <Text className="font-semibold text-ink-light dark:text-ink-dark"> · {t('recurring.inactive')}</Text>
+                  )}
                 </Text>
               </Card>
             </Pressable>
           ))}
+          </View>
         </>
       )}
 
       {isAdding ? (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
@@ -202,7 +271,7 @@ export default function Recurring() {
           <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
         </View>
       ) : (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Button title={t('recurring.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

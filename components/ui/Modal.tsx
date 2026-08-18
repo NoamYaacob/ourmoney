@@ -1,5 +1,6 @@
 import { Modal as RNModal, Text, View } from 'react-native'
 import { Button } from './Button'
+import { DIALOG_WIDTH_CLASS } from '@/constants/layout'
 
 interface ModalProps {
   visible: boolean
@@ -49,7 +50,7 @@ export function Modal({
             what makes a screen reader actually announce that a dialog
             appeared, instead of the user needing to discover it by exploring. */}
         <View
-          className="w-full rounded-xl bg-surface-light p-5 dark:bg-surface-dark"
+          className={`w-full ${DIALOG_WIDTH_CLASS} rounded-xl bg-surface-light p-5 dark:bg-surface-dark`}
           accessibilityViewIsModal
         >
           <Text accessibilityRole="alert" className="mb-2 text-lg font-bold text-ink-light dark:text-ink-dark">

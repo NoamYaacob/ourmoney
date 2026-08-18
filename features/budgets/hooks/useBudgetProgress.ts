@@ -51,6 +51,12 @@ export function useBudgetProgress(householdId: string | null | undefined, period
         .eq('household_id', hid)
         .eq('is_shared', true)
         .eq('is_excluded', false)
+        // Migration 008 (ADR-035): a transfer leg's category_id is always
+        // NULL (enforced by a CHECK constraint), so it would never match an
+        // allocation anyway — this exclusion exists so a transfer's negative
+        // source leg cannot inflate totalSpentAgorot below, which sums every
+        // matched transaction's amount regardless of category_id.
+        .is('transfer_id', null)
         .gte('txn_date', start)
         .lte('txn_date', end)
         .lt('amount_agorot', 0)

@@ -7,6 +7,13 @@
 // to today," with no explicit requirement for arbitrary-date entry, and no
 // date-picker dependency is installed in this project yet — adding one is a
 // scope decision left for a future milestone rather than assumed here.
+//
+// Design Phase 2: information hierarchy only — every field, every piece of
+// validation, and the submit call are unchanged from Phase 1. Amount is now
+// a dedicated hero entry (AmountField) instead of a plain labeled input;
+// expense/income and personal/shared are SegmentedControls instead of Chip
+// pairs; account/category use Select's 'row' variant with an icon instead
+// of a boxed dropdown-style trigger with an emoji baked into the label.
 
 import { useState } from 'react'
 import { Text, View } from 'react-native'
@@ -18,16 +25,26 @@ import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMemb
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useCreateTransaction } from '@/features/transactions/hooks/useCreateTransaction'
+import { useCreateTransfer } from '@/features/transactions/hooks/useCreateTransfer'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { accountIconName } from '@/features/accounts/lib/accountIcon'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { AmountField } from '@/features/transactions/components/AmountField'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { Chip } from '@/components/ui/Chip'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { Card } from '@/components/ui/Card'
+import { Divider } from '@/components/ui/Divider'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
 
 export default function NewTransaction() {
   const { t } = useTranslation()
@@ -38,14 +55,26 @@ export default function NewTransaction() {
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
   const createTransaction = useCreateTransaction(householdId)
+  const createTransfer = useCreateTransfer(householdId)
+  const { colorScheme: scheme } = useColorScheme()
+  const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
-  // accountId/payerId are "overrides": null means "no explicit user choice
-  // yet, fall back to the sensible default computed at render time" (the
-  // first account, the current user) — avoids a setState-in-effect just to
-  // seed a default once data loads.
+  // accountId/toAccountId/payerId are "overrides": null means "no explicit
+  // user choice yet, fall back to the sensible default computed at render
+  // time" (the first account, the second distinct account, the current
+  // user) — avoids a setState-in-effect just to seed a default once data
+  // loads.
   const [accountIdOverride, setAccountIdOverride] = useState<string | null>(null)
+  const [toAccountIdOverride, setToAccountIdOverride] = useState<string | null>(null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [isIncome, setIsIncome] = useState(false)
+  // Migration 008 (ADR-035): a third entry type alongside expense/income.
+  // Transfer mode hides category/shared-personal/payer entirely (a
+  // transfer is never categorized, never partially shared — see this
+  // screen's transfer-mode branch below) rather than merely disabling them,
+  // matching the milestone's explicit UI requirement.
+  const [entryType, setEntryType] = useState<'expense' | 'income' | 'transfer'>('expense')
+  const isIncome = entryType === 'income'
+  const isTransfer = entryType === 'transfer'
   const [amountText, setAmountText] = useState('')
   const [description, setDescription] = useState('')
   const [merchantName, setMerchantName] = useState('')
@@ -53,17 +82,33 @@ export default function NewTransaction() {
   const [payerIdOverride, setPayerIdOverride] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const accountId = accountIdOverride ?? accounts[0]?.id ?? null
+  // Archiving an account is meant to remove it from every picker a new
+  // transaction/transfer could attribute money to (UX-completeness audit
+  // finding: an archived account previously stayed selectable here,
+  // contradicting useArchiveAccount.ts's own stated purpose). accounts/
+  // [id].tsx and accounts/index.tsx intentionally keep showing archived
+  // accounts for history/unarchive — only this create-flow's pickers filter
+  // them out.
+  const activeAccounts = accounts.filter((a) => a.is_active)
+
+  const accountId = accountIdOverride ?? activeAccounts[0]?.id ?? null
+  // Default destination is the first account that isn't already the
+  // default source — never the same account twice, so the same-account
+  // validation error never greets a user who hasn't touched either picker.
+  const toAccountId = toAccountIdOverride ?? activeAccounts.find((a) => a.id !== accountId)?.id ?? null
   const payerId = payerIdOverride ?? user?.id ?? null
+  const selectedAccount = accounts.find((a) => a.id === accountId)
+  const selectedToAccount = accounts.find((a) => a.id === toAccountId)
+  const selectedCategory = categories.find((c) => c.id === categoryId)
 
   function handleCategoryChange(nextCategoryId: string) {
     setCategoryId(nextCategoryId)
     const category = categories.find((c) => c.id === nextCategoryId)
-    if (category) setIsIncome(category.is_income)
+    if (category) setEntryType(category.is_income ? 'income' : 'expense')
   }
 
   function handleSubmit() {
-    if (createTransaction.isPending) return
+    if (createTransaction.isPending || createTransfer.isPending) return
     setValidationError(null)
 
     if (!householdId || !accountId) {
@@ -78,6 +123,25 @@ export default function NewTransaction() {
     const parsed = agorotFromILS(amountText)
     if (!parsed.ok || parsed.agorot === null) {
       setValidationError(t(`transactions.form.errors.amount.${parsed.error ?? 'invalid'}`))
+      return
+    }
+
+    if (isTransfer) {
+      if (!toAccountId || toAccountId === accountId) {
+        setValidationError(t('transactions.form.errors.sameAccount'))
+        return
+      }
+      createTransfer.mutate(
+        {
+          householdId,
+          fromAccountId: accountId,
+          toAccountId,
+          amountAgorot: parsed.agorot,
+          txnDate: localDateString(),
+          description: description.trim(),
+        },
+        { onSuccess: () => router.back() }
+      )
       return
     }
 
@@ -97,13 +161,13 @@ export default function NewTransaction() {
     )
   }
 
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
-  const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
+  const accountOptions = activeAccounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
   return (
-    <Screen keyboardAvoiding>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">
+    <Screen keyboardAvoiding width="form">
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
         {t('transactions.form.title')}
       </Text>
 
@@ -111,79 +175,196 @@ export default function NewTransaction() {
         <LoadingSpinner />
       ) : (
         <>
-          <View className="mb-4 flex-row gap-2">
-            <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
-            <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
+          <View className="mb-5">
+            <SegmentedControl
+              accessibilityLabel={t('transactions.form.title')}
+              options={[
+                { value: 'expense', label: t('transactions.form.expense'), tint: 'ink' },
+                { value: 'income', label: t('transactions.form.income'), tint: 'positive' },
+                { value: 'transfer', label: t('transactions.form.transfer'), tint: 'accent' },
+              ]}
+              value={entryType}
+              onChange={setEntryType}
+            />
           </View>
 
-          <Input
+          <AmountField
             label={t('transactions.form.amountLabel')}
             value={amountText}
             onChangeText={setAmountText}
             placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
           />
 
-          <Input
-            label={t('transactions.form.descriptionLabel')}
-            value={description}
-            onChangeText={setDescription}
-            placeholder={t('transactions.form.descriptionPlaceholder')}
-          />
+          {/* Desktop Visual/Responsive Design pass: description+merchant is
+              the one field pair on this form that logically groups (both
+              are free-text detail about the same transaction) and where
+              pairing them buys back real vertical space — paired in a row
+              only once there's room for it (`web:desktop:`), stacked
+              exactly as before on mobile/tablet and in transfer mode
+              (merchant doesn't apply there, so nothing to pair with). */}
+          <View className={isTransfer ? undefined : 'web:desktop:flex-row-reverse web:desktop:gap-4'}>
+            <View className={isTransfer ? undefined : 'web:desktop:flex-1'}>
+              <Input
+                label={t('transactions.form.descriptionLabel')}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={
+                  isTransfer
+                    ? t('transactions.form.transferDescriptionPlaceholder')
+                    : t('transactions.form.descriptionPlaceholder')
+                }
+              />
+            </View>
 
-          <Input
-            label={t('transactions.form.merchantLabel')}
-            value={merchantName}
-            onChangeText={setMerchantName}
-            placeholder={t('transactions.form.merchantPlaceholder')}
-          />
-
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
-
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={handleCategoryChange}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-
-          <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-            {t('transactions.form.sharedLabel')}
-          </Text>
-          <View className="mb-1 flex-row gap-2">
-            <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
-            <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
+            {!isTransfer && (
+              <View className="web:desktop:flex-1">
+                <Input
+                  label={t('transactions.form.merchantLabel')}
+                  value={merchantName}
+                  onChangeText={setMerchantName}
+                  placeholder={t('transactions.form.merchantPlaceholder')}
+                />
+              </View>
+            )}
           </View>
-          <Text className="mb-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-            {t('transactions.form.sharedHint')}
-          </Text>
 
-          {payerOptions.length > 1 && (
-            <Select
-              label={t('transactions.form.payerLabel')}
-              options={payerOptions}
-              value={payerId}
-              onChange={setPayerIdOverride}
-              placeholder={t('transactions.form.payerPlaceholder')}
-            />
+          {isTransfer ? (
+            // Transfer mode: category/shared-personal/payer are meaningless
+            // for an internal transfer (migration 008, ADR-035) — replaced
+            // entirely by a from-account/to-account pair, never shown
+            // alongside the expense/income fields above.
+            <View className="mb-4 mt-2">
+              <Card>
+                {/* Desktop Visual/Responsive Design pass: from/to-account is
+                    the other pairing on this form (both are the same kind
+                    of field, picking the two ends of one movement) — side
+                    by side at desktop with a vertical divider, matching the
+                    stat-pair pattern Dashboard/Budgets' hero cards already
+                    use (a manual w-px bar, since Divider.tsx has no
+                    vertical variant to extend). Stacked with the existing
+                    horizontal Divider on mobile/tablet, unchanged. */}
+                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.fromAccountLabel')}
+                      options={accountOptions}
+                      value={accountId}
+                      onChange={setAccountIdOverride}
+                      placeholder={t('transactions.form.fromAccountPlaceholder')}
+                      sheetTitle={t('transactions.form.fromAccountLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                        </View>
+                      }
+                    />
+                  </View>
+                  <View className="web:desktop:hidden">
+                    <Divider />
+                  </View>
+                  <View className="hidden web:desktop:mx-4 web:desktop:flex web:desktop:h-9 web:desktop:w-px web:desktop:self-center web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.toAccountLabel')}
+                      options={accountOptions}
+                      value={toAccountId}
+                      onChange={setToAccountIdOverride}
+                      placeholder={t('transactions.form.toAccountPlaceholder')}
+                      sheetTitle={t('transactions.form.toAccountLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
+                        </View>
+                      }
+                    />
+                  </View>
+                </View>
+              </Card>
+            </View>
+          ) : (
+            <View className="mb-4 mt-2">
+              <Card>
+                {/* Same account/category pairing at desktop as the
+                    from/to-account block above. */}
+                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.accountLabel')}
+                      options={accountOptions}
+                      value={accountId}
+                      onChange={setAccountIdOverride}
+                      placeholder={t('transactions.form.accountPlaceholder')}
+                      sheetTitle={t('transactions.form.accountLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                        </View>
+                      }
+                    />
+                  </View>
+                  <View className="web:desktop:hidden">
+                    <Divider />
+                  </View>
+                  <View className="hidden web:desktop:mx-4 web:desktop:flex web:desktop:h-9 web:desktop:w-px web:desktop:self-center web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      variant="row"
+                      label={t('transactions.form.categoryLabel')}
+                      options={categoryOptions}
+                      value={categoryId}
+                      onChange={handleCategoryChange}
+                      placeholder={t('transactions.form.categoryPlaceholder')}
+                      sheetTitle={t('transactions.form.categorySheetTitle')}
+                      leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
+                    />
+                  </View>
+                </View>
+              </Card>
+            </View>
           )}
 
-          {(validationError || createTransaction.isError) && (
+          {!isTransfer && (
+            <>
+              <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                {t('transactions.form.sharedLabel')}
+              </Text>
+              <SegmentedControl
+                accessibilityLabel={t('transactions.form.sharedLabel')}
+                options={[
+                  { value: 'shared', label: t('transactions.form.shared') },
+                  { value: 'personal', label: t('transactions.form.personal') },
+                ]}
+                value={isShared ? 'shared' : 'personal'}
+                onChange={(v) => setIsShared(v === 'shared')}
+              />
+              <Text className="mb-4 mt-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                {t('transactions.form.sharedHint')}
+              </Text>
+
+              {payerOptions.length > 1 && (
+                <Select
+                  label={t('transactions.form.payerLabel')}
+                  options={payerOptions}
+                  value={payerId}
+                  onChange={setPayerIdOverride}
+                  placeholder={t('transactions.form.payerPlaceholder')}
+                />
+              )}
+            </>
+          )}
+
+          {(validationError || createTransaction.isError || createTransfer.isError) && (
             <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
           )}
 
-          <View className="mt-2">
+          <View className="mt-4">
             <Button
               title={t('transactions.form.submit')}
               onPress={handleSubmit}
-              loading={createTransaction.isPending}
+              loading={createTransaction.isPending || createTransfer.isPending}
             />
           </View>
         </>

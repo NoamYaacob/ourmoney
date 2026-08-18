@@ -223,7 +223,11 @@ CREATE TABLE recurring_transactions (
   last_generated_at TIMESTAMPTZ,
   is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
   created_by        UUID        NOT NULL REFERENCES auth.users(id),
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Migration 009 (ADR-036) — optimistic concurrency. See "Migration 009"
+  -- below: UPDATE stays open (unlike the other two version-protected
+  -- tables) and is instead enforced by a BEFORE UPDATE trigger.
+  version           BIGINT      NOT NULL DEFAULT 1
 );
 ```
 
@@ -238,6 +242,13 @@ CREATE TABLE transactions (
   account_id       UUID        NOT NULL REFERENCES accounts(id),
   category_id      UUID        REFERENCES categories(id),
   recurring_id     UUID        REFERENCES recurring_transactions(id),
+  -- Which category_rule (if any) set category_id automatically. NULL for a
+  -- transaction that was never auto-categorized, that a user categorized
+  -- by hand, or whose matching rule has since been deleted (ON DELETE SET
+  -- NULL — see "Migration 006" below). Cleared back to NULL whenever a
+  -- user explicitly changes category_id, so it never points at a rule
+  -- that no longer explains the visible category.
+  matched_rule_id  UUID        REFERENCES category_rules(id) ON DELETE SET NULL,
   amount_agorot    BIGINT      NOT NULL,
   currency         TEXT        NOT NULL DEFAULT 'ILS',
   description      TEXT        NOT NULL,
@@ -278,6 +289,100 @@ nothing now and are expensive to retrofit.
 **Also:** `is_shared` is budget attribution only, and `is_excluded` is user-driven exclusion only.
 Neither may be overloaded to mean visibility, installment status, or anything else. Overloading a
 boolean is how the next person is forced into a migration.
+
+### Migration 008 — internal account transfers (real, not future)
+
+Unlike installments/visibility below, this model is **implemented**, not planned. See
+[ADR-035](DECISIONS.md#adr-035) for the full decision record.
+
+```sql
+CREATE TABLE transfers (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  household_id     UUID        NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  from_account_id  UUID        NOT NULL REFERENCES accounts(id),
+  to_account_id    UUID        NOT NULL REFERENCES accounts(id),
+  amount_agorot    BIGINT      NOT NULL CHECK (amount_agorot > 0),
+  txn_date         DATE        NOT NULL,
+  description      TEXT        NOT NULL,
+  created_by       UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (from_account_id <> to_account_id)
+);
+
+-- Each leg IS a transaction (I1) — the source leg is negative, the destination leg positive,
+-- summing to zero. The link is one nullable FK, cascading so a deleted transfer takes both legs
+-- with it in one statement.
+ALTER TABLE transactions
+  ADD COLUMN transfer_id UUID REFERENCES transfers(id) ON DELETE CASCADE;
+ALTER TABLE transactions
+  ADD CONSTRAINT transactions_transfer_no_category CHECK (transfer_id IS NULL OR category_id IS NULL);
+```
+
+A transfer is never entered directly against `transactions` by a client — only `create_transfer()`/
+`update_transfer()`/`delete_transfer()` (all `SECURITY DEFINER`) may write a row with `transfer_id`
+set, enforced by tightening `transactions_insert`/`_update`/`_delete`'s RLS to require
+`transfer_id IS NULL`. `transfers` itself carries a `SELECT`-only policy — no client-side
+`INSERT`/`UPDATE`/`DELETE` path exists at all.
+
+### Migration 009 — Optimistic concurrency protection (ADR-036)
+
+`planned_obligations`, `recurring_transactions`, and `savings_goals` each gain a
+`version BIGINT NOT NULL DEFAULT 1` column (see each table's definition above). Every mutating RPC
+below implements the same atomic compare-and-swap: `WHERE id = p_id AND household_id = v_household_id
+AND version = p_expected_version`, `GET DIAGNOSTICS` row-count verified, and a zero-row result
+disambiguated by a second diagnostic-only read into `conflict` (row exists, version mismatch) vs.
+`not_found` (row does not exist, or belongs to a different household — no oracle, same discipline as
+[ADR-010](DECISIONS.md#adr-010)). See [ADR-036](DECISIONS.md#adr-036) for the full decision record,
+including why `recurring_transactions` is a deliberate asymmetry.
+
+| Table | UPDATE | DELETE |
+|---|---|---|
+| `planned_obligations` | RLS-closed; `update_planned_obligation()`/`set_planned_obligation_status()` (`SECURITY DEFINER`) | RLS-closed; `delete_planned_obligation()` (`SECURITY DEFINER`) |
+| `savings_goals` | RLS-closed; `update_savings_goal()`/`update_savings_goal_progress()` (`SECURITY DEFINER`) | RLS-closed; `delete_savings_goal()` (`SECURITY DEFINER`) |
+| `recurring_transactions` | RLS stays **open** (`recurring_update`, unchanged) — `update_recurring_transaction()`/`set_recurring_transaction_active()` are `SECURITY INVOKER`, adding only the version compare-and-swap on top of RLS's existing household scoping | RLS-closed; `delete_recurring_transaction()` (`SECURITY DEFINER`) |
+
+`recurring_transactions`' `UPDATE` stays open because `generate_recurring_transactions()`/
+`skip_recurring_occurrence()` (migration 003) are themselves `SECURITY INVOKER` and depend on that
+policy for their own `next_due_date`/`last_generated_at` writes — closing it would silently break both.
+Enforcement instead comes from a new `BEFORE UPDATE` trigger, `enforce_recurring_transaction_version()`,
+applied to every update to the row regardless of caller:
+
+```sql
+CREATE OR REPLACE FUNCTION enforce_recurring_transaction_version()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+  -- Unconditional: version may only stay the same or advance by exactly 1,
+  -- on ANY update — closes a "roll version backward with no protected
+  -- column touched" bypass a purely conditional check would miss.
+  IF NEW.version NOT IN (OLD.version, OLD.version + 1) THEN
+    RAISE EXCEPTION 'recurring_transaction_version_invalid' USING ERRCODE = 'P0001';
+  END IF;
+  -- Conditional: if a human-editable column changed, version MUST have
+  -- advanced by exactly 1 — closes "change amount_agorot, never touch
+  -- version." next_due_date/last_generated_at (system-owned) and currency
+  -- (no multi-currency support in MVP) are deliberately excluded.
+  IF (NEW.account_id, NEW.category_id, NEW.amount_agorot, NEW.description, NEW.is_shared,
+      NEW.frequency, NEW.day_of_month, NEW.is_active)
+     IS DISTINCT FROM
+     (OLD.account_id, OLD.category_id, OLD.amount_agorot, OLD.description, OLD.is_shared,
+      OLD.frequency, OLD.day_of_month, OLD.is_active)
+  THEN
+    IF NEW.version <> OLD.version + 1 THEN
+      RAISE EXCEPTION 'recurring_transaction_version_conflict' USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+```
+
+Every RPC returns the same stable `{ok, error}` shape established by [ADR-035](DECISIONS.md#adr-035):
+`{ok:true, version}` on success (`update_savings_goal_progress()` additionally returns
+`currentAgorot`/`isCompleted`, since `derive_savings_goal_completion()`'s trigger-derived value must
+reach the caller in the same round trip), or `{ok:false, error:'conflict'|'not_found'|...}` — the client
+never parses a raw Postgres error. `lib/mutations/concurrencyError.ts` is the single place that turns
+this shape into a typed `ConcurrencyError` a screen can `instanceof`-check.
 
 ### Future model — installments (NOT in MVP)
 
@@ -416,9 +521,16 @@ CREATE TABLE savings_goals (
   is_completed    BOOLEAN     NOT NULL DEFAULT FALSE,
   created_by      UUID        NOT NULL REFERENCES auth.users(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Migration 009 (ADR-036) — optimistic concurrency. See "Migration 009"
+  -- below: UPDATE/DELETE are now RPC-only, compare-and-swapped on this
+  -- column.
+  version         BIGINT      NOT NULL DEFAULT 1
 );
 ```
+
+`planned_obligations` (migration 007) gains the identical `version BIGINT NOT NULL DEFAULT 1` column in
+migration 009 — see "Migration 009" below.
 
 ---
 
@@ -919,6 +1031,253 @@ GRANT EXECUTE ON FUNCTION delete_own_account() TO authenticated;
 
 ---
 
+### Migration 005 — Leave household
+
+No new tables. Closes the gap ADR-032 named as deferred future work: `leave_household()` reuses
+`delete_own_account()`'s admin-succession and sole-member cascade decisions verbatim, extended to the
+one way this action differs — the caller's own `auth.users` row is never touched. Three parts, not one
+— a database-security-reviewer pass during authoring found a critical concurrency gap in the
+admin-succession logic (shared with the already-shipped `delete_own_account()`) and a high-severity RLS
+gap letting an admin bypass both succession-aware functions entirely; both are fixed in this same
+migration rather than deferred, since leaving Phase A's stated goal ("prevent concurrent leaving from
+producing zero admins") unmet was not acceptable. See ADR-034 for the full narrative.
+
+```sql
+-- Part 1
+CREATE OR REPLACE FUNCTION leave_household()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user_id            UUID := auth.uid();
+  v_household_id       UUID;
+  v_role               TEXT;
+  v_other_member_count INT;
+  v_new_admin_id       UUID;
+  v_household_deleted  BOOLEAN := FALSE;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'unauthenticated');
+  END IF;
+
+  SELECT household_id INTO v_household_id
+  FROM household_members WHERE user_id = v_user_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'not_a_member');
+  END IF;
+
+  -- Same lock CLASS (72702) as delete_own_account() — deliberately shared,
+  -- not a new namespace: both functions protect the identical resource (a
+  -- consistent household_members view for succession/cascade purposes), so
+  -- they must contend on the same key to actually serialize against each
+  -- other.
+  PERFORM pg_advisory_xact_lock(72702, hashtext(v_household_id::text));
+
+  SELECT role INTO v_role
+  FROM household_members WHERE household_id = v_household_id AND user_id = v_user_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', true, 'household_deleted', false, 'new_admin_id', NULL);
+  END IF;
+
+  SELECT COUNT(*) INTO v_other_member_count
+  FROM household_members WHERE household_id = v_household_id AND user_id <> v_user_id;
+
+  IF v_other_member_count = 0 THEN
+    DELETE FROM households WHERE id = v_household_id;
+    v_household_deleted := TRUE;
+  ELSE
+    IF v_role = 'admin' THEN
+      -- FOR UPDATE: closes a critical race the advisory lock alone does
+      -- NOT cover — see this section's design notes below.
+      SELECT user_id INTO v_new_admin_id
+      FROM household_members
+      WHERE household_id = v_household_id AND user_id <> v_user_id
+      ORDER BY joined_at ASC LIMIT 1
+      FOR UPDATE;
+
+      IF FOUND THEN
+        UPDATE household_members SET role = 'admin'
+        WHERE household_id = v_household_id AND user_id = v_new_admin_id;
+      ELSE
+        v_new_admin_id := NULL;
+      END IF;
+    END IF;
+
+    UPDATE households SET created_by = NULL WHERE id = v_household_id AND created_by = v_user_id;
+    UPDATE invitations SET invited_by = NULL WHERE household_id = v_household_id AND invited_by = v_user_id;
+    UPDATE accounts SET owner_id = NULL WHERE household_id = v_household_id AND owner_id = v_user_id;
+    UPDATE transactions SET payer_id = NULL WHERE household_id = v_household_id AND payer_id = v_user_id;
+    UPDATE transactions SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+    UPDATE recurring_transactions SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+    UPDATE savings_goals SET created_by = NULL WHERE household_id = v_household_id AND created_by = v_user_id;
+
+    DELETE FROM household_members WHERE household_id = v_household_id AND user_id = v_user_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true, 'household_deleted', v_household_deleted, 'new_admin_id', v_new_admin_id
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION leave_household() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION leave_household() TO authenticated;
+
+-- Part 2: delete_own_account() (migration 004) re-created with the
+-- identical FOR UPDATE fix — the same unlocked SELECT-then-UPDATE shape
+-- existed there first. See that migration/ADR-032 for everything else;
+-- unchanged otherwise.
+
+-- Part 3: household_members_delete tightened so an admin can no longer
+-- self-remove via the raw policy — only through the two functions above.
+DROP POLICY "household_members_delete" ON household_members;
+CREATE POLICY "household_members_delete" ON household_members
+  FOR DELETE TO authenticated
+  USING (
+    (user_id = auth.uid() AND role <> 'admin')
+    OR (is_household_admin(household_id) AND user_id <> auth.uid())
+  );
+```
+
+**Design notes**
+
+- **Zero parameters, deliberately.** Same structural property as `delete_own_account()` — the only
+  membership this function can ever affect is `auth.uid()`'s own.
+- **Sole-member decision.** A sole member leaving deletes the household outright, exactly like
+  `delete_own_account()`'s sole-member branch — an unreachable, member-less household would be the same
+  permanent RLS-orphaned row that decision exists to prevent. This was explicitly anticipated, not
+  invented: ADR-032 names "routing a voluntary leave through the same succession/cascade logic
+  `delete_own_account()` uses" as the intended shape of this exact future addition.
+- **Attribution nulling is required here for a different reason than in `delete_own_account()`.** There,
+  nulling is defensive/explicit (the FK's `ON DELETE SET NULL` would achieve the same result once
+  `auth.users` is deleted). Here, `auth.users` is never touched, so that automatic path never fires —
+  without the explicit `UPDATE`s, a departed member's `created_by`/`payer_id` would still point at a
+  real user, but one no longer in `household_members` for this household, which is exactly what
+  `transactions_update`/`recurring_update`/`savings_goals_update`'s `WITH CHECK` (migration 004 Part 2)
+  already treats as unauthorized for a future edit — the same permanently-frozen-row bug migration 004
+  fixed, reachable through a different door if this function didn't null the same columns.
+- **Lock class is shared with `delete_own_account()` on purpose.** Both functions protect the identical
+  resource (a consistent view of a household's membership for succession/cascade decisions), so a
+  concurrent `leave_household()` and `delete_own_account()` call for the *same* household must serialize
+  against each other, not just against calls to the same function — which requires the same lock class,
+  not a new one.
+- **CORRECTED, not just "known, accepted": the advisory lock does NOT cover a race against the client's
+  unlocked "remove member" `DELETE`.** An earlier draft of this migration claimed that raw `DELETE`
+  "can never race this function's succession logic" because it only targets non-admin rows — that
+  reasoning was wrong: the succession *candidate* selected by decision 2 is itself a non-admin row, so
+  it is exactly the kind of row that `DELETE` can target. If it removes the selected candidate between
+  this function's `SELECT` and its `UPDATE`, the promotion silently becomes a 0-row no-op — the function
+  would report a successful promotion that never happened, leaving the household with zero admins,
+  permanently (only a departing admin's own leave/delete ever triggers promotion). Fixed by adding
+  `FOR UPDATE` to the candidate `SELECT`: it blocks until any concurrent `DELETE` on that row resolves,
+  and Postgres re-evaluates row visibility afterward — a vanished candidate is skipped in favor of the
+  next-longest-tenured one still present, rather than silently "promoted" as a ghost. Applied to
+  `delete_own_account()` too (Part 2), which had the identical gap. `household_members_delete` is also
+  tightened (Part 3) so an admin cannot bypass both functions' succession logic entirely via a raw
+  self-`DELETE` on their own row — closing a second, more direct path to the same zero-admin outcome
+  that ADR-032/ADR-034 had both previously characterized as merely "latent, not live." See ADR-034's
+  Consequences for the full narrative and the test coverage this added (8.12, 8.13).
+
+### Migration 006 — Transaction rule provenance
+
+Closes the missing half of ADR-027, which is also a literal MVP-2 exit criterion (ROADMAP.md):
+"Every rule is visible and editable in-app, AND a mis-categorised transaction leads the user to the
+rule that caused it." Rules were already visible/editable/testable in-app; the "leads the user to the
+rule that caused it" half did not exist — no column, hook, or UI ever recorded which rule (if any) set
+a transaction's category, even though the matcher (`features/categories/lib/matchRule.ts`'s
+`findMatchingRule`) already returns the full matched rule object at both call sites that use it. One
+nullable FK column, plus the two `transactions` `WITH CHECK` policies widened the same way every other
+nullable reference column on that row already is. Rule matching itself is unchanged.
+
+```sql
+ALTER TABLE transactions
+  ADD COLUMN matched_rule_id UUID REFERENCES category_rules(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_transactions_matched_rule ON transactions(matched_rule_id);
+
+DROP POLICY "transactions_insert" ON transactions;
+CREATE POLICY "transactions_insert" ON transactions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    is_household_member(household_id)
+    AND account_id IN (SELECT id FROM accounts WHERE accounts.household_id = transactions.household_id)
+    AND (
+      category_id IS NULL
+      OR category_id IN (SELECT id FROM categories WHERE categories.household_id = transactions.household_id OR categories.household_id IS NULL)
+    )
+    AND (
+      recurring_id IS NULL
+      OR recurring_id IN (SELECT id FROM recurring_transactions WHERE recurring_transactions.household_id = transactions.household_id)
+    )
+    AND (
+      matched_rule_id IS NULL
+      OR matched_rule_id IN (SELECT id FROM category_rules WHERE category_rules.household_id = transactions.household_id)
+    )
+    AND created_by = auth.uid()
+    AND (
+      payer_id IS NULL
+      OR payer_id IN (SELECT user_id FROM household_members WHERE household_members.household_id = transactions.household_id)
+    )
+  );
+
+DROP POLICY "transactions_update" ON transactions;
+CREATE POLICY "transactions_update" ON transactions
+  FOR UPDATE TO authenticated
+  USING (is_household_member(household_id))
+  WITH CHECK (
+    is_household_member(household_id)
+    AND account_id IN (SELECT id FROM accounts WHERE accounts.household_id = transactions.household_id)
+    AND (
+      category_id IS NULL
+      OR category_id IN (SELECT id FROM categories WHERE categories.household_id = transactions.household_id OR categories.household_id IS NULL)
+    )
+    AND (
+      recurring_id IS NULL
+      OR recurring_id IN (SELECT id FROM recurring_transactions WHERE recurring_transactions.household_id = transactions.household_id)
+    )
+    AND (
+      matched_rule_id IS NULL
+      OR matched_rule_id IN (SELECT id FROM category_rules WHERE category_rules.household_id = transactions.household_id)
+    )
+    AND (
+      created_by IS NULL
+      OR created_by IN (SELECT user_id FROM household_members WHERE household_members.household_id = transactions.household_id)
+    )
+    AND (
+      payer_id IS NULL
+      OR payer_id IN (SELECT user_id FROM household_members WHERE household_members.household_id = transactions.household_id)
+    )
+  );
+```
+
+**Design notes**
+
+- **`ON DELETE SET NULL`, not `RESTRICT`/`CASCADE`.** `category_rules_delete` permits any household
+  member to delete a rule at any time (migration 002) — a transaction that rule once categorized must
+  survive that deletion. This also satisfies "a transaction whose rule was deleted must degrade cleanly
+  with no crash" at the database level: the column simply reads `NULL` afterward, and the UI already
+  treats `NULL` as "no provenance to show" for a normal never-auto-categorized transaction. The
+  deleted-rule case and the never-had-a-rule case are intentionally indistinguishable.
+- **Nullable, no `DEFAULT`.** Every transaction that predates this migration correctly has no recorded
+  provenance — there is no rule to retroactively attribute a historical categorization to.
+- **`WITH CHECK` widened, not restricted.** Same shape as the existing `category_id`/`recurring_id`/
+  `payer_id` coherence legs already on `transactions_insert`/`transactions_update`: a non-`NULL`
+  `matched_rule_id` must belong to a `category_rules` row in the *same* household as the transaction.
+  `transactions_update` is `DROP`+`CREATE` against its migration 004 form (the one with
+  `created_by IS NULL OR ...`), not the original migration 002 form — migrations are immutable, so the
+  live policy is the latest version, and this migration widens that one.
+- **Application-level:** `matched_rule_id` is set alongside `category_id` wherever a rule auto-matches
+  (`useCreateTransaction`, covering both manual creation and CSV import since import reuses that same
+  hook; `useApplyRulesRetroactively`), and is cleared back to `NULL` whenever a user explicitly changes
+  a transaction's category by hand (`useUpdateTransaction`), so it never points at a rule that no
+  longer explains the visible category.
+
+---
+
 ## Row-Level Security Policies
 
 ### profiles
@@ -1205,6 +1564,12 @@ CREATE POLICY "recurring_delete" ON recurring_transactions
   FOR DELETE TO authenticated USING (is_household_member(household_id));
 ```
 
+Migration 009 (ADR-036) drops `recurring_delete` and re-grants the table `SELECT, INSERT, UPDATE` only
+(no `DELETE`) — `delete_recurring_transaction()` is the only delete path. `recurring_update` above is
+**left completely unchanged**; version compare-and-swap for `UPDATE` is enforced by a `BEFORE UPDATE`
+trigger instead (`enforce_recurring_transaction_version()`, see "Migration 009" under Tables above), not
+by narrowing this policy or its grant.
+
 ### savings_goals
 
 ```sql
@@ -1240,6 +1605,13 @@ CREATE POLICY "savings_goals_update" ON savings_goals
 CREATE POLICY "savings_goals_delete" ON savings_goals
   FOR DELETE TO authenticated USING (is_household_member(household_id));
 ```
+
+Migration 009 (ADR-036) drops `savings_goals_update`/`savings_goals_delete` entirely and re-grants the
+table `SELECT, INSERT` only — every mutation goes through `update_savings_goal()`/
+`update_savings_goal_progress()`/`delete_savings_goal()` (all `SECURITY DEFINER`, version compare-and-
+swapped). `planned_obligations` (migration 007) receives the identical treatment: `planned_obligations_
+update`/`_delete` dropped, grant narrowed to `SELECT, INSERT`, mutation moved to
+`update_planned_obligation()`/`set_planned_obligation_status()`/`delete_planned_obligation()`.
 
 Milestone 7 adds one more trigger to this table — `derive_completion` (`BEFORE INSERT OR UPDATE`,
 calling `derive_savings_goal_completion()`) — unconditionally setting
@@ -1421,6 +1793,81 @@ row-level assertions.
 | 7.11 | User with no household deletes | only their own `auth.users`/`profiles` rows are affected |
 | 7.12 | Idempotency | calling the function twice in a row is a clean no-op the second time |
 | DELETE_ACCOUNT.CONCURRENT | Two members of the same household call concurrently (isolated dblink section, true concurrency) | no deadlock, both calls succeed, household and both users end up fully gone regardless of call order |
+
+### Group 8 — `leave_household()` (migration 005)
+
+| # | Test | Expected |
+|---|---|---|
+| 8.1 | Fixed `search_path` | `pg_proc.proconfig` contains `search_path=public, pg_temp` |
+| 8.2 | Grants | `information_schema.role_routine_grants` shows `authenticated` only |
+| 8.3 | Caller is `anon` | `EXECUTE` denied |
+| 8.4 | No `sub` claim | `{ok: false, error: 'unauthenticated'}` |
+| 8.5 | Authenticated caller with no household | `{ok: false, error: 'not_a_member'}` |
+| 8.6 | Regular member (User B) leaves, Household 1 continues | household preserved, User A's role unchanged, B's own `auth.users`/`profile` rows survive, B's personal account `owner_id` and transaction `created_by` nulled |
+| 8.7 | Leave-path D2-widening regression check | a remaining member can still `UPDATE` a transaction whose `created_by` is now `NULL` (same regression 7.6 covers for the delete-account path) |
+| 8.8 | Admin (User A) leaves, Household 1 continues | User B auto-promoted to admin, `households.created_by` nulled, User A's own `auth.users` row survives |
+| 8.9 | Post-succession capability check | the newly-promoted admin can immediately exercise an admin-only policy (`households_update`) |
+| 8.10 | Sole member (User C, Household 2) leaves | Household 2 and every row that belonged to it (accounts/categories/category_rules/transactions/recurring_transactions/budgets/budget_allocations/savings_goals/invitations/membership) are gone, but User C's own `auth.users` and `profiles` rows survive intact — the key assertion distinguishing this from 7.10 |
+| 8.11 | Genuine idempotency | User B actually leaves, then calls `leave_household()` again — second call cleanly reports `{ok:false, error:"not_a_member"}` (the caller now has zero `household_members` rows, same top-of-function check as 8.5), not a repeated promotion/cascade attempt |
+| 8.12 | Admin raw self-DELETE rejected (Part 3 of this migration) | an admin attempting `DELETE FROM household_members` on their own row directly (bypassing `leave_household()`/`delete_own_account()`) affects 0 rows — RLS-rejected |
+| 8.13 | Succession-candidate `FOR UPDATE` fix | when the longest-tenured candidate no longer exists (simulated deterministically, not a live race), the next candidate still present is correctly promoted instead of a false/failed promotion |
+| LEAVE.CONCURRENT | Two members of the same household call concurrently (isolated dblink section, true concurrency) | no deadlock, both calls succeed, household fully gone, **both users' accounts survive intact** regardless of call order |
+
+**Known gap, stated rather than silently left uncovered:** none of the tests above (or `DELETE_ACCOUNT.CONCURRENT`) exercise the *actual* true-concurrency shape of the critical finding 8.13 fixes — a real second transaction (the client's raw "admin removes a member" `DELETE`, which takes no lock) committing between this function's `SELECT`/`FOR UPDATE` and its promotion `UPDATE`. 8.13 proves the logic deterministically; the live locking/timing behavior needs a real database to verify (see migration 005's own `NEEDS LIVE VERIFICATION` note).
+
+### Group 9 — Internal account transfers (migration 008, [ADR-035](DECISIONS.md#adr-035))
+
+| # | Test | Expected |
+|---|---|---|
+| 9.1 | `create_transfer()` happy path | one `transfers` row + two correctly-signed, category-less linked `transactions` legs |
+| 9.2 | Same `from`/`to` account | `{ok: false, error: 'same_account'}`, nothing inserted |
+| 9.3 | `to_account_id` from a different household | `{ok: false, error: 'invalid_account'}`, nothing inserted |
+| 9.4 | Non-positive amount | `{ok: false, error: 'invalid_amount'}` |
+| 9.5 | Caller is `anon` | `EXECUTE` denied |
+| 9.7 | **[design-review regression]** direct `INSERT` into `transactions` with `transfer_id` set | rejected — only `create_transfer()` may create a leg |
+| 9.8 | **[design-review regression]** direct `UPDATE ... SET transfer_id = NULL, amount_agorot = ...` on a leg (the detach-and-mutate bypass) | 0 rows affected — `transactions_update`'s `USING` clause excludes `transfer_id IS NOT NULL` rows entirely, not only `WITH CHECK` |
+| 9.9 | Direct `UPDATE` on a leg that never touches `transfer_id` | 0 rows affected — the leg is not a reachable `UPDATE` target at all |
+| 9.10 | Direct admin `DELETE` on a single leg | 0 rows affected — only `delete_transfer()` can remove a transfer, always both legs together |
+| 9.11 | Cross-household `SELECT` on `transfers` | 0 rows visible |
+| 9.12 | `update_transfer()` on another household's `transfer_id` | `{ok: false, error: 'not_found'}` |
+| 9.13 | `update_transfer()` with an account from a different household, on the caller's own transfer | `{ok: false, error: 'invalid_account'}`, nothing changed |
+| 9.14 | `update_transfer()` with the same `from`/`to` account | `{ok: false, error: 'same_account'}` |
+| 9.15 | `update_transfer()` happy path, including a from/to direction swap | both legs correctly re-signed and re-linked |
+| 9.16 | `delete_transfer()` by a non-admin member | `{ok: false, error: 'not_admin'}`, nothing deleted |
+| 9.17 | `delete_transfer()` on another household's `transfer_id` (even by that household's own admin) | `{ok: false, error: 'not_found'}` |
+| 9.18 | `delete_transfer()` by the owning household's admin | `transfers` row and both legs gone (`ON DELETE CASCADE`) |
+| 9.19 | Grants | `transfers` is `SELECT`-only for `authenticated`, nothing for `anon` |
+| 9.20 | `leave_household()` widening | `transfers.created_by` nulled for a departing member, transfer itself intact |
+| 9.21 | `transfers.created_by` FK behavior, tested directly (not through an RPC) | deleting the referenced `auth.users` row nulls `created_by` rather than raising `foreign_key_violation` |
+
+9.6 is fixture setup (a real transfer, reused by 9.7–9.18), not an assertion of its own. 9.5's anon-cannot-execute
+guarantee and the fixed-`search_path` guarantee for all three new RPCs are additionally covered for free by the
+existing generic 6.5/6.6 structural guards, which scan every `SECURITY DEFINER` function in `public` rather than
+being written once per function.
+
+### Group 10 — Optimistic concurrency protection (migration 009, [ADR-036](DECISIONS.md#adr-036))
+
+| # | Test | Expected |
+|---|---|---|
+| 10.1 | `update_planned_obligation()` happy path | `{ok:true, version:2}`, data changed |
+| 10.2 | Stale `expected_version` | `{ok:false, error:'conflict'}`, data/version unchanged — the first, successful write's values survive untouched |
+| 10.3 | Cross-household call with the *correct* current version | `{ok:false, error:'not_found'}` — no oracle distinguishing wrong-household from does-not-exist |
+| 10.4 / 10.5 | Direct `UPDATE`/`DELETE` on `planned_obligations` | `insufficient_privilege` — rejected at the grant level, not merely by RLS |
+| 10.6 / 10.7 | `delete_planned_obligation()` stale then correct | stale: `conflict`, row survives; correct: `ok:true`, row gone |
+| 10.8 | `set_planned_obligation_status()` valid then invalid status | valid: version advances; invalid: clean `{ok:false, error:'invalid_status'}`, version untouched |
+| 10.9 | Version monotonicity | three successive updates: `1 -> 2 -> 3`, never resets |
+| 10.10–10.18 | `savings_goals` — identical coverage shape (`update_savings_goal`, cross-household, direct-bypass, `update_savings_goal_progress` incl. the `derive_savings_goal_completion` trigger still firing inside the RPC's own statement, `delete_savings_goal` stale/success) | mirrors 10.1–10.9 |
+| 10.19–10.23 | `recurring_transactions` — `update_recurring_transaction()`/`set_recurring_transaction_active()` (`SECURITY INVOKER`) happy path, stale conflict, cross-household `not_found`, clean `invalid_frequency`/`invalid_account` rejection | mirrors 10.1/10.2/10.3, proving the `SECURITY INVOKER` RPCs give the identical guarantee as the `SECURITY DEFINER` ones |
+| 10.24 | Direct `UPDATE` changing a protected column **without** incrementing `version` | rejected — `enforce_recurring_transaction_version()`'s conditional rule |
+| 10.25 | Direct `UPDATE` changing a protected column **and** correctly incrementing `version` by 1 | succeeds — proves `recurring_transactions`' `UPDATE` is legitimately reachable directly, the deliberate asymmetry vs. the other two tables |
+| 10.26 | **[design-review regression]** Direct `UPDATE ... SET version = <lower>` with **no protected column touched** | rejected — the unconditional rule; a purely conditional check would have let this through |
+| 10.27 | Direct `DELETE` on `recurring_transactions` | `insufficient_privilege` — `DELETE` is closed even though `UPDATE` stays open |
+| 10.28 / 10.29 | `delete_recurring_transaction()` stale then correct | mirrors 10.6/10.7 |
+| 10.30 / 10.31 | `generate_recurring_transactions()`/`skip_recurring_occurrence()`'s own writes | never blocked by the trigger — `version` stays untouched at 1 |
+| 10.32 | Caller is `anon`, all three RPC shapes (`SECURITY DEFINER` and `SECURITY INVOKER` alike) | `EXECUTE` denied |
+| 10.33 | Grants | `planned_obligations`/`savings_goals`: exactly `SELECT, INSERT` for `authenticated`, nothing for `anon`/`PUBLIC`; `recurring_transactions`: exactly `SELECT, INSERT, UPDATE` |
+| 10.34 | Fixed `search_path` for the two `SECURITY INVOKER` recurring RPCs and the trigger function | not covered by 6.5 (which scans only `SECURITY DEFINER` functions) — verified directly here |
+| 10.35 | `enforce_recurring_transaction_version()` has zero direct `EXECUTE` grants | trigger-only, mirrors `derive_savings_goal_completion()`'s precedent |
 
 ---
 

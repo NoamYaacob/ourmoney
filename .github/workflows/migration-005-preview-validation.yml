@@ -1,0 +1,293 @@
+name: Migration 005 Preview Validation
+
+# One-off, manually-dispatched real-database validation for
+# supabase/migrations/005_leave_household.sql against the OurMoney Preview
+# hosted Supabase project ONLY. Unlike milestone-9-db-validation.yml (which
+# deliberately uses a disposable local Postgres for the ongoing CI gate),
+# this workflow intentionally links and pushes to a real remote project,
+# because the task that authored it explicitly asked for real hosted-DB
+# validation of this one migration. It is workflow_dispatch-only (no push
+# trigger) so it never runs automatically — it must be deliberately invoked.
+#
+# CURRENT STATE (2026-08-13): a read-only inspection run revealed the
+# remote's applied-migration history (four rows under 2026-08-12 timestamp
+# versions) does not correspond by version string to any file in
+# supabase/migrations/ — but schema inspection showed the remote already
+# has everything 001-004 would produce (every expected table, every
+# expected function except leave_household, every expected policy). So the
+# schema is right; only the bookkeeping in supabase_migrations.schema_migrations
+# is unrecognized. Per explicit user decision: this workflow applies
+# migration 005's SQL DIRECTLY (single transaction, via psql, NOT
+# `supabase db push`) rather than risk `db push` trying to re-apply
+# 001-004 against objects that already exist. It deliberately does NOT
+# write to supabase_migrations.schema_migrations — that reconciliation is
+# a separate decision to be proposed (not applied) after 005 is verified
+# working, based on the exact remote history read out below.
+#
+# Safety properties:
+#   - Hard-aborts unless the Management API confirms the target project's
+#     display name is EXACTLY "OurMoney Preview." (trailing period —
+#     confirmed via the Management API itself) for the given ref, before
+#     any write happens.
+#   - Applies ONLY migration 005's own SQL, in one transaction (`psql -1`),
+#     directly — not `supabase db push`, and 001-004 are never re-run.
+#   - All ad hoc SQL beyond the migration + supabase/rls_tests.sql's own
+#     main transaction is read-only verification or self-cleaning fixture
+#     data (explicit DELETEs in a trap, scoped to dedicated fixture IDs
+#     f0000000-...-070/-071 and household 77777777-...-7777, distinct from
+#     every ID already used inside rls_tests.sql).
+#   - rls_tests.sql's main transaction (fixtures through Group 8, ending in
+#     the file's own `ROLLBACK;`) is extracted and run as-is — it is
+#     non-destructive by construction (BEGIN ... ROLLBACK, every mutating
+#     test wrapped in its own SAVEPOINT). The file's own isolated dblink
+#     concurrency sections (DELETE_ACCOUNT.CONCURRENT / LEAVE.CONCURRENT)
+#     are NOT run here — they hard-code `host=db`, the local `supabase
+#     start` docker-compose service name, which does not resolve against a
+#     hosted project. True concurrency for leave_household() is instead
+#     verified via two real, independently-connected `psql` processes
+#     launched in parallel from this runner (see the dedicated step below),
+#     which proves the same race without relying on that local-only hostname.
+#   - Does not commit or push anything to the repository. Type generation
+#     output is uploaded as a build artifact for the driving session to
+#     inspect, diff, and (if needed) commit locally after its own full
+#     validation pass — consistent with how every other change in this
+#     project is committed.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - preview/iphone-local
+    paths:
+      - 'supabase/migrations/005_leave_household.sql'
+      - 'supabase/ci_verification/**'
+      - 'supabase/rls_tests.sql'
+      - '.github/workflows/migration-005-preview-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-migration-005-preview:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: safxtriacputgmpsdgkm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: preview/iphone-local
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Confirm project identity via Management API (hard gate)
+        run: |
+          set -euo pipefail
+          RESP=$(curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects")
+          echo "$RESP" > /tmp/projects.json
+          node -e "
+            const fs = require('fs');
+            const projects = JSON.parse(fs.readFileSync('/tmp/projects.json', 'utf8'));
+            if (!Array.isArray(projects)) {
+              console.error('Unexpected response from /v1/projects:', JSON.stringify(projects).slice(0, 500));
+              process.exit(1);
+            }
+            const p = projects.find(x => x.id === process.env.SUPABASE_PROJECT_REF);
+            if (!p) {
+              console.error('Project ref ' + process.env.SUPABASE_PROJECT_REF + ' not found among accessible projects.');
+              process.exit(1);
+            }
+            console.log('Found project:', JSON.stringify({ id: p.id, name: p.name, region: p.region, status: p.status }));
+            if (p.name !== 'OurMoney Preview.') {
+              console.error('ABORT: project name is \"' + p.name + '\", expected exactly \"OurMoney Preview.\" (confirmed via the Management API on the first run of this workflow, which caught the trailing period). Refusing to proceed.');
+              process.exit(1);
+            }
+            fs.appendFileSync(process.env.GITHUB_ENV, 'PROJECT_REGION=' + p.region + '\n');
+          "
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Migration status (informational only — see inspection step below)
+        run: |
+          set -euo pipefail
+          supabase migration list | tee /tmp/migrations_before.txt
+          echo "NOTE: this table is not used as a pass/fail gate in this run. A prior run showed the remote's applied-migration history uses timestamp versions with no corresponding local file, so 'is 001-004 applied' cannot be answered by string-matching this table. See the schema inspection step instead."
+
+      - name: Discover a reachable direct SQL connection
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -uo pipefail
+          CANDIDATES=(
+            "aws-1-eu-west-1.pooler.supabase.com|postgres.$SUPABASE_PROJECT_REF"
+            "aws-0-$PROJECT_REGION.pooler.supabase.com|postgres.$SUPABASE_PROJECT_REF"
+            "aws-1-$PROJECT_REGION.pooler.supabase.com|postgres.$SUPABASE_PROJECT_REF"
+            "db.$SUPABASE_PROJECT_REF.supabase.co|postgres"
+          )
+          FOUND=""
+          for c in "${CANDIDATES[@]}"; do
+            HOST="${c%%|*}"
+            USR="${c##*|}"
+            echo "Probing $HOST as $USR ..."
+            if PGCONNECT_TIMEOUT=10 psql "host=$HOST port=5432 dbname=postgres user=$USR sslmode=require" -c 'SELECT 1' >/tmp/probe.log 2>&1; then
+              echo "OK: $HOST reachable"
+              FOUND="$c"
+              break
+            else
+              tail -5 /tmp/probe.log
+            fi
+          done
+          if [ -z "$FOUND" ]; then
+            echo "ABORT: no candidate connection string was reachable from this runner."
+            exit 1
+          fi
+          {
+            echo "SQL_HOST=${FOUND%%|*}"
+            echo "SQL_USER=${FOUND##*|}"
+          } >> "$GITHUB_ENV"
+
+      - name: Inspect remote schema BEFORE (read-only)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection_before.txt
+
+      - name: Apply migration 005 directly (single transaction, not db push)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/005_leave_household.sql 2>&1 | tee /tmp/apply_005_output.txt
+          echo "OK: migration 005 applied in a single transaction (no supabase_migrations.schema_migrations write)."
+
+      - name: Verify leave_household() / delete_own_account() RPC security metadata
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rpc_metadata.sql
+
+      - name: Verify household_members_delete RLS policy text
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_rls_policy.sql
+
+      - name: Run rls_tests.sql main transaction (fixtures + Groups 1-8, self-rolling-back)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ROLLBACK_LINE=$(grep -n '^ROLLBACK;$' supabase/rls_tests.sql | head -1 | cut -d: -f1)
+          if [ -z "$ROLLBACK_LINE" ]; then
+            echo "ABORT: could not find the main transaction's closing ROLLBACK; in rls_tests.sql"
+            exit 1
+          fi
+          echo "Main transaction spans lines 1-$ROLLBACK_LINE"
+          sed -n "1,${ROLLBACK_LINE}p" supabase/rls_tests.sql > /tmp/rls_main.sql
+          tail -3 /tmp/rls_main.sql
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f /tmp/rls_main.sql 2>&1 | tee /tmp/rls_main_output.txt
+          grep -F "=== " /tmp/rls_main_output.txt | tail -1
+          grep -qE '=== [0-9]+ tests passed \(' /tmp/rls_main_output.txt || { echo "FAIL: expected summary NOTICE not found in output"; exit 1; }
+          grep -q 'ERROR:' /tmp/rls_main_output.txt && { echo "FAIL: an ERROR line was present in the output despite ON_ERROR_STOP"; exit 1; } || true
+
+      - name: True-concurrency check — two members leave the same household simultaneously
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CONN="host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require"
+
+          cleanup() {
+            psql "$CONN" -v ON_ERROR_STOP=0 -f supabase/ci_verification/005_concurrency_cleanup.sql >/tmp/cleanup.log 2>&1 || true
+            cat /tmp/cleanup.log
+          }
+          trap cleanup EXIT
+
+          psql "$CONN" -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_setup.sql
+
+          psql "$CONN" -t -A -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_call_a.sql > /tmp/call1.out 2>&1 &
+          PID1=$!
+
+          psql "$CONN" -t -A -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_call_b.sql > /tmp/call2.out 2>&1 &
+          PID2=$!
+
+          R1=0; R2=0
+          wait "$PID1" || R1=$?
+          wait "$PID2" || R2=$?
+
+          echo "--- call1 (user 070) output ---"; cat /tmp/call1.out
+          echo "--- call2 (user 071) output ---"; cat /tmp/call2.out
+
+          if [ "$R1" -ne 0 ] || [ "$R2" -ne 0 ]; then
+            echo "FAIL LEAVE.CONCURRENT.CI: one or both concurrent leave_household() calls errored (exit $R1 / $R2) — possible deadlock or unexpected exception"
+            exit 1
+          fi
+
+          grep -q '"ok": *true' /tmp/call1.out || { echo "FAIL LEAVE.CONCURRENT.CI: call1 did not report ok:true"; exit 1; }
+          grep -q '"ok": *true' /tmp/call2.out || { echo "FAIL LEAVE.CONCURRENT.CI: call2 did not report ok:true"; exit 1; }
+
+          psql "$CONN" -t -A -v ON_ERROR_STOP=1 -f supabase/ci_verification/005_concurrency_postcheck.sql > /tmp/post_check.out
+          echo "post-check (household_count|user_count): $(cat /tmp/post_check.out)"
+          HOUSEHOLD_COUNT=$(cut -d'|' -f1 /tmp/post_check.out)
+          USER_COUNT=$(cut -d'|' -f2 /tmp/post_check.out)
+
+          if [ "$HOUSEHOLD_COUNT" != "0" ]; then
+            echo "FAIL LEAVE.CONCURRENT.CI: household still exists after both members left"
+            exit 1
+          fi
+          if [ "$USER_COUNT" != "2" ]; then
+            echo "FAIL LEAVE.CONCURRENT.CI: expected both users' auth.users rows to survive, got count=$USER_COUNT"
+            exit 1
+          fi
+
+          echo "PASS LEAVE.CONCURRENT.CI: two concurrent leave_household() calls from two real, independently-connected psql sessions => no deadlock, both ok:true, household gone, both accounts survive"
+
+      - name: Inspect remote schema AFTER (read-only) + read exact migration history
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/000_inspect_remote_schema.sql 2>&1 | tee /tmp/schema_inspection_after.txt
+          psql "host=$SQL_HOST port=5432 dbname=postgres user=$SQL_USER sslmode=require" -v ON_ERROR_STOP=1 -f supabase/ci_verification/999_read_schema_migrations.sql 2>&1 | tee /tmp/schema_migrations_rows.txt
+          echo "NOTE: schema_migrations was only READ here, not written. Reconciling 001-005 into it is a separate, proposed-not-applied follow-up."
+
+      - name: Generate database types from the live schema
+        run: supabase gen types typescript --project-id "$SUPABASE_PROJECT_REF" > /tmp/database.generated.ts
+
+      - name: Diff generated types against committed types/database.ts
+        run: |
+          set +e
+          diff -u types/database.ts /tmp/database.generated.ts > /tmp/types.diff
+          echo "diff exit code: $?"
+          set -e
+          wc -l /tmp/types.diff
+          head -100 /tmp/types.diff
+
+      - name: Upload validation output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-005-preview-validation-output
+          path: |
+            /tmp/migrations_before.txt
+            /tmp/schema_inspection_before.txt
+            /tmp/apply_005_output.txt
+            /tmp/rls_main_output.txt
+            /tmp/schema_inspection_after.txt
+            /tmp/schema_migrations_rows.txt
+            /tmp/database.generated.ts
+            /tmp/types.diff
+          if-no-files-found: warn

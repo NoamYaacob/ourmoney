@@ -24,6 +24,31 @@
 -- shared-data preservation, the D2-widening regression it introduces and
 -- fixes in the same migration, idempotency, and the DELETE_ACCOUNT.CONCURRENT
 -- true-concurrency test (isolated section, same reason as 5.9 below).
+-- Migration 005 adds Group 8 (leave_household()): the same admin-succession
+-- and sole-member-cascade coverage as Group 7, extended to the caller's own
+-- account surviving in every branch, plus the LEAVE.CONCURRENT
+-- true-concurrency test (isolated section, same reason as 5.9/
+-- DELETE_ACCOUNT.CONCURRENT).
+-- Migration 008 (internal account transfers, ADR-035) adds Group 9:
+-- create_transfer()/update_transfer()/delete_transfer() correctness,
+-- household isolation, and admin-gating on delete; the RLS tightening on
+-- transactions_insert/_update/_delete that forces every transfer-leg write
+-- through those RPCs (9.7-9.10 prove the direct-mutation-bypass regressions
+-- design-stage review found are closed); the transfers table's SELECT-only
+-- grant; and the leave_household()/delete_own_account() widening that nulls
+-- transfers.created_by for a departing member.
+-- Migration 009 (optimistic concurrency protection, ADR-036) adds Group 10:
+-- version-column compare-and-swap correctness for planned_obligations/
+-- recurring_transactions/savings_goals — update/status/progress/delete RPC
+-- success and stale-write/stale-delete => conflict, household isolation
+-- (no oracle), version monotonicity, and the RLS-closure + grant-narrowing
+-- proof that a direct client UPDATE/DELETE bypass is rejected for the two
+-- RLS-closed tables. recurring_transactions' UPDATE stays open by design
+-- (its own generate_recurring_transactions()/skip_recurring_occurrence()
+-- depend on it), enforced instead by a BEFORE UPDATE trigger — 10.24-10.26
+-- prove both of its rules independently, including the unconditional-rule
+-- regression design-stage review required fixed, and 10.30-10.31 prove the
+-- two system functions' own writes are never blocked by it.
 --
 -- Design: every test impersonates a role via `SET LOCAL role` +
 -- `SET LOCAL request.jwt.claims` (the technique DATABASE_SCHEMA.md
@@ -149,6 +174,22 @@ INSERT INTO budget_allocations (id, household_id, budget_id, category_id, amount
 INSERT INTO savings_goals (id, household_id, account_id, name, target_agorot, created_by) VALUES
   ('59000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', 'יעד חיסכון בית 1', 100000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   ('59000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000002', 'יעד חיסכון בית 2', 100000, 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
+-- Migration 007 (planned_obligations) fixtures — a Household-2 row is
+-- required for every cross-household isolation assertion below to be
+-- non-vacuous, same reasoning as every other financial table above.
+INSERT INTO planned_obligations (id, household_id, name, amount_agorot, due_date, category_id, account_id, status, created_by) VALUES
+  ('58000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'ארנונה בית 1', 180000, '2026-09-10', '5c000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'upcoming', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('58000000-0000-0000-0000-000000000002', '22222222-2222-2222-2222-222222222222', 'ארנונה בית 2', 190000, '2026-09-10', '5c000000-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000002', 'upcoming', 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+
+-- Migration 008 (internal transfers, ADR-035) fixtures — a second account
+-- per household, since a transfer needs two distinct accounts. Every Group 9
+-- test below needs at least one of these; kept as permanent top-level
+-- fixtures (like every other financial fixture above) rather than local to
+-- one test, since multiple sub-tests reuse them.
+INSERT INTO accounts (id, household_id, owner_id, name, type) VALUES
+  ('5a000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', NULL, 'חשבון חיסכון בית 1', 'savings'),
+  ('5a000000-0000-0000-0000-000000000004', '22222222-2222-2222-2222-222222222222', NULL, 'חשבון חיסכון בית 2', 'savings');
 
 DO $$ BEGIN RAISE NOTICE '=== fixtures loaded (incl. Milestone 6 financial fixtures, both households) ==='; END $$;
 
@@ -1535,6 +1576,303 @@ RESET role;
 ROLLBACK TO SAVEPOINT sp_d2_19;
 
 -- ============================================================================
+-- Migration 007 — OBLIGATIONS.*: planned_obligations RLS, D2 coherence,
+-- CHECK constraints, and the leave_household()/delete_own_account()
+-- attribution-nulling addition. Grouped under its own namespace (same
+-- convention as SAVINGS.TRIGGER.* for migration 003) rather than
+-- interleaved into the 1.x/2.x/D2.x numbering above, since this table did
+-- not exist when those were numbered.
+-- ============================================================================
+
+-- OBLIGATIONS.ISOLATION.1: User A cannot SELECT Household 2 planned_obligations.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM planned_obligations WHERE household_id = '22222222-2222-2222-2222-222222222222';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.ISOLATION.1: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('OBLIGATIONS.ISOLATION.1', 'User A cannot SELECT Household 2 planned_obligations');
+END $$;
+RESET role;
+
+-- OBLIGATIONS.ISOLATION.2: User D (no household) SELECTs planned_obligations => 0 rows.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SET LOCAL role = authenticated;
+  SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+  SELECT count(*) INTO v_count FROM planned_obligations;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.ISOLATION.2: expected 0 rows, got %', v_count; END IF;
+  PERFORM _pass('OBLIGATIONS.ISOLATION.2', 'User D (no household) SELECTs planned_obligations => 0 rows');
+END $$;
+RESET role;
+
+-- OBLIGATIONS.INSERT.1 (positive): User A creates a Household 1 planned
+-- obligation with a household category/account => succeeds.
+SAVEPOINT sp_obl_insert_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, category_id, account_id, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'ביטוח רכב', 420000, '2026-11-15', '5c000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.INSERT.1: expected 1 row inserted, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.INSERT.1', 'a household member can create a planned obligation with a household category/account');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_insert_1;
+
+-- OBLIGATIONS.INSERT.2: User A attempts to INSERT with household_id =
+-- Household 2 (not a member) => rejected.
+SAVEPOINT sp_obl_insert_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, created_by)
+    VALUES ('22222222-2222-2222-2222-222222222222', 'התחזות לבית זר', 100000, '2026-11-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.INSERT.2: a non-member was able to create an obligation for Household 2';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.INSERT.2', 'a user cannot create a planned obligation for a household they do not belong to');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_insert_2;
+
+-- OBLIGATIONS.D2.1: category_id pointing at Household 2's custom category => rejected.
+SAVEPOINT sp_obl_d2_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, category_id, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'עם קטגוריה זרה', 100000, '2026-11-15', '5c000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.1: obligation with a cross-household category_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.1', 'planned_obligations.category_id pointing at another household''s category is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_1;
+
+-- OBLIGATIONS.D2.2 (positive): category_id pointing at a SYSTEM category (household_id IS NULL) => succeeds.
+SAVEPOINT sp_obl_d2_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_system_category_id UUID;
+BEGIN
+  SELECT id INTO v_system_category_id FROM categories WHERE household_id IS NULL LIMIT 1;
+  INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, category_id, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'עם קטגוריית מערכת', 100000, '2026-11-15', v_system_category_id, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.2: expected 1 row inserted referencing a system category, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.D2.2', 'planned_obligations.category_id can reference a system category');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_2;
+
+-- OBLIGATIONS.D2.3: account_id pointing at Household 2's account => rejected.
+SAVEPOINT sp_obl_d2_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, account_id, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'עם חשבון זר', 100000, '2026-11-15', '5a000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.3: obligation with a cross-household account_id was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.3', 'planned_obligations.account_id pointing at another household''s account is rejected');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_3;
+
+-- OBLIGATIONS.D2.4: created_by set to a different user on INSERT => rejected (must equal auth.uid()).
+SAVEPOINT sp_obl_d2_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'עם created_by זר', 100000, '2026-11-15', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.4: User A inserted an obligation attributed to User B';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('OBLIGATIONS.D2.4', 'planned_obligations.created_by must equal the inserting user on INSERT');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_4;
+
+-- OBLIGATIONS.UPDATE.1 (co-editing): User B (partner, did not create the
+-- fixture obligation) marks the Household 1 obligation as completed =>
+-- succeeds. Migration 009 (ADR-036) closed planned_obligations' direct
+-- UPDATE path entirely — this now goes through set_planned_obligation_status()
+-- (database-security-reviewer finding: the pre-009 version of this test did
+-- a raw UPDATE, which migration 009 turns into an unconditional
+-- insufficient_privilege failure that would abort the whole suite under
+-- -v ON_ERROR_STOP=1).
+SAVEPOINT sp_obl_update_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 1, 'completed') INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.UPDATE.1: expected ok, got %', v_result;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.UPDATE.1', 'any household member can mark an obligation completed via set_planned_obligation_status(), including one they did not create');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_update_1;
+
+-- OBLIGATIONS.D2.UPDATE: User A attempts to update the Household 1 fixture
+-- obligation's category_id to point at Household 2's custom category =>
+-- rejected. Migration 009 moves this coherence check from
+-- planned_obligations_update's WITH CHECK into update_planned_obligation()
+-- itself (database-security-reviewer finding: keeping this test as a raw
+-- UPDATE would still incidentally "pass" — insufficient_privilege now covers
+-- ANY direct UPDATE, RLS-WITH-CHECK-shaped or not — but would no longer
+-- exercise the D2 coherence check the RPC itself performs, so a real
+-- regression there would go undetected).
+SAVEPOINT sp_obl_d2_update;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'ארנונה בית 1', 180000, '2026-09-10'::date,
+    '5c000000-0000-0000-0000-000000000002'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, NULL
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_category' THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.D2.UPDATE: expected invalid_category for a cross-household category_id, got %', v_result;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.D2.UPDATE', 'update_planned_obligation() rejects a category_id from another household, not just create-time INSERT coherence');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_d2_update;
+
+-- OBLIGATIONS.DELETE.1: any household member can delete a planned
+-- obligation, via delete_planned_obligation() (migration 009 closed the
+-- direct DELETE path — same reasoning as OBLIGATIONS.UPDATE.1 above).
+SAVEPOINT sp_obl_delete_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.DELETE.1: expected ok, got %', v_result;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.DELETE.1', 'any household member can delete a planned obligation via delete_planned_obligation(), including one they did not create');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_delete_1;
+
+-- OBLIGATIONS.CHECK.1: amount_agorot <= 0 => rejected by the CHECK constraint.
+SAVEPOINT sp_obl_check_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'סכום שגוי', 0, '2026-11-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.CHECK.1: a zero amount_agorot was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('OBLIGATIONS.CHECK.1', 'amount_agorot <= 0 is rejected by the CHECK constraint');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_check_1;
+
+-- OBLIGATIONS.CHECK.2: an invalid status value => rejected by the CHECK constraint.
+SAVEPOINT sp_obl_check_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, status, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'סטטוס שגוי', 100000, '2026-11-15', 'not_a_real_status', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.CHECK.2: an invalid status value was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('OBLIGATIONS.CHECK.2', 'an invalid status value is rejected by the CHECK constraint');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_check_2;
+
+-- OBLIGATIONS.CHECK.3 (positive): status = 'cancelled' is accepted (the
+-- optional third status the task names alongside upcoming/completed).
+SAVEPOINT sp_obl_check_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  INSERT INTO planned_obligations (household_id, name, amount_agorot, due_date, status, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'מבוטל', 100000, '2026-11-15', 'cancelled', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN RAISE EXCEPTION 'FAIL OBLIGATIONS.CHECK.3: expected 1 row inserted with status=cancelled, got %', v_rows; END IF;
+  PERFORM _pass('OBLIGATIONS.CHECK.3', 'status=cancelled is a valid, accepted value');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_obl_check_3;
+
+-- OBLIGATIONS.LEAVE.1: proves migration 007's addition to leave_household()
+-- actually nulls planned_obligations.created_by for a departing member of a
+-- CONTINUING (multi-member) household — the one branch with no auth.users
+-- deletion to fall back on. User B leaves Household 1 (User A remains); the
+-- fixture obligation was created by User A, so this exercises "some other
+-- member's row is untouched" implicitly, and a fresh row created by B
+-- (inserted here, inside this same savepoint, so it exists to null) proves
+-- the actual nulling.
+SAVEPOINT sp_obl_leave_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO planned_obligations (id, household_id, name, amount_agorot, due_date, created_by)
+  VALUES ('58000000-0000-0000-0000-000000000099', '11111111-1111-1111-1111-111111111111', 'התחייבות של B', 50000, '2026-11-15', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+END $$;
+
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.LEAVE.1: expected ok:true for User B leaving Household 1, got %', v_result;
+  END IF;
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_created_by UUID;
+BEGIN
+  SELECT created_by INTO v_created_by
+  FROM planned_obligations
+  WHERE id = '58000000-0000-0000-0000-000000000099';
+  IF v_created_by IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL OBLIGATIONS.LEAVE.1: expected created_by to be nulled after the creator left the household, got %', v_created_by;
+  END IF;
+  PERFORM _pass('OBLIGATIONS.LEAVE.1', 'leave_household() nulls planned_obligations.created_by for the departing member''s own rows, keeping the household''s data intact');
+END $$;
+ROLLBACK TO SAVEPOINT sp_obl_leave_1;
+
+-- ============================================================================
 -- Financial visibility matrix (M6 plan §6a) — is_shared/created_by/payer_id
 -- are attribution/display only, never a read authorization predicate.
 -- ============================================================================
@@ -2388,44 +2726,60 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_1;
 
--- SAVINGS.TRIGGER.2: UPDATE attempting to set is_completed=false directly
--- while current_agorot >= target_agorot => trigger forces true.
+-- SAVINGS.TRIGGER.2: migration 009 (ADR-036) closed savings_goals' direct
+-- UPDATE path entirely, so "a client-supplied is_completed=false on UPDATE"
+-- is no longer merely overridden — it is impossible to attempt at all
+-- (insufficient_privilege, proven independently by 10.13). What survives to
+-- test here: update_savings_goal_progress() — the only legitimate write
+-- path for current_agorot, and one that never accepts an is_completed
+-- parameter in the first place — still derives is_completed=true correctly
+-- when current_agorot >= target_agorot (database-security-reviewer finding:
+-- the pre-009 version of this test did a raw UPDATE, which now aborts the
+-- whole suite under -v ON_ERROR_STOP=1).
 SAVEPOINT sp_savings_trigger_2;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 DO $$
-DECLARE v_goal_id UUID; v_is_completed BOOLEAN;
+DECLARE v_goal_id UUID; v_result JSONB;
 BEGIN
   INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, created_by)
-  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.2', 100000, 100000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.2', 100000, 40000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
   RETURNING id INTO v_goal_id;
 
-  UPDATE savings_goals SET is_completed = FALSE WHERE id = v_goal_id RETURNING is_completed INTO v_is_completed;
-  IF v_is_completed IS DISTINCT FROM TRUE THEN
-    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: expected the trigger to override a contradictory is_completed=false on UPDATE, got %', v_is_completed;
+  BEGIN
+    UPDATE savings_goals SET is_completed = FALSE WHERE id = v_goal_id;
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: a direct UPDATE on savings_goals was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  SELECT update_savings_goal_progress(v_goal_id, 1, 100000) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'isCompleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.2: expected the trigger to derive is_completed=true via update_savings_goal_progress(), got %', v_result;
   END IF;
-  PERFORM _pass('SAVINGS.TRIGGER.2', 'a client-supplied is_completed=false on UPDATE is overridden by the DB trigger when current_agorot >= target_agorot');
+  PERFORM _pass('SAVINGS.TRIGGER.2', 'a direct UPDATE attempting is_completed=false is rejected at the grant level, and the only legitimate write path (update_savings_goal_progress()) still correctly derives is_completed=true when current_agorot >= target_agorot');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_2;
 
--- SAVINGS.TRIGGER.3: a normal progress update (current_agorot only, no
--- is_completed in the payload) correctly derives is_completed on crossing.
+-- SAVINGS.TRIGGER.3: a normal progress update via update_savings_goal_
+-- progress() (current_agorot only — the RPC has no is_completed parameter
+-- at all) correctly derives is_completed on crossing.
 SAVEPOINT sp_savings_trigger_3;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 DO $$
-DECLARE v_goal_id UUID; v_is_completed BOOLEAN;
+DECLARE v_goal_id UUID; v_result JSONB;
 BEGIN
   INSERT INTO savings_goals (household_id, name, target_agorot, current_agorot, created_by)
   VALUES ('11111111-1111-1111-1111-111111111111', 'SAVINGS.TRIGGER.3', 100000, 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
   RETURNING id INTO v_goal_id;
 
-  UPDATE savings_goals SET current_agorot = 100000 WHERE id = v_goal_id RETURNING is_completed INTO v_is_completed;
-  IF v_is_completed IS DISTINCT FROM TRUE THEN
-    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.3: expected is_completed=true after current_agorot reached target, got %', v_is_completed;
+  SELECT update_savings_goal_progress(v_goal_id, 1, 100000) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'isCompleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL SAVINGS.TRIGGER.3: expected is_completed=true after current_agorot reached target, got %', v_result;
   END IF;
-  PERFORM _pass('SAVINGS.TRIGGER.3', 'is_completed is correctly derived true when a plain current_agorot update reaches target');
+  PERFORM _pass('SAVINGS.TRIGGER.3', 'is_completed is correctly derived true when update_savings_goal_progress() reaches target');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_savings_trigger_3;
@@ -2763,6 +3117,1734 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_7_12;
 
+-- ============================================================================
+-- Group 8 — leave_household() (migration 005)
+-- ============================================================================
+-- Covers the same three decisions as Group 7 (admin succession, sole-member
+-- cascade, attribution nulling), extended to the one way this action
+-- differs from delete_own_account(): the caller's own auth.users row is
+-- never touched. True concurrency (two members of the same household both
+-- calling leave_household() at once) is covered separately near the end of
+-- this file, in the isolated dblink section, for the same reason 5.9 and
+-- DELETE_ACCOUNT.CONCURRENT live there.
+
+-- 8.1: fixed search_path
+DO $$
+DECLARE v_config TEXT[];
+BEGIN
+  SELECT proconfig INTO v_config FROM pg_proc WHERE proname = 'leave_household' AND pronamespace = 'public'::regnamespace;
+  IF v_config IS NULL OR NOT ('search_path=public, pg_temp' = ANY (v_config)) THEN
+    RAISE EXCEPTION 'FAIL 8.1: leave_household search_path not fixed, got %', v_config;
+  END IF;
+  PERFORM _pass('8.1', 'leave_household has a fixed search_path');
+END $$;
+
+-- 8.2: grants — authenticated only, via information_schema
+DO $$
+DECLARE v_bad_grantees TEXT;
+BEGIN
+  SELECT string_agg(grantee, ',') INTO v_bad_grantees
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'leave_household' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad_grantees IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 8.2: leave_household is granted to %, expected only authenticated', v_bad_grantees;
+  END IF;
+  PERFORM _pass('8.2', 'leave_household grants exclude anon and PUBLIC');
+END $$;
+
+-- 8.3: grants — call as anon => EXECUTE denied
+SAVEPOINT sp_8_3;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM leave_household();
+    RAISE EXCEPTION 'FAIL 8.3: anon was able to call leave_household';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('8.3', 'anon cannot EXECUTE leave_household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_3;
+
+-- 8.4: requires auth — call with no sub claim.
+SAVEPOINT sp_8_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "unauthenticated"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.4: expected unauthenticated, got %', v_result;
+  END IF;
+  PERFORM _pass('8.4', 'a call with no sub claim is rejected as unauthenticated');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_4;
+
+-- 8.5: authenticated caller with no household at all => not_a_member,
+-- distinct from unauthenticated (7.4's equivalent for delete_own_account
+-- has no such case, since a user with no household still has an account to
+-- delete — leave_household needs this new error case because "leave" is
+-- meaningless with no membership to leave).
+SAVEPOINT sp_8_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF v_result <> '{"ok": false, "error": "not_a_member"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.5: expected not_a_member, got %', v_result;
+  END IF;
+  PERFORM _pass('8.5', 'a user with no household gets not_a_member, not an unhandled error');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_5;
+
+-- 8.6: regular member (User B) leaves Household 1. Household continues, no
+-- admin change, B's own attribution nulled, B's personal account converts
+-- to household-owned, B's auth.users row is untouched (unlike 7.5's
+-- delete_own_account equivalent). Same local fixture pattern as 7.5: a
+-- B-created transaction/personal account is inserted first (as B, so D2.6's
+-- created_by = auth.uid() check is satisfied) so the nulling is observable.
+SAVEPOINT sp_8_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO accounts (id, household_id, owner_id, name, type)
+  VALUES ('5a000000-0000-0000-0000-0000000000b2', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'ארנק אישי של B (8.6)', 'cash');
+  INSERT INTO transactions (id, household_id, account_id, category_id, amount_agorot, description, txn_date, created_by)
+  VALUES ('5f000000-0000-0000-0000-0000000000b2', '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -800, 'קניה של B (8.6)', '2026-08-08', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+END $$;
+RESET role;
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'household_deleted')::boolean OR v_result->'new_admin_id' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.6: expected {ok:true, household_deleted:false, new_admin_id:null} for a regular member, got %', v_result;
+  END IF;
+  PERFORM _pass('8.6', 'a regular member leaving does not delete or promote anything in the household');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_role TEXT; v_owner UUID; v_created_by UUID; v_user_exists BOOLEAN; v_still_member BOOLEAN; v_household_exists BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') INTO v_user_exists;
+  IF NOT v_user_exists THEN RAISE EXCEPTION 'FAIL 8.6: User B''s auth.users row was deleted -- leave must never delete the account'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') INTO v_still_member;
+  IF v_still_member THEN RAISE EXCEPTION 'FAIL 8.6: User B''s household_members row still exists'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM households WHERE id = '11111111-1111-1111-1111-111111111111') INTO v_household_exists;
+  IF NOT v_household_exists THEN RAISE EXCEPTION 'FAIL 8.6: Household 1 was deleted despite User A remaining'; END IF;
+
+  SELECT role INTO v_role FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  IF v_role <> 'admin' THEN RAISE EXCEPTION 'FAIL 8.6: User A''s role changed to %, expected unchanged admin', v_role; END IF;
+
+  SELECT owner_id INTO v_owner FROM accounts WHERE id = '5a000000-0000-0000-0000-0000000000b2';
+  IF v_owner IS NOT NULL THEN RAISE EXCEPTION 'FAIL 8.6: B''s personal account owner_id was not nulled, got %', v_owner; END IF;
+
+  SELECT created_by INTO v_created_by FROM transactions WHERE id = '5f000000-0000-0000-0000-0000000000b2';
+  IF v_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 8.6: B''s transaction created_by was not nulled, got %', v_created_by; END IF;
+
+  PERFORM _pass('8.6', 'B keeps their account but is removed from the household; B''s personal account and transaction attribution are nulled/converted, not left dangling');
+END $$;
+
+-- 8.7 (D2.NULL, leave path): a remaining household member can still UPDATE
+-- a transaction whose created_by was just nulled by 8.6 -- the same
+-- migration-004-Part-2 regression, now proven for the leave path too, not
+-- only the delete-account path (7.6 already covers the latter).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE transactions SET description = 'עודכן על ידי A אחרי עזיבת B' WHERE id = '5f000000-0000-0000-0000-0000000000b2';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 8.7: expected the remaining member to be able to UPDATE a transaction with a NULL created_by, %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('8.7', 'a remaining household member can still UPDATE a transaction whose creator has left (created_by IS NULL)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_6;
+
+-- 8.8: household admin (User A) leaves Household 1 (User B remains).
+-- Household continues, B is auto-promoted to admin, A's attribution is
+-- nulled, A's auth.users row is untouched.
+SAVEPOINT sp_8_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean
+     OR (v_result->>'household_deleted')::boolean
+     OR v_result->>'new_admin_id' <> 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+  THEN
+    RAISE EXCEPTION 'FAIL 8.8: expected household preserved with User B promoted, got %', v_result;
+  END IF;
+  PERFORM _pass('8.8', 'an admin leaving a multi-member household auto-promotes the longest-tenured remaining member');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_role TEXT; v_household_created_by UUID; v_user_exists BOOLEAN; v_still_member BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') INTO v_user_exists;
+  IF NOT v_user_exists THEN RAISE EXCEPTION 'FAIL 8.8: User A''s auth.users row was deleted -- leave must never delete the account'; END IF;
+
+  SELECT EXISTS (SELECT 1 FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') INTO v_still_member;
+  IF v_still_member THEN RAISE EXCEPTION 'FAIL 8.8: User A''s household_members row still exists'; END IF;
+
+  SELECT role INTO v_role FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  IF v_role <> 'admin' THEN RAISE EXCEPTION 'FAIL 8.8: User B''s role is %, expected admin after succession', v_role; END IF;
+
+  SELECT created_by INTO v_household_created_by FROM households WHERE id = '11111111-1111-1111-1111-111111111111';
+  IF v_household_created_by IS NOT NULL THEN RAISE EXCEPTION 'FAIL 8.8: households.created_by was not nulled, got %', v_household_created_by; END IF;
+
+  PERFORM _pass('8.8', 'the departed admin keeps their account, loses membership, and their attribution is nulled on households.created_by');
+END $$;
+
+-- 8.9: the newly-promoted admin (User B) can now exercise an admin-only
+-- capability, proving the SECURITY DEFINER role UPDATE actually took
+-- effect for authorization purposes (mirrors 7.9 for the leave path).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE households SET name = 'שם חדש אחרי עזיבת מנהל' WHERE id = '11111111-1111-1111-1111-111111111111';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'FAIL 8.9: expected the newly-promoted admin to be able to rename the household, %  rows affected', v_rows;
+  END IF;
+  PERFORM _pass('8.9', 'the auto-promoted member can immediately exercise admin-only RLS policies (households_update)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_8;
+
+-- 8.10: sole member (User C, Household 2) leaves. The entire household and
+-- every row that belonged to it must be gone -- but, unlike 7.10's
+-- delete_own_account equivalent, User C's own account must survive intact.
+SAVEPOINT sp_8_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR NOT (v_result->>'household_deleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL 8.10: expected {ok:true, household_deleted:true} for the sole member of Household 2, got %', v_result;
+  END IF;
+  PERFORM _pass('8.10', 'the sole member of a household leaving reports household_deleted:true');
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_user_exists BOOLEAN; v_profile_exists BOOLEAN;
+BEGIN
+  IF EXISTS (SELECT 1 FROM households WHERE id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 row still exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM household_members WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 still has membership rows';
+  END IF;
+  IF EXISTS (SELECT 1 FROM accounts WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 accounts were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM transactions WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 transactions were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 recurring_transactions were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM budgets WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 budgets were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM budget_allocations WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 budget_allocations were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 savings_goals were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM category_rules WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 category_rules were not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM categories WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2''s custom category was not cascade-deleted';
+  END IF;
+  IF EXISTS (SELECT 1 FROM invitations WHERE household_id = '22222222-2222-2222-2222-222222222222') THEN
+    RAISE EXCEPTION 'FAIL 8.10: Household 2 invitations were not cascade-deleted';
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'cccccccc-cccc-cccc-cccc-cccccccccccc') INTO v_user_exists;
+  IF NOT v_user_exists THEN
+    RAISE EXCEPTION 'FAIL 8.10: User C''s auth.users row was deleted -- leaving a sole-member household must never delete the account';
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM profiles WHERE id = 'cccccccc-cccc-cccc-cccc-cccccccccccc') INTO v_profile_exists;
+  IF NOT v_profile_exists THEN
+    RAISE EXCEPTION 'FAIL 8.10: User C''s profile row was deleted -- leaving must never delete the account';
+  END IF;
+
+  PERFORM _pass('8.10', 'a sole member leaving cascades the entire household (accounts/categories/category_rules/transactions/recurring_transactions/budgets/budget_allocations/savings_goals/invitations/membership), while User C''s own auth.users and profile rows survive untouched');
+END $$;
+ROLLBACK TO SAVEPOINT sp_8_10;
+
+-- 8.11: genuine idempotency -- a user who actually left, calling
+-- leave_household() again with the same (now stale) session, gets a
+-- harmless repeated not_a_member, not an error and not a second attempt at
+-- promotion/cascade. (database-security-reviewer finding: an earlier
+-- version of this test used a user who was NEVER a member at all, which
+-- only exercises the top-of-function NOT FOUND check, not a real repeat
+-- call after a real leave -- this version does the real thing.) User B
+-- leaves Household 1 first (regular member, no succession involved, kept
+-- separate from the admin-succession tests above via its own savepoint).
+SAVEPOINT sp_8_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_first JSONB; v_second JSONB;
+BEGIN
+  SELECT leave_household() INTO v_first;
+  IF NOT (v_first->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 8.11: expected the first (real) leave to succeed, got %', v_first;
+  END IF;
+
+  SELECT leave_household() INTO v_second;
+  IF v_second <> '{"ok": false, "error": "not_a_member"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 8.11: expected a harmless repeated not_a_member on the second call after a real leave, got %', v_second;
+  END IF;
+  PERFORM _pass('8.11', 'calling leave_household() again after a real leave is idempotent -- the second call cleanly reports not_a_member (the caller now has zero household_members rows, the same top-of-function check 8.5 exercises), not a repeated promotion/cascade attempt');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_11;
+
+-- 8.12 (HIGH finding, database-security-reviewer): household_members_delete
+-- (tightened by this migration's Part 3) rejects an admin's raw self-DELETE
+-- -- the exact bypass that let an admin skip both succession-aware
+-- functions entirely before this migration. User A (Household 1's admin)
+-- attempts the raw path leave_household() itself uses internally; RLS must
+-- reject it (0 rows affected, not an error -- DELETE matching zero visible
+-- rows is not a Postgres error, it is how RLS silently hides an
+-- unauthorized row from a statement that would otherwise have matched it).
+SAVEPOINT sp_8_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT; v_still_admin BOOLEAN;
+BEGIN
+  DELETE FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 8.12: expected the admin''s raw self-DELETE to affect 0 rows (RLS-rejected), affected %', v_rows;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM household_members
+    WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND role = 'admin'
+  ) INTO v_still_admin;
+  IF NOT v_still_admin THEN
+    RAISE EXCEPTION 'FAIL 8.12: User A''s admin membership row is gone -- the raw self-DELETE bypass was not actually closed';
+  END IF;
+
+  PERFORM _pass('8.12', 'an admin cannot self-remove via the raw household_members_delete policy -- only leave_household()/delete_own_account() can remove an admin''s own row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_8_12;
+
+-- 8.13 (CRITICAL finding, database-security-reviewer): the FOR UPDATE fix
+-- on the succession-candidate SELECT correctly skips a vanished top
+-- candidate and promotes the next-longest-tenured one still present,
+-- rather than silently reporting a promotion that never happened.
+-- Deterministic, not a race -- simulates "the selected candidate was
+-- already removed by a concurrent unlocked action" by removing User B
+-- (Household 1's longest-tenured non-admin member, who
+-- ORDER BY joined_at ASC would otherwise select) before User A leaves,
+-- leaving User F (inserted here, joined after B) as the only remaining
+-- candidate. Proves the logic fix; the true concurrent-transaction timing
+-- this bug actually manifests through is NOT covered here or anywhere else
+-- in this file -- see migration 005's own header for why, and its
+-- NEEDS LIVE VERIFICATION note.
+SAVEPOINT sp_8_13;
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000060', 'authenticated', 'authenticated', 'user-f@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"User F"}', NOW(), NOW(), '', '', '', '');
+INSERT INTO household_members (household_id, user_id, role, joined_at) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'f0000000-0000-0000-0000-000000000060', 'member', NOW() + INTERVAL '1 day');
+DELETE FROM household_members WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean
+     OR (v_result->>'household_deleted')::boolean
+     OR v_result->>'new_admin_id' <> 'f0000000-0000-0000-0000-000000000060'
+  THEN
+    RAISE EXCEPTION 'FAIL 8.13: expected User F (the only remaining candidate, since B is already gone) promoted, got %', v_result;
+  END IF;
+  PERFORM _pass('8.13', 'when the longest-tenured candidate no longer exists, the FOR UPDATE select correctly promotes the next candidate still present, instead of failing or reporting a false promotion');
+END $$;
+RESET role;
+-- Rolls back the fixture INSERTs above too (User F, their membership row,
+-- and User B's removal) -- no separate cleanup needed, same as every other
+-- SAVEPOINT-scoped test in this file.
+ROLLBACK TO SAVEPOINT sp_8_13;
+
+-- ============================================================================
+-- Group 9 — Internal account transfers (migration 008, ADR-035)
+-- ============================================================================
+-- create_transfer()/update_transfer()/delete_transfer() correctness and
+-- authorization, plus the RLS tightening on transactions_insert/_update/
+-- _delete that forces every transfer-leg write through those three RPCs.
+-- 9.7-9.10 are the direct-mutation-bypass regressions the design-stage
+-- review found before this migration was written (see migration
+-- 008_internal_transfers.sql's own header) — proven closed here, not merely
+-- asserted. 9.5's anon-cannot-execute and the fixed-search_path guarantee
+-- for all three RPCs are additionally covered for free by the existing
+-- generic 6.5/6.6 structural guards below (they scan every SECURITY DEFINER
+-- function in public, not just the ones existing at the time those guards
+-- were written), so no redundant per-function search_path/grant test is
+-- duplicated here.
+
+-- 9.1: create_transfer() as an authenticated household member creates
+-- exactly one transfers row and two correctly-signed transaction legs, both
+-- with category_id NULL and transfer_id set to the new transfer's id.
+SAVEPOINT sp_9_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE
+  v_result JSONB;
+  v_transfer_id UUID;
+  v_leg_count INT;
+  v_source_count INT;
+  v_dest_count INT;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid,
+    '5a000000-0000-0000-0000-000000000003'::uuid,
+    50000,
+    '2026-08-15'::date,
+    'העברה לחיסכון'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 9.1: create_transfer failed, got %', v_result;
+  END IF;
+  v_transfer_id := (v_result->>'transfer_id')::uuid;
+
+  SELECT COUNT(*) INTO v_leg_count FROM transactions WHERE transfer_id = v_transfer_id;
+  IF v_leg_count <> 2 THEN
+    RAISE EXCEPTION 'FAIL 9.1: expected exactly 2 linked transaction legs, got %', v_leg_count;
+  END IF;
+
+  SELECT COUNT(*) INTO v_source_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000001'
+      AND amount_agorot = -50000 AND category_id IS NULL;
+  SELECT COUNT(*) INTO v_dest_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000003'
+      AND amount_agorot = 50000 AND category_id IS NULL;
+  IF v_source_count <> 1 OR v_dest_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 9.1: legs not correctly signed/linked (source=%, dest=%)', v_source_count, v_dest_count;
+  END IF;
+
+  PERFORM _pass('9.1', 'create_transfer() creates one transfers row and two correctly-signed, category-less linked transaction legs');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_1;
+
+-- 9.2: same from/to account => same_account, nothing inserted.
+SAVEPOINT sp_9_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_count INT;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    10000, '2026-08-15'::date, 'לא חוקי'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'same_account' THEN
+    RAISE EXCEPTION 'FAIL 9.2: expected same_account error, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE description = 'לא חוקי';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 9.2: a transfer row was inserted despite the rejected call'; END IF;
+  PERFORM _pass('9.2', 'create_transfer() rejects an identical from/to account with same_account, nothing inserted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_2;
+
+-- 9.3: an account from the OTHER household => invalid_account, nothing
+-- inserted. Proves create_transfer cannot be used to move money into or out
+-- of a household the caller does not belong to.
+SAVEPOINT sp_9_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_count INT;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000002'::uuid,
+    10000, '2026-08-15'::date, 'חוצה בתים'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 9.3: expected invalid_account error for a cross-household destination, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE description = 'חוצה בתים';
+  IF v_count <> 0 THEN RAISE EXCEPTION 'FAIL 9.3: a transfer row was inserted despite the rejected call'; END IF;
+  PERFORM _pass('9.3', 'create_transfer() rejects a to_account_id belonging to a different household, nothing inserted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_3;
+
+-- 9.4: non-positive amount => invalid_amount.
+SAVEPOINT sp_9_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    0, '2026-08-15'::date, 'סכום אפס'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_amount' THEN
+    RAISE EXCEPTION 'FAIL 9.4: expected invalid_amount for a zero amount, got %', v_result;
+  END IF;
+  PERFORM _pass('9.4', 'create_transfer() rejects a non-positive amount with invalid_amount');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_4;
+
+-- 9.5: anon cannot EXECUTE create_transfer.
+SAVEPOINT sp_9_5;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM create_transfer(
+      '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+      10000, '2026-08-15'::date, 'לא רלוונטי'
+    );
+    RAISE EXCEPTION 'FAIL 9.5: anon was able to call create_transfer';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('9.5', 'anon cannot EXECUTE create_transfer');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_5;
+
+-- 9.6: a real transfer, created once and reused by 9.7-9.18 below (each
+-- sub-test runs in its own SAVEPOINT nested inside this one, so none of
+-- their attempted mutations persist into the next). Its identity is
+-- stashed via set_config/current_setting — LOCAL to this transaction, so it
+-- survives each nested savepoint's own ROLLBACK TO SAVEPOINT the same way
+-- the fixture row itself does (that rollback only undoes changes made AFTER
+-- the nested savepoint, not this one) — rather than a TEMP TABLE, which
+-- would need an explicit GRANT to be writable while impersonating
+-- authenticated (it would otherwise be owned by postgres with no privileges
+-- extended to other roles, unlike _pass()'s SECURITY DEFINER escape hatch).
+SAVEPOINT sp_9_fixture;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_transfer_id UUID;
+BEGIN
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    50000, '2026-08-15'::date, 'העברה קבועה לבדיקות'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'setup for Group 9 fixture transfer failed: %', v_result;
+  END IF;
+  v_transfer_id := (v_result->>'transfer_id')::uuid;
+  PERFORM set_config('g9.transfer_id', v_transfer_id::text, true);
+  PERFORM set_config('g9.source_leg_id', (SELECT id::text FROM transactions WHERE transfer_id = v_transfer_id AND amount_agorot < 0), true);
+  PERFORM set_config('g9.dest_leg_id', (SELECT id::text FROM transactions WHERE transfer_id = v_transfer_id AND amount_agorot > 0), true);
+END $$;
+RESET role;
+
+-- 9.7 [MUST-FIX regression, database-security-reviewer]: a direct client
+-- INSERT into transactions with transfer_id set is rejected by
+-- transactions_insert's tightened WITH CHECK — a transfer leg can only ever
+-- be created by create_transfer().
+SAVEPOINT sp_9_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, transfer_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', v_transfer_id, -1000, 'עוקף', '2026-08-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 9.7: a direct INSERT with transfer_id set was allowed';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('9.7', 'a direct client INSERT with transfer_id set is rejected — only create_transfer() may create a transfer leg');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_7;
+
+-- 9.8 [MUST-FIX regression, architecture-reviewer + database-security-
+-- reviewer]: the core finding from design-stage review. A direct UPDATE
+-- attempting to detach a leg from its transfer (SET transfer_id = NULL) —
+-- previously only blocked by WITH CHECK, which the reviewers proved
+-- insufficient on its own. transactions_update's USING clause now also
+-- requires transfer_id IS NULL on the OLD row, so this leg is not even a
+-- reachable UPDATE target: 0 rows affected, not a rejected-but-attempted
+-- write.
+SAVEPOINT sp_9_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_source_leg_id UUID; v_rows INT;
+BEGIN
+  v_source_leg_id := current_setting('g9.source_leg_id')::uuid;
+  UPDATE transactions SET transfer_id = NULL, amount_agorot = -999999 WHERE id = v_source_leg_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.8: a direct UPDATE detached and mutated a transfer leg — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('9.8', 'a direct UPDATE attempting to detach a leg (transfer_id = NULL) and change its amount in the same statement affects 0 rows — the exact bypass the design-stage review found and required fixed before this migration shipped');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_8;
+
+-- 9.9: a direct UPDATE that leaves transfer_id untouched (just changes the
+-- amount) is equally rejected — proves the USING-clause fix blocks ANY
+-- direct mutation of a transfer leg, not only ones that touch transfer_id.
+SAVEPOINT sp_9_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_source_leg_id UUID; v_rows INT;
+BEGIN
+  v_source_leg_id := current_setting('g9.source_leg_id')::uuid;
+  UPDATE transactions SET description = 'שינוי ישיר' WHERE id = v_source_leg_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.9: a direct UPDATE that never touches transfer_id still mutated a transfer leg — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('9.9', 'a direct UPDATE to a transfer leg is rejected even when it never touches transfer_id itself — the leg is simply not a reachable UPDATE target');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_9;
+
+-- 9.10: a direct DELETE on a transfer leg via the ordinary admin-only
+-- transactions_delete policy is rejected — only delete_transfer() may
+-- remove a transfer (and it always removes both legs together).
+SAVEPOINT sp_9_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_source_leg_id UUID; v_rows INT;
+BEGIN
+  v_source_leg_id := current_setting('g9.source_leg_id')::uuid;
+  DELETE FROM transactions WHERE id = v_source_leg_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.10: a direct admin DELETE removed one leg of a transfer without the other — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('9.10', 'a direct DELETE on a transfer leg (even by an admin) is rejected — only delete_transfer() can remove a transfer, always both legs together');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_10;
+
+-- 9.11: cross-household SELECT isolation on the transfers table itself.
+SAVEPOINT sp_9_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.11: User C (household 2) could see household 1''s transfer row';
+  END IF;
+  PERFORM _pass('9.11', 'a member of a different household cannot SELECT another household''s transfers row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_11;
+
+-- 9.12: update_transfer() on a transfer belonging to a DIFFERENT household
+-- => not_found, not a silent no-op success and not a cross-household write.
+SAVEPOINT sp_9_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000002'::uuid, '5a000000-0000-0000-0000-000000000004'::uuid,
+    99999, '2026-08-16'::date, 'ניסיון חוצה בתים'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 9.12: expected not_found for a cross-household transfer id, got %', v_result;
+  END IF;
+  PERFORM _pass('9.12', 'update_transfer() on another household''s transfer_id reports not_found, never a cross-household write');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_12;
+
+-- 9.13: update_transfer() with an account substitution from a DIFFERENT
+-- household, on the caller's OWN transfer => invalid_account, nothing
+-- changed (proves the household-membership check applies to update, not
+-- only create).
+SAVEPOINT sp_9_13;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_desc TEXT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000002'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    60000, '2026-08-16'::date, 'ניסיון חשבון זר'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 9.13: expected invalid_account for a cross-household from_account_id, got %', v_result;
+  END IF;
+  SELECT description INTO v_desc FROM transfers WHERE id = v_transfer_id;
+  IF v_desc <> 'העברה קבועה לבדיקות' THEN
+    RAISE EXCEPTION 'FAIL 9.13: the transfer was mutated despite the rejected call, description is now %', v_desc;
+  END IF;
+  PERFORM _pass('9.13', 'update_transfer() rejects a from_account_id belonging to a different household, nothing changed');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_13;
+
+-- 9.14: update_transfer() with the same from/to account => same_account,
+-- nothing changed.
+SAVEPOINT sp_9_14;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    60000, '2026-08-16'::date, 'לא חוקי'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'same_account' THEN
+    RAISE EXCEPTION 'FAIL 9.14: expected same_account, got %', v_result;
+  END IF;
+  PERFORM _pass('9.14', 'update_transfer() rejects an identical from/to account with same_account');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_14;
+
+-- 9.15: a successful update_transfer() rewrites the transfers row and both
+-- legs together — new amount, new accounts, new description, both legs
+-- still correctly signed and still linked to the same transfer_id.
+SAVEPOINT sp_9_15;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_source_count INT; v_dest_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  -- Swaps the direction (source<->dest) as part of the same update, proving
+  -- the sign-based leg selection in update_transfer() (WHERE amount_agorot
+  -- < 0 / > 0, evaluated against each leg's CURRENT amount before this
+  -- statement changes it) correctly re-targets both legs even when which
+  -- account is "source" changes.
+  SELECT update_transfer(
+    v_transfer_id, '5a000000-0000-0000-0000-000000000003'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    75000, '2026-08-20'::date, 'עודכן'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 9.15: update_transfer failed, got %', v_result;
+  END IF;
+
+  SELECT COUNT(*) INTO v_source_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000003'
+      AND amount_agorot = -75000 AND txn_date = '2026-08-20' AND description = 'עודכן';
+  SELECT COUNT(*) INTO v_dest_count FROM transactions
+    WHERE transfer_id = v_transfer_id AND account_id = '5a000000-0000-0000-0000-000000000001'
+      AND amount_agorot = 75000 AND txn_date = '2026-08-20' AND description = 'עודכן';
+  IF v_source_count <> 1 OR v_dest_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 9.15: legs not correctly rewritten after a direction-swapping update (source=%, dest=%)', v_source_count, v_dest_count;
+  END IF;
+  PERFORM _pass('9.15', 'update_transfer() atomically rewrites the transfers row and both legs, including correctly re-targeting each leg when the from/to direction is swapped');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_15;
+
+-- 9.16: delete_transfer() by a non-admin member => not_admin, nothing
+-- deleted.
+SAVEPOINT sp_9_16;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT delete_transfer(v_transfer_id) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_admin' THEN
+    RAISE EXCEPTION 'FAIL 9.16: expected not_admin for a non-admin member, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.16: the transfer was deleted despite the rejected call'; END IF;
+  PERFORM _pass('9.16', 'delete_transfer() rejects a non-admin household member with not_admin, nothing deleted');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_16;
+
+-- 9.17: delete_transfer() on a transfer belonging to a DIFFERENT household
+-- => not_found, even for that OTHER household's own admin (household
+-- isolation, not merely a role check).
+SAVEPOINT sp_9_17;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT delete_transfer(v_transfer_id) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 9.17: expected not_found for a cross-household transfer id (even from an admin), got %', v_result;
+  END IF;
+END $$;
+RESET role;
+-- Verify persistence as postgres, not while impersonating User C:
+-- transfers_select correctly hides Household 1 from User C, so a
+-- COUNT(*) performed above would always be 0 even when the row still
+-- exists and would turn this isolation test into a false deletion
+-- alarm (same superuser post-check pattern used by 5.14 and others).
+DO $$
+DECLARE v_transfer_id UUID; v_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.17: the transfer was deleted by another household''s admin'; END IF;
+  PERFORM _pass('9.17', 'delete_transfer() on another household''s transfer_id reports not_found and the transfer remains intact');
+END $$;
+ROLLBACK TO SAVEPOINT sp_9_17;
+
+-- 9.18: delete_transfer() by the OWNING household's admin removes the
+-- transfers row and both linked legs atomically (ON DELETE CASCADE), in
+-- one statement.
+SAVEPOINT sp_9_18;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB; v_transfer_count INT; v_leg_count INT;
+BEGIN
+  v_transfer_id := current_setting('g9.transfer_id')::uuid;
+  SELECT delete_transfer(v_transfer_id) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 9.18: delete_transfer failed for the owning household''s admin, got %', v_result;
+  END IF;
+  SELECT COUNT(*) INTO v_transfer_count FROM transfers WHERE id = v_transfer_id;
+  SELECT COUNT(*) INTO v_leg_count FROM transactions WHERE transfer_id = v_transfer_id;
+  IF v_transfer_count <> 0 OR v_leg_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 9.18: transfer or its legs survived deletion (transfer=%, legs=%)', v_transfer_count, v_leg_count;
+  END IF;
+  PERFORM _pass('9.18', 'delete_transfer() by the owning household''s admin atomically removes the transfers row and both legs via ON DELETE CASCADE');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_18;
+
+ROLLBACK TO SAVEPOINT sp_9_fixture;
+
+-- 9.19: transfers' own table grant is SELECT-only for authenticated — no
+-- INSERT/UPDATE/DELETE grant, matching its policy (SELECT-only, no
+-- mutation policy exists at all) exactly rather than relying on RLS alone
+-- to deny what a wider grant would permit.
+DO $$
+DECLARE v_bad TEXT;
+BEGIN
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'transfers' AND grantee = 'authenticated'
+    AND privilege_type <> 'SELECT';
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 9.19: transfers is granted % to authenticated, expected SELECT only', v_bad;
+  END IF;
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'transfers' AND grantee = 'anon';
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 9.19: transfers is granted % to anon, expected nothing', v_bad;
+  END IF;
+  PERFORM _pass('9.19', 'transfers table grant is SELECT-only for authenticated and nothing for anon, matching its SELECT-only policy exactly');
+END $$;
+
+-- 9.20: leave_household() nulls transfers.created_by for a departing
+-- member in a continuing household — mirrors OBLIGATIONS.LEAVE.1's pattern
+-- for the identical reason (RLS's WITH CHECK reads current
+-- household_members membership; a departed member's row must not leave a
+-- dangling FK pointing at someone no longer in the household).
+SAVEPOINT sp_9_20;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_transfer_id UUID; v_result JSONB;
+BEGIN
+  -- User B (member) creates a transfer, then leaves — User A (admin)
+  -- remains, so this is the continuing-household branch, not the
+  -- sole-member cascade.
+  SELECT create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    20000, '2026-08-15'::date, 'העברה של משתמש עוזב'
+  ) INTO v_result;
+  v_transfer_id := (v_result->>'transfer_id')::uuid;
+
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'setup for 9.20 failed: leave_household() returned %', v_result;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM transfers WHERE id = v_transfer_id AND created_by IS NOT NULL) THEN
+    RAISE EXCEPTION 'FAIL 9.20: transfers.created_by still points at the departed member';
+  END IF;
+  PERFORM _pass('9.20', 'leave_household() nulls transfers.created_by for the departing member''s own rows, keeping the transfer itself intact');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_9_20;
+
+-- 9.21: transfers.created_by's ON DELETE SET NULL, tested directly against
+-- the raw FK constraint rather than through delete_own_account() — that
+-- RPC's own explicit "UPDATE transfers SET created_by = NULL ..." (§9.20's
+-- continuing-household branch) would null the same column regardless of
+-- what the FK's ON DELETE behavior is, masking a missing or wrong FK
+-- definition. Deleting the auth.users row directly, decoupled from any RPC,
+-- isolates exactly what this migration changed: present from this
+-- migration's first version (unlike recurring_transactions.created_by/
+-- savings_goals.created_by, which needed a migration 004 retrofit after
+-- shipping without it) so delete_own_account() never regresses into a raw
+-- foreign_key_violation for a user who ever created a transfer.
+SAVEPOINT sp_9_21;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  PERFORM create_transfer(
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000003'::uuid,
+    30000, '2026-08-15'::date, 'העברה למבחן FK'
+  );
+END $$;
+RESET role;
+
+DO $$
+DECLARE v_transfer_id UUID; v_created_by UUID;
+BEGIN
+  SELECT id INTO v_transfer_id FROM transfers WHERE description = 'העברה למבחן FK';
+  DELETE FROM auth.users WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  SELECT created_by INTO v_created_by FROM transfers WHERE id = v_transfer_id;
+  IF v_created_by IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 9.21: transfers.created_by is still %, expected NULL', v_created_by;
+  END IF;
+  PERFORM _pass('9.21', 'deleting the auth.users row a transfer''s created_by references does not raise a foreign_key_violation -- transfers.created_by has ON DELETE SET NULL from this migration''s first version, and the transfer itself survives intact');
+END $$;
+ROLLBACK TO SAVEPOINT sp_9_21;
+
+-- ============================================================================
+-- Group 10 — Optimistic concurrency protection (migration 009, ADR-036)
+-- ============================================================================
+-- planned_obligations/savings_goals: update/status/delete RPC correctness,
+-- household isolation (no oracle: cross-household + correct version still
+-- => not_found), direct-UPDATE/DELETE bypass rejected at the grant level
+-- (not merely by RLS), stale-write and stale-delete => conflict with no
+-- data/version change, version monotonicity. recurring_transactions: the
+-- deliberate asymmetry — UPDATE stays open, enforced instead by
+-- enforce_recurring_transaction_version()'s two rules (10.24-10.26 prove
+-- both independently, including the unconditional-rule regression the
+-- design-stage review required fixed before this migration shipped), DELETE
+-- closed the same way as the other two tables, and a positive-path proof
+-- that generate_recurring_transactions()/skip_recurring_occurrence()'s own
+-- writes are never blocked. 10.32b/10.32c prove anon cannot EXECUTE the two
+-- SECURITY INVOKER recurring RPCs (functional coverage of what 6.6 would
+-- give a SECURITY DEFINER function for free); 10.34/10.35 cover fixed
+-- search_path for those same two RPCs plus the trigger function, and the
+-- trigger function's own zero-EXECUTE-grants posture — none of which Group
+-- 6's 6.5/6.6 structural guards reach (they scan only SECURITY DEFINER
+-- functions).
+
+-- 10.1: update_planned_obligation() as the owning household's member —
+-- version 1 -> 2, data changes.
+SAVEPOINT sp_10_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'ארנונה מעודכנת', 185000, '2026-09-15'::date,
+    '5c000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, 'הערה'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.1: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM planned_obligations
+    WHERE id = '58000000-0000-0000-0000-000000000001' AND name = 'ארנונה מעודכנת' AND amount_agorot = 185000 AND version = 2
+  ) THEN
+    RAISE EXCEPTION 'FAIL 10.1: row was not actually updated to the new values/version';
+  END IF;
+  PERFORM _pass('10.1', 'update_planned_obligation() with the correct expected_version applies the update and advances version 1 -> 2');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_1;
+
+-- 10.2: same call with a stale expected_version (still 1 after someone else
+-- already bumped it) => conflict, data AND version left completely
+-- unchanged — the core invariant of this whole milestone.
+SAVEPOINT sp_10_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  -- First save advances version to 2 (simulates the "other device/user").
+  PERFORM update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'עדכון ראשון', 185000, '2026-09-15'::date,
+    '5c000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, NULL
+  );
+  -- Second save is still based on the version-1 snapshot it loaded.
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'עדכון שני (מיושן)', 999900, '2026-12-31'::date,
+    '5c000000-0000-0000-0000-000000000001'::uuid, '5a000000-0000-0000-0000-000000000001'::uuid,
+    TRUE, NULL
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.2: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM planned_obligations
+    WHERE id = '58000000-0000-0000-0000-000000000001' AND name = 'עדכון ראשון' AND version = 2
+  ) THEN
+    RAISE EXCEPTION 'FAIL 10.2: the stale (rejected) write leaked through — row is not exactly as the first, successful write left it';
+  END IF;
+  PERFORM _pass('10.2', 'update_planned_obligation() with a stale expected_version returns conflict and leaves the row''s data and version completely untouched — a stale client can never silently overwrite a newer version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_2;
+
+-- 10.3: Household 2's admin calling update_planned_obligation() on
+-- Household 1's obligation, with the CORRECT current version, still gets
+-- not_found — no oracle distinguishing "wrong household" from "does not
+-- exist" (same discipline ADR-010 already established for invitations).
+SAVEPOINT sp_10_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1,
+    'ניסיון חציית בתים', 100000, '2026-09-15'::date,
+    NULL, NULL, TRUE, NULL
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 10.3: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND name = 'ניסיון חציית בתים') THEN
+    RAISE EXCEPTION 'FAIL 10.3: a member of the OTHER household was able to mutate this obligation';
+  END IF;
+  PERFORM _pass('10.3', 'update_planned_obligation() called by a different household''s member, even with the correct current version, returns not_found and mutates nothing — expected_version cannot be used to bypass household isolation');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_3;
+
+-- 10.4: a direct client UPDATE on planned_obligations is rejected at the
+-- GRANT level (insufficient_privilege) — not merely "the app doesn't call
+-- it anymore." planned_obligations_update was DROP-ed and the table grant
+-- narrowed to SELECT, INSERT only.
+SAVEPOINT sp_10_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    UPDATE planned_obligations SET name = 'עוקף' WHERE id = '58000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.4: a direct UPDATE on planned_obligations was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.4', 'a direct client UPDATE on planned_obligations is rejected at the grant level — update_planned_obligation()/set_planned_obligation_status() are the only write paths');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_4;
+
+-- 10.5: same for a direct DELETE.
+SAVEPOINT sp_10_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    DELETE FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.5: a direct DELETE on planned_obligations was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.5', 'a direct client DELETE on planned_obligations is rejected at the grant level — delete_planned_obligation() is the only delete path');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_5;
+
+-- 10.6: delete_planned_obligation() with a stale expected_version =>
+-- conflict, row survives untouched.
+SAVEPOINT sp_10_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 99) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.6: expected conflict for a stale delete, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.6: the obligation was deleted despite a stale expected_version';
+  END IF;
+  PERFORM _pass('10.6', 'delete_planned_obligation() with a stale expected_version returns conflict and does not delete the row — a stale client can never silently remove a newer version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_6;
+
+-- 10.7: delete_planned_obligation() with the correct version succeeds.
+SAVEPOINT sp_10_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.7: expected ok for a correctly-versioned delete, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.7: the obligation still exists after a successful delete';
+  END IF;
+  PERFORM _pass('10.7', 'delete_planned_obligation() with the correct expected_version deletes the row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_7;
+
+-- 10.8: set_planned_obligation_status() — the mark-paid/cancel one-tap
+-- action — succeeds and advances version; an invalid status is rejected
+-- cleanly (no raw constraint exception) and leaves version untouched.
+SAVEPOINT sp_10_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 1, 'completed') INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.8a: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'completed' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.8a: status/version not actually updated';
+  END IF;
+
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 2, 'not_a_real_status') INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_status' THEN
+    RAISE EXCEPTION 'FAIL 10.8b: expected a clean invalid_status error, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.8b: version changed despite the rejected invalid status';
+  END IF;
+  PERFORM _pass('10.8', 'set_planned_obligation_status(): a valid status advances version 1 -> 2; an invalid status is rejected with a clean {ok:false} result, not a raw constraint exception, and leaves version untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_8;
+
+-- 10.9: version monotonicity — three successive correctly-versioned updates
+-- advance 1 -> 2 -> 3, never resetting or skipping.
+SAVEPOINT sp_10_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, 'א', 100000, '2026-09-01'::date, NULL, NULL, TRUE, NULL) INTO v_result;
+  IF (v_result->>'version')::bigint <> 2 THEN RAISE EXCEPTION 'FAIL 10.9: expected version 2 after first update, got %', v_result; END IF;
+
+  SELECT update_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 2, 'ב', 100000, '2026-09-01'::date, NULL, NULL, TRUE, NULL) INTO v_result;
+  IF (v_result->>'version')::bigint <> 3 THEN RAISE EXCEPTION 'FAIL 10.9: expected version 3 after second update, got %', v_result; END IF;
+
+  PERFORM _pass('10.9', 'three successive correctly-versioned updates advance version 1 -> 2 -> 3, strictly monotonic');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_9;
+
+-- 10.10: update_savings_goal() — version 1 -> 2, data changes.
+SAVEPOINT sp_10_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד מעודכן', 150000, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, NULL, NULL
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.10: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND name = 'יעד מעודכן' AND target_agorot = 150000 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.10: row was not actually updated';
+  END IF;
+  PERFORM _pass('10.10', 'update_savings_goal() with the correct expected_version applies the update and advances version 1 -> 2');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_10;
+
+-- 10.11: stale update_savings_goal() => conflict, unchanged.
+SAVEPOINT sp_10_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1, 'עדכון ראשון', 150000, NULL, NULL, NULL, NULL);
+  SELECT update_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1, 'עדכון מיושן', 999900, NULL, NULL, NULL, NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.11: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND name = 'עדכון ראשון' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.11: the stale write leaked through';
+  END IF;
+  PERFORM _pass('10.11', 'update_savings_goal() with a stale expected_version returns conflict and leaves the row untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_11;
+
+-- 10.12: cross-household update_savings_goal() with the correct version =>
+-- not_found, no oracle.
+SAVEPOINT sp_10_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1, 'חציית בתים', 100000, NULL, NULL, NULL, NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 10.12: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  PERFORM _pass('10.12', 'update_savings_goal() called by a different household''s member returns not_found even with the correct current version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_12;
+
+-- 10.13/10.14: direct UPDATE/DELETE on savings_goals rejected at the grant level.
+SAVEPOINT sp_10_13;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    UPDATE savings_goals SET name = 'עוקף' WHERE id = '59000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.13: a direct UPDATE on savings_goals was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.13', 'a direct client UPDATE on savings_goals is rejected at the grant level');
+  END;
+  BEGIN
+    DELETE FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.14: a direct DELETE on savings_goals was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.14', 'a direct client DELETE on savings_goals is rejected at the grant level');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_13;
+
+-- 10.15: update_savings_goal_progress() crossing the completion threshold —
+-- returns currentAgorot/isCompleted/version together (the shape
+-- useUpdateSavingsGoalProgress.ts's goal.completed/goal.progress_updated
+-- transition detection depends on), and derive_savings_goal_completion()
+-- (migration 003) still fires inside the same statement.
+SAVEPOINT sp_10_15;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 1, 100000) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2
+     OR (v_result->>'currentAgorot')::bigint <> 100000 OR NOT (v_result->>'isCompleted')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.15: expected ok/version=2/currentAgorot=100000/isCompleted=true, got %', v_result;
+  END IF;
+  PERFORM _pass('10.15', 'update_savings_goal_progress() returns version/currentAgorot/isCompleted together, and derive_savings_goal_completion() still derives is_completed correctly inside the same statement');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_15;
+
+-- 10.16: stale update_savings_goal_progress() => conflict.
+SAVEPOINT sp_10_16;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 1, 50000);
+  SELECT update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 1, 999900) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.16: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND current_agorot = 50000 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.16: the stale progress write leaked through';
+  END IF;
+  PERFORM _pass('10.16', 'update_savings_goal_progress() with a stale expected_version returns conflict and does not apply');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_16;
+
+-- 10.17/10.18: delete_savings_goal() — stale => conflict, survives; correct
+-- version => succeeds.
+SAVEPOINT sp_10_17;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 99) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.17: expected conflict for a stale delete, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.17: the goal was deleted despite a stale expected_version';
+  END IF;
+  PERFORM _pass('10.17', 'delete_savings_goal() with a stale expected_version returns conflict and does not delete the row');
+
+  SELECT delete_savings_goal('59000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.18: expected ok for a correctly-versioned delete, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.18: the goal still exists after a successful delete';
+  END IF;
+  PERFORM _pass('10.18', 'delete_savings_goal() with the correct expected_version deletes the row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_17;
+
+-- 10.19: update_recurring_transaction() — SECURITY INVOKER, relies on the
+-- still-open recurring_update RLS for household scoping, adding only the
+-- version compare-and-swap. Version 1 -> 2, data changes.
+SAVEPOINT sp_10_19;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_recurring_transaction(
+    '5e000000-0000-0000-0000-000000000001'::uuid, 1,
+    '5a000000-0000-0000-0000-000000000001'::uuid, '5c000000-0000-0000-0000-000000000001'::uuid,
+    -6000, 'הו״ק מעודכן', TRUE, 'monthly', NULL
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.19: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND amount_agorot = -6000 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.19: row was not actually updated';
+  END IF;
+  PERFORM _pass('10.19', 'update_recurring_transaction() with the correct expected_version applies the update and advances version 1 -> 2, via the RLS-scoped SECURITY INVOKER RPC');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_19;
+
+-- 10.20: stale update_recurring_transaction() => conflict.
+SAVEPOINT sp_10_20;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -6000, 'עדכון ראשון', TRUE, 'monthly', NULL);
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -999900, 'עדכון מיושן', TRUE, 'monthly', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.20: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND description = 'עדכון ראשון' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.20: the stale write leaked through';
+  END IF;
+  PERFORM _pass('10.20', 'update_recurring_transaction() with a stale expected_version returns conflict and leaves the row untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_20;
+
+-- 10.21: cross-household update_recurring_transaction() with the correct
+-- version => not_found, no oracle (same guarantee as the two DEFINER RPCs,
+-- proven independently here since this RPC derives household membership
+-- itself rather than relying solely on RLS row visibility for the WHERE
+-- clause).
+SAVEPOINT sp_10_21;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000002'::uuid, NULL, -6000, 'חציית בתים', TRUE, 'monthly', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 10.21: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  PERFORM _pass('10.21', 'update_recurring_transaction() called by a different household''s member returns not_found even with the correct current version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_21;
+
+-- 10.22: update_recurring_transaction() rejects an invalid frequency/day_of_
+-- month/account with a clean {ok:false} result rather than a raw
+-- constraint/RLS exception (the gap this migration's own self-review found
+-- and fixed before the design-stage review even ran).
+SAVEPOINT sp_10_22;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -6000, 'תדירות לא חוקית', TRUE, 'not_a_real_frequency', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_frequency' THEN
+    RAISE EXCEPTION 'FAIL 10.22a: expected a clean invalid_frequency error, got %', v_result;
+  END IF;
+
+  SELECT update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000002'::uuid, NULL, -6000, 'חשבון בית אחר', TRUE, 'monthly', NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 10.22b: expected a clean invalid_account error for a cross-household account_id, got %', v_result;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND version = 1) THEN
+    RAISE EXCEPTION 'FAIL 10.22: version advanced despite both rejected calls';
+  END IF;
+  PERFORM _pass('10.22', 'update_recurring_transaction() rejects an invalid frequency and a cross-household account_id with clean {ok:false} results, never a raw Postgres exception, and never advances version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_22;
+
+-- 10.23: set_recurring_transaction_active() — pause/resume — succeeds and
+-- advances version; stale call => conflict.
+SAVEPOINT sp_10_23;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT set_recurring_transaction_active('5e000000-0000-0000-0000-000000000001'::uuid, 1, FALSE) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 10.23a: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND is_active = FALSE AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.23a: is_active/version not actually updated';
+  END IF;
+
+  SELECT set_recurring_transaction_active('5e000000-0000-0000-0000-000000000001'::uuid, 1, TRUE) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.23b: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  PERFORM _pass('10.23', 'set_recurring_transaction_active() advances version on success and returns conflict for a stale expected_version');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_23;
+
+-- 10.24: enforce_recurring_transaction_version() conditional rule — a
+-- direct client UPDATE that changes a protected column (amount_agorot)
+-- WITHOUT incrementing version is rejected.
+SAVEPOINT sp_10_24;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_caught BOOLEAN := FALSE;
+BEGIN
+  BEGIN
+    UPDATE recurring_transactions SET amount_agorot = -9999 WHERE id = '5e000000-0000-0000-0000-000000000001';
+  EXCEPTION WHEN raise_exception THEN
+    v_caught := TRUE;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL 10.24: a direct UPDATE changing amount_agorot without incrementing version was NOT rejected';
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND amount_agorot = -9999) THEN
+    RAISE EXCEPTION 'FAIL 10.24: the rejected write leaked through despite the exception';
+  END IF;
+  PERFORM _pass('10.24', 'enforce_recurring_transaction_version(): a protected-column change with version left unchanged is rejected (conditional rule)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_24;
+
+-- 10.25: positive control — a direct client UPDATE that changes a protected
+-- column AND correctly increments version by exactly 1 succeeds. Proves
+-- recurring_transactions' UPDATE is legitimately reachable directly (the
+-- deliberate asymmetry vs. the other two tables), not merely "currently
+-- unused by the app."
+SAVEPOINT sp_10_25;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  UPDATE recurring_transactions SET amount_agorot = -9999, version = version + 1 WHERE id = '5e000000-0000-0000-0000-000000000001';
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND amount_agorot = -9999 AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.25: a correctly-versioned direct UPDATE did not apply';
+  END IF;
+  PERFORM _pass('10.25', 'a direct UPDATE that changes a protected column and correctly increments version by 1 succeeds — recurring_transactions'' UPDATE RLS is intentionally still open, unlike the other two tables');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_25;
+
+-- 10.26: enforce_recurring_transaction_version() unconditional rule — the
+-- specific regression design-stage review required fixed. First a
+-- legitimate update bumps version to 2; then a direct UPDATE attempts to
+-- roll version BACKWARD to 1 while touching NO protected column at all. A
+-- purely conditional check (only validating version when a protected column
+-- changes) would let this through untouched; the unconditional rule closes
+-- it.
+SAVEPOINT sp_10_26;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_caught BOOLEAN := FALSE;
+BEGIN
+  UPDATE recurring_transactions SET description = 'עדכון לגיטימי', version = version + 1 WHERE id = '5e000000-0000-0000-0000-000000000001';
+
+  BEGIN
+    UPDATE recurring_transactions SET version = 1 WHERE id = '5e000000-0000-0000-0000-000000000001';
+  EXCEPTION WHEN raise_exception THEN
+    v_caught := TRUE;
+  END;
+  IF NOT v_caught THEN
+    RAISE EXCEPTION 'FAIL 10.26: a direct UPDATE rolling version backward with no protected column touched was NOT rejected — the unconditional-rule regression';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 10.26: version is not 2 after the rejected rollback attempt';
+  END IF;
+  PERFORM _pass('10.26', 'enforce_recurring_transaction_version(): version cannot be rolled backward even when no protected column is touched — the unconditional rule catches what a purely conditional check would miss, matching this migration''s header/ADR-036 §5');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_26;
+
+-- 10.27: a direct DELETE on recurring_transactions is rejected at the grant
+-- level — no competing writer for delete on this table either, so it is
+-- closed exactly like the other two.
+SAVEPOINT sp_10_27;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    DELETE FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 10.27: a direct DELETE on recurring_transactions was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.27', 'a direct client DELETE on recurring_transactions is rejected at the grant level — delete_recurring_transaction() is the only delete path, even though UPDATE stays open');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_27;
+
+-- 10.28/10.29: delete_recurring_transaction() — stale => conflict, survives;
+-- correct version => succeeds.
+SAVEPOINT sp_10_28;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT delete_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 99) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 10.28: expected conflict for a stale delete, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.28: the template was deleted despite a stale expected_version';
+  END IF;
+  PERFORM _pass('10.28', 'delete_recurring_transaction() with a stale expected_version returns conflict and does not delete the row');
+
+  SELECT delete_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.29: expected ok for a correctly-versioned delete, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM recurring_transactions WHERE id = '5e000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 10.29: the template still exists after a successful delete';
+  END IF;
+  PERFORM _pass('10.29', 'delete_recurring_transaction() with the correct expected_version deletes the row');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_28;
+
+-- 10.30/10.31: positive-path proof that generate_recurring_transactions()
+-- and skip_recurring_occurrence()'s own next_due_date/last_generated_at
+-- writes are never blocked by enforce_recurring_transaction_version() —
+-- neither function ever touches version, so it stays at 1 (NEW.version =
+-- OLD.version trivially satisfies the unconditional rule; neither function
+-- touches a protected column, so the conditional rule never fires either).
+SAVEPOINT sp_10_30;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID := '5e100000-0000-0000-0000-000000000001'; v_result JSONB; v_version BIGINT; v_new_due DATE;
+BEGIN
+  INSERT INTO recurring_transactions (id, household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES (v_id, '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1000, 'תבנית למבחן 10.30', 'daily', CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+
+  SELECT generate_recurring_transactions() INTO v_result;
+
+  SELECT version, next_due_date INTO v_version, v_new_due FROM recurring_transactions WHERE id = v_id;
+  IF v_version <> 1 THEN
+    RAISE EXCEPTION 'FAIL 10.30: generate_recurring_transactions() own write was blocked or altered version — expected 1, got %', v_version;
+  END IF;
+  IF v_new_due <> CURRENT_DATE + 1 THEN
+    RAISE EXCEPTION 'FAIL 10.30: next_due_date did not advance as expected, got %', v_new_due;
+  END IF;
+  PERFORM _pass('10.30', 'generate_recurring_transactions() own next_due_date/last_generated_at write is never blocked by enforce_recurring_transaction_version() — version stays untouched at 1');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_30;
+
+SAVEPOINT sp_10_31;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID := '5e100000-0000-0000-0000-000000000002'; v_result JSONB; v_version BIGINT; v_new_due DATE;
+BEGIN
+  INSERT INTO recurring_transactions (id, household_id, account_id, category_id, amount_agorot, description, frequency, next_due_date, created_by)
+  VALUES (v_id, '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', -1000, 'תבנית למבחן 10.31', 'daily', CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+
+  SELECT skip_recurring_occurrence(v_id) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 10.31: skip_recurring_occurrence() failed, got %', v_result;
+  END IF;
+
+  SELECT version, next_due_date INTO v_version, v_new_due FROM recurring_transactions WHERE id = v_id;
+  IF v_version <> 1 THEN
+    RAISE EXCEPTION 'FAIL 10.31: skip_recurring_occurrence() own write was blocked or altered version — expected 1, got %', v_version;
+  END IF;
+  IF v_new_due <> CURRENT_DATE + 1 THEN
+    RAISE EXCEPTION 'FAIL 10.31: next_due_date did not advance as expected, got %', v_new_due;
+  END IF;
+  PERFORM _pass('10.31', 'skip_recurring_occurrence() own next_due_date write is never blocked by enforce_recurring_transaction_version() — version stays untouched at 1');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_31;
+
+-- 10.32: anon cannot EXECUTE any of the new version-aware RPCs (DEFINER or
+-- INVOKER alike).
+SAVEPOINT sp_10_32;
+SET LOCAL role = anon;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM update_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, 'x', 100, '2026-09-01'::date, NULL, NULL, TRUE, NULL);
+    RAISE EXCEPTION 'FAIL 10.32a: anon was able to call update_planned_obligation';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.32a', 'anon cannot EXECUTE update_planned_obligation');
+  END;
+  BEGIN
+    PERFORM update_recurring_transaction('5e000000-0000-0000-0000-000000000001'::uuid, 1, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, -100, 'x', TRUE, 'monthly', NULL);
+    RAISE EXCEPTION 'FAIL 10.32b: anon was able to call update_recurring_transaction';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.32b', 'anon cannot EXECUTE update_recurring_transaction (SECURITY INVOKER is not a lesser guarantee — EXECUTE is still revoked from anon/PUBLIC exactly like every DEFINER RPC)');
+  END;
+  BEGIN
+    PERFORM set_recurring_transaction_active('5e000000-0000-0000-0000-000000000001'::uuid, 1, FALSE);
+    RAISE EXCEPTION 'FAIL 10.32c: anon was able to call set_recurring_transaction_active';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('10.32c', 'anon cannot EXECUTE set_recurring_transaction_active');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_10_32;
+
+-- 10.33: planned_obligations/savings_goals table grants are exactly SELECT,
+-- INSERT for authenticated — no UPDATE/DELETE, nothing for anon — proving
+-- the REVOKE ALL actually ran before the narrower re-GRANT (an additive-only
+-- GRANT SELECT, INSERT without a preceding REVOKE would leave the old
+-- broader grant silently intact; 10.4/10.5/10.13/10.14 already prove the
+-- practical consequence, this proves the grant catalog itself is exactly
+-- right, not merely "narrow enough to fail those specific statements").
+DO $$
+DECLARE v_bad TEXT;
+BEGIN
+  SELECT string_agg(table_name || ':' || privilege_type, ', ') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name IN ('planned_obligations', 'savings_goals')
+    AND grantee = 'authenticated' AND privilege_type NOT IN ('SELECT', 'INSERT');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33a: planned_obligations/savings_goals granted more than SELECT,INSERT to authenticated: %', v_bad;
+  END IF;
+
+  SELECT string_agg(table_name || ':' || privilege_type, ', ') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name IN ('planned_obligations', 'savings_goals')
+    AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33b: planned_obligations/savings_goals granted something to anon/PUBLIC: %', v_bad;
+  END IF;
+
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'recurring_transactions'
+    AND grantee = 'authenticated' AND privilege_type NOT IN ('SELECT', 'INSERT', 'UPDATE');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33c: recurring_transactions granted more than SELECT,INSERT,UPDATE to authenticated: %', v_bad;
+  END IF;
+
+  SELECT string_agg(privilege_type, ',') INTO v_bad
+  FROM information_schema.role_table_grants
+  WHERE table_schema = 'public' AND table_name = 'recurring_transactions' AND grantee IN ('anon', 'PUBLIC');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.33d: recurring_transactions granted something to anon/PUBLIC: %', v_bad;
+  END IF;
+
+  PERFORM _pass('10.33', 'planned_obligations/savings_goals are granted exactly SELECT,INSERT to authenticated and nothing to anon/PUBLIC; recurring_transactions is granted exactly SELECT,INSERT,UPDATE to authenticated and nothing to anon/PUBLIC — the REVOKE ALL before each narrower re-GRANT actually took effect');
+END $$;
+
+-- 10.34: search_path is fixed for the two SECURITY INVOKER recurring RPCs
+-- and the trigger function — Group 6's 6.5/6.6 structural guards only scan
+-- prosecdef = TRUE (SECURITY DEFINER) functions, so these three are not
+-- automatically covered by that generic sweep.
+DO $$
+DECLARE v_bad TEXT;
+BEGIN
+  SELECT string_agg(proname, ',') INTO v_bad
+  FROM pg_proc
+  WHERE pronamespace = 'public'::regnamespace
+    AND proname IN ('update_recurring_transaction', 'set_recurring_transaction_active', 'enforce_recurring_transaction_version')
+    AND (proconfig IS NULL OR NOT EXISTS (SELECT 1 FROM unnest(proconfig) c WHERE c LIKE 'search_path=%'));
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 10.34: functions without a fixed search_path: %', v_bad;
+  END IF;
+  PERFORM _pass('10.34', 'update_recurring_transaction()/set_recurring_transaction_active()/enforce_recurring_transaction_version() all have a fixed search_path, even though none is SECURITY DEFINER and so none is covered by Group 6''s 6.5 sweep');
+END $$;
+
+-- 10.35: enforce_recurring_transaction_version() has zero direct EXECUTE
+-- grants to any role — it is trigger-only, exactly like migration 003's
+-- derive_savings_goal_completion(), never meant to be called directly.
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SELECT count(*) INTO v_count
+  FROM information_schema.role_routine_grants
+  WHERE routine_schema = 'public' AND routine_name = 'enforce_recurring_transaction_version';
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'FAIL 10.35: enforce_recurring_transaction_version has % direct EXECUTE grant(s), expected 0 (trigger-only)', v_count;
+  END IF;
+  PERFORM _pass('10.35', 'enforce_recurring_transaction_version() has zero direct EXECUTE grants — callable only as a trigger, never directly');
+END $$;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -2869,7 +4951,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008; Group 10 optimistic concurrency protection, migration 009) ===', v_total;
 END $$;
 
 ROLLBACK;
@@ -3186,4 +5268,93 @@ DELETE FROM household_members WHERE household_id = '66666666-6666-6666-6666-6666
 DELETE FROM households WHERE id = '66666666-6666-6666-6666-666666666666';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000040', 'f0000000-0000-0000-0000-000000000041');
 
-DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + DELETE_ACCOUNT.CONCURRENT) ==='; END $$;
+-- ============================================================================
+-- Test LEAVE.CONCURRENT — true concurrency: the two members of a 2-person
+-- household both call leave_household() at the same moment. Migration 005
+-- — same scenario and same fix (a single pg_advisory_xact_lock keyed on
+-- household_id, SHARED with delete_own_account()'s class 72702 — see the
+-- migration's header for why that sharing is required, not incidental) as
+-- DELETE_ACCOUNT.CONCURRENT above, but proving the leave path specifically:
+-- User 50 is admin, User 51 is a plain member — whichever call wins the
+-- lock first promotes the other to admin (decision 2) and removes itself;
+-- the second call then re-reads AFTER acquiring the lock, sees itself as
+-- the sole remaining (now-admin) member, and deletes the household outright
+-- (decision 3) — exercising both decision branches in one race, exactly
+-- like DELETE_ACCOUNT.CONCURRENT, but the critical extra assertion here is
+-- that BOTH users' auth.users rows survive: leave must never delete an
+-- account, concurrently or otherwise.
+-- ============================================================================
+
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000050', 'authenticated', 'authenticated', 'leave-race-1@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Leave Race 1"}', NOW(), NOW(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000051', 'authenticated', 'authenticated', 'leave-race-2@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Leave Race 2"}', NOW(), NOW(), '', '', '', '');
+
+INSERT INTO households (id, name, created_by) VALUES
+  ('55555555-5555-5555-5555-555555555555', 'בית מרוץ עזיבה', 'f0000000-0000-0000-0000-000000000050');
+
+INSERT INTO household_members (household_id, user_id, role) VALUES
+  ('55555555-5555-5555-5555-555555555555', 'f0000000-0000-0000-0000-000000000050', 'admin'),
+  ('55555555-5555-5555-5555-555555555555', 'f0000000-0000-0000-0000-000000000051', 'member');
+
+DO $$
+DECLARE
+  v_r1 JSONB;
+  v_r2 JSONB;
+  v_household_exists BOOLEAN;
+  v_user1_exists BOOLEAN;
+  v_user2_exists BOOLEAN;
+  v_ok_count INT;
+BEGIN
+  PERFORM dblink_connect('conn1', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+  PERFORM dblink_connect('conn2', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+
+  PERFORM dblink_exec('conn1', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn1', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000050","role":"authenticated"}'$q$);
+  PERFORM dblink_exec('conn2', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn2', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000051","role":"authenticated"}'$q$);
+
+  -- Dispatch both calls asynchronously before collecting either result, so
+  -- they race on the advisory lock exactly as they would in production.
+  PERFORM dblink_send_query('conn1', $q$SELECT leave_household()$q$);
+  PERFORM dblink_send_query('conn2', $q$SELECT leave_household()$q$);
+
+  SELECT res INTO v_r1 FROM dblink_get_result('conn1') AS t(res JSONB);
+  SELECT res INTO v_r2 FROM dblink_get_result('conn2') AS t(res JSONB);
+  PERFORM dblink_get_result('conn1'); -- drain end-of-results marker
+  PERFORM dblink_get_result('conn2');
+
+  PERFORM dblink_disconnect('conn1');
+  PERFORM dblink_disconnect('conn2');
+
+  SELECT (CASE WHEN (v_r1->>'ok')::boolean THEN 1 ELSE 0 END) + (CASE WHEN (v_r2->>'ok')::boolean THEN 1 ELSE 0 END) INTO v_ok_count;
+  IF v_ok_count <> 2 THEN
+    RAISE EXCEPTION 'FAIL LEAVE.CONCURRENT: expected both concurrent calls to succeed cleanly (no deadlock), got % successes (r1=%, r2=%)', v_ok_count, v_r1, v_r2;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM households WHERE id = '55555555-5555-5555-5555-555555555555') INTO v_household_exists;
+  IF v_household_exists THEN
+    RAISE EXCEPTION 'FAIL LEAVE.CONCURRENT: household still exists after both members left (r1=%, r2=%)', v_r1, v_r2;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'f0000000-0000-0000-0000-000000000050') INTO v_user1_exists;
+  SELECT EXISTS (SELECT 1 FROM auth.users WHERE id = 'f0000000-0000-0000-0000-000000000051') INTO v_user2_exists;
+  IF NOT v_user1_exists OR NOT v_user2_exists THEN
+    RAISE EXCEPTION 'FAIL LEAVE.CONCURRENT: expected both users'' auth.users rows to survive (leave must never delete an account), got user1=%, user2=%', v_user1_exists, v_user2_exists;
+  END IF;
+
+  RAISE NOTICE 'PASS LEAVE.CONCURRENT: two concurrent leave_household() calls from the two members of the same household => no deadlock, both succeed, household fully gone, both users'' accounts survive intact (r1=%, r2=%)', v_r1, v_r2;
+END $$;
+
+-- Cleanup — real DELETEs, in case any assertion above failed partway and
+-- left something behind (the happy path already leaves no household/
+-- membership rows to clean — only the two auth.users rows this section
+-- created, which the happy path deliberately leaves intact).
+DELETE FROM household_members WHERE household_id = '55555555-5555-5555-5555-555555555555';
+DELETE FROM households WHERE id = '55555555-5555-5555-5555-555555555555';
+DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000050', 'f0000000-0000-0000-0000-000000000051');
+
+DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + DELETE_ACCOUNT.CONCURRENT + LEAVE.CONCURRENT) ==='; END $$;

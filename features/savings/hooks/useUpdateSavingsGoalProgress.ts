@@ -1,9 +1,9 @@
 // The one hook that writes current_agorot. is_completed is never sent by
 // this hook — it is derived exclusively by migration 003's
 // derive_savings_goal_completion DB trigger (current_agorot >= target_agorot,
-// BEFORE INSERT OR UPDATE, unconditional) and read back via .select() so
-// this hook can compare it against the caller-supplied "was it completed
-// before this write" flag.
+// BEFORE INSERT OR UPDATE, unconditional) and read back from the RPC's own
+// result so this hook can compare it against the caller-supplied "was it
+// completed before this write" flag.
 //
 // goal.completed fires ONLY on the false -> true transition of is_completed
 // (per the approved M7 design): crossing upward emits it once; remaining
@@ -13,15 +13,20 @@
 // goal.progress_updated instead — both event types are declared in
 // lib/events/types.ts since Milestone 1 with zero prior subscribers; this is
 // their first real emitter.
+//
+// Thin wrapper over the update_savings_goal_progress() RPC (migration 009,
+// ADR-036) — expectedVersion is mandatory, pinned at the same load moment
+// app/(app)/goals/[id].tsx already snapshots from.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 import { emit } from '@/lib/events/dispatcher'
+import { throwOnMutationFailure, type VersionedMutationResult } from '@/lib/mutations/concurrencyError'
 import { savingsGoalsQueryKey } from './useSavingsGoals'
-import type { SavingsGoal } from '@/types/app'
 
 interface UpdateProgressInput {
   goalId: string
+  expectedVersion: number
   householdId: string
   actorId: string | null
   currentAgorot: number
@@ -29,25 +34,37 @@ interface UpdateProgressInput {
   targetAgorot: number
 }
 
+interface UpdateProgressResult extends VersionedMutationResult {
+  currentAgorot?: number
+  isCompleted?: boolean
+}
+
 export function useUpdateSavingsGoalProgress(householdId: string | null | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: UpdateProgressInput) => {
-      const { data, error } = await supabase
-        .from('savings_goals')
-        .update({ current_agorot: input.currentAgorot })
-        .eq('id', input.goalId)
-        .select()
-        .single()
+    mutationFn: async (input: UpdateProgressInput): Promise<{ version: number; currentAgorot: number; isCompleted: boolean }> => {
+      const { data, error } = await supabase.rpc('update_savings_goal_progress', {
+        p_id: input.goalId,
+        p_expected_version: input.expectedVersion,
+        p_current_agorot: input.currentAgorot,
+      })
       if (error) throw error
-      return data as SavingsGoal
+
+      const result = data as unknown as UpdateProgressResult
+      throwOnMutationFailure(result)
+
+      return {
+        version: result.version as number,
+        currentAgorot: result.currentAgorot as number,
+        isCompleted: result.isCompleted as boolean,
+      }
     },
     onSuccess: (updated, variables) => {
       void queryClient.invalidateQueries({ queryKey: savingsGoalsQueryKey(householdId) })
 
       const occurredAt = new Date().toISOString()
-      if (!variables.wasCompleted && updated.is_completed) {
+      if (!variables.wasCompleted && updated.isCompleted) {
         emit({
           type: 'goal.completed',
           householdId: variables.householdId,
@@ -63,7 +80,7 @@ export function useUpdateSavingsGoalProgress(householdId: string | null | undefi
           occurredAt,
           payload: {
             goalId: variables.goalId,
-            currentAgorot: updated.current_agorot,
+            currentAgorot: updated.currentAgorot,
             targetAgorot: variables.targetAgorot,
           },
         })

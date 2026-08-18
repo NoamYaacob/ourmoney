@@ -4,12 +4,14 @@ interface ChipProps {
   label: string
   selected: boolean
   onPress: () => void
+  testID?: string
 }
 
-export function Chip({ label, selected, onPress }: ChipProps) {
+export function Chip({ label, selected, onPress, testID }: ChipProps) {
   return (
     <Pressable
       onPress={onPress}
+      testID={testID}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       className={

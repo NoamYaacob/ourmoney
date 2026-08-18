@@ -16,7 +16,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 import { useHouseholdStore } from '@/store/householdStore'
-import type { Household } from '@/types/app'
+import type { Household, HouseholdRole } from '@/types/app'
 
 export function householdQueryKey(userId: string | undefined) {
   return ['household', 'current', userId] as const
@@ -56,6 +56,11 @@ export function useHousehold(userId: string | undefined) {
   return {
     householdId: query.data?.household_id ?? null,
     household: query.data?.households ?? null,
+    // The caller's own role in this household — used to gate admin-only
+    // actions (rename household, remove a member, delete a transaction) in
+    // the UI. RLS is still the real enforcement boundary; this is purely so
+    // the UI doesn't show a control the backend would reject.
+    role: (query.data?.role as HouseholdRole | undefined) ?? null,
     isLoading: !!userId && query.isPending,
     error: query.error,
   }

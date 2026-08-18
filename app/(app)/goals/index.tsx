@@ -12,9 +12,13 @@ import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useCreateSavingsGoal } from '@/features/savings/hooks/useCreateSavingsGoal'
 import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Chip } from '@/components/ui/Chip'
+import { DatePickerField } from '@/components/ui/DatePickerField'
 import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -26,7 +30,7 @@ export default function Goals() {
   const router = useRouter()
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { goals, isLoading: isGoalsLoading, error } = useSavingsGoals(householdId)
   const createGoal = useCreateSavingsGoal(householdId)
 
@@ -35,7 +39,19 @@ export default function Goals() {
   const [isAdding, setIsAdding] = useState(false)
   const [name, setName] = useState('')
   const [targetText, setTargetText] = useState('')
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [hasTargetDate, setHasTargetDate] = useState(false)
+  const [targetDateText, setTargetDateText] = useState(localDateString())
   const [validationError, setValidationError] = useState<string | null>(null)
+
+  function resetForm() {
+    setName('')
+    setTargetText('')
+    setAccountId(null)
+    setHasTargetDate(false)
+    setTargetDateText(localDateString())
+    setIsAdding(false)
+  }
 
   function handleCreate() {
     if (!householdId || createGoal.isPending) return
@@ -52,19 +68,21 @@ export default function Goals() {
     }
 
     createGoal.mutate(
-      { householdId, name: name.trim(), targetAgorot: parsed.agorot },
       {
-        onSuccess: () => {
-          setName('')
-          setTargetText('')
-          setIsAdding(false)
-        },
-      }
+        householdId,
+        name: name.trim(),
+        targetAgorot: parsed.agorot,
+        accountId,
+        targetDate: hasTargetDate ? targetDateText : null,
+      },
+      { onSuccess: resetForm }
     )
   }
 
+  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
+
   return (
-    <Screen>
+    <Screen width="wide">
       <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('savings.title')}</Text>
 
       {error ? (
@@ -77,6 +95,10 @@ export default function Goals() {
               below already covers it (mobile-expo-reviewer finding, same
               as accounts/index.tsx and recurring/index.tsx). */}
           {goals.length === 0 && <EmptyState icon="🏆" message={t('savings.empty')} />}
+          {/* Responsive/desktop pass: a 2-column card grid once there's more
+              than one goal, desktop only — same calc()-free pattern as
+              accounts/index.tsx. */}
+          <View className={goals.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {goals.map((goal) => {
             const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
             return (
@@ -84,7 +106,7 @@ export default function Goals() {
                 key={goal.id}
                 onPress={() => router.push(`/goals/${goal.id}`)}
                 accessibilityRole="button"
-                className="mb-2"
+                className={goals.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
               >
                 <Card>
                   <View className="mb-1 flex-row items-center justify-between">
@@ -98,16 +120,17 @@ export default function Goals() {
                   <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
                     {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
                   </Text>
-                  <ProgressBar percent={percent} />
+                  <ProgressBar percent={percent} positiveAtLimit />
                 </Card>
               </Pressable>
             )
           })}
+          </View>
         </>
       )}
 
       {isAdding ? (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
           <Input
             label={t('savings.form.targetLabel')}
@@ -116,13 +139,28 @@ export default function Goals() {
             placeholder={t('transactions.form.amountPlaceholder')}
             keyboardType="decimal-pad"
           />
+          <Select
+            label={t('savings.form.accountLabel')}
+            options={accountOptions}
+            value={accountId}
+            onChange={setAccountId}
+            placeholder={t('transactions.form.accountPlaceholder')}
+          />
+          <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('savings.form.targetDateLabel')}</Text>
+          <View className="mb-4 flex-row gap-2">
+            <Chip label={t('savings.form.hasTargetDate')} selected={hasTargetDate} onPress={() => setHasTargetDate(true)} />
+            <Chip label={t('savings.form.noTargetDate')} selected={!hasTargetDate} onPress={() => setHasTargetDate(false)} />
+          </View>
+          {hasTargetDate && (
+            <DatePickerField label={t('savings.form.targetDateLabel')} value={targetDateText} onChange={setTargetDateText} />
+          )}
           {(validationError || createGoal.isError) && (
             <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
           )}
           <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
         </View>
       ) : (
-        <View className="mt-4">
+        <View className="mt-4 web:desktop:max-w-[600px]">
           <Button title={t('savings.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

@@ -4,6 +4,13 @@
     "message": "אירעה שגיאה לא צפויה. אפשר לנסות שוב.",
     "retry": "נסו שוב"
   },
+  "concurrency": {
+    "conflictTitle": "התנגשות עדכון",
+    "conflictMessage": "כבר בוצע שינוי בפריט הזה ממכשיר או משתמש אחר.",
+    "notFoundTitle": "הפריט לא נמצא",
+    "notFoundMessage": "הפריט הזה נמחק או שאינו זמין יותר.",
+    "reloadLatest": "טען את הגרסה החדשה"
+  },
   "common": {
     "appName": "OurMoney",
     "comingSoon": "בקרוב",
@@ -20,11 +27,65 @@
     "budgets": "תקציבים",
     "settings": "הגדרות"
   },
+  "nav": {
+    "groups": {
+      "planning": "תכנון ותובנות",
+      "management": "ניהול"
+    },
+    "cashFlow": "תזרים מזומנים",
+    "alerts": "התראות"
+  },
   "transactions": {
     "title": "תנועות",
     "empty": "עדיין אין תנועות. הוסיפו את הראשונה שלכם.",
+    "noResults": "לא נמצאו תנועות שמתאימות לחיפוש או לסינון",
     "excludedLabel": "לא נכלל בתקציב",
     "addButton": "הוספת תנועה",
+    "filters": {
+      "searchLabel": "חיפוש",
+      "searchPlaceholder": "תיאור, בית עסק או קטגוריה",
+      "periodLabel": "תקופה",
+      "period": {
+        "current_month": "החודש",
+        "previous_month": "החודש הקודם",
+        "last_3_months": "3 החודשים האחרונים",
+        "last_6_months": "6 החודשים האחרונים",
+        "current_year": "השנה",
+        "all_time": "כל הזמן"
+      },
+      "accountLabel": "חשבון",
+      "allAccounts": "כל החשבונות",
+      "categoryLabel": "קטגוריה",
+      "allCategories": "כל הקטגוריות",
+      "uncategorized": "ללא קטגוריה",
+      "type": {
+        "all": "הכל",
+        "expense": "הוצאות",
+        "income": "הכנסות",
+        "transfer": "העברות"
+      },
+      "shared": {
+        "all": "הכל",
+        "shared": "משותפות",
+        "personal": "אישיות"
+      },
+      "clear": "ניקוי סינון",
+      "resultCount": "{{count}} תנועות"
+    },
+    "selection": {
+      "enterButton": "בחירה",
+      "selectedCount": "{{count}} נבחרו",
+      "selectAll": "בחר הכל",
+      "deselectAll": "נקה בחירה",
+      "cancel": "בטל",
+      "changeCategoryButton": "שינוי קטגוריה",
+      "rowLabel": "{{description}}, {{state}}",
+      "selected": "נבחר",
+      "notSelected": "לא נבחר",
+      "successMessage": "{{count}} תנועות עודכנו לקטגוריה החדשה",
+      "partialMessage": "{{updated}} מתוך {{total}} תנועות עודכנו. השאר נשארו מסומנים — נסו שוב",
+      "errorMessage": "עדכון הקטגוריה נכשל. נסו שוב"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "התנועה לא נמצאה"
@@ -33,6 +94,7 @@
       "title": "תנועה חדשה",
       "expense": "הוצאה",
       "income": "הכנסה",
+      "transfer": "העברה",
       "amountLabel": "סכום",
       "amountPlaceholder": "0.00",
       "descriptionLabel": "תיאור",
@@ -43,17 +105,24 @@
       "accountPlaceholder": "בחירת חשבון",
       "categoryLabel": "קטגוריה (אופציונלי)",
       "categoryPlaceholder": "בחירת קטגוריה",
+      "categorySheetTitle": "בחירת קטגוריה",
       "sharedLabel": "שיוך",
       "shared": "משותפת",
       "personal": "אישית",
       "sharedHint": "כל חברי משק הבית רואים כל תנועה — השיוך קובע רק אם היא נספרת בתקציב המשותף.",
       "payerLabel": "מי שילם",
       "payerPlaceholder": "בחירת משלם/ת",
+      "fromAccountLabel": "מהחשבון",
+      "fromAccountPlaceholder": "בחירת חשבון מקור",
+      "toAccountLabel": "לחשבון",
+      "toAccountPlaceholder": "בחירת חשבון יעד",
+      "transferDescriptionPlaceholder": "לדוגמה: העברה לחיסכון",
       "submit": "שמירת תנועה",
       "errors": {
         "missingAccount": "יש לבחור חשבון",
         "missingDescription": "יש להזין תיאור",
         "generic": "משהו השתבש. נסו שוב",
+        "sameAccount": "יש לבחור שני חשבונות שונים",
         "amount": {
           "invalid": "יש להזין סכום תקין",
           "not_positive": "הסכום חייב להיות גדול מאפס",
@@ -69,7 +138,37 @@
       "include": "כלול בתקציב",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת תנועה",
-      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו.",
+      "deleteError": "מחיקת התנועה נכשלה. נסו שוב",
+      "categorizedByRule": "סווג אוטומטית לפי הכלל",
+      "editRule": "עריכת הכלל"
+    },
+    "transferLabel": "העברה"
+  },
+  "transfers": {
+    "detail": {
+      "title": "פרטי העברה",
+      "fromLabel": "מהחשבון",
+      "toLabel": "לחשבון",
+      "amountLabel": "סכום",
+      "descriptionLabel": "תיאור",
+      "save": "שמירה",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת העברה",
+      "deleteConfirmMessage": "פעולה זו תמחק את שני הצדדים של ההעברה ולא ניתן לשחזר אותה.",
+      "deleteError": "מחיקת ההעברה נכשלה. נסו שוב"
+    },
+    "errors": {
+      "notFound": "ההעברה לא נמצאה",
+      "generic": "משהו השתבש. נסו שוב",
+      "sameAccount": "יש לבחור שני חשבונות שונים",
+      "missingDescription": "יש להזין תיאור",
+      "amount": {
+        "invalid": "יש להזין סכום תקין",
+        "not_positive": "הסכום חייב להיות גדול מאפס",
+        "too_large": "הסכום גדול מדי",
+        "too_many_decimals": "עד שתי ספרות אחרי הנקודה"
+      }
     }
   },
   "accounts": {
@@ -94,8 +193,12 @@
       "submit": "הוספת חשבון"
     },
     "detail": {
+      "title": "פרטי חשבון",
+      "save": "שמירה",
       "archive": "העברה לארכיון",
       "archived": "בארכיון",
+      "archiveConfirmTitle": "העברת חשבון לארכיון",
+      "archiveConfirmMessage": "החשבון יוסתר מרשימת החשבונות לבחירה בתנועות חדשות. אפשר יהיה עדיין לראות אותו ואת התנועות שלו.",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת חשבון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
@@ -108,6 +211,9 @@
     "empty": "עדיין אין קטגוריות מותאמות אישית.",
     "delete": "מחיקה",
     "deleteCategoryLabel": "מחיקת קטגוריית {{name}}",
+    "edit": "עריכה",
+    "editCategoryLabel": "עריכת קטגוריית {{name}}",
+    "save": "שמירה",
     "rulesTitle": "כללי סיווג",
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
@@ -120,7 +226,10 @@
     "rules": {
       "empty": "עדיין אין כללי סיווג.",
       "applyRetroactively": "החלת הכללים על תנועות קיימות",
+      "ifLabel": "אם",
+      "thenLabel": "אז",
       "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
+      "editRuleLabel": "עריכת כלל: {{field}} {{operator}} {{value}}",
       "field": {
         "description": "תיאור",
         "merchant_name": "בית עסק"
@@ -137,7 +246,8 @@
         "operatorLabel": "תנאי",
         "valueLabel": "ערך",
         "valuePlaceholder": "לדוגמה: שופרסל",
-        "submit": "הוספת כלל"
+        "submit": "הוספת כלל",
+        "editSubmit": "שמירת כלל"
       }
     }
   },
@@ -147,6 +257,11 @@
     "addButton": "הוספת הוראת קבע",
     "nextDue": "תאריך הבא:",
     "inactive": "מושהית",
+    "priceIncrease": {
+      "sectionTitle": "עליות מחיר שזוהו",
+      "badge": "המחיר עלה",
+      "increaseLine": "עלייה של {{amount}} ({{percent}}%)"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "הוראת הקבע לא נמצאה"
@@ -169,6 +284,8 @@
       }
     },
     "detail": {
+      "edit": "עריכה",
+      "save": "שמירה",
       "skip": "דילוג על החיוב הקרוב",
       "pause": "השהיה",
       "resume": "הפעלה מחדש",
@@ -190,17 +307,66 @@
       "nameLabel": "שם היעד",
       "namePlaceholder": "לדוגמה: חופשה משפחתית",
       "targetLabel": "סכום יעד",
+      "accountLabel": "חשבון מקושר (אופציונלי)",
+      "targetDateLabel": "תאריך יעד",
+      "hasTargetDate": "עם תאריך יעד",
+      "noTargetDate": "ללא תאריך יעד",
       "submit": "הוספת יעד",
       "errors": {
         "missingName": "יש להזין שם ליעד"
       }
     },
     "detail": {
+      "save": "שמירה",
       "updateProgressLabel": "עדכון סכום נוכחי",
       "updateProgressSubmit": "עדכון",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת יעד חיסכון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    }
+  },
+  "obligations": {
+    "title": "התחייבויות עתידיות",
+    "empty": "עדיין אין התחייבויות מתוכננות.",
+    "addButton": "הוספת התחייבות",
+    "pastDue": "באיחור",
+    "status": {
+      "upcoming": "צפויה",
+      "completed": "שולמה",
+      "cancelled": "בוטלה"
+    },
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "ההתחייבות לא נמצאה"
+    },
+    "form": {
+      "nameLabel": "שם ההתחייבות",
+      "namePlaceholder": "לדוגמה: ביטוח רכב",
+      "dueDateLabel": "תאריך יעד",
+      "notesLabel": "הערות",
+      "notesPlaceholder": "הערות נוספות (לא חובה)",
+      "submit": "הוספת התחייבות",
+      "errors": {
+        "missingName": "יש להזין שם להתחייבות",
+        "missingDueDate": "יש לבחור תאריך יעד"
+      }
+    },
+    "detail": {
+      "edit": "עריכה",
+      "save": "שמירה",
+      "markPaid": "סימון כשולם",
+      "markPaidConfirmTitle": "סימון כשולם",
+      "markPaidConfirmMessage": "ההתחייבות תסומן כשולמה ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
+      "cancelObligation": "ביטול ההתחייבות",
+      "cancelConfirmTitle": "ביטול ההתחייבות",
+      "cancelConfirmMessage": "ההתחייבות תסומן כמבוטלת ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת התחייבות",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
+    },
+    "history": {
+      "showButton": "היסטוריית התחייבויות",
+      "hideButton": "הסתרת היסטוריה"
     }
   },
   "import": {
@@ -216,10 +382,15 @@
       "ignore": "התעלמות",
       "date": "תאריך",
       "description": "תיאור",
+      "merchant": "בית עסק",
       "amount": "סכום",
       "debit": "חובה",
       "credit": "זכות"
     },
+    "headerOffsetLabel": "מספר שורות לדילוג לפני שורת הכותרת",
+    "headerOffsetHint": "אם הקובץ מתחיל בשורות מבוא לפני הכותרת האמיתית, ציינו כמה שורות לדלג. ברירת המחדל היא 0",
+    "headerOffsetNoHeaderWarning": "לא נמצאה שורת כותרת במיקום זה. נסו מספר שורות אחר",
+    "checkingExistingTransactions": "בודק תנועות קיימות בחשבון...",
     "previewCount": "{{selected}} מתוך {{total}} נבחרו לייבוא",
     "duplicateFlag": "כפילות אפשרית",
     "selected": "נבחר",
@@ -233,29 +404,46 @@
     },
     "confirmButton": "ייבוא {{count}} תנועות",
     "doneMessage": "יובאו {{count}} תנועות בהצלחה.",
+    "duplicatesSkippedAtCommit": "{{count}} תנועות דולגו כי כבר יובאו קודם לכן",
     "backToTransactions": "חזרה לתנועות",
     "errors": {
       "readFailed": "קריאת הקובץ נכשלה. נסו שוב",
-      "partialFailure": "יובאו {{succeeded}} מתוך {{total}} תנועות. חלק מהשורות נכשלו."
+      "emptyFile": "הקובץ ריק או שלא נמצאו בו עמודות. בחרו קובץ CSV אחר",
+      "partialFailure": "יובאו {{succeeded}} מתוך {{total}} תנועות. חלק מהשורות נכשלו.",
+      "dedupRecheckFailed": "בדיקת כפילויות נכשלה לפני הייבוא. נסו שוב"
     }
   },
   "budgets": {
     "title": "תקציבים",
-    "prevMonth": "◀ חודש קודם",
-    "nextMonth": "חודש הבא ▶",
     "totalAllocated": "סה״כ תוקצב",
-    "totalSpent": "סה״כ הוצא",
+    "remaining": "נותר",
     "categoriesTitle": "תקציב לפי קטגוריה",
     "noCategories": "עדיין לא הוקצו קטגוריות לתקציב החודש.",
+    "noCategoriesHint": "תקציב חודשי הוא סכום שמוקצה לכל קטגוריית הוצאה, כדי לעקוב כמה נותר להוציא בה. הוסיפו קטגוריה ראשונה כדי להתחיל.",
     "allocationLabel": "סכום תקציב",
     "saveAllocation": "שמירה",
     "addCategoryLabel": "הוספת קטגוריה לתקציב",
     "addCategoryPlaceholder": "בחירת קטגוריה",
+    "removeAllocation": "הסרת קטגוריה מהתקציב",
+    "removeAllocationLabel": "הסרת {{name}} מהתקציב",
+    "removeConfirmTitle": "הסרת קטגוריה מהתקציב",
+    "removeConfirmMessage": "הסרת \"{{name}}\" מהתקציב החודש תמחק את הסכום שהוקצה לה. ניתן להוסיף אותה שוב בהמשך.",
     "uncategorizedTitle": "תנועות ללא קטגוריה",
-    "uncategorizedEmpty": "כל התנועות מסווגות 🎉",
+    "uncategorizedEmpty": "כל התנועות מסווגות",
     "assignCategoryButton": "שיוך לקטגוריה",
     "assignCategoryLabel": "קטגוריה",
     "assignCategorySubmit": "שיוך",
+    "copyPrevious": {
+      "actionButton": "העתקת התקציב מהחודש הקודם",
+      "title": "העתקת תקציב מ{{fromMonth}}",
+      "subtitle": "התקציב של {{fromMonth}} יועתק לתקציב {{toMonth}}. תקציב {{fromMonth}} לא ישתנה.",
+      "toCopyTitle": "קטגוריות שיועתקו",
+      "alreadyExisting": "{{count}} קטגוריות כבר קיימות בתקציב {{toMonth}} ולא ישתנו",
+      "skippedDeleted": "{{count}} קטגוריות מהתקציב הקודם כבר לא קיימות ולא יועתקו",
+      "nothingToCopy": "כל הקטגוריות מהחודש הקודם כבר קיימות בתקציב החודש",
+      "confirm": "העתקת התקציב",
+      "successMessage": "התקציב הועתק בהצלחה"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
     }
@@ -367,22 +555,124 @@
   },
   "dashboard": {
     "title": "לוח בקרה",
-    "spent": "הוצא החודש",
-    "remaining": "נותר",
+    "subtitle": "סקירה חודשית של המצב הפיננסי המשותף",
+    "spent": "הוצא",
+    "ofBudget": "מתוך תקציב",
+    "percentUsed": "{{percent}}% מהתקציב נוצל",
+    "remaining": "נותר החודש",
+    "previousMonth": "חודש קודם",
+    "nextMonth": "חודש הבא",
     "categoriesTitle": "לפי קטגוריה",
+    "categoryRemaining": "נותרו {{amount}}",
+    "categoryExceeded": "חריגה של {{amount}}",
     "noBudget": "עדיין לא הוגדר תקציב לחודש זה.",
+    "noBudgetHero": "הגדירו תקציב חודשי כדי לעקוב כאן אחר מה שנותר להוציא.",
     "recentTitle": "תנועות אחרונות",
+    "viewAll": "כל התנועות",
     "noTransactions": "עדיין אין תנועות החודש.",
+    "safeToSpend": {
+      "title": "כמה אפשר להוציא",
+      "subtitle": "עד סוף החודש",
+      "shortfall": "חסר {{amount}} לכיסוי ההתחייבויות הקרובות",
+      "zero": "ההתחייבויות הקרובות צורכות את כל היתרה הזמינה"
+    },
     "analytics": {
       "trendTitle": "מגמה חודשית",
       "breakdownTitle": "פילוח לפי קטגוריה",
       "topCategoriesTitle": "קטגוריות מובילות",
       "empty": "אין מספיק נתונים להצגה.",
+      "insightsTitle": "תובנות החודש",
+      "insightsEmpty": "ככל שיוזנו יותר תנועות, נציג כאן מגמות ותובנות על ההוצאות שלכם.",
       "income": "הכנסות",
       "expense": "הוצאות"
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
+    }
+  },
+  "cashFlow": {
+    "title": "כמה אפשר להוציא",
+    "horizon": {
+      "week": "עד סוף השבוע",
+      "month": "עד סוף החודש",
+      "days30": "30 הימים הקרובים"
+    },
+    "availableCash": "יתרה זמינה",
+    "plannedObligations": "התחייבויות קרובות",
+    "recurringCharges": "הוראות קבע צפויות",
+    "reserved": "סה״כ שמור",
+    "safeToSpend": "אפשר להוציא",
+    "shortfall": "חסר {{amount}} לכיסוי ההתחייבויות הקרובות",
+    "zero": "ההתחייבויות הקרובות צורכות את כל היתרה הזמינה",
+    "itemsTitle": "פירוט",
+    "source": {
+      "obligation": "התחייבות",
+      "recurring": "הוראת קבע"
+    },
+    "empty": "אין התחייבויות או הוראות קבע צפויות בטווח הזמן שנבחר.",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב"
+    },
+    "forecast": {
+      "sectionTitle": "תזרים צפוי",
+      "horizon": {
+        "days30": "30 ימים",
+        "days60": "60 ימים",
+        "days90": "90 ימים"
+      },
+      "availableCashToday": "יתרה זמינה היום",
+      "projectedEndingBalance": "יתרה צפויה בסוף התקופה",
+      "lowestBalance": "נקודה נמוכה ביותר",
+      "upcomingEventsTitle": "אירועים קרובים",
+      "source": {
+        "planned_obligation": "התחייבות",
+        "recurring": "הוראת קבע",
+        "recurringIncome": "הוראת קבע / הכנסה חוזרת"
+      },
+      "pastDue": "באיחור",
+      "shortfallWarningTitle": "צפוי חוסר בכיסוי",
+      "shortfallWarningBody": "בהתאם להתחייבויות הידועות כרגע, היתרה צפויה לרדת מתחת לאפס ב-{{date}}.",
+      "shortfallAmount": "חסר עד {{amount}}",
+      "noShortfall": "לא צפוי חוסר בכיסוי בטווח הזמן שנבחר, בהתאם לנתונים הקיימים.",
+      "empty": "אין אירועים צפויים בטווח הזמן שנבחר.",
+      "disclaimer": "התחזית מבוססת על היתרה והחיובים הידועים כרגע ואינה כוללת הוצאות עתידיות שלא הוגדרו.",
+      "errors": {
+        "generic": "משהו השתבש. נסו שוב"
+      }
+    }
+  },
+  "alerts": {
+    "dashboardSectionTitle": "דורש תשומת לב",
+    "viewAll": "כל ההתראות",
+    "allGoodMessage": "הכל נראה תקין כרגע.",
+    "screenTitle": "התראות ותובנות",
+    "groups": {
+      "critical": "דורש טיפול",
+      "warning": "כדאי לשים לב",
+      "info": "מידע"
+    },
+    "empty": "אין התראות כרגע.",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "partial": "חלק מהנתונים לא זמינים כרגע — מוצגות התראות מהמידע הזמין."
+    },
+    "forecastShortfall": {
+      "title": "צפוי חוסר בכיסוי",
+      "description": "בהתאם ליתרה ולהתחייבויות הידועות כרגע, היתרה צפויה לרדת מתחת לאפס ב-{{date}}. חוסר צפוי של {{amount}}."
+    },
+    "upcomingObligation": {
+      "overdueTitle": "{{name}} באיחור",
+      "todayTitle": "{{name}} היום",
+      "dueInDaysTitle": "{{name}} בעוד {{days}} ימים",
+      "description": "{{amount}} צפויים לרדת ב-{{date}}"
+    },
+    "priceIncrease": {
+      "title": "המחיר עלה",
+      "description": "החיוב של {{name}} עלה מ-{{previous}} ל-{{current}}"
+    },
+    "budgetRisk": {
+      "title": "תקציב בסיכון",
+      "description": "{{category}}: נוצלו {{percent}}% מהתקציב"
     }
   },
   "household": {
@@ -395,11 +685,43 @@
   },
   "settings": {
     "title": "הגדרות",
+    "profile": {
+      "editLabel": "עריכת שם תצוגה",
+      "nameLabel": "שם תצוגה",
+      "save": "שמירה",
+      "cancel": "ביטול",
+      "errors": {
+        "generic": "עדכון השם נכשל. נסו שוב"
+      }
+    },
     "household": {
       "title": "משק הבית",
       "membersTitle": "חברים",
       "roleAdmin": "מנהל/ת",
-      "roleMember": "חבר/ה"
+      "roleMember": "חבר/ה",
+      "renameLabel": "עריכת שם משק הבית",
+      "nameLabel": "שם משק הבית",
+      "save": "שמירה",
+      "cancel": "ביטול",
+      "renameErrors": {
+        "generic": "עדכון שם משק הבית נכשל. נסו שוב"
+      },
+      "removeMember": "הסרה",
+      "removeMemberLabel": "הסרת {{name}} ממשק הבית",
+      "removeMemberConfirmTitle": "הסרת חבר/ה ממשק הבית",
+      "removeMemberConfirmMessage": "{{name}} יוסר/תוסר ממשק הבית ולא יראה/תראה יותר את הנתונים המשותפים. אפשר להזמין שוב בהמשך.",
+      "removeMemberConfirmButton": "הסרה",
+      "removeMemberErrors": {
+        "generic": "הסרת החבר/ה נכשלה. נסו שוב"
+      },
+      "leave": "עזיבת משק הבית",
+      "leaveConfirmTitle": "עזיבת משק הבית",
+      "leaveConfirmMessage": "לאחר העזיבה לא תראו יותר את הנתונים המשותפים של משק הבית. החשבון שלכם לא יימחק.",
+      "leaveConfirmMessageSoleMember": "אתם החבר/ה היחיד/ה במשק הבית. עזיבה תמחק את משק הבית ואת כל הנתונים שבו. החשבון שלכם לא יימחק ותוכלו ליצור או להצטרף למשק בית חדש.",
+      "leaveConfirmButton": "עזיבה",
+      "leaveErrors": {
+        "generic": "עזיבת משק הבית נכשלה. נסו שוב"
+      }
     },
     "invite": {
       "button": "הזמנת בן/בת זוג",
@@ -410,14 +732,19 @@
       "accounts": "חשבונות",
       "categories": "קטגוריות וכללי סיווג",
       "recurring": "הוראות קבע",
-      "goals": "יעדי חיסכון"
+      "goals": "יעדי חיסכון",
+      "obligations": "התחייבויות עתידיות"
     },
     "appearance": {
       "title": "מראה"
     },
     "security": {
       "title": "אבטחה",
-      "biometricToggle": "נעילה ביומטרית"
+      "biometricToggle": "נעילה ביומטרית",
+      "biometricUnavailable": "לא זמינה במכשיר זה"
+    },
+    "account": {
+      "title": "חשבון"
     },
     "signOut": "התנתקות",
     "deleteAccount": {

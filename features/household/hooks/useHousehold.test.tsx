@@ -47,6 +47,7 @@ describe('useHousehold', () => {
 
     expect(result.current.householdId).toBe('household-1')
     expect(result.current.household).toEqual(membershipRow.households)
+    expect(result.current.role).toBe('admin')
     expect(useHouseholdStore.getState().householdId).toBe('household-1')
   })
 
@@ -62,6 +63,27 @@ describe('useHousehold', () => {
 
     expect(result.current.householdId).toBeNull()
     expect(result.current.household).toBeNull()
+    expect(result.current.role).toBeNull()
+  })
+
+  it('exposes the caller\'s own role (member), used to gate admin-only UI', async () => {
+    const membershipRow = {
+      household_id: 'household-1',
+      role: 'member',
+      households: { id: 'household-1', name: 'Cohen', currency: 'ILS' },
+    }
+    jest
+      .mocked(supabase.from)
+      .mockReturnValue(
+        createQueryBuilderMock({ data: membershipRow, error: null }) as unknown as ReturnType<
+          typeof supabase.from
+        >
+      )
+
+    const { result } = await renderHook(() => useHousehold('user-2'), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.role).toBe('member')
   })
 
   it('scopes the query to the caller-supplied user id (no cross-household exposure client-side)', async () => {
