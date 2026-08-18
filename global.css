@@ -11,14 +11,44 @@ body,
   min-height: 100%;
 }
 
+/* Hebrew is the product's primary UI language. Native gets RTL from
+   I18nManager; web needs a real CSS/DOM direction as well. Without this,
+   logical start/end, flex rows, inputs, browser popovers and selection
+   controls silently fall back to LTR even while the React Native tree thinks
+   it is RTL. Keeping direction here makes the browser itself participate in
+   RTL instead of patching individual screens with row-reverse exceptions. */
+html,
+body,
+#root {
+  direction: rtl;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  color-scheme: light dark;
 }
 
 body {
   margin: 0;
   overscroll-behavior-y: none;
+  text-align: start;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  direction: rtl;
+  text-align: right;
 }
 
 button,
@@ -26,6 +56,20 @@ button,
 [role='tab'] {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+button:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0f6b5c;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(15, 107, 92, 0.2);
 }
 
 /* iOS Safari zooms the page when focusing an input whose computed font-size
