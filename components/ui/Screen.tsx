@@ -32,6 +32,16 @@ interface ScreenProps {
   width?: ContentWidth
 }
 
+// Kept as a tiny pure function so the responsive clearance contract has a
+// stable unit-test seam. Testing this decision directly is less brittle than
+// reaching through React Native Testing Library into ScrollView's renderer
+// internals, while Screen still consumes the exact returned class string.
+export function screenBottomPaddingClass(hasFloatingAction: boolean): string {
+  return hasFloatingAction
+    ? 'pb-10 web:pb-32 web:desktop:pb-10'
+    : 'pb-10 web:pb-24 web:desktop:pb-10'
+}
+
 export function Screen({
   children,
   scroll = true,
@@ -56,9 +66,7 @@ export function Screen({
   // extra scroll runway on web below the desktop breakpoint. A screen with a
   // floating action gets a little more so its final control can clear both
   // the tab bar and the FAB.
-  const mobileWebBottomPadding = floatingAction
-    ? 'pb-10 web:pb-32 web:desktop:pb-10'
-    : 'pb-10 web:pb-24 web:desktop:pb-10'
+  const mobileWebBottomPadding = screenBottomPaddingClass(Boolean(floatingAction))
 
   const content = scroll ? (
     <ScrollView
