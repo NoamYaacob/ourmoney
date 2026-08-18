@@ -107,12 +107,34 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
+  const quickActions = [
+    { label: 'תנועה חדשה', icon: 'add-circle-outline' as const, onPress: () => router.push('/transactions/new') },
+    { label: 'ייבוא CSV', icon: 'cloud-upload-outline' as const, onPress: () => router.push('/transactions/import') },
+    { label: 'ניהול חשבונות', icon: 'card-outline' as const, onPress: () => router.push('/accounts') },
+  ]
+
   return (
     <View className="sticky top-0 hidden h-screen w-[252px] shrink-0 border-s border-border-light bg-surfaceMuted-light/70 px-4 py-6 web:desktop:flex dark:border-border-dark dark:bg-surfaceMuted-dark/70">
       <View className="mb-6 px-3">
         <Text className="text-xl font-bold text-ink-light dark:text-ink-dark">OurMoney</Text>
         <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">הכסף של הבית, במקום אחד</Text>
       </View>
+
+      <View className="mb-5 rounded-card border border-border-light bg-surface-light p-2 dark:border-border-dark dark:bg-surface-dark">
+        <Text className="mb-1 px-2 pt-1 text-xs font-semibold text-inkMuted-light dark:text-inkMuted-dark">פעולות מהירות</Text>
+        {quickActions.map((action) => (
+          <Pressable
+            key={action.label}
+            onPress={action.onPress}
+            accessibilityRole="button"
+            className="flex-row items-center gap-2 rounded-control px-2.5 py-2 web:hover:bg-surfaceMuted-light dark:web:hover:bg-surfaceMuted-dark"
+          >
+            <Ionicons name={action.icon} size={19} color={activeColor} />
+            <Text className="text-sm font-medium text-ink-light dark:text-ink-dark">{action.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       {RAIL_GROUPS.map((group) => (
         <View key={group.key} className="mb-4">
           {group.labelKey && (
