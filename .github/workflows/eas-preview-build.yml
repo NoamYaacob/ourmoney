@@ -1,0 +1,73 @@
+name: EAS Preview Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        required: true
+        default: ios
+        type: choice
+        options:
+          - ios
+          - android
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  preview-build:
+    name: Preview build (${{ inputs.platform }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Require Expo token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "EXPO_TOKEN GitHub secret is missing. Create an Expo access token and add it to this repository as EXPO_TOKEN." >&2
+            exit 1
+          fi
+
+      - name: Require linked EAS project
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          const projectId = config?.expo?.extra?.eas?.projectId;
+          if (!projectId) {
+            console.error('app.json is not linked to an EAS project yet (expo.extra.eas.projectId is missing). Run eas init once while authenticated to Expo.');
+            process.exit(1);
+          }
+          console.log(`EAS project linked: ${projectId}`);
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo Doctor
+        run: npx expo-doctor
+
+      - name: Setup Expo / EAS
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+
+      - name: Verify Expo identity
+        run: eas whoami
+
+      - name: Trigger preview build
+        run: eas build --profile preview --platform "${{ inputs.platform }}" --non-interactive --no-wait
