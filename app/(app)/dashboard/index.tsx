@@ -186,16 +186,28 @@ export default function Dashboard() {
           navigator, and the budget-summary hero previously stacked as three
           separate full-width blocks — a lot of vertical space for what's
           really two related "where do we stand right now" cards. Paired
-          into one row at desktop only; mobile/tablet keep the exact
-          original stacked order untouched. The alerts section (previously
-          sandwiched between Safe-to-Spend and the month navigator) now
-          renders directly after this row instead — the one position change
-          in this pass, made because pairing the two hero cards requires
-          them to be adjacent; alerts stays in the same relative place
-          otherwise (still the first full-width section below the hero
-          content, still before the category/analytics detail below it). */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-5">
-        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          into one row at desktop only.
+          architecture-reviewer finding (post-implementation review): an
+          earlier version of this pairing moved the alerts section's own JSX
+          to render AFTER this row instead of in its original position
+          (between Safe-to-Spend and the month navigator). This row is a
+          plain View with no unprefixed flex-row of its own, so mobile falls
+          back to the default column direction and simply stacks children in
+          DOM order — meaning that JSX move silently changed mobile's alert
+          position too, which was never the intent (the brief's own framing
+          was a desktop-only pairing). Fixed by keeping alerts in its
+          ORIGINAL DOM position — still a direct sibling between Safe-to-
+          Spend and the month/hero block, restoring mobile's exact original
+          stacking order — and using CSS `order` (reorders flex layout
+          without touching DOM/reading order) to visually pull Safe-to-Spend
+          and the hero onto one line at desktop, with alerts
+          (`web:desktop:w-full`, so it can never share a line with the 50/50
+          pair) wrapping onto its own full-width row below them.
+          Mobile/tablet render exactly the original stacked order — every
+          class this depends on (`order-*`, `flex-wrap`) is `web:desktop:`
+          prefixed. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:items-start web:desktop:gap-5">
+        <View className="mb-6 web:desktop:order-1 web:desktop:mb-0 web:desktop:flex-1">
           {/* Safe-to-Spend — the household's own real cash position, not tied
               to the month navigator alongside it (always "from right now,"
               fixed at the 'month' horizon here; the detail screen offers the
@@ -283,7 +295,72 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
-        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+        {/* Compact, optional section — renders nothing at all when there are
+            no alerts (chosen over a persistent "everything's fine" banner:
+            no existing screen in this app has that kind of standing chrome,
+            and the milestone's own brief explicitly allows either choice).
+            Max 3, highest-priority first (buildFinancialAlerts.ts's own
+            severity→date→id sort) — the full grouped list lives at /alerts.
+            The header + "כל ההתראות" link is always visible, even with zero
+            current alerts — the alerts screen (grouped by severity, with its
+            own well-built empty state) was previously unreachable from
+            anywhere in the app whenever a household had no alerts (UX-
+            completeness audit finding). The alert list itself still only
+            renders when there's something to show, deliberately not adding an
+            "everything's fine" banner no other screen in this app has.
+            Desktop Visual/Responsive Design pass: `web:desktop:order-3` +
+            `web:desktop:w-full` — see the row's own comment above for why
+            this stays in its original DOM position (between Safe-to-Spend
+            and the month/hero block) while still rendering as a full-width
+            row below the paired hero cards at desktop. */}
+        {!isAlertsLoading && (
+          <View className="mb-6 mt-6 web:desktop:order-3 web:desktop:mb-0 web:desktop:mt-0 web:desktop:w-full">
+            <View className="mb-2 flex-row items-center justify-between">
+              <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+                {t('alerts.dashboardSectionTitle')}
+              </Text>
+              <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
+                <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                  {t('alerts.viewAll')}
+                </Text>
+              </Pressable>
+            </View>
+            {topAlerts.length > 0 && (
+              <Card>
+                {topAlerts.map((alert, index) => (
+                  <View key={alert.id}>
+                    {index > 0 && (
+                      <View className="my-3">
+                        <Divider />
+                      </View>
+                    )}
+                    <Pressable
+                      onPress={() => router.push(alert.actionRoute)}
+                      accessibilityRole="button"
+                      className="flex-row items-center gap-3"
+                    >
+                      <Ionicons
+                        name={severityIconName(alert.severity)}
+                        size={20}
+                        color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                      />
+                      <View className="flex-1">
+                        <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                          {alert.title}
+                        </Text>
+                        <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                          {alert.description}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </View>
+                ))}
+              </Card>
+            )}
+          </View>
+        )}
+
+        <View className="mb-6 web:desktop:order-2 web:desktop:mb-0 web:desktop:flex-1">
           <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
           {progressError ? (
@@ -350,66 +427,6 @@ export default function Dashboard() {
           )}
         </View>
       </View>
-
-      {/* Compact, optional section — renders nothing at all when there are
-          no alerts (chosen over a persistent "everything's fine" banner:
-          no existing screen in this app has that kind of standing chrome,
-          and the milestone's own brief explicitly allows either choice).
-          Max 3, highest-priority first (buildFinancialAlerts.ts's own
-          severity→date→id sort) — the full grouped list lives at /alerts. */}
-      {/* The header + "כל ההתראות" link is always visible, even with zero
-          current alerts — the alerts screen (grouped by severity, with its
-          own well-built empty state) was previously unreachable from
-          anywhere in the app whenever a household had no alerts (UX-
-          completeness audit finding). The alert list itself still only
-          renders when there's something to show, deliberately not adding an
-          "everything's fine" banner no other screen in this app has. */}
-      {!isAlertsLoading && (
-        <View className="mb-6 mt-6 web:desktop:mb-8 web:desktop:mt-8">
-          <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
-              {t('alerts.dashboardSectionTitle')}
-            </Text>
-            <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
-              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
-                {t('alerts.viewAll')}
-              </Text>
-            </Pressable>
-          </View>
-          {topAlerts.length > 0 && (
-            <Card>
-              {topAlerts.map((alert, index) => (
-                <View key={alert.id}>
-                  {index > 0 && (
-                    <View className="my-3">
-                      <Divider />
-                    </View>
-                  )}
-                  <Pressable
-                    onPress={() => router.push(alert.actionRoute)}
-                    accessibilityRole="button"
-                    className="flex-row items-center gap-3"
-                  >
-                    <Ionicons
-                      name={severityIconName(alert.severity)}
-                      size={20}
-                      color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
-                    />
-                    <View className="flex-1">
-                      <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                        {alert.title}
-                      </Text>
-                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                        {alert.description}
-                      </Text>
-                    </View>
-                  </Pressable>
-                </View>
-              ))}
-            </Card>
-          )}
-        </View>
-      )}
 
       <View className="hidden web:desktop:mt-2 web:desktop:flex" />
 

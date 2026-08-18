@@ -523,6 +523,73 @@ describe('Dashboard responsive desktop layout', () => {
     expect(otherNode).toBe(node)
   })
 
+  // architecture-reviewer finding (post-implementation review, Desktop
+  // Visual/Responsive Design pass): an earlier version of the hero-pairing
+  // above moved the alerts section to render AFTER the Safe-to-Spend/hero
+  // row in JSX, instead of keeping it in its original position between
+  // them. Since the row has no unprefixed flex-row of its own, mobile falls
+  // back to plain column stacking in DOM order — so that JSX move silently
+  // changed mobile's alert position too (alerts should always come right
+  // after Safe-to-Spend, before the month navigator/budget hero — never
+  // after both). This proves the fix: alerts is still the row's SECOND
+  // child in actual render order (mobile/reader order), with the visual
+  // desktop reshuffle done purely via `order-*` classes, not a JSX move.
+  it('keeps alerts in its original document position — between Safe-to-Spend and the month/hero block — for mobile/reader order', async () => {
+    mockUseBudgetProgress.mockReturnValue({
+      categories: [
+        {
+          categoryId: 'cat-1',
+          categoryNameHe: 'מכולת',
+          categoryIcon: '🛒',
+          allocatedAgorot: 100000,
+          spentAgorot: 40000,
+          remainingAgorot: 60000,
+          percentSpent: 40,
+        },
+      ],
+      totalAllocatedAgorot: 100000,
+      totalSpentAgorot: 40000,
+      isLoading: false,
+      error: null,
+    })
+    mockAnalytics({ transactions: [] })
+    mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: false })
+
+    const { getByText } = await render(<Dashboard />)
+
+    function climbToRowAndChild(node: any) {
+      let current = node
+      let child = null
+      while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:flex-row-reverse')) {
+        child = current
+        current = current.parent
+      }
+      return { row: current, child }
+    }
+
+    const { row, child: safeToSpendChild } = climbToRowAndChild(getByText(i18n.t('dashboard.safeToSpend.title')))
+    const { row: alertsRow, child: alertsChild } = climbToRowAndChild(getByText(i18n.t('alerts.dashboardSectionTitle')))
+    const { row: heroRow, child: heroChild } = climbToRowAndChild(getByText(i18n.t('dashboard.remaining')))
+    expect(alertsRow).toBe(row)
+    expect(heroRow).toBe(row)
+
+    const children = (row as { children: unknown[] }).children
+    const safeToSpendIndex = children.indexOf(safeToSpendChild)
+    const alertsIndex = children.indexOf(alertsChild)
+    const heroIndex = children.indexOf(heroChild)
+    expect(safeToSpendIndex).toBeGreaterThanOrEqual(0)
+    expect(alertsIndex).toBeGreaterThanOrEqual(0)
+    expect(heroIndex).toBeGreaterThanOrEqual(0)
+    expect(safeToSpendIndex).toBeLessThan(alertsIndex)
+    expect(alertsIndex).toBeLessThan(heroIndex)
+
+    // Desktop visual order is driven purely by explicit `order-*` overrides
+    // on each of those same three siblings, not by DOM position.
+    expect((safeToSpendChild as { props: { className: string } }).props.className).toContain('web:desktop:order-1')
+    expect((alertsChild as { props: { className: string } }).props.className).toContain('web:desktop:order-3')
+    expect((heroChild as { props: { className: string } }).props.className).toContain('web:desktop:order-2')
+  })
+
   // Desktop polish pass regression: a real-browser visual check found this
   // grid rendering left-to-right (categories column on the left) — wrong
   // for an RTL app, where the primary column (categories) should read on
