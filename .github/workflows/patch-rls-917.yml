@@ -1,0 +1,79 @@
+name: Patch RLS 9.17 Source
+
+on:
+  push:
+    branches:
+      - preview/iphone-local
+    paths:
+      - '.github/workflows/patch-rls-917.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: preview/iphone-local
+      - name: Patch the false-negative postcondition and self-remove
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('supabase/rls_tests.sql')
+          text = path.read_text()
+          old = '''DO $$
+          DECLARE v_transfer_id UUID; v_result JSONB; v_count INT;
+          BEGIN
+            v_transfer_id := current_setting('g9.transfer_id')::uuid;
+            SELECT delete_transfer(v_transfer_id) INTO v_result;
+            IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+              RAISE EXCEPTION 'FAIL 9.17: expected not_found for a cross-household transfer id (even from an admin), got %', v_result;
+            END IF;
+            SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+            IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.17: the transfer was deleted by another household''s admin'; END IF;
+            PERFORM _pass('9.17', 'delete_transfer() on another household''s transfer_id reports not_found even for that household''s own admin');
+          END $$;
+          RESET role;
+          ROLLBACK TO SAVEPOINT sp_9_17;'''.replace('          ', '')
+          new = '''DO $$
+          DECLARE v_transfer_id UUID; v_result JSONB;
+          BEGIN
+            v_transfer_id := current_setting('g9.transfer_id')::uuid;
+            SELECT delete_transfer(v_transfer_id) INTO v_result;
+            IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+              RAISE EXCEPTION 'FAIL 9.17: expected not_found for a cross-household transfer id (even from an admin), got %', v_result;
+            END IF;
+          END $$;
+          RESET role;
+          -- Verify persistence as postgres, not while impersonating User C:
+          -- transfers_select correctly hides Household 1 from User C, so a
+          -- COUNT(*) performed above would always be 0 even when the row still
+          -- exists and would turn this isolation test into a false deletion
+          -- alarm (same superuser post-check pattern used by 5.14 and others).
+          DO $$
+          DECLARE v_transfer_id UUID; v_count INT;
+          BEGIN
+            v_transfer_id := current_setting('g9.transfer_id')::uuid;
+            SELECT COUNT(*) INTO v_count FROM transfers WHERE id = v_transfer_id;
+            IF v_count <> 1 THEN RAISE EXCEPTION 'FAIL 9.17: the transfer was deleted by another household''s admin'; END IF;
+            PERFORM _pass('9.17', 'delete_transfer() on another household''s transfer_id reports not_found and the transfer remains intact');
+          END $$;
+          ROLLBACK TO SAVEPOINT sp_9_17;'''.replace('          ', '')
+
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one 9.17 block, found {count}; refusing to patch')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/patch-rls-917.yml').unlink()
+      - name: Commit exact source fix
+        run: |
+          set -euo pipefail
+          git config user.name 'OurMoney CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add supabase/rls_tests.sql .github/workflows/patch-rls-917.yml
+          git diff --cached --check
+          git commit -m 'test: verify transfer persistence outside cross-household RLS'
+          git push origin HEAD:preview/iphone-local
