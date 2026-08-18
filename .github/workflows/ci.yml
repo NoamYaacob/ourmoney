@@ -193,7 +193,7 @@ jobs:
           if-no-files-found: ignore
 
   expo-export:
-    name: Expo export (web + iOS + Android)
+    name: Expo health + export (web + iOS + Android)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -209,6 +209,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Expo Doctor
+        run: npx expo-doctor
 
       - name: Expo export — web
         run: npx expo export --platform web
