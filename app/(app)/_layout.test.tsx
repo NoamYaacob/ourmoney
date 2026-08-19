@@ -7,6 +7,17 @@
 // same bug (missed at the time obligations/ was built, found during the
 // Desktop Visual/Responsive Design pass) — now covered here too.
 //
+// The `renderRouter()` fixture objects below stand in for the real file
+// tree — every `<Tabs.Screen name="X" .../>` the real _layout.tsx renders
+// needs a matching stub entry here, or expo-router logs a harmless but
+// noisy "[Layout children]: No route named X exists in nested children"
+// console.warn (it can't find a screen component for a name the real
+// layout referenced but this fixture never declared). transfers/[id],
+// cash-flow/index, and alerts/index were added to _layout.tsx's
+// Tabs.Screen list in an earlier milestone but never added to this test's
+// fixture — Visual QA + Desktop Polish pass: added below so the fixture
+// matches every route the real layout registers.
+//
 // `href: null`'s exclusion is a runtime react-navigation concept, not
 // something derivable from the file tree, and it isn't observable through
 // component-prop inspection either: @testing-library/react-native v14
@@ -79,6 +90,9 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'recurring/[id]': STUB_SCREEN,
         'obligations/index': STUB_SCREEN,
         'obligations/[id]': STUB_SCREEN,
+        'transfers/[id]': STUB_SCREEN,
+        'cash-flow/index': STUB_SCREEN,
+        'alerts/index': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
@@ -127,6 +141,9 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'recurring/[id]': STUB_SCREEN,
         'obligations/index': STUB_SCREEN,
         'obligations/[id]': STUB_SCREEN,
+        'transfers/[id]': STUB_SCREEN,
+        'cash-flow/index': STUB_SCREEN,
+        'alerts/index': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )

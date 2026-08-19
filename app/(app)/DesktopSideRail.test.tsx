@@ -11,13 +11,29 @@
 // file now covers: every destination renders with the right label, the
 // group headers render (and the primary group has none), and the active
 // segment is marked selected — never a fake pixel/viewport assertion.
-import { describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
+//
+// Visual QA + Desktop Polish pass: the rail also grew a "פעולות מהירות"
+// (Quick Actions) block above the grouped destinations — New Transaction,
+// Import CSV, Manage Accounts. `getAllByRole('button')` now returns 13
+// buttons (10 nav destinations + 3 quick actions), not 10, which broke the
+// old blanket button-count assertion. Rather than just bumping the expected
+// count to 13 (which would silently pass even if a quick action disappeared
+// and a random extra nav destination took its place), nav destinations and
+// quick actions are now asserted separately, using a structural signal
+// that's already true of the real JSX rather than anything added for the
+// test: every nav-destination Pressable sets an explicit
+// `accessibilityState={{ selected: focused }}` (a real boolean), while
+// every quick-action Pressable sets no accessibilityState at all (so RNTL
+// reports `selected: undefined`). That distinction is what `navButtons`/
+// `quickActionButtons` split on below.
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { render, fireEvent } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import { DesktopSideRail } from './_layout'
 
+const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }))
 
 // DesktopSideRail is exported from the full authenticated layout module, so
@@ -48,8 +64,33 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
 }))
 
+// Splits the rail's buttons into the 10 grouped nav destinations vs the 3
+// Quick Actions — see the file header comment for why this split is based
+// on a real structural difference in the JSX (accessibilityState.selected
+// being a boolean vs undefined), not an artificial test-only marker.
+// qa-adversarial-reviewer note: that split is coincidental, not an enforced
+// contract — nothing in _layout.tsx guarantees "sets accessibilityState.
+// selected as a boolean" means "is a nav destination." If DesktopSideRail
+// ever grows another button that sets (or a nav destination that omits)
+// accessibilityState, re-check this filter rather than assuming it still
+// holds.
+// getAllByRole's return element type isn't cleanly importable in this RNTL
+// version; other screen tests in this repo (e.g. settings/index.test.tsx's
+// climbToPanel) use the same `any`-typed-node convention for identical
+// reasons.
+function navButtons(buttons: any[]) {
+  return buttons.filter((b) => typeof b.props.accessibilityState?.selected === 'boolean')
+}
+function quickActionButtons(buttons: any[]) {
+  return buttons.filter((b) => typeof b.props.accessibilityState?.selected !== 'boolean')
+}
+
 describe('DesktopSideRail', () => {
-  it('renders all 10 destinations across the 3 cadence groups', async () => {
+  beforeEach(() => {
+    mockPush.mockClear()
+  })
+
+  it('renders exactly the 10 navigation destinations across the 3 cadence groups', async () => {
     const { getByText, getAllByRole } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
     // Everyday group (no header)
@@ -70,7 +111,53 @@ describe('DesktopSideRail', () => {
     expect(getByText(i18n.t('settings.financial.accounts'))).toBeTruthy()
     expect(getByText(i18n.t('tabs.settings'))).toBeTruthy()
 
-    expect(getAllByRole('button')).toHaveLength(10)
+    expect(navButtons(getAllByRole('button'))).toHaveLength(10)
+  })
+
+  // Quick Actions are tested separately from nav destinations per the file
+  // header comment — the rail's own "פעולות מהירות" block is currently
+  // hardcoded Hebrew rather than driven through i18n (see this file's
+  // sibling `_layout.tsx` — a pre-existing gap noted here rather than
+  // silently worked around), so these labels are the literal strings the
+  // component renders today, not translation keys.
+  it('renders exactly 3 Quick Actions, distinct from the 10 nav destinations', async () => {
+    const { getAllByRole, getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
+
+    const buttons = getAllByRole('button')
+    expect(quickActionButtons(buttons)).toHaveLength(3)
+    expect(navButtons(buttons)).toHaveLength(10)
+    expect(buttons).toHaveLength(13)
+
+    expect(getByText('תנועה חדשה')).toBeTruthy()
+    expect(getByText('ייבוא CSV')).toBeTruthy()
+    expect(getByText('ניהול חשבונות')).toBeTruthy()
+  })
+
+  it('navigates to /transactions/new when the "תנועה חדשה" quick action is pressed', async () => {
+    const { getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
+
+    await fireEvent.press(getByText('תנועה חדשה'))
+
+    expect(mockPush).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith('/transactions/new')
+  })
+
+  it('navigates to /transactions/import when the "ייבוא CSV" quick action is pressed', async () => {
+    const { getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
+
+    await fireEvent.press(getByText('ייבוא CSV'))
+
+    expect(mockPush).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith('/transactions/import')
+  })
+
+  it('navigates to /accounts when the "ניהול חשבונות" quick action is pressed', async () => {
+    const { getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
+
+    await fireEvent.press(getByText('ניהול חשבונות'))
+
+    expect(mockPush).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith('/accounts')
   })
 
   it('marks the destination matching the current segment as selected, and no other', async () => {
@@ -85,5 +172,16 @@ describe('DesktopSideRail', () => {
 
     expect(getByText(i18n.t('nav.cashFlow')).parent?.props.accessibilityState).toEqual({ selected: true })
     expect(getByText(i18n.t('tabs.dashboard')).parent?.props.accessibilityState).toEqual({ selected: false })
+  })
+
+  // Exactly one nav destination is ever marked selected at a time, even
+  // though the rail now renders 13 total buttons — the Quick Actions never
+  // participate in "selected" semantics (they're actions, not destinations
+  // that can be "current"), so this counts only within navButtons().
+  it('marks exactly one of the 10 nav destinations as selected, never zero or more than one', async () => {
+    const { getAllByRole } = await render(<DesktopSideRail activeSegment="recurring" />)
+
+    const selected = navButtons(getAllByRole('button')).filter((b) => b.props.accessibilityState?.selected === true)
+    expect(selected).toHaveLength(1)
   })
 })
