@@ -34,6 +34,7 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Obligations() {
   const { t } = useTranslation()
@@ -250,7 +251,7 @@ export default function Obligations() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
           <Input
             label={t('transactions.form.amountLabel')}
@@ -306,7 +307,7 @@ export default function Obligations() {
           </View>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('obligations.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

@@ -184,7 +184,7 @@ export default function ObligationDetail() {
   const account = obligation.account_id ? accounts.find((a) => a.id === obligation.account_id) : undefined
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="form">
       <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{obligation.name}</Text>
       <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">{formatILS(obligation.amount_agorot)}</Text>
       <Text className="mb-6 text-sm text-inkMuted-light dark:text-inkMuted-dark">

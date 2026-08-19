@@ -24,6 +24,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Goals() {
   const { t } = useTranslation()
@@ -83,7 +84,9 @@ export default function Goals() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('savings.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('savings.title')}
+      </Text>
 
       {error ? (
         <ErrorMessage message={t('savings.errors.generic')} />
@@ -130,7 +133,7 @@ export default function Goals() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
           <Input
             label={t('savings.form.targetLabel')}
@@ -160,7 +163,7 @@ export default function Goals() {
           <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('savings.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

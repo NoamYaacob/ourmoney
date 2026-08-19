@@ -25,6 +25,7 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { RecurringFrequency } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
@@ -106,10 +107,12 @@ export default function Recurring() {
 
   return (
     <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('recurring.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('recurring.title')}
+      </Text>
 
       {priceIncreaseDetections.length > 0 && (
-        <View className="mb-4 web:desktop:max-w-[600px]">
+        <View className={`mb-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
             {t('recurring.priceIncrease.sectionTitle')}
           </Text>
@@ -211,7 +214,7 @@ export default function Recurring() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
@@ -271,7 +274,7 @@ export default function Recurring() {
           <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('recurring.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

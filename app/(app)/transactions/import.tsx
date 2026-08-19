@@ -8,6 +8,9 @@ import { useMemo, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
@@ -31,6 +34,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 
 const COLUMN_ROLES: CsvColumnRole[] = ['ignore', 'date', 'description', 'merchant', 'amount', 'debit', 'credit']
+const STEPS: ('pick' | 'map' | 'preview' | 'done')[] = ['pick', 'map', 'preview', 'done']
 
 interface PreviewRow {
   index: number
@@ -46,6 +50,8 @@ export default function TransactionsImport() {
   const { householdId } = useHousehold(user?.id)
   const { accounts } = useAccounts(householdId)
   const createTransaction = useCreateTransaction(householdId)
+  const { colorScheme: scheme } = useColorScheme()
+  const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
 
   const [step, setStep] = useState<'pick' | 'map' | 'preview' | 'done'>('pick')
   const [pickError, setPickError] = useState<string | null>(null)
@@ -236,15 +242,95 @@ export default function TransactionsImport() {
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
+  const currentStepIndex = STEPS.indexOf(step)
+
   return (
-    <Screen>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('import.title')}</Text>
+    <Screen width="form">
+      <Text className="mb-2 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('import.title')}
+      </Text>
+
+      {/* Visual QA + Desktop Polish pass: a compact step indicator — the
+          screen previously gave no sense of where "pick a file" sits within
+          the larger pick->map->preview->done flow, especially once the
+          drop-zone below replaced a single bare button. Desktop-only
+          (`hidden web:desktop:flex`): mobile keeps its original, simpler
+          per-step text-only flow untouched. Purely presentational — reads
+          off the same `step` state the flow itself already drives, no new
+          state or step semantics. */}
+      <View className="mb-6 hidden web:desktop:flex web:desktop:flex-row web:desktop:items-center">
+        {STEPS.map((s, index) => {
+          const isDone = index < currentStepIndex
+          const isCurrent = index === currentStepIndex
+          return (
+            <View key={s} className="flex-row items-center">
+              <View className="flex-row items-center gap-1.5">
+                <View
+                  className={`h-5 w-5 items-center justify-center rounded-full ${
+                    isDone || isCurrent
+                      ? 'bg-accent-light dark:bg-accent-dark'
+                      : 'border border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark'
+                  }`}
+                >
+                  {isDone ? (
+                    <Ionicons name="checkmark" size={12} color="#ffffff" />
+                  ) : (
+                    <Text
+                      className={`text-xs font-semibold ${
+                        isCurrent ? 'text-white' : 'text-inkMuted-light dark:text-inkMuted-dark'
+                      }`}
+                    >
+                      {index + 1}
+                    </Text>
+                  )}
+                </View>
+                <Text
+                  className={
+                    isCurrent
+                      ? 'text-caption font-semibold text-ink-light dark:text-ink-dark'
+                      : 'text-caption text-inkMuted-light dark:text-inkMuted-dark'
+                  }
+                >
+                  {t(`import.steps.${s}`)}
+                </Text>
+              </View>
+              {index < STEPS.length - 1 && (
+                <View className="mx-3 h-px w-8 bg-border-light dark:bg-border-dark" />
+              )}
+            </View>
+          )
+        })}
+      </View>
 
       {step === 'pick' && (
         <View>
-          <Text className="mb-4 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('import.pickHint')}</Text>
-          {pickError && <ErrorMessage message={pickError} />}
-          <Button title={t('import.pickButton')} onPress={() => void handlePickFile()} />
+          {/* Visual QA + Desktop Polish pass: a drop-zone-styled prompt
+              instead of a bare "pick a file" button + caption — this was
+              the single most-cited "essentially an empty page" screen in
+              the desktop review. Still exactly one action
+              (handlePickFile via the native file picker; there is no actual
+              drag-and-drop handling here, so the copy says "choose a file,"
+              never "drag and drop," and nothing about the pick flow itself
+              changed). */}
+          <View className="items-center rounded-card border-2 border-dashed border-border-light bg-surfaceMuted-light px-6 py-10 web:desktop:py-14 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-light/10 dark:bg-accent-dark/10">
+              <Ionicons name="cloud-upload-outline" size={24} color={accentColor} />
+            </View>
+            <Text className="mt-4 text-body font-semibold text-ink-light dark:text-ink-dark">
+              {t('import.pickHint')}
+            </Text>
+            <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('import.pickFormatHint')}
+            </Text>
+            <View className="mt-5">
+              <Button title={t('import.pickButton')} onPress={() => void handlePickFile()} />
+            </View>
+          </View>
+          {pickError && (
+            <View className="mt-4">
+              <ErrorMessage message={pickError} />
+            </View>
+          )}
         </View>
       )}
 

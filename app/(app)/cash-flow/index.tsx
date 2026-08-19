@@ -23,6 +23,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 const HORIZON_OPTIONS: { value: HorizonKind; labelKey: string }[] = [
   { value: 'week', labelKey: 'cashFlow.horizon.week' },
@@ -69,20 +70,31 @@ export default function CashFlow() {
   return (
     <Screen width="wide">
       <View className="mb-7">
-        <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark web:desktop:text-[30px]">{t('cashFlow.title')}</Text>
+        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+          {t('cashFlow.title')}
+        </Text>
         <Text className="mt-1 hidden text-caption text-inkMuted-light dark:text-inkMuted-dark web:desktop:flex">
-          תמונת מצב נוכחית לצד תחזית היתרה קדימה
+          {t('cashFlow.subtitle')}
         </Text>
       </View>
 
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
-        <View className="web:desktop:flex-1">
-          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">כמה אפשר להוציא</Text>
+      {/* Visual QA + Desktop Polish pass: the safe-to-spend and forecast
+          columns now match every other two-region desktop split in this app
+          (Dashboard/Budgets/Settings/Categories) — `web:desktop:flex-row-
+          reverse` (see _layout.tsx's DesktopSideRail comment for why
+          `-reverse` is needed on web) keeps DOM/source order [safe-to-
+          spend, forecast] while visually placing safe-to-spend (primary) on
+          the right. Mobile/tablet stay stacked in the original order. */}
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+        <View className={`web:desktop:flex-1 ${DESKTOP_PANEL_CLASS}`}>
+          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
+            {t('cashFlow.safeToSpendSectionTitle')}
+          </Text>
           <SegmentedControl
             options={segmentedOptions}
             value={horizonKind}
             onChange={setHorizonKind}
-            accessibilityLabel={t('cashFlow.title')}
+            accessibilityLabel={t('cashFlow.safeToSpendSectionTitle')}
           />
 
           <View className="mt-4">
@@ -156,7 +168,7 @@ export default function CashFlow() {
           </View>
         </View>
 
-        <View className="mt-8 web:desktop:mt-0 web:desktop:flex-1">
+        <View className={`mt-8 web:desktop:mt-0 web:desktop:flex-1 ${DESKTOP_PANEL_CLASS}`}>
           <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">{t('cashFlow.forecast.sectionTitle')}</Text>
           <SegmentedControl
             options={FORECAST_HORIZON_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}

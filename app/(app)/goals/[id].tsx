@@ -238,7 +238,7 @@ export default function GoalDetail() {
   }
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="form">
       <Input label={t('savings.form.nameLabel')} value={nameText} onChangeText={setNameText} placeholder={t('savings.form.namePlaceholder')} />
       <Input
         label={t('savings.form.targetLabel')}

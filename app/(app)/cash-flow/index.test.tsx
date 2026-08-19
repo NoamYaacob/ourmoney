@@ -363,4 +363,35 @@ describe('CashFlow forecast section', () => {
 
     expect(getByText(i18n.t('cashFlow.forecast.errors.generic'))).toBeTruthy()
   })
+
+  // Visual QA + Desktop Polish pass: the safe-to-spend and forecast columns
+  // now match every other two-region desktop split in this app (Dashboard/
+  // Budgets/Settings/Categories) — `web:desktop:flex-row-reverse` keeps
+  // DOM/source order [safe-to-spend, forecast] while visually placing
+  // safe-to-spend (primary) on the right, the correct RTL reading order —
+  // see _layout.tsx's DesktopSideRail comment for why `-reverse` is needed
+  // on web at all. Exact whitespace-token membership, not a `.toContain()`
+  // substring check (which can't distinguish `flex-row` from
+  // `flex-row-reverse`) — see this app's other desktop-split regression
+  // tests for why that distinction matters.
+  it('uses flex-row-reverse (not plain flex-row) so safe-to-spend reads on the right in RTL', async () => {
+    const { getByText } = await render(<CashFlow />)
+
+    function climbToPanel(textNode: any) {
+      let current = textNode
+      while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:rounded-card')) {
+        current = current.parent
+      }
+      return current
+    }
+
+    const safeToSpendPanel = climbToPanel(getByText(i18n.t('cashFlow.availableCash')))
+    const rowWrapper = safeToSpendPanel?.parent
+    const tokens = ((rowWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
+
+    const forecastPanel = climbToPanel(getByText(i18n.t('cashFlow.forecast.sectionTitle')))
+    expect(forecastPanel?.parent).toBe(rowWrapper)
+  })
 })

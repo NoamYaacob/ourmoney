@@ -379,6 +379,11 @@ describe('Settings screen — household/profile management', () => {
   // including this one, so profile+household (source-order-first, the
   // primary column) reads on the right and money-management/etc. on the
   // left, per RTL reading order.
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH the
+  // reversed and unreversed forms — so it silently kept passing through a
+  // real regression where the split reverted to plain `flex-row`. Rewritten
+  // to exact whitespace-token membership.
   it('uses flex-row-reverse (not plain flex-row) so profile/household reads on the right in RTL', async () => {
     setHousehold('admin')
     setMembers([ADMIN_MEMBER])
@@ -388,7 +393,9 @@ describe('Settings screen — household/profile management', () => {
 
     const panel = climbToPanel(getByText('משק הבית'))
     const gridWrapper = climbToRow(panel)
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
+    const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
   })
 
   // Desktop polish pass (round 2): each column previously reflowed the same

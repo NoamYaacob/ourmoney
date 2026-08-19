@@ -16,13 +16,16 @@ export function Chip({ label, selected, onPress, testID }: ChipProps) {
       accessibilityState={{ selected }}
       className={
         selected
-          ? 'rounded-full bg-slate-900 px-4 py-2 dark:bg-slate-100'
+          ? 'rounded-full bg-accent-light px-4 py-2 dark:bg-accent-dark'
           : 'rounded-full border border-border-light bg-surfaceMuted-light px-4 py-2 dark:border-border-dark dark:bg-surfaceMuted-dark'
       }
     >
       <Text
+        // Same white/ink.light flip Button's primary variant uses —
+        // accent.dark is a bright fill, not a dark one, so white text on it
+        // fails contrast (constants/colors.ts's own audit).
         className={
-          selected ? 'text-sm font-semibold text-white dark:text-slate-900' : 'text-sm text-ink-light dark:text-ink-dark'
+          selected ? 'text-sm font-semibold text-white dark:text-ink-light' : 'text-sm text-ink-light dark:text-ink-dark'
         }
       >
         {label}

@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { AccountType } from '@/types/app'
 
 const ACCOUNT_TYPE_OPTIONS: AccountType[] = ['checking', 'savings', 'credit_card', 'cash', 'investment', 'other']
@@ -63,9 +64,35 @@ export default function Accounts() {
     )
   }
 
+  // Visual QA + Desktop Polish pass: desktop-only total-balance summary —
+  // Accounts previously had no top-level figure at all, reading as "just a
+  // sparse list." Sums every ACTIVE account's already-computed live balance
+  // (the same `balances` map every row below already reads from) — no new
+  // data, no invented figure, and archived accounts are excluded the same
+  // way they already are from every other financial total in this app.
+  // Desktop-only (`hidden web:desktop:flex`): mobile's layout is untouched.
+  const activeAccountBalances = accounts.filter((a) => a.is_active).map((a) => balances[a.id] ?? 0)
+  const totalBalanceAgorot = activeAccountBalances.reduce((sum, agorot) => sum + agorot, 0)
+
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('accounts.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('accounts.title')}
+      </Text>
+
+      {!error && !isLoading && accounts.length > 0 && (
+        <View className="mb-6 hidden web:desktop:flex">
+          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('accounts.totalBalance')}</Text>
+            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[36px]">
+              {isBalancesLoading ? '' : formatILS(totalBalanceAgorot)}
+            </Text>
+            <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('accounts.activeAccountCount', { count: activeAccountBalances.length })}
+            </Text>
+          </Card>
+        </View>
+      )}
 
       {error ? (
         <ErrorMessage message={t('accounts.errors.generic')} />
@@ -132,7 +159,7 @@ export default function Accounts() {
       {/* Add-account form/button stay narrow even on a wide desktop
           container — capped independently of the list above. */}
       {isAdding ? (
-        <View className="web:desktop:max-w-[600px]">
+        <View className={INLINE_FORM_WIDTH_CLASS}>
           <Card>
             <Input label={t('accounts.form.nameLabel')} value={name} onChangeText={setName} />
             <Select
@@ -160,7 +187,7 @@ export default function Accounts() {
           </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('accounts.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

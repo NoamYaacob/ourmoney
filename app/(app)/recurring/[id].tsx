@@ -176,7 +176,7 @@ export default function RecurringDetail() {
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="form">
       <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{item.description}</Text>
       <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(item.amount_agorot)}

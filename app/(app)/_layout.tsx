@@ -135,13 +135,21 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   ]
 
   return (
-    <View className="sticky top-0 hidden h-screen w-[252px] shrink-0 border-s border-border-light bg-surfaceMuted-light/70 px-4 py-6 web:desktop:flex dark:border-border-dark dark:bg-surfaceMuted-dark/70">
-      <View className="mb-6 px-3">
-        <Text className="text-xl font-bold text-ink-light dark:text-ink-dark">OurMoney</Text>
-        <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">הכסף של הבית, במקום אחד</Text>
+    // Visual QA + Desktop Polish pass: narrowed from 252px and the
+    // translucent `/70` fill dropped — a semi-transparent surfaceMuted over
+    // the page's own surface tone was what made the rail read as a heavy
+    // gray slab rather than a crisp panel; a flat, fully-opaque fill plus a
+    // softer border tint reads lighter despite being the exact same token.
+    // Row/section spacing also tightened slightly (py-6->py-5, mb-4->mb-3)
+    // to reduce the rail's overall visual weight without losing group
+    // separation.
+    <View className="sticky top-0 hidden h-screen w-[228px] shrink-0 border-s border-border-light/70 bg-surfaceMuted-light px-3.5 py-5 web:desktop:flex dark:border-border-dark/70 dark:bg-surfaceMuted-dark">
+      <View className="mb-5 px-2.5">
+        <Text className="text-lg font-bold text-ink-light dark:text-ink-dark">OurMoney</Text>
+        <Text className="mt-0.5 text-xs text-inkMuted-light dark:text-inkMuted-dark">הכסף של הבית, במקום אחד</Text>
       </View>
 
-      <View className="mb-5 rounded-card border border-border-light bg-surface-light p-2 dark:border-border-dark dark:bg-surface-dark">
+      <View className="mb-4 rounded-card border border-border-light/70 bg-surface-light p-2 dark:border-border-dark/70 dark:bg-surface-dark">
         <Text className="mb-1 px-2 pt-1 text-xs font-semibold text-inkMuted-light dark:text-inkMuted-dark">
           {t('nav.quickActions.title')}
         </Text>
@@ -150,18 +158,18 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
             key={action.key}
             onPress={action.onPress}
             accessibilityRole="button"
-            className="flex-row items-center gap-2 rounded-control px-2.5 py-2 web:hover:bg-surfaceMuted-light dark:web:hover:bg-surfaceMuted-dark"
+            className="flex-row items-center gap-2 rounded-control px-2 py-2 web:hover:bg-surfaceMuted-light dark:web:hover:bg-surfaceMuted-dark"
           >
-            <Ionicons name={action.icon} size={19} color={activeColor} />
+            <Ionicons name={action.icon} size={18} color={activeColor} />
             <Text className="text-sm font-medium text-ink-light dark:text-ink-dark">{t(action.labelKey)}</Text>
           </Pressable>
         ))}
       </View>
 
       {RAIL_GROUPS.map((group) => (
-        <View key={group.key} className="mb-4">
+        <View key={group.key} className="mb-3">
           {group.labelKey && (
-            <Text className="mb-1 px-3 text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            <Text className="mb-1 px-2.5 text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
               {t(group.labelKey)}
             </Text>
           )}
@@ -174,13 +182,21 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
                 onPress={() => router.push(dest.href)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: focused }}
-                className={`mb-1 flex-row items-center gap-3 rounded-control px-3 py-3 ${
+                // Visual QA + Desktop Polish pass: the selected fill was
+                // raised from a barely-visible /10 accent tint to /14, and a
+                // thin `border-s-2` accent-colored bar was added on the
+                // selected row's leading (start) edge — the same "active
+                // rail" affordance convention as tab bars/side navs
+                // elsewhere, giving the current destination a clear, stable
+                // anchor point instead of relying on a faint background
+                // tint and bold text alone.
+                className={`mb-0.5 flex-row items-center gap-3 rounded-control border-s-2 px-2.5 py-2.5 ${
                   focused
-                    ? 'bg-accent-light/10 dark:bg-accent-dark/10'
-                    : 'web:hover:bg-surface-light dark:web:hover:bg-surface-dark'
+                    ? 'border-accent-light bg-accent-light/[0.14] dark:border-accent-dark dark:bg-accent-dark/[0.14]'
+                    : 'border-transparent web:hover:bg-surface-light dark:web:hover:bg-surface-dark'
                 }`}
               >
-                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={22} />
+                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={20} />
                 <Text className={focused ? 'text-body font-semibold' : 'text-body font-normal'} style={{ color }}>
                   {t(dest.labelKey)}
                 </Text>

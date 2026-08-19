@@ -181,6 +181,8 @@
     "title": "חשבונות",
     "empty": "עדיין אין חשבונות.",
     "addButton": "הוספת חשבון",
+    "totalBalance": "סך כל היתרות",
+    "activeAccountCount": "{{count}} חשבונות פעילים",
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "החשבון לא נמצא"
@@ -379,7 +381,14 @@
     "title": "ייבוא מקובץ CSV",
     "entryButton": "ייבוא מ-CSV",
     "pickHint": "בחרו קובץ CSV מהמכשיר כדי לייבא תנועות.",
+    "pickFormatHint": "קובץ CSV עם כותרות עמודות בשורה הראשונה",
     "pickButton": "בחירת קובץ",
+    "steps": {
+      "pick": "קובץ",
+      "map": "עמודות",
+      "preview": "תצוגה מקדימה",
+      "done": "סיום"
+    },
     "fileLabel": "קובץ:",
     "accountLabel": "חשבון יעד",
     "mapColumnsTitle": "התאמת עמודות",
@@ -598,6 +607,8 @@
   },
   "cashFlow": {
     "title": "כמה אפשר להוציא",
+    "subtitle": "תמונת מצב נוכחית לצד תחזית היתרה קדימה",
+    "safeToSpendSectionTitle": "כמה אפשר להוציא",
     "horizon": {
       "week": "עד סוף השבוע",
       "month": "עד סוף החודש",

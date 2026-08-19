@@ -154,7 +154,7 @@ export default function TransactionDetail() {
   const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="form">
       <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">
         {t('transactions.detail.title')}
       </Text>

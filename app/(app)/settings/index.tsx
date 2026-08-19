@@ -230,7 +230,12 @@ export default function Settings() {
           Reversing keeps source/DOM order as [profile+household, the rest]
           (primary content announced first) while visually placing
           profile+household on the right and the secondary column on the
-          left — the correct RTL reading order. Mobile/tablet stay a single
+          left — the correct RTL reading order. Visual QA + Desktop Polish
+          pass: this had silently regressed to plain `flex-row` — the
+          dedicated regression test only checked
+          `.toContain('web:desktop:flex-row')`, satisfied by both forms, so
+          the drift went uncaught. Restored to `-reverse` and the test
+          tightened to exact-token matching. Mobile/tablet stay a single
           stacked column in the original order.
           Desktop polish pass (round 2): each column previously reflowed the
           exact same unbounded mobile sections side by side — a real-browser
@@ -248,7 +253,7 @@ export default function Settings() {
           height mismatch is still there, but distributed across several
           natural breaks instead of concentrated in one, so it reads as an
           intentional multi-panel column rather than a rendering gap. */}
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <View className={DESKTOP_PANEL_CLASS}>
       {/* Profile */}

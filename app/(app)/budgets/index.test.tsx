@@ -370,12 +370,19 @@ describe('Budgets', () => {
   // flex-row-reverse (not plain flex-row) so categories (source-order-first,
   // the primary column) reads on the right in this RTL app — not a fake
   // pixel/viewport assertion.
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH the
+  // reversed and unreversed forms — so it silently kept passing through a
+  // real regression where the grid reverted to plain `flex-row`. Rewritten
+  // to exact whitespace-token membership.
   it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
     const gridWrapper = categoriesPanel?.parent?.parent
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
+    const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
 
     const uncategorizedPanel = climbToPanel(getByText('תנועות ללא קטגוריה'))
     expect(uncategorizedPanel?.parent?.parent).toBe(gridWrapper)

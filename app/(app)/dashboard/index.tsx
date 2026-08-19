@@ -436,13 +436,19 @@ export default function Dashboard() {
           sub-sections stacked under separate headers while the main column
           held two unrelated sections stacked together. A real-browser visual
           review found that lopsided and cluttered; three balanced panels
-          read as one coherent dashboard grid instead. `web:desktop:flex-row-
-          reverse` (see _layout.tsx's DesktopSideRail comment for why
+          read as one coherent dashboard grid instead. `web:desktop:flex-
+          row-reverse` (see _layout.tsx's DesktopSideRail comment for why
           `-reverse` is needed on web) keeps DOM/source order [categories,
           recent, insights] — categories (primary) lands rightmost, insights
-          (secondary) leftmost. Mobile/tablet stay a single stacked column,
+          (secondary) leftmost. Visual QA + Desktop Polish pass: this had
+          silently regressed to plain `flex-row` (categories rendering on
+          the LEFT) — the dedicated regression test below only ever checked
+          `.toContain('web:desktop:flex-row')`, a substring both forms
+          satisfy, so it never caught the drift. Restored to `-reverse` and
+          the test tightened to exact-token matching so it can't happen
+          again unnoticed. Mobile/tablet stay a single stacked column,
           unchanged. */}
-      <View className="web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
+      <View className="web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
         <View className="web:desktop:flex-1">
           <View className={DESKTOP_PANEL}>
             <DesktopPanelHeader icon="pie-chart-outline" title={t('dashboard.categoriesTitle')} />

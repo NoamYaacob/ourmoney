@@ -79,7 +79,7 @@ export default function AccountDetail() {
   }
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="form">
       <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('accounts.detail.title')}</Text>
       {/* account.balance_agorot is a dead column nothing ever updates
           (features/accounts/lib/computeAccountBalances.ts's header) — the

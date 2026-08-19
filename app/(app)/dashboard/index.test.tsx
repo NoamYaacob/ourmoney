@@ -596,6 +596,15 @@ describe('Dashboard responsive desktop layout', () => {
   // the right. `flex-row-reverse` keeps source order [categories, recent,
   // insights] (so a screen reader still reaches the primary content first)
   // while flipping only the visual position.
+  //
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH
+  // `web:desktop:flex-row` and `web:desktop:flex-row-reverse` — so it
+  // silently kept passing through a real regression where the grid
+  // reverted to plain, unreversed `flex-row` (categories back on the left).
+  // Rewritten to exact whitespace-token membership, which can actually
+  // distinguish the two — see app/(app)/_layout.test.tsx's identical fix
+  // for the desktop rail wrapper.
   it('uses flex-row-reverse (not plain flex-row) so the primary column reads on the right in RTL', async () => {
     mockAnalytics({ transactions: [] })
 
@@ -603,7 +612,9 @@ describe('Dashboard responsive desktop layout', () => {
 
     const categoriesPanel = climbToPanel(getByText(i18n.t('dashboard.categoriesTitle')))
     const gridWrapper = categoriesPanel?.parent?.parent
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row')
+    const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
   })
 
   // Desktop polish pass: each lower section (category budgets, recent
