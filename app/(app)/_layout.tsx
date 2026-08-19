@@ -107,10 +107,31 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
+  // Visual QA + Desktop Polish pass: labels were hardcoded Hebrew literals
+  // (CLAUDE.md: "No hardcoded Hebrew text in components... i18n keys are
+  // English, camelCase"). `key` is a stable React key independent of the
+  // translated label — the same separation RAIL_GROUPS above already uses
+  // (`segment`/`labelKey`), so a future wording change can't also disturb
+  // list-item identity.
   const quickActions = [
-    { label: 'תנועה חדשה', icon: 'add-circle-outline' as const, onPress: () => router.push('/transactions/new') },
-    { label: 'ייבוא CSV', icon: 'cloud-upload-outline' as const, onPress: () => router.push('/transactions/import') },
-    { label: 'ניהול חשבונות', icon: 'card-outline' as const, onPress: () => router.push('/accounts') },
+    {
+      key: 'newTransaction',
+      labelKey: 'nav.quickActions.newTransaction',
+      icon: 'add-circle-outline' as const,
+      onPress: () => router.push('/transactions/new'),
+    },
+    {
+      key: 'importCsv',
+      labelKey: 'nav.quickActions.importCsv',
+      icon: 'cloud-upload-outline' as const,
+      onPress: () => router.push('/transactions/import'),
+    },
+    {
+      key: 'manageAccounts',
+      labelKey: 'nav.quickActions.manageAccounts',
+      icon: 'card-outline' as const,
+      onPress: () => router.push('/accounts'),
+    },
   ]
 
   return (
@@ -121,16 +142,18 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
       </View>
 
       <View className="mb-5 rounded-card border border-border-light bg-surface-light p-2 dark:border-border-dark dark:bg-surface-dark">
-        <Text className="mb-1 px-2 pt-1 text-xs font-semibold text-inkMuted-light dark:text-inkMuted-dark">פעולות מהירות</Text>
+        <Text className="mb-1 px-2 pt-1 text-xs font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          {t('nav.quickActions.title')}
+        </Text>
         {quickActions.map((action) => (
           <Pressable
-            key={action.label}
+            key={action.key}
             onPress={action.onPress}
             accessibilityRole="button"
             className="flex-row items-center gap-2 rounded-control px-2.5 py-2 web:hover:bg-surfaceMuted-light dark:web:hover:bg-surfaceMuted-dark"
           >
             <Ionicons name={action.icon} size={19} color={activeColor} />
-            <Text className="text-sm font-medium text-ink-light dark:text-ink-dark">{action.label}</Text>
+            <Text className="text-sm font-medium text-ink-light dark:text-ink-dark">{t(action.labelKey)}</Text>
           </Pressable>
         ))}
       </View>
@@ -207,7 +230,18 @@ export default function AppLayout() {
         importantForAccessibility={isLocked ? 'no-hide-descendants' : 'auto'}
         accessibilityElementsHidden={isLocked}
       >
-        <View className="flex-1 web:flex-row">
+        {/* RTL regression fix: plain `flex-row` does not auto-mirror on web
+            the way native Yoga does under I18nManager.forceRTL(true) — no
+            `dir="rtl"` is ever set on the web document (see app/_layout.tsx's
+            RTL bootstrap comment), so `web:flex-row` renders left-to-right
+            regardless of the app's forced-RTL state, placing the sidebar on
+            the wrong (left) side for this Hebrew app. `flex-row-reverse`
+            keeps DOM/source order [rail, content] (so a screen reader still
+            reaches navigation first) while visually placing the
+            first-rendered child — the rail — on the physical right, which is
+            the correct RTL reading position. Native (no `web:` match) is
+            unaffected either way. */}
+        <View className="flex-1 web:flex-row-reverse">
           {isWeb && <DesktopSideRail activeSegment={activeSegment} />}
           <View className="flex-1">
             <Tabs

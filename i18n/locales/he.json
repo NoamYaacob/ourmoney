@@ -33,7 +33,13 @@
       "management": "ניהול"
     },
     "cashFlow": "תזרים מזומנים",
-    "alerts": "התראות"
+    "alerts": "התראות",
+    "quickActions": {
+      "title": "פעולות מהירות",
+      "newTransaction": "תנועה חדשה",
+      "importCsv": "ייבוא CSV",
+      "manageAccounts": "ניהול חשבונות"
+    }
   },
   "transactions": {
     "title": "תנועות",

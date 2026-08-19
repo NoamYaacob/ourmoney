@@ -115,11 +115,11 @@ describe('DesktopSideRail', () => {
   })
 
   // Quick Actions are tested separately from nav destinations per the file
-  // header comment — the rail's own "פעולות מהירות" block is currently
-  // hardcoded Hebrew rather than driven through i18n (see this file's
-  // sibling `_layout.tsx` — a pre-existing gap noted here rather than
-  // silently worked around), so these labels are the literal strings the
-  // component renders today, not translation keys.
+  // header comment. The rail's own "פעולות מהירות" block now goes through
+  // i18n (nav.quickActions.* in i18n/locales/he.json) rather than hardcoded
+  // Hebrew literals — asserted here via i18n.t(...), the same convention
+  // every other label in this file already uses, so a future wording
+  // change updates one place, not both the component and this test.
   it('renders exactly 3 Quick Actions, distinct from the 10 nav destinations', async () => {
     const { getAllByRole, getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
@@ -128,33 +128,34 @@ describe('DesktopSideRail', () => {
     expect(navButtons(buttons)).toHaveLength(10)
     expect(buttons).toHaveLength(13)
 
-    expect(getByText('תנועה חדשה')).toBeTruthy()
-    expect(getByText('ייבוא CSV')).toBeTruthy()
-    expect(getByText('ניהול חשבונות')).toBeTruthy()
+    expect(getByText(i18n.t('nav.quickActions.title'))).toBeTruthy()
+    expect(getByText(i18n.t('nav.quickActions.newTransaction'))).toBeTruthy()
+    expect(getByText(i18n.t('nav.quickActions.importCsv'))).toBeTruthy()
+    expect(getByText(i18n.t('nav.quickActions.manageAccounts'))).toBeTruthy()
   })
 
-  it('navigates to /transactions/new when the "תנועה חדשה" quick action is pressed', async () => {
+  it('navigates to /transactions/new when the "New Transaction" quick action is pressed', async () => {
     const { getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
-    await fireEvent.press(getByText('תנועה חדשה'))
+    await fireEvent.press(getByText(i18n.t('nav.quickActions.newTransaction')))
 
     expect(mockPush).toHaveBeenCalledTimes(1)
     expect(mockPush).toHaveBeenCalledWith('/transactions/new')
   })
 
-  it('navigates to /transactions/import when the "ייבוא CSV" quick action is pressed', async () => {
+  it('navigates to /transactions/import when the "Import CSV" quick action is pressed', async () => {
     const { getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
-    await fireEvent.press(getByText('ייבוא CSV'))
+    await fireEvent.press(getByText(i18n.t('nav.quickActions.importCsv')))
 
     expect(mockPush).toHaveBeenCalledTimes(1)
     expect(mockPush).toHaveBeenCalledWith('/transactions/import')
   })
 
-  it('navigates to /accounts when the "ניהול חשבונות" quick action is pressed', async () => {
+  it('navigates to /accounts when the "Manage Accounts" quick action is pressed', async () => {
     const { getByText } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
-    await fireEvent.press(getByText('ניהול חשבונות'))
+    await fireEvent.press(getByText(i18n.t('nav.quickActions.manageAccounts')))
 
     expect(mockPush).toHaveBeenCalledTimes(1)
     expect(mockPush).toHaveBeenCalledWith('/accounts')

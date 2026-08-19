@@ -120,6 +120,15 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
   // static JSX and renders regardless of platform, so this asserts the
   // structural fact that actually matters: the source declares the
   // reversed direction, not a fake pixel/viewport assertion.
+  //
+  // Visual QA + Desktop Polish pass: this test previously matched
+  // `className.includes('web:flex-row')`, which is satisfied by BOTH
+  // `web:flex-row` and `web:flex-row-reverse` (the former is a literal
+  // substring of the latter) — so it silently kept passing through a real
+  // regression where the wrapper reverted to plain `web:flex-row` (rail
+  // rendered on the wrong side again). Rewritten to tokenize each
+  // className on whitespace and check for exact token membership, so it
+  // can actually distinguish the two and fail if the wrong one reappears.
   it('declares the desktop rail wrapper as flex-row-reverse, not flex-row, for correct RTL placement', async () => {
     const result = await renderRouter(
       {
@@ -148,16 +157,27 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
       { initialUrl: '/dashboard' }
     )
 
-    function findByClassName(node: unknown, substring: string): boolean {
+    // Exact whitespace-token membership, not a substring match — see the
+    // test's own header comment above for why a substring check can't tell
+    // `web:flex-row` and `web:flex-row-reverse` apart.
+    function hasExactClassToken(node: unknown, token: string): boolean {
       if (!node || typeof node !== 'object') return false
-      if (Array.isArray(node)) return node.some((n) => findByClassName(n, substring))
+      if (Array.isArray(node)) return node.some((n) => hasExactClassToken(n, token))
       // react-test-renderer's toJSON() shape is {type, props, children} —
       // `children` is a sibling of `props`, not nested inside it.
       const asRecord = node as { props?: { className?: unknown }; children?: unknown }
-      if (typeof asRecord.props?.className === 'string' && asRecord.props.className.includes(substring)) return true
-      return findByClassName(asRecord.children, substring)
+      if (typeof asRecord.props?.className === 'string' && asRecord.props.className.split(/\s+/).includes(token)) {
+        return true
+      }
+      return hasExactClassToken(asRecord.children, token)
     }
 
-    expect(findByClassName(result.toJSON(), 'web:flex-row')).toBe(true)
+    const tree = result.toJSON()
+    expect(hasExactClassToken(tree, 'web:flex-row-reverse')).toBe(true)
+    // The regression this test exists to catch: the wrapper reverting to
+    // the bare (non-reversed) form. Asserted as a separate node, not just
+    // "not exactly one match," so this fails clearly if the wrapper is ever
+    // rendered with BOTH classes at once (which would be a different bug).
+    expect(hasExactClassToken(tree, 'web:flex-row')).toBe(false)
   })
 })
