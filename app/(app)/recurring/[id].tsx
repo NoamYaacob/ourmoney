@@ -14,6 +14,7 @@ import { useDeleteRecurringTransaction } from '@/features/recurring/hooks/useDel
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -189,7 +190,7 @@ export default function RecurringDetail() {
         {formatILS(item.amount_agorot)}
       </Text>
       <Text className="mb-6 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-        {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
+        {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {formatDateDisplay(item.next_due_date)}
       </Text>
 
       {/* Visual QA + Desktop Polish pass: the whole detail/edit panel now

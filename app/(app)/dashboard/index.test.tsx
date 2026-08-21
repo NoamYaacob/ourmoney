@@ -74,6 +74,16 @@ const mockUseFinancialAlerts = jest.fn<() => typeof DEFAULT_ALERTS>()
 jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
   useFinancialAlerts: () => mockUseFinancialAlerts(),
 }))
+const DEFAULT_OBLIGATIONS = { obligations: [] as unknown[], isLoading: false, error: null as Error | null }
+const mockUsePlannedObligations = jest.fn<() => typeof DEFAULT_OBLIGATIONS>()
+jest.mock('@/features/obligations/hooks/usePlannedObligations', () => ({
+  usePlannedObligations: () => mockUsePlannedObligations(),
+}))
+const DEFAULT_GOALS = { goals: [] as unknown[], isLoading: false, error: null as Error | null }
+const mockUseSavingsGoals = jest.fn<() => typeof DEFAULT_GOALS>()
+jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
+  useSavingsGoals: () => mockUseSavingsGoals(),
+}))
 const mockUseTransactions =
   jest.fn<(householdId: string | null | undefined, filters?: TransactionFilters) => {
     transactions: unknown[]
@@ -107,6 +117,8 @@ beforeEach(() => {
   mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
   mockUseSafeToSpend.mockReturnValue(DEFAULT_SAFE_TO_SPEND)
   mockUseFinancialAlerts.mockReturnValue(DEFAULT_ALERTS)
+  mockUsePlannedObligations.mockReturnValue(DEFAULT_OBLIGATIONS)
+  mockUseSavingsGoals.mockReturnValue(DEFAULT_GOALS)
   mockPush.mockClear()
 })
 
@@ -791,5 +803,191 @@ describe('Dashboard alerts section', () => {
     const { queryByText } = await render(<Dashboard />)
 
     expect(queryByText(i18n.t('alerts.dashboardSectionTitle'))).toBeNull()
+  })
+})
+
+// Comprehensive upgrade pass §2/§9/§11: this-month income/expense figures,
+// the upcoming-obligations widget, and the savings-goals widget — all three
+// reuse existing hooks/pure helpers (see app/(app)/dashboard/index.tsx's own
+// comments), so these tests only cover the screen-level wiring, not the
+// underlying calculations (those are covered by their own dedicated test
+// files: monthlyTrend.test.ts, upcomingObligations.test.ts, goalProgress
+// via lib/money/arithmetic.test.ts).
+describe('Dashboard this-month income/expense widget', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('shows the current month\'s income and expense totals, derived from the same transactions the trend chart uses', async () => {
+    mockAnalytics({
+      transactions: [
+        {
+          id: 'txn-income',
+          category_id: null,
+          amount_agorot: 300000,
+          txn_date: '2026-08-05',
+          is_shared: true,
+          is_excluded: false,
+          transfer_id: null,
+          description: 'משכורת',
+        },
+        {
+          id: 'txn-expense',
+          category_id: null,
+          amount_agorot: -12000,
+          txn_date: '2026-08-06',
+          is_shared: true,
+          is_excluded: false,
+          transfer_id: null,
+          description: 'קניות',
+        },
+      ],
+    })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('dashboard.thisMonth.title'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.analytics.income'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.analytics.expense'))).toBeTruthy()
+    expect(getByText(formatILS(300000))).toBeTruthy()
+    expect(getByText(formatILS(12000))).toBeTruthy()
+  })
+
+  it('shows ₪0.00 for both figures, never a negative sign, when the month has no transactions', async () => {
+    mockAnalytics({ transactions: [] })
+
+    const { getAllByText } = await render(<Dashboard />)
+
+    expect(formatILS(0)).not.toContain('-')
+    // Not an exact count: the mocked Safe-to-Spend breakdown also renders
+    // its own zero figures. This only asserts the this-month widget's two
+    // (income, expense) are among them, never a "-₪0.00".
+    expect(getAllByText(formatILS(0)).length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+function obligation(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'ob-1',
+    name: 'ביטוח רכב',
+    amount_agorot: 185000,
+    due_date: '2026-08-27',
+    status: 'upcoming',
+    category_id: null,
+    account_id: null,
+    is_shared: true,
+    ...overrides,
+  }
+}
+
+describe('Dashboard upcoming obligations widget', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('shows a compact empty state when there are no upcoming obligations', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('dashboard.upcomingObligations.title'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.upcomingObligations.empty'))).toBeTruthy()
+  })
+
+  it('renders the nearest upcoming obligation with its name and amount, and navigates to its detail screen on tap', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUsePlannedObligations.mockReturnValue({
+      obligations: [obligation()],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText('ביטוח רכב')).toBeTruthy()
+    expect(getByText(formatILS(185000))).toBeTruthy()
+
+    await fireEvent.press(getByText('ביטוח רכב'))
+
+    expect(mockPush).toHaveBeenCalledWith('/obligations/ob-1')
+  })
+
+  it('excludes completed/cancelled obligations and caps the list at 3', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUsePlannedObligations.mockReturnValue({
+      obligations: [
+        obligation({ id: 'o1', name: 'א', due_date: '2026-08-22' }),
+        obligation({ id: 'o2', name: 'ב', due_date: '2026-08-23' }),
+        obligation({ id: 'o3', name: 'ג', due_date: '2026-08-24' }),
+        obligation({ id: 'o4', name: 'ד', due_date: '2026-08-25' }),
+        obligation({ id: 'o5', name: 'הושלם', status: 'completed', due_date: '2026-08-01' }),
+      ],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText('א')).toBeTruthy()
+    expect(getByText('ב')).toBeTruthy()
+    expect(getByText('ג')).toBeTruthy()
+    expect(queryByText('ד')).toBeNull()
+    expect(queryByText('הושלם')).toBeNull()
+  })
+})
+
+function savingsGoal(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'goal-1',
+    name: 'חופשה',
+    current_agorot: 50000,
+    target_agorot: 200000,
+    is_completed: false,
+    ...overrides,
+  }
+}
+
+describe('Dashboard savings goals widget', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('shows a compact empty state when there are no savings goals', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('dashboard.savingsGoalsWidget.title'))).toBeTruthy()
+    expect(getByText(i18n.t('dashboard.savingsGoalsWidget.empty'))).toBeTruthy()
+  })
+
+  it('renders a goal with its saved/target amounts, and navigates to its detail screen on tap', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSavingsGoals.mockReturnValue({ goals: [savingsGoal()], isLoading: false, error: null })
+
+    const { getByText } = await render(<Dashboard />)
+
+    expect(getByText('חופשה')).toBeTruthy()
+    expect(getByText(`${formatILS(50000)} / ${formatILS(200000)}`)).toBeTruthy()
+
+    await fireEvent.press(getByText('חופשה'))
+
+    expect(mockPush).toHaveBeenCalledWith('/goals/goal-1')
+  })
+
+  it('excludes already-completed goals from the widget', async () => {
+    mockAnalytics({ transactions: [] })
+    mockUseSavingsGoals.mockReturnValue({
+      goals: [savingsGoal({ id: 'g1', name: 'הושלם', is_completed: true })],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('dashboard.savingsGoalsWidget.empty'))).toBeTruthy()
+    expect(queryByText('הושלם')).toBeNull()
   })
 })

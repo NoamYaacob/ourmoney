@@ -11,11 +11,16 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { severityIconName, severityColorToken } from '@/features/alerts/lib/alertDisplay'
+import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
+import { daysUntilDue, filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
+import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
 import { usePeriodStore } from '@/store/periodStore'
-import { shiftMonth } from '@/features/budgets/lib/budgetPeriod'
+import { shiftMonth, localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { remainingAgorot, spentPercent } from '@/lib/money/arithmetic'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
 import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
 import { computeTopCategories } from '@/features/analytics/lib/topCategories'
@@ -94,6 +99,24 @@ export default function Dashboard() {
   // shows fewer alerts.
   const topAlerts = isAlertsLoading ? [] : alerts.slice(0, 3)
 
+  // Comprehensive upgrade pass §2/§11/§9: compact "at a glance" widgets —
+  // upcoming obligations and savings-goals status — reusing the exact same
+  // hooks/pure helpers their own screens already use (usePlannedObligations
+  // + filterUpcomingObligations/daysUntilDue, useSavingsGoals +
+  // goalProgressPercent). No new query, no new calculation logic.
+  const { obligations, isLoading: isObligationsLoading, error: obligationsError } = usePlannedObligations(householdId)
+  const today = localDateString()
+  const upcomingObligationIds = filterUpcomingObligations(
+    obligations.map((o) => ({ id: o.id, dueDate: o.due_date, status: o.status }))
+  ).slice(0, 3)
+  const obligationsById = new Map(obligations.map((o) => [o.id, o]))
+  const topUpcomingObligations = upcomingObligationIds
+    .map((item) => obligationsById.get(item.id))
+    .filter((o): o is NonNullable<typeof o> => o !== undefined)
+
+  const { goals, isLoading: isGoalsLoading, error: goalsError } = useSavingsGoals(householdId)
+  const topGoals = goals.filter((g) => !g.is_completed).slice(0, 3)
+
   // Analytics — lives inside Dashboard, not a separate route (no route is
   // reserved for it anywhere in the app tree). A widened 6-month window,
   // reusing useTransactions' existing filters shape (no new query-key
@@ -122,6 +145,10 @@ export default function Dashboard() {
     transferId: t.transfer_id,
   }))
   const monthlyTrendPoints = computeMonthlyTrend(analyticsInput, last6MonthStarts)
+  // The selected month's own point — last6MonthStarts's final entry is
+  // always periodStart itself (shiftMonth(periodStart, -(5-5))), so this is
+  // the same figure the trend chart already plots, not a second calculation.
+  const thisMonthTrend = monthlyTrendPoints[monthlyTrendPoints.length - 1]
   const categoryBreakdown = computeCategoryBreakdown(analyticsInput, periodStart)
   const topCategories = computeTopCategories(categoryBreakdown, 5)
   // Same "no data" convention as categoryBreakdown/topCategories below
@@ -425,6 +452,160 @@ export default function Dashboard() {
               </View>
             </Card>
           )}
+        </View>
+      </View>
+
+      {/* Comprehensive upgrade pass §2/§9/§11: three compact "at a glance"
+          widgets the household otherwise had to leave the dashboard to see —
+          this month's income/expense, the nearest upcoming obligations, and
+          savings-goal progress. Same three-panel convention as the analytics
+          row below it (DESKTOP_PANEL/DesktopPanelHeader, `flex-row-reverse`
+          on web so DOM order [thisMonth, obligations, goals] renders
+          thisMonth rightmost — the primary "where do we stand" figure).
+          Mobile/tablet stay a single stacked column. */}
+      <View className="mt-6 web:desktop:mt-5 web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader icon="swap-vertical-outline" title={t('dashboard.thisMonth.title')} />
+            <Card>
+              <View className="flex-row items-center">
+                <View className="flex-1">
+                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                    {t('dashboard.analytics.income')}
+                  </Text>
+                  <Text className="mt-0.5 text-heading font-semibold text-positive-light dark:text-positive-dark">
+                    {formatILS(thisMonthTrend?.incomeAgorot ?? 0)}
+                  </Text>
+                </View>
+                <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
+                <View className="flex-1">
+                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                    {t('dashboard.analytics.expense')}
+                  </Text>
+                  <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark">
+                    {formatILS(thisMonthTrend?.expenseAgorot ?? 0)}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+        </View>
+
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader
+              icon="calendar-outline"
+              title={t('dashboard.upcomingObligations.title')}
+              action={
+                topUpcomingObligations.length > 0 && (
+                  <Pressable onPress={() => router.push('/obligations')} accessibilityRole="button">
+                    <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                      {t('dashboard.upcomingObligations.viewAll')}
+                    </Text>
+                  </Pressable>
+                )
+              }
+            />
+            {obligationsError ? (
+              <ErrorMessage message={t('dashboard.errors.generic')} />
+            ) : isObligationsLoading ? (
+              <SkeletonList rows={2} />
+            ) : topUpcomingObligations.length === 0 ? (
+              <EmptyState iconName="calendar-outline" message={t('dashboard.upcomingObligations.empty')} compact />
+            ) : (
+              <Card>
+                {topUpcomingObligations.map((obligation, index) => {
+                  const pastDue = isPastDue(obligation.due_date, today)
+                  const days = daysUntilDue(obligation.due_date, today)
+                  return (
+                    <Pressable
+                      key={obligation.id}
+                      onPress={() => router.push(`/obligations/${obligation.id}`)}
+                      accessibilityRole="button"
+                    >
+                      {index > 0 && (
+                        <View className="my-3">
+                          <Divider />
+                        </View>
+                      )}
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1">
+                          <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                            {obligation.name}
+                          </Text>
+                          <Text
+                            className={`text-caption ${
+                              pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
+                            }`}
+                          >
+                            {formatDateDisplay(obligation.due_date)}
+                            {' · '}
+                            {pastDue
+                              ? t('obligations.pastDue')
+                              : days === 0
+                                ? t('obligations.dueToday')
+                                : t('obligations.inDays', { count: days })}
+                          </Text>
+                        </View>
+                        <Text className="text-body font-medium text-ink-light dark:text-ink-dark">
+                          {formatILS(obligation.amount_agorot)}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  )
+                })}
+              </Card>
+            )}
+          </View>
+        </View>
+
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader
+              icon="flag-outline"
+              title={t('dashboard.savingsGoalsWidget.title')}
+              action={
+                topGoals.length > 0 && (
+                  <Pressable onPress={() => router.push('/goals')} accessibilityRole="button">
+                    <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                      {t('dashboard.savingsGoalsWidget.viewAll')}
+                    </Text>
+                  </Pressable>
+                )
+              }
+            />
+            {goalsError ? (
+              <ErrorMessage message={t('dashboard.errors.generic')} />
+            ) : isGoalsLoading ? (
+              <SkeletonList rows={2} />
+            ) : topGoals.length === 0 ? (
+              <EmptyState iconName="flag-outline" message={t('dashboard.savingsGoalsWidget.empty')} compact />
+            ) : (
+              <Card>
+                {topGoals.map((goal, index) => {
+                  const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+                  return (
+                    <Pressable key={goal.id} onPress={() => router.push(`/goals/${goal.id}`)} accessibilityRole="button">
+                      {index > 0 && (
+                        <View className="my-3">
+                          <Divider />
+                        </View>
+                      )}
+                      <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {goal.name}
+                      </Text>
+                      <Text className="mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                        {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
+                      </Text>
+                      <View className="mt-1.5">
+                        <ProgressBar percent={percent} positiveAtLimit />
+                      </View>
+                    </Pressable>
+                  )
+                })}
+              </Card>
+            )}
+          </View>
         </View>
       </View>
 

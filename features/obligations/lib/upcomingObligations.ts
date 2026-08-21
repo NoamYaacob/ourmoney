@@ -22,3 +22,19 @@ export function filterUpcomingObligations<T extends ObligationForSort>(obligatio
 export function isPastDue(dueDate: string, today: string): boolean {
   return dueDate < today
 }
+
+// Comprehensive upgrade pass: "בעוד X ימים" ("in X days") on the
+// obligations list card and the Dashboard's upcoming-commitments widget —
+// both explicitly requested alongside the existing due-date display, not a
+// replacement for it. Local-midnight `Date` construction (no 'Z' suffix),
+// matching components/ui/DatePickerField.tsx's own documented reasoning for
+// why this app never parses a YYYY-MM-DD string as UTC. Returns a signed
+// day count — 0 for "due today," negative for already past due (callers
+// needing an explicit past-due check should still use isPastDue above,
+// which reads as intent more clearly than `daysUntilDue(...) < 0`).
+export function daysUntilDue(dueDate: string, today: string): number {
+  const dueDateMs = new Date(`${dueDate}T00:00:00`).getTime()
+  const todayMs = new Date(`${today}T00:00:00`).getTime()
+  const MS_PER_DAY = 24 * 60 * 60 * 1000
+  return Math.round((dueDateMs - todayMs) / MS_PER_DAY)
+}

@@ -18,8 +18,9 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useCreatePlannedObligation } from '@/features/obligations/hooks/useCreatePlannedObligation'
-import { filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { daysUntilDue, filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
@@ -172,8 +173,13 @@ export default function Obligations() {
                               pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
                             }`}
                           >
-                            {obligation.due_date}
-                            {pastDue ? ` · ${t('obligations.pastDue')}` : ''}
+                            {formatDateDisplay(obligation.due_date)}
+                            {' · '}
+                            {pastDue
+                              ? t('obligations.pastDue')
+                              : daysUntilDue(obligation.due_date, today) === 0
+                                ? t('obligations.dueToday')
+                                : t('obligations.inDays', { count: daysUntilDue(obligation.due_date, today) })}
                             {' · '}
                             {obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
                           </Text>
@@ -229,7 +235,7 @@ export default function Obligations() {
                                   {obligation.name}
                                 </Text>
                                 <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                                  {obligation.due_date}
+                                  {formatDateDisplay(obligation.due_date)}
                                   {' · '}
                                   {t(`obligations.status.${obligation.status}`)}
                                 </Text>

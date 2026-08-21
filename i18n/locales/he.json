@@ -339,6 +339,8 @@
     "empty": "עדיין אין התחייבויות מתוכננות.",
     "addButton": "הוספת התחייבות",
     "pastDue": "באיחור",
+    "dueToday": "היום",
+    "inDays": "בעוד {{count}} ימים",
     "status": {
       "upcoming": "צפויה",
       "completed": "שולמה",
@@ -586,6 +588,19 @@
     "recentTitle": "תנועות אחרונות",
     "viewAll": "כל התנועות",
     "noTransactions": "עדיין אין תנועות החודש.",
+    "thisMonth": {
+      "title": "הכנסות והוצאות החודש"
+    },
+    "upcomingObligations": {
+      "title": "התחייבויות עתידיות",
+      "viewAll": "כל ההתחייבויות",
+      "empty": "אין התחייבויות קרובות."
+    },
+    "savingsGoalsWidget": {
+      "title": "יעדי חיסכון",
+      "viewAll": "כל היעדים",
+      "empty": "עדיין אין יעדי חיסכון."
+    },
     "safeToSpend": {
       "title": "כמה אפשר להוציא",
       "subtitle": "עד סוף החודש",

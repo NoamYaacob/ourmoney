@@ -25,6 +25,7 @@ import { TRANSACTION_PERIODS, type TransactionPeriod } from '@/features/transact
 import { intersectWithVisible, selectAllVisible, toggleSelection } from '@/features/transactions/lib/transactionSelection'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
 import { HIT_SLOP } from '@/constants/accessibility'
@@ -546,10 +547,10 @@ export default function Transactions() {
                       </Text>
                       <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
                         {isTransfer
-                          ? `${t('transactions.transferLabel')} · ${item.txn_date}`
+                          ? `${t('transactions.transferLabel')} · ${formatDateDisplay(item.txn_date)}`
                           : categoryName
-                            ? `${categoryName} · ${item.txn_date}`
-                            : item.txn_date}
+                            ? `${categoryName} · ${formatDateDisplay(item.txn_date)}`
+                            : formatDateDisplay(item.txn_date)}
                         {!isTransfer && !item.is_shared ? ` · ${t('transactions.form.personal')}` : ''}
                       </Text>
                     </View>

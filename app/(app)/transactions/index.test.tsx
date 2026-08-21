@@ -16,6 +16,7 @@ import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Transactions from './index'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 
 let mockSearchParams: Record<string, string> = {}
 const mockSetParams = jest.fn()
@@ -309,7 +310,7 @@ describe('Transactions list', () => {
 
       const { getByText, queryByText } = await render(<Transactions />)
 
-      expect(getByText(`העברה · ${TRANSFER_LEG.txn_date}`)).toBeTruthy()
+      expect(getByText(`העברה · ${formatDateDisplay(TRANSFER_LEG.txn_date)}`)).toBeTruthy()
       expect(queryByText('אישית')).toBeNull()
     })
 

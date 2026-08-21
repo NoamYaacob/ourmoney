@@ -13,6 +13,7 @@ import { useCreateRecurringTransaction } from '@/features/recurring/hooks/useCre
 import { usePriceIncreaseDetections } from '@/features/recurring/hooks/usePriceIncreaseDetections'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
@@ -201,7 +202,7 @@ export default function Recurring() {
                   </Text>
                 </View>
                 <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                  {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
+                  {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {formatDateDisplay(item.next_due_date)}
                   {!item.is_active && (
                     <Text className="font-semibold text-ink-light dark:text-ink-dark"> · {t('recurring.inactive')}</Text>
                   )}

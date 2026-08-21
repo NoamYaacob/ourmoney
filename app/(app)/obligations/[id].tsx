@@ -12,6 +12,7 @@ import { useSetPlannedObligationStatus } from '@/features/obligations/hooks/useS
 import { useDeletePlannedObligation } from '@/features/obligations/hooks/useDeletePlannedObligation'
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -195,7 +196,7 @@ export default function ObligationDetail() {
       </Text>
       <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">{formatILS(obligation.amount_agorot)}</Text>
       <Text className="mb-6 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-        {obligation.due_date}
+        {formatDateDisplay(obligation.due_date)}
         {category ? ` · ${category.name_he}` : ''}
         {account ? ` · ${account.name}` : ''}
         {' · '}

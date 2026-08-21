@@ -24,6 +24,7 @@ import { mapCsvColumns, type CsvColumnRole } from '@/features/import/lib/mapCsvC
 import { validateImportRow, type ValidatedImportRow } from '@/features/import/lib/validateImportRow'
 import { isDuplicateCandidate, type ExistingTransactionForDedup } from '@/features/import/lib/detectDuplicates'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
@@ -427,7 +428,7 @@ export default function TransactionsImport() {
                           {row.validation.row.merchantName ? ` · ${row.validation.row.merchantName}` : ''}
                         </Text>
                         <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                          {row.validation.row.txnDate} · {formatILS(row.validation.row.amountAgorot)}
+                          {formatDateDisplay(row.validation.row.txnDate)} · {formatILS(row.validation.row.amountAgorot)}
                           {row.isDuplicate ? ` · ${t('import.duplicateFlag')}` : ''}
                         </Text>
                       </View>
