@@ -646,6 +646,7 @@ export type Database = {
           matched_rule_id: string | null
           merchant_name: string | null
           note: string | null
+          obligation_id: string | null
           payer_id: string | null
           receipt_url: string | null
           recurring_id: string | null
@@ -669,6 +670,7 @@ export type Database = {
           matched_rule_id?: string | null
           merchant_name?: string | null
           note?: string | null
+          obligation_id?: string | null
           payer_id?: string | null
           receipt_url?: string | null
           recurring_id?: string | null
@@ -692,6 +694,7 @@ export type Database = {
           matched_rule_id?: string | null
           merchant_name?: string | null
           note?: string | null
+          obligation_id?: string | null
           payer_id?: string | null
           receipt_url?: string | null
           recurring_id?: string | null
@@ -727,6 +730,13 @@ export type Database = {
             columns: ["matched_rule_id"]
             isOneToOne: false
             referencedRelation: "category_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_obligation_id_fkey"
+            columns: ["obligation_id"]
+            isOneToOne: false
+            referencedRelation: "planned_obligations"
             referencedColumns: ["id"]
           },
           {
@@ -819,6 +829,15 @@ export type Database = {
           p_frequency: string
         }
         Returns: string
+      }
+      complete_planned_obligation: {
+        Args: {
+          p_account_id?: string | null
+          p_create_transaction: boolean
+          p_expected_version: number
+          p_id: string
+        }
+        Returns: Json
       }
       create_household: { Args: { p_name: string }; Returns: Json }
       create_transfer: {

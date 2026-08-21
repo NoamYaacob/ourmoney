@@ -9,6 +9,7 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useUpdatePlannedObligation } from '@/features/obligations/hooks/useUpdatePlannedObligation'
 import { useSetPlannedObligationStatus } from '@/features/obligations/hooks/useSetPlannedObligationStatus'
+import { useCompletePlannedObligationWithTransaction } from '@/features/obligations/hooks/useCompletePlannedObligationWithTransaction'
 import { useDeletePlannedObligation } from '@/features/obligations/hooks/useDeletePlannedObligation'
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
@@ -37,6 +38,7 @@ export default function ObligationDetail() {
   const { obligations, isLoading: isObligationsLoading, refetch } = usePlannedObligations(householdId)
   const updateObligation = useUpdatePlannedObligation(householdId)
   const setStatus = useSetPlannedObligationStatus(householdId)
+  const completeWithTransaction = useCompletePlannedObligationWithTransaction(householdId)
   const deleteObligation = useDeletePlannedObligation(householdId)
 
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false)
@@ -44,8 +46,21 @@ export default function ObligationDetail() {
   // transitions in the app with no confirmation — both are one-way from the
   // UI (the action buttons only render for status === 'upcoming', so there
   // is no way back once tapped) yet had less friction than deleting.
-  const [confirmStatusAction, setConfirmStatusAction] = useState<'completed' | 'cancelled' | null>(null)
+  // 'completed' no longer routes through this Modal (see isMarkingPaid
+  // below) — only 'cancelled' still needs a plain confirm/cancel dialog.
+  const [confirmStatusAction, setConfirmStatusAction] = useState<'cancelled' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Comprehensive upgrade pass §10: "mark paid" now offers to create a real,
+  // linked transaction — richer than a plain confirm/cancel dialog can hold
+  // (a toggle + a conditional account picker), so it's an inline panel on
+  // the page itself, matching this app's own precedent for "confirm with
+  // extra input" (goals/[id].tsx's update-progress row), not the generic
+  // Modal used for delete/cancel above.
+  const [isMarkingPaid, setIsMarkingPaid] = useState(false)
+  const [createTransactionOnPaid, setCreateTransactionOnPaid] = useState(true)
+  const [paidAccountId, setPaidAccountId] = useState<string | null>(null)
+  const [markPaidError, setMarkPaidError] = useState<string | null>(null)
 
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState('')
@@ -180,6 +195,62 @@ export default function ObligationDetail() {
     )
   }
 
+  // Toggle OFF routes through the existing set_planned_obligation_status —
+  // identical to today's behavior before this feature existed. Toggle ON
+  // routes through complete_planned_obligation(), the new atomic RPC that
+  // also inserts the linked transaction. Only one of the two ever fires per
+  // confirm, so 'transaction.created' is only ever emitted when a
+  // transaction is actually created (see the hook's own comment).
+  function handleConfirmMarkPaid() {
+    if (!obligation || completeWithTransaction.isPending || setStatus.isPending) return
+    setMarkPaidError(null)
+
+    if (createTransactionOnPaid) {
+      if (!paidAccountId) {
+        setMarkPaidError(t('obligations.detail.markPaidPanel.missingAccount'))
+        return
+      }
+      completeWithTransaction.mutate(
+        {
+          id: obligation.id,
+          expectedVersion: obligation.version,
+          accountId: paidAccountId,
+          categoryId: obligation.category_id,
+          amountAgorot: obligation.amount_agorot,
+          isShared: obligation.is_shared,
+        },
+        {
+          onSuccess: () => setIsMarkingPaid(false),
+          onError: (error) => {
+            if (isConflictError(error)) {
+              setConflict({ kind: 'conflict' })
+            } else if (isNotFoundError(error)) {
+              setConflict({ kind: 'not_found' })
+            } else {
+              setMarkPaidError(t('obligations.errors.generic'))
+            }
+          },
+        }
+      )
+    } else {
+      setStatus.mutate(
+        { id: obligation.id, expectedVersion: obligation.version, status: 'completed' },
+        {
+          onSuccess: () => setIsMarkingPaid(false),
+          onError: (error) => {
+            if (isConflictError(error)) {
+              setConflict({ kind: 'conflict' })
+            } else if (isNotFoundError(error)) {
+              setConflict({ kind: 'not_found' })
+            } else {
+              setMarkPaidError(t('obligations.errors.generic'))
+            }
+          },
+        }
+      )
+    }
+  }
+
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he }))
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const category = obligation.category_id ? categories.find((c) => c.id === obligation.category_id) : undefined
@@ -283,6 +354,69 @@ export default function ObligationDetail() {
           </View>
           </View>
         </View>
+      ) : isMarkingPaid ? (
+        <View className="mb-2">
+          <Text className="mb-1 text-base font-semibold text-ink-light dark:text-ink-dark">
+            {t('obligations.detail.markPaidConfirmTitle')}
+          </Text>
+          <Text className="mb-4 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+            {t('obligations.detail.markPaidConfirmMessage')}
+          </Text>
+
+          <Text className="mb-1 text-sm font-medium text-ink-light dark:text-ink-dark">
+            {t('obligations.detail.markPaidPanel.createTransactionLabel')}
+          </Text>
+          <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+            {t('obligations.detail.markPaidPanel.createTransactionHint')}
+          </Text>
+          <View className="mb-4 flex-row gap-2">
+            <Chip
+              label={t('obligations.detail.markPaidPanel.createTransactionYes')}
+              selected={createTransactionOnPaid}
+              onPress={() => setCreateTransactionOnPaid(true)}
+            />
+            <Chip
+              label={t('obligations.detail.markPaidPanel.createTransactionNo')}
+              selected={!createTransactionOnPaid}
+              onPress={() => setCreateTransactionOnPaid(false)}
+            />
+          </View>
+
+          {createTransactionOnPaid && (
+            <Select
+              label={t('transactions.form.accountLabel')}
+              options={accountOptions}
+              value={paidAccountId}
+              onChange={setPaidAccountId}
+              placeholder={t('transactions.form.accountPlaceholder')}
+            />
+          )}
+
+          {(markPaidError || completeWithTransaction.isError || setStatus.isError) && (
+            <ErrorMessage message={markPaidError ?? t('obligations.errors.generic')} />
+          )}
+
+          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+            <View className="web:desktop:flex-1">
+              <Button
+                title={t('obligations.detail.markPaidPanel.submit')}
+                onPress={handleConfirmMarkPaid}
+                loading={completeWithTransaction.isPending || setStatus.isPending}
+              />
+            </View>
+            <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+              <Button
+                title={t('common.cancel')}
+                variant="secondary"
+                disabled={completeWithTransaction.isPending || setStatus.isPending}
+                onPress={() => {
+                  setMarkPaidError(null)
+                  setIsMarkingPaid(false)
+                }}
+              />
+            </View>
+          </View>
+        </View>
       ) : (
         <>
           <View className="mb-3 web:desktop:flex-row-reverse web:desktop:gap-2">
@@ -292,7 +426,15 @@ export default function ObligationDetail() {
 
             {obligation.status === 'upcoming' && (
               <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
-                <Button title={t('obligations.detail.markPaid')} onPress={() => setConfirmStatusAction('completed')} />
+                <Button
+                  title={t('obligations.detail.markPaid')}
+                  onPress={() => {
+                    setMarkPaidError(null)
+                    setCreateTransactionOnPaid(true)
+                    setPaidAccountId(obligation.account_id)
+                    setIsMarkingPaid(true)
+                  }}
+                />
               </View>
             )}
           </View>
@@ -348,17 +490,9 @@ export default function ObligationDetail() {
 
       <Modal
         visible={confirmStatusAction !== null}
-        title={t(
-          confirmStatusAction === 'cancelled' ? 'obligations.detail.cancelConfirmTitle' : 'obligations.detail.markPaidConfirmTitle'
-        )}
-        message={t(
-          confirmStatusAction === 'cancelled'
-            ? 'obligations.detail.cancelConfirmMessage'
-            : 'obligations.detail.markPaidConfirmMessage'
-        )}
-        confirmLabel={t(
-          confirmStatusAction === 'cancelled' ? 'obligations.detail.cancelObligation' : 'obligations.detail.markPaid'
-        )}
+        title={t('obligations.detail.cancelConfirmTitle')}
+        message={t('obligations.detail.cancelConfirmMessage')}
+        confirmLabel={t('obligations.detail.cancelObligation')}
         cancelLabel={t('common.cancel')}
         loading={setStatus.isPending}
         onCancel={() => setConfirmStatusAction(null)}

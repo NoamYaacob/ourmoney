@@ -4845,6 +4845,307 @@ BEGIN
   PERFORM _pass('10.35', 'enforce_recurring_transaction_version() has zero direct EXECUTE grants — callable only as a trigger, never directly');
 END $$;
 
+-- ============================================================================
+-- Group 11 — Obligation-to-transaction linkage (migration 012)
+-- ============================================================================
+-- complete_planned_obligation() correctness (transaction creation, optional
+-- skip, account validation, CAS, cross-household oracle avoidance), the
+-- obligation_id RLS hard-block (mirroring transfer_id's treatment — 11.7/
+-- 11.8 are the direct-mutation-bypass regressions design-stage review found
+-- and required fixed before this migration was written), the
+-- set_planned_obligation_status() reversion guard and its own oracle-
+-- avoidance scoping, and ON DELETE SET NULL. Anon-cannot-execute and fixed-
+-- search_path for complete_planned_obligation() are covered for free by the
+-- existing generic 6.5/6.6 structural guards below (they scan every
+-- SECURITY DEFINER function in public dynamically), so not duplicated here.
+
+-- 11.1: complete_planned_obligation() with p_create_transaction = TRUE, as
+-- the owning household's member — obligation completes (version 1 -> 2) and
+-- exactly one correctly-populated linked transaction is inserted.
+SAVEPOINT sp_11_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_txn_id UUID; v_txn_count INT;
+BEGIN
+  SELECT complete_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE,
+    '5a000000-0000-0000-0000-000000000001'::uuid
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 11.1: expected ok with version 2, got %', v_result;
+  END IF;
+  v_txn_id := (v_result->>'transaction_id')::uuid;
+  IF v_txn_id IS NULL THEN
+    RAISE EXCEPTION 'FAIL 11.1: expected a transaction_id in the result, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'completed' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 11.1: obligation was not actually marked completed/version 2';
+  END IF;
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE obligation_id = '58000000-0000-0000-0000-000000000001';
+  IF v_txn_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 11.1: expected exactly 1 linked transaction, got %', v_txn_count;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM transactions
+    WHERE id = v_txn_id AND obligation_id = '58000000-0000-0000-0000-000000000001'
+      AND amount_agorot = -180000 AND category_id = '5c000000-0000-0000-0000-000000000001'
+      AND account_id = '5a000000-0000-0000-0000-000000000001' AND is_shared = TRUE
+      AND description = 'ארנונה בית 1' AND txn_date = CURRENT_DATE AND source = 'manual'
+  ) THEN
+    RAISE EXCEPTION 'FAIL 11.1: linked transaction fields do not match the obligation it was created from';
+  END IF;
+  PERFORM _pass('11.1', 'complete_planned_obligation() with p_create_transaction=TRUE completes the obligation and inserts exactly one correctly-populated, linked expense transaction (negative amount, obligation''s own category/is_shared/name, today''s date)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_1;
+
+-- 11.2: p_create_transaction = TRUE with no p_account_id => missing_account,
+-- nothing inserted, obligation untouched.
+SAVEPOINT sp_11_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE, NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'missing_account' THEN
+    RAISE EXCEPTION 'FAIL 11.2: expected missing_account, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'upcoming' AND version = 1) THEN
+    RAISE EXCEPTION 'FAIL 11.2: obligation was mutated despite the rejected call';
+  END IF;
+  IF EXISTS (SELECT 1 FROM transactions WHERE obligation_id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 11.2: a transaction was inserted despite the rejected call';
+  END IF;
+  PERFORM _pass('11.2', 'complete_planned_obligation() with p_create_transaction=TRUE and no account rejects with missing_account, mutating nothing');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_2;
+
+-- 11.3: p_account_id from a DIFFERENT household => invalid_account, nothing
+-- mutated. This function is SECURITY DEFINER (bypasses RLS for its own
+-- writes), so this in-function check is the only thing preventing a
+-- cross-household account from being used.
+SAVEPOINT sp_11_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT complete_planned_obligation(
+    '58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE,
+    '5a000000-0000-0000-0000-000000000002'::uuid
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_account' THEN
+    RAISE EXCEPTION 'FAIL 11.3: expected invalid_account for a cross-household account, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'upcoming' AND version = 1) THEN
+    RAISE EXCEPTION 'FAIL 11.3: obligation was mutated despite the rejected call';
+  END IF;
+  IF EXISTS (SELECT 1 FROM transactions WHERE obligation_id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 11.3: a transaction was inserted despite the rejected call';
+  END IF;
+  PERFORM _pass('11.3', 'complete_planned_obligation() rejects an account belonging to a different household with invalid_account, mutating nothing');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_3;
+
+-- 11.4: p_create_transaction = FALSE — obligation completes, but NO
+-- transaction is ever inserted.
+SAVEPOINT sp_11_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, FALSE, NULL) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 OR v_result->'transaction_id' IS DISTINCT FROM 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL 11.4: expected ok/version 2/null transaction_id, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'completed' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 11.4: obligation was not marked completed/version 2';
+  END IF;
+  IF EXISTS (SELECT 1 FROM transactions WHERE obligation_id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 11.4: a transaction was inserted despite p_create_transaction=FALSE';
+  END IF;
+  PERFORM _pass('11.4', 'complete_planned_obligation() with p_create_transaction=FALSE completes the obligation without ever inserting a transaction');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_4;
+
+-- 11.5: a stale expected_version (after a first, successful call already
+-- advanced it) => conflict; the obligation and its one linked transaction
+-- from the first call are left completely untouched — no second transaction
+-- is ever inserted for the same obligation.
+SAVEPOINT sp_11_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_txn_count INT;
+BEGIN
+  PERFORM complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE, '5a000000-0000-0000-0000-000000000001'::uuid);
+
+  SELECT complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE, '5a000000-0000-0000-0000-000000000001'::uuid) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 11.5: expected conflict for a stale/already-completed obligation, got %', v_result;
+  END IF;
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE obligation_id = '58000000-0000-0000-0000-000000000001';
+  IF v_txn_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 11.5: expected exactly 1 linked transaction after the rejected second call, got %', v_txn_count;
+  END IF;
+  PERFORM _pass('11.5', 'complete_planned_obligation() called twice on the same obligation returns conflict the second time and never creates a second linked transaction — an already-completed row cannot be marked paid again');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_5;
+
+-- 11.6: Household 2's member calling complete_planned_obligation() on
+-- Household 1's obligation, with the CORRECT current version, still gets
+-- not_found — no oracle distinguishing "wrong household" from "does not
+-- exist" (same discipline already established for update_planned_obligation
+-- in 10.3).
+SAVEPOINT sp_11_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, FALSE, NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 11.6: expected not_found for a cross-household id+correct-version call, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status <> 'upcoming') THEN
+    RAISE EXCEPTION 'FAIL 11.6: a member of the OTHER household was able to mutate this obligation';
+  END IF;
+  PERFORM _pass('11.6', 'complete_planned_obligation() called by a different household''s member, even with the correct current version, returns not_found and mutates nothing');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_6;
+
+-- 11.7 [design-stage review finding]: a direct client INSERT into
+-- transactions with obligation_id set is rejected by transactions_insert's
+-- tightened WITH CHECK — a linked transaction can only ever be created by
+-- complete_planned_obligation().
+SAVEPOINT sp_11_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, obligation_id, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', '58000000-0000-0000-0000-000000000001', -1000, 'עוקף', '2026-08-15', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 11.7: a direct INSERT with obligation_id set was allowed';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('11.7', 'a direct client INSERT with obligation_id set is rejected — only complete_planned_obligation() may create a linked transaction');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_7;
+
+-- 11.8 [design-stage review finding]: a direct client UPDATE attempting to
+-- set obligation_id on an ordinary, already-existing transaction is equally
+-- rejected — affects 0 rows, since obligation_id IS NULL is required in
+-- transactions_update's USING clause too (same "not even a reachable UPDATE
+-- target" shape as transfer_id's 9.8/9.9).
+SAVEPOINT sp_11_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE transactions SET obligation_id = '58000000-0000-0000-0000-000000000001' WHERE id = '5f000000-0000-0000-0000-000000000001';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 11.8: a direct UPDATE linked an ordinary transaction to an obligation — % row(s) affected', v_rows;
+  END IF;
+  PERFORM _pass('11.8', 'a direct client UPDATE attempting to set obligation_id on an ordinary transaction affects 0 rows — only complete_planned_obligation() may link a transaction to an obligation');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_8;
+
+-- 11.9 [database-security-reviewer finding]: once complete_planned_obligation()
+-- has linked a transaction, set_planned_obligation_status() refuses to
+-- change that obligation's status at all — reverting it to 'upcoming' would
+-- silently reintroduce a double-count (the real transaction stays on the
+-- books, but the obligation would be counted again by Safe-to-Spend/
+-- cash-flow forecast).
+SAVEPOINT sp_11_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE, '5a000000-0000-0000-0000-000000000001'::uuid);
+
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 2, 'upcoming') INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'has_linked_transaction' THEN
+    RAISE EXCEPTION 'FAIL 11.9: expected has_linked_transaction when reverting a transaction-linked obligation, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001' AND status = 'completed' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 11.9: the obligation''s status/version changed despite the rejected call';
+  END IF;
+  PERFORM _pass('11.9', 'set_planned_obligation_status() refuses to change the status of an obligation that already has a linked transaction, leaving it completely untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_9;
+
+-- 11.10 [database-security-reviewer re-verification finding]: the
+-- has_linked_transaction guard is scoped by household_id — a member of a
+-- DIFFERENT household calling set_planned_obligation_status() on a
+-- transaction-linked obligation that isn't theirs still gets not_found, not
+-- has_linked_transaction. Without this, the choice between the two error
+-- codes would let any authenticated user learn that a foreign household's
+-- obligation exists and is completed-with-a-linked-transaction.
+SAVEPOINT sp_11_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  PERFORM complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE, '5a000000-0000-0000-0000-000000000001'::uuid);
+END $$;
+RESET role;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT set_planned_obligation_status('58000000-0000-0000-0000-000000000001'::uuid, 2, 'upcoming') INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'not_found' THEN
+    RAISE EXCEPTION 'FAIL 11.10: expected not_found (not has_linked_transaction) for a foreign household''s transaction-linked obligation, got %', v_result;
+  END IF;
+  PERFORM _pass('11.10', 'set_planned_obligation_status()''s has_linked_transaction guard is scoped by household_id — a foreign household''s member gets not_found, byte-identical to an id that does not exist, never has_linked_transaction');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_10;
+
+-- 11.11 [database-security-reviewer finding]: delete_planned_obligation() on
+-- a completed obligation with a linked transaction succeeds cleanly — the
+-- transaction survives with obligation_id set to NULL (ON DELETE SET NULL),
+-- never a raw, unhandled FK-violation exception.
+SAVEPOINT sp_11_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_complete_result JSONB; v_delete_result JSONB; v_txn_id UUID;
+BEGIN
+  SELECT complete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 1, TRUE, '5a000000-0000-0000-0000-000000000001'::uuid) INTO v_complete_result;
+  v_txn_id := (v_complete_result->>'transaction_id')::uuid;
+
+  SELECT delete_planned_obligation('58000000-0000-0000-0000-000000000001'::uuid, 2) INTO v_delete_result;
+  IF NOT (v_delete_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 11.11: expected ok deleting a completed, transaction-linked obligation, got %', v_delete_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM planned_obligations WHERE id = '58000000-0000-0000-0000-000000000001') THEN
+    RAISE EXCEPTION 'FAIL 11.11: the obligation still exists after a successful delete';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM transactions WHERE id = v_txn_id AND obligation_id IS NULL) THEN
+    RAISE EXCEPTION 'FAIL 11.11: the linked transaction did not survive with obligation_id set to NULL';
+  END IF;
+  PERFORM _pass('11.11', 'delete_planned_obligation() on a completed, transaction-linked obligation succeeds cleanly (ON DELETE SET NULL) — the real transaction record survives, only the provenance link is lost');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_11_11;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 

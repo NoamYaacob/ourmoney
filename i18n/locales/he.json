@@ -368,6 +368,14 @@
       "markPaid": "סימון כשולם",
       "markPaidConfirmTitle": "סימון כשולם",
       "markPaidConfirmMessage": "ההתחייבות תסומן כשולמה ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
+      "markPaidPanel": {
+        "createTransactionLabel": "רישום תנועה בפועל",
+        "createTransactionHint": "ניתן ליצור תנועת הוצאה בהתאם לפרטי ההתחייבות ולקשר אותה אליה.",
+        "createTransactionYes": "כן, ליצור תנועה",
+        "createTransactionNo": "לא, סימון בלבד",
+        "missingAccount": "יש לבחור חשבון ליצירת התנועה",
+        "submit": "אישור סימון כשולם"
+      },
       "cancelObligation": "ביטול ההתחייבות",
       "cancelConfirmTitle": "ביטול ההתחייבות",
       "cancelConfirmMessage": "ההתחייבות תסומן כמבוטלת ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
