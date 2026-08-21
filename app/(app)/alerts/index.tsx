@@ -66,7 +66,24 @@ export default function Alerts() {
         {isLoading ? (
           <SkeletonList rows={3} />
         ) : alerts.length === 0 ? (
-          <EmptyState icon="✅" message={t('alerts.empty')} />
+          // Visual QA + Desktop Polish pass: a small icon + one line was the
+          // entire desktop page below the title — the same "reads as
+          // broken/empty" problem Budgets/Transactions' true-empty states
+          // already solved with a bounded, padded card. Mobile/tablet keep
+          // the exact original (non-compact) EmptyState, unchanged; desktop
+          // additionally wraps its own copy in a roomier bordered card.
+          // architecture-reviewer finding: an earlier version of this fix
+          // switched the mobile copy to `compact`, which would have shrunk
+          // mobile's existing empty state — not requested, and not what the
+          // comment claimed.
+          <>
+            <View className="web:desktop:hidden">
+              <EmptyState icon="✅" message={t('alerts.empty')} />
+            </View>
+            <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+              <EmptyState icon="✅" message={t('alerts.empty')} />
+            </View>
+          </>
         ) : (
           SEVERITY_GROUPS.map((group) => {
             const groupAlerts = alerts.filter((alert) => alert.severity === group.severity)

@@ -7,12 +7,22 @@
 // codebase — see features/settings/hooks/useTheme.test.tsx's identical
 // technique), restoring it in afterEach so later tests/files see the real
 // platform again.
-import { afterEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import { Platform } from 'react-native'
 import { DatePickerField } from './DatePickerField'
+import { colors } from '@/constants/colors'
+
+const mockUseColorScheme = jest.fn<() => { colorScheme: 'light' | 'dark' }>()
+jest.mock('nativewind', () => ({
+  useColorScheme: () => mockUseColorScheme(),
+}))
 
 describe('DatePickerField', () => {
+  beforeEach(() => {
+    mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
+  })
+
   afterEach(() => {
     Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true })
   })
@@ -42,6 +52,38 @@ describe('DatePickerField', () => {
       )
 
       expect(queryByRole('button')).toBeNull()
+    })
+
+    // Visual QA + Desktop Polish pass regression coverage: the web <input>
+    // previously hardcoded a light-only border and never set the CSS
+    // `colorScheme` property, so in dark mode the field's border/fill/text
+    // and the browser-chrome-rendered calendar icon/popup stayed light while
+    // the rest of the page went dark. Confirms both the light and dark
+    // branches actually read from this app's own tokens (not a hardcoded
+    // hex) and that `colorScheme` itself is set, since that's the only CSS
+    // property that can theme the native calendar icon/popup at all.
+    it('reads border/background/text colors and colorScheme from the current theme, not a hardcoded light value', async () => {
+      Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true })
+      mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
+
+      const { getByLabelText, rerender } = await render(
+        <DatePickerField label="תאריך הבא" value="2026-08-13" onChange={jest.fn()} />
+      )
+
+      const lightField = getByLabelText('תאריך הבא')
+      expect(lightField.props.style.border).toBe(`1px solid ${colors.border.light}`)
+      expect(lightField.props.style.backgroundColor).toBe(colors.surfaceMuted.light)
+      expect(lightField.props.style.color).toBe(colors.ink.light)
+      expect(lightField.props.style.colorScheme).toBe('light')
+
+      mockUseColorScheme.mockReturnValue({ colorScheme: 'dark' })
+      await rerender(<DatePickerField label="תאריך הבא" value="2026-08-13" onChange={jest.fn()} />)
+
+      const darkField = getByLabelText('תאריך הבא')
+      expect(darkField.props.style.border).toBe(`1px solid ${colors.border.dark}`)
+      expect(darkField.props.style.backgroundColor).toBe(colors.surfaceMuted.dark)
+      expect(darkField.props.style.color).toBe(colors.ink.dark)
+      expect(darkField.props.style.colorScheme).toBe('dark')
     })
   })
 

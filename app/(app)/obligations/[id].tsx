@@ -22,6 +22,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
 import { ConflictModal } from '@/components/ui/ConflictModal'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 import type { PlannedObligation } from '@/types/app'
 
 export default function ObligationDetail() {
@@ -185,7 +186,13 @@ export default function ObligationDetail() {
 
   return (
     <Screen keyboardAvoiding width="form">
-      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{obligation.name}</Text>
+      {/* architecture-reviewer finding: this base size was briefly swapped
+          to `text-title` (22px), unconditionally shrinking the existing
+          mobile header from 24px — kept as `text-2xl` (the original
+          mobile/tablet size) with only the desktop size added. */}
+      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark web:desktop:text-[26px]">
+        {obligation.name}
+      </Text>
       <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">{formatILS(obligation.amount_agorot)}</Text>
       <Text className="mb-6 text-sm text-inkMuted-light dark:text-inkMuted-dark">
         {obligation.due_date}
@@ -197,31 +204,48 @@ export default function ObligationDetail() {
         {t(`obligations.status.${obligation.status}`)}
       </Text>
 
+      {/* Visual QA + Desktop Polish pass: bounded desktop panel (same token
+          as every other screen) plus paired field rows — this screen had
+          zero responsive treatment before this pass. Mobile/tablet
+          untouched. */}
+      <View className={DESKTOP_PANEL_CLASS}>
       {isEditing ? (
         <View className="mb-2">
-          <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
           <DatePickerField label={t('obligations.form.dueDateLabel')} value={dueDate} onChange={setDueDate} />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountId}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountId}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('transactions.form.sharedLabel')}</Text>
           <View className="mb-4 flex-row gap-2">
@@ -241,8 +265,11 @@ export default function ObligationDetail() {
             <ErrorMessage message={editError ?? t('obligations.errors.generic')} />
           )}
 
+          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="web:desktop:flex-1">
           <Button title={t('obligations.detail.save')} onPress={handleSave} loading={updateObligation.isPending} />
-          <View className="mt-3">
+          </View>
+          <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
             <Button
               title={t('common.cancel')}
               variant="secondary"
@@ -253,18 +280,21 @@ export default function ObligationDetail() {
               }}
             />
           </View>
+          </View>
         </View>
       ) : (
         <>
-          <View className="mb-3">
+          <View className="mb-3 web:desktop:flex-row-reverse web:desktop:gap-2">
+            <View className="web:desktop:flex-1">
             <Button title={t('obligations.detail.edit')} variant="secondary" onPress={() => startEditing(obligation)} />
-          </View>
-
-          {obligation.status === 'upcoming' && (
-            <View className="mb-3">
-              <Button title={t('obligations.detail.markPaid')} onPress={() => setConfirmStatusAction('completed')} />
             </View>
-          )}
+
+            {obligation.status === 'upcoming' && (
+              <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+                <Button title={t('obligations.detail.markPaid')} onPress={() => setConfirmStatusAction('completed')} />
+              </View>
+            )}
+          </View>
 
           {obligation.status === 'upcoming' && (
             <View className="mb-3">
@@ -281,6 +311,7 @@ export default function ObligationDetail() {
           {actionError && <ErrorMessage message={actionError} />}
         </>
       )}
+      </View>
 
       <Modal
         visible={confirmDeleteVisible}

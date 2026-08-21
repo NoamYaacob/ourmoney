@@ -24,6 +24,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
 import { ConflictModal } from '@/components/ui/ConflictModal'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 type ConflictSource = 'edit' | 'progress' | 'delete'
 
@@ -239,14 +240,35 @@ export default function GoalDetail() {
 
   return (
     <Screen keyboardAvoiding width="form">
-      <Input label={t('savings.form.nameLabel')} value={nameText} onChangeText={setNameText} placeholder={t('savings.form.namePlaceholder')} />
-      <Input
-        label={t('savings.form.targetLabel')}
-        value={targetText}
-        onChangeText={setTargetText}
-        placeholder={t('transactions.form.amountPlaceholder')}
-        keyboardType="decimal-pad"
-      />
+      {/* Visual QA + Desktop Polish pass: this screen had no header at
+          all — the goal's own name only ever appeared inside its own
+          editable Input, matching neither the pattern every other detail
+          screen (recurring/obligations/transactions) already uses nor
+          giving a desktop reader any sense of "what am I looking at" above
+          the fold. */}
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[26px]">
+        {goal.name}
+      </Text>
+
+      {/* Visual QA + Desktop Polish pass: bounded desktop panel (same token
+          as every other screen) plus paired field rows — this screen had
+          zero responsive treatment before this pass. Mobile/tablet
+          untouched. */}
+      <View className={DESKTOP_PANEL_CLASS}>
+      <View className="web:desktop:flex-row web:desktop:gap-4">
+        <View className="web:desktop:flex-1">
+          <Input label={t('savings.form.nameLabel')} value={nameText} onChangeText={setNameText} placeholder={t('savings.form.namePlaceholder')} />
+        </View>
+        <View className="web:desktop:flex-1">
+          <Input
+            label={t('savings.form.targetLabel')}
+            value={targetText}
+            onChangeText={setTargetText}
+            placeholder={t('transactions.form.amountPlaceholder')}
+            keyboardType="decimal-pad"
+          />
+        </View>
+      </View>
       <Select
         label={t('savings.form.accountLabel')}
         options={accountOptions}
@@ -266,8 +288,10 @@ export default function GoalDetail() {
         <ErrorMessage message={editValidationError ?? t('savings.errors.generic')} />
       )}
       <Button title={t('savings.detail.save')} onPress={handleSaveEdit} loading={updateGoal.isPending} />
+      </View>
 
-      <Text className="mb-2 mt-6 text-lg text-inkMuted-light dark:text-inkMuted-dark">
+      <View className={`mt-4 ${DESKTOP_PANEL_CLASS}`}>
+      <Text className="mb-2 text-lg text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
       </Text>
       <View className="mb-6">
@@ -279,23 +303,30 @@ export default function GoalDetail() {
         </Text>
       )}
 
-      <Input
-        label={t('savings.detail.updateProgressLabel')}
-        value={progressText}
-        onChangeText={setProgressText}
-        placeholder={t('transactions.form.amountPlaceholder')}
-        keyboardType="decimal-pad"
-      />
+      <View className="web:desktop:flex-row web:desktop:items-end web:desktop:gap-4">
+        <View className="web:desktop:flex-1">
+          <Input
+            label={t('savings.detail.updateProgressLabel')}
+            value={progressText}
+            onChangeText={setProgressText}
+            placeholder={t('transactions.form.amountPlaceholder')}
+            keyboardType="decimal-pad"
+          />
+        </View>
+        <View className="web:desktop:w-[160px]">
+          <Button
+            title={t('savings.detail.updateProgressSubmit')}
+            onPress={handleUpdateProgress}
+            loading={updateProgress.isPending}
+          />
+        </View>
+      </View>
       {(validationError || updateProgress.isError) && (
         <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
       )}
-      <Button
-        title={t('savings.detail.updateProgressSubmit')}
-        onPress={handleUpdateProgress}
-        loading={updateProgress.isPending}
-      />
+      </View>
 
-      <View className="mt-6">
+      <View className="mt-4">
         <Button
           title={t('savings.detail.delete')}
           variant="ghost"

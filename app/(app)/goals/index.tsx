@@ -134,14 +134,26 @@ export default function Goals() {
 
       {isAdding ? (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
-          <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
-          <Input
-            label={t('savings.form.targetLabel')}
-            value={targetText}
-            onChangeText={setTargetText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
+          <Card>
+          {/* Visual QA + Desktop Polish pass: name+target pair into a row at
+              desktop (the same field-pairing pattern used by every other
+              add/edit form in this app), and the form now sits inside a
+              Card so it reads as one cohesive block rather than fields
+              floating loose below the list. Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('savings.form.targetLabel')}
+                value={targetText}
+                onChangeText={setTargetText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
           <Select
             label={t('savings.form.accountLabel')}
             options={accountOptions}
@@ -161,6 +173,7 @@ export default function Goals() {
             <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
           )}
           <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
+          </Card>
         </View>
       ) : (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>

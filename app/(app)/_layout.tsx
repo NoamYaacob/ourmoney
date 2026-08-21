@@ -55,9 +55,15 @@ const RAIL_GROUPS: RailGroup[] = [
       { segment: 'budgets', href: '/budgets', labelKey: 'tabs.budgets', icon: 'wallet-outline', iconActive: 'wallet' },
     ],
   },
+  // Visual QA + Desktop Polish pass: split from one 5-item "Planning &
+  // Insights" group into two smaller, more legibly-labeled groups — a
+  // real-browser screenshot review found the single group's label read as
+  // generic and didn't clearly signal that recurring charges/goals/
+  // obligations (the household's ongoing financial commitments) were in
+  // there alongside cash-flow/alerts (analytical, not commitment, screens).
   {
-    key: 'planning',
-    labelKey: 'nav.groups.planning',
+    key: 'insights',
+    labelKey: 'nav.groups.insights',
     destinations: [
       {
         segment: 'cash-flow',
@@ -67,6 +73,12 @@ const RAIL_GROUPS: RailGroup[] = [
         iconActive: 'trending-up',
       },
       { segment: 'alerts', href: '/alerts', labelKey: 'nav.alerts', icon: 'notifications-outline', iconActive: 'notifications' },
+    ],
+  },
+  {
+    key: 'obligations',
+    labelKey: 'nav.groups.obligations',
+    destinations: [
       {
         segment: 'recurring',
         href: '/recurring',

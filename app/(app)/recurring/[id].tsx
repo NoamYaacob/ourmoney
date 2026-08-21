@@ -23,6 +23,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
 import { ConflictModal } from '@/components/ui/ConflictModal'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 import type { RecurringFrequency, RecurringTransaction } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
@@ -177,7 +178,13 @@ export default function RecurringDetail() {
 
   return (
     <Screen keyboardAvoiding width="form">
-      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark">{item.description}</Text>
+      {/* architecture-reviewer finding: this base size was briefly swapped
+          to `text-title` (22px), unconditionally shrinking the existing
+          mobile header from 24px — kept as `text-2xl` (the original
+          mobile/tablet size) with only the desktop size added. */}
+      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark web:desktop:text-[26px]">
+        {item.description}
+      </Text>
       <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">
         {formatILS(item.amount_agorot)}
       </Text>
@@ -185,6 +192,14 @@ export default function RecurringDetail() {
         {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
       </Text>
 
+      {/* Visual QA + Desktop Polish pass: the whole detail/edit panel now
+          shares the same bounded desktop panel token as every other screen
+          (DESKTOP_PANEL_CLASS), and the edit form's amount/description and
+          account/category fields pair into rows at desktop — this screen
+          had zero responsive treatment before this pass, reading as a
+          stretched single-column mobile form on a wide desktop viewport.
+          Mobile/tablet are untouched. */}
+      <View className={DESKTOP_PANEL_CLASS}>
       {isEditing ? (
         <View className="mb-2">
           <View className="mb-4 flex-row gap-2">
@@ -192,33 +207,45 @@ export default function RecurringDetail() {
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
           </View>
 
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
-          <Input
-            label={t('transactions.form.descriptionLabel')}
-            value={description}
-            onChangeText={setDescription}
-            placeholder={t('transactions.form.descriptionPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountId}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.descriptionLabel')}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={t('transactions.form.descriptionPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountId}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+          </View>
           <Select
             label={t('recurring.form.frequencyLabel')}
             options={frequencyOptions}
@@ -237,8 +264,11 @@ export default function RecurringDetail() {
             <ErrorMessage message={editError ?? t('recurring.errors.generic')} />
           )}
 
+          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="web:desktop:flex-1">
           <Button title={t('recurring.detail.save')} onPress={handleSave} loading={updateRecurring.isPending} />
-          <View className="mt-3">
+          </View>
+          <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
             <Button
               title={t('common.cancel')}
               variant="secondary"
@@ -249,24 +279,29 @@ export default function RecurringDetail() {
               }}
             />
           </View>
+          </View>
         </View>
       ) : (
         <>
-          <View className="mb-3">
+          <View className="mb-3 web:desktop:flex-row-reverse web:desktop:gap-2">
+            <View className="web:desktop:flex-1">
             <Button title={t('recurring.detail.edit')} variant="secondary" onPress={() => startEditing(item)} />
-          </View>
+            </View>
 
-          {item.is_active && (
-            <Button
-              title={t('recurring.detail.skip')}
-              variant="secondary"
-              loading={skipOccurrence.isPending}
-              onPress={() => {
-                setActionError(null)
-                skipOccurrence.mutate(item.id, { onError: () => setActionError(t('recurring.errors.generic')) })
-              }}
-            />
-          )}
+            {item.is_active && (
+              <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+              <Button
+                title={t('recurring.detail.skip')}
+                variant="secondary"
+                loading={skipOccurrence.isPending}
+                onPress={() => {
+                  setActionError(null)
+                  skipOccurrence.mutate(item.id, { onError: () => setActionError(t('recurring.errors.generic')) })
+                }}
+              />
+              </View>
+            )}
+          </View>
 
           <View className="mt-3">
             <Button
@@ -304,6 +339,7 @@ export default function RecurringDetail() {
           {actionError && <ErrorMessage message={actionError} />}
         </>
       )}
+      </View>
 
       <Modal
         visible={confirmDeleteVisible}

@@ -6,11 +6,18 @@
 // differently).
 //
 // Desktop Visual/Responsive Design pass (section H): the rail grew from 4
-// flat destinations to 10, grouped by cadence (everyday / planning /
-// management) so it doesn't read as one list of equally-weighted rows. This
-// file now covers: every destination renders with the right label, the
-// group headers render (and the primary group has none), and the active
-// segment is marked selected — never a fake pixel/viewport assertion.
+// flat destinations to 10, grouped by cadence so it doesn't read as one list
+// of equally-weighted rows. Visual QA + Desktop Polish pass: the original
+// single 5-item "planning" group (cash-flow, alerts, recurring, goals,
+// obligations) was split into "insights" (cash-flow, alerts) and
+// "obligations" (recurring, goals, obligations) — a real-browser screenshot
+// review found the single group's label too generic to clearly signal that
+// the household's ongoing financial commitments lived in there, alongside
+// the analytical cash-flow/alerts screens. Four groups total now: everyday
+// (no header) / insights / obligations / management. This file covers:
+// every destination renders with the right label, the group headers render
+// (and the primary group has none), and the active segment is marked
+// selected — never a fake pixel/viewport assertion.
 //
 // Visual QA + Desktop Polish pass: the rail also grew a "פעולות מהירות"
 // (Quick Actions) block above the grouped destinations — New Transaction,
@@ -90,7 +97,7 @@ describe('DesktopSideRail', () => {
     mockPush.mockClear()
   })
 
-  it('renders exactly the 10 navigation destinations across the 3 cadence groups', async () => {
+  it('renders exactly the 10 navigation destinations across the 4 cadence groups', async () => {
     const { getByText, getAllByRole } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
     // Everyday group (no header)
@@ -98,10 +105,13 @@ describe('DesktopSideRail', () => {
     expect(getByText(i18n.t('tabs.transactions'))).toBeTruthy()
     expect(getByText(i18n.t('tabs.budgets'))).toBeTruthy()
 
-    // Planning & insights group
-    expect(getByText(i18n.t('nav.groups.planning'))).toBeTruthy()
+    // Insights group
+    expect(getByText(i18n.t('nav.groups.insights'))).toBeTruthy()
     expect(getByText(i18n.t('nav.cashFlow'))).toBeTruthy()
     expect(getByText(i18n.t('nav.alerts'))).toBeTruthy()
+
+    // Planning & obligations group
+    expect(getByText(i18n.t('nav.groups.obligations'))).toBeTruthy()
     expect(getByText(i18n.t('settings.financial.recurring'))).toBeTruthy()
     expect(getByText(i18n.t('settings.financial.goals'))).toBeTruthy()
     expect(getByText(i18n.t('settings.financial.obligations'))).toBeTruthy()

@@ -29,7 +29,8 @@
   },
   "nav": {
     "groups": {
-      "planning": "תכנון ותובנות",
+      "insights": "תובנות",
+      "obligations": "תכנון וחובות",
       "management": "ניהול"
     },
     "cashFlow": "תזרים מזומנים",

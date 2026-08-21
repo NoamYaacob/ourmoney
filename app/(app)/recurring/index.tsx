@@ -215,50 +215,74 @@ export default function Recurring() {
 
       {isAdding ? (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
           </View>
 
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
-          <Input
-            label={t('transactions.form.descriptionLabel')}
-            value={description}
-            onChangeText={setDescription}
-            placeholder={t('transactions.form.descriptionPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('recurring.form.frequencyLabel')}
-            options={frequencyOptions}
-            value={frequency}
-            onChange={(value) => setFrequency(value as RecurringFrequency)}
-            placeholder={t('recurring.form.frequencyLabel')}
-          />
-          <DatePickerField
-            label={t('recurring.form.nextDueDateLabel')}
-            value={nextDueDate}
-            onChange={setNextDueDate}
-          />
+          {/* Visual QA + Desktop Polish pass: amount+description and
+              account+category pair into rows at desktop, matching every
+              other add/edit form in this app — this form previously stayed
+              a single stretched column even inside its own width-capped
+              wrapper. Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.descriptionLabel')}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={t('transactions.form.descriptionPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('recurring.form.frequencyLabel')}
+                options={frequencyOptions}
+                value={frequency}
+                onChange={(value) => setFrequency(value as RecurringFrequency)}
+                placeholder={t('recurring.form.frequencyLabel')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <DatePickerField
+                label={t('recurring.form.nextDueDateLabel')}
+                value={nextDueDate}
+                onChange={setNextDueDate}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.form.sharedLabel')}
@@ -272,6 +296,7 @@ export default function Recurring() {
             <ErrorMessage message={validationError ?? t('recurring.errors.generic')} />
           )}
           <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
+          </Card>
         </View>
       ) : (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>

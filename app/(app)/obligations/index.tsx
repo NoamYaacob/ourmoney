@@ -252,29 +252,47 @@ export default function Obligations() {
 
       {isAdding ? (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
-          <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
+          <Card>
+          {/* Visual QA + Desktop Polish pass: name+amount and category+
+              account pair into rows at desktop, matching every other add/
+              edit form in this app — this form previously stayed a single
+              stretched column even inside its own width-capped wrapper.
+              Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
           <DatePickerField label={t('obligations.form.dueDateLabel')} value={dueDate} onChange={setDueDate} />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountIdOverride}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountIdOverride}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('transactions.form.sharedLabel')}</Text>
           <View className="mb-4 flex-row gap-2">
@@ -293,8 +311,11 @@ export default function Obligations() {
           {(validationError || createObligation.isError) && (
             <ErrorMessage message={validationError ?? t('obligations.errors.generic')} />
           )}
+          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="web:desktop:flex-1">
           <Button title={t('obligations.form.submit')} onPress={handleCreate} loading={createObligation.isPending} />
-          <View className="mt-3">
+          </View>
+          <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
             <Button
               title={t('common.cancel')}
               variant="secondary"
@@ -305,6 +326,8 @@ export default function Obligations() {
               }}
             />
           </View>
+          </View>
+          </Card>
         </View>
       ) : (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>

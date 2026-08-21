@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 const COLUMN_ROLES: CsvColumnRole[] = ['ignore', 'date', 'description', 'merchant', 'amount', 'debit', 'credit']
 const STEPS: ('pick' | 'map' | 'preview' | 'done')[] = ['pick', 'map', 'preview', 'done']
@@ -334,36 +335,46 @@ export default function TransactionsImport() {
         </View>
       )}
 
+      {/* Visual QA + Desktop Polish pass: map/preview/done now share the
+          same bounded desktop panel token as the pick step (and every other
+          screen) — previously only the pick step had any desktop framing,
+          so the wizard read as one polished screen followed by three plain
+          ones. Mobile/tablet untouched. */}
       {step === 'map' && (
-        <View>
+        <View className={DESKTOP_PANEL_CLASS}>
           <Text className="mb-2 text-sm text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.fileLabel')} {fileName}
             {detectedEncoding ? ` (${detectedEncoding})` : ''}
           </Text>
 
-          <Select
-            label={t('import.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountId}
-            placeholder={t('import.accountLabel')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('import.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountId}
+                placeholder={t('import.accountLabel')}
+              />
+            </View>
+            {/* Generic preamble tolerance (Milestone A) — no bank
+                auto-detection, just a user-specified "rows before the real
+                header" count. Re-slices fullTable, which already holds the
+                whole parsed file. */}
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('import.headerOffsetLabel')}
+                value={String(headerOffset)}
+                onChangeText={handleHeaderOffsetChange}
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
           {isLoadingExistingTransactions && (
             <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
               {t('import.checkingExistingTransactions')}
             </Text>
           )}
-
-          {/* Generic preamble tolerance (Milestone A) — no bank
-              auto-detection, just a user-specified "rows before the real
-              header" count. Re-slices fullTable, which already holds the
-              whole parsed file. */}
-          <Input
-            label={t('import.headerOffsetLabel')}
-            value={String(headerOffset)}
-            onChangeText={handleHeaderOffsetChange}
-            keyboardType="number-pad"
-          />
           <Text className="-mt-2 mb-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.headerOffsetHint')}
           </Text>
@@ -400,7 +411,7 @@ export default function TransactionsImport() {
       )}
 
       {step === 'preview' && (
-        <View className="flex-1">
+        <View className={`flex-1 ${DESKTOP_PANEL_CLASS}`}>
           <Text className="mb-4 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.previewCount', { selected: selectedCount, total: previewRows.length })}
           </Text>
@@ -447,7 +458,7 @@ export default function TransactionsImport() {
       )}
 
       {step === 'done' && (
-        <View>
+        <View className={`web:desktop:items-center ${DESKTOP_PANEL_CLASS}`}>
           <Text className="mb-4 text-base text-ink-light dark:text-ink-dark">
             {t('import.doneMessage', { count: importedCount })}
           </Text>
@@ -457,7 +468,9 @@ export default function TransactionsImport() {
             </Text>
           )}
           {commitError && <ErrorMessage message={commitError} />}
-          <Button title={t('import.backToTransactions')} onPress={() => router.back()} />
+          <View className="web:desktop:w-full web:desktop:max-w-[280px]">
+            <Button title={t('import.backToTransactions')} onPress={() => router.back()} />
+          </View>
         </View>
       )}
 
