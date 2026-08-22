@@ -191,6 +191,14 @@ INSERT INTO accounts (id, household_id, owner_id, name, type) VALUES
   ('5a000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', NULL, 'חשבון חיסכון בית 1', 'savings'),
   ('5a000000-0000-0000-0000-000000000004', '22222222-2222-2222-2222-222222222222', NULL, 'חשבון חיסכון בית 2', 'savings');
 
+-- Migration 016 (installment_plans, ADR-037) fixtures — a credit_card-type
+-- account per household; installment_plans_insert requires account_id to
+-- resolve to a credit_card account in the same household, so every Group 13
+-- test below needs one.
+INSERT INTO accounts (id, household_id, owner_id, name, type, billing_cycle_day) VALUES
+  ('5a000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', NULL, 'כרטיס אשראי בית 1', 'credit_card', 10),
+  ('5a000000-0000-0000-0000-000000000006', '22222222-2222-2222-2222-222222222222', NULL, 'כרטיס אשראי בית 2', 'credit_card', 10);
+
 DO $$ BEGIN RAISE NOTICE '=== fixtures loaded (incl. Milestone 6 financial fixtures, both households) ==='; END $$;
 
 -- ============================================================================
@@ -5333,6 +5341,305 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_12_6;
 
+-- ============================================================================
+-- Group 13 — Credit-card settlement + instalment purchases (migration 016,
+-- ADR-037). Fixtures: credit_card account 5a000000-...005 (household 1),
+-- 5a000000-...006 (household 2), added to the top-level fixture block above.
+-- ============================================================================
+
+-- 13.1: installment_plans_insert succeeds when account_id resolves to a
+-- credit_card account in the same household, and monthly_agorot's CHECK
+-- (floor division) is satisfied.
+SAVEPOINT sp_13_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'מקרר חדש', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_id;
+  IF NOT EXISTS (SELECT 1 FROM installment_plans WHERE id = v_id AND version = 1) THEN
+    RAISE EXCEPTION 'FAIL 13.1: plan was not inserted as expected';
+  END IF;
+  PERFORM _pass('13.1', 'installment_plans_insert succeeds for a credit_card account in the same household with a correctly floor-divided monthly_agorot');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_1;
+
+-- 13.2: installment_plans_insert is rejected when account_id is NOT a
+-- credit_card account (even though it belongs to the same household) —
+-- the type-coherence leg WITH CHECK cannot live anywhere but here.
+SAVEPOINT sp_13_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001', 'לא כרטיס אשראי', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 13.2: an installment plan was created against a non-credit_card account';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('13.2', 'installment_plans_insert rejects an account_id that is not a credit_card-type account in this household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_2;
+
+-- 13.3: monthly_agorot's CHECK rejects a value that is not the exact floor
+-- division of total_agorot/installment_count — the client cannot supply an
+-- arbitrary figure.
+SAVEPOINT sp_13_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'סכום שגוי', 100000, 3, 40000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 13.3: a mismatched monthly_agorot was accepted';
+  EXCEPTION WHEN check_violation THEN
+    PERFORM _pass('13.3', 'the monthly_agorot CHECK rejects a value that is not floor(total_agorot / installment_count)');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_3;
+
+-- 13.4: direct client UPDATE/DELETE on installment_plans rejected at the
+-- grant level (mirrors 10.13/10.14, Group 10's planned_obligations test).
+SAVEPOINT sp_13_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'מקרר חדש', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_id;
+
+  BEGIN
+    UPDATE installment_plans SET description = 'עקיפה' WHERE id = v_id;
+    RAISE EXCEPTION 'FAIL 13.4a: a direct client UPDATE on installment_plans was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    DELETE FROM installment_plans WHERE id = v_id;
+    RAISE EXCEPTION 'FAIL 13.4b: a direct client DELETE on installment_plans was allowed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  PERFORM _pass('13.4', 'direct client UPDATE and DELETE on installment_plans are both rejected at the grant level — only update_installment_plan()/delete_installment_plan() may mutate it');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_4;
+
+-- 13.5/13.6: update_installment_plan() — identity fields change, version
+-- advances; a stale expected_version returns conflict, unchanged.
+SAVEPOINT sp_13_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_id UUID; v_result JSONB;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'מקרר ישן', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_id;
+
+  SELECT update_installment_plan(v_id, 1, 'מקרר חדש', 'איקאה', NULL, FALSE) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 13.5: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM installment_plans WHERE id = v_id AND description = 'מקרר חדש' AND is_shared = FALSE AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 13.5: row was not actually updated';
+  END IF;
+  PERFORM _pass('13.5', 'update_installment_plan() with the correct expected_version applies the identity-field update and advances version 1 -> 2');
+
+  SELECT update_installment_plan(v_id, 1, 'עדכון מיושן', NULL, NULL, TRUE) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'conflict' THEN
+    RAISE EXCEPTION 'FAIL 13.6: expected conflict for a stale expected_version, got %', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM installment_plans WHERE id = v_id AND description = 'מקרר חדש' AND version = 2) THEN
+    RAISE EXCEPTION 'FAIL 13.6: the stale write leaked through';
+  END IF;
+  PERFORM _pass('13.6', 'update_installment_plan() with a stale expected_version returns conflict and leaves the row untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_5;
+
+-- 13.7 [design-stage review finding]: a direct client INSERT into
+-- transactions with installment_plan_id already set is rejected —
+-- installment_plan_id can only ever be set by
+-- generate_installment_transactions(). Mirrors 11.7's obligation_id test.
+SAVEPOINT sp_13_7;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_plan_id UUID;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'מקרר חדש', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_plan_id;
+
+  BEGIN
+    INSERT INTO transactions (household_id, account_id, category_id, installment_plan_id, installment_index, amount_agorot, description, txn_date, created_by)
+    VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', '5c000000-0000-0000-0000-000000000001', v_plan_id, 1, -100000, 'עוקף', CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    RAISE EXCEPTION 'FAIL 13.7: a direct client INSERT linked a transaction to an installment plan';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('13.7', 'a direct client INSERT attempting to set installment_plan_id on a transaction is rejected — only generate_installment_transactions() may link a transaction to an instalment');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_7;
+
+-- 13.8 [design-stage review finding]: a direct client UPDATE attaching
+-- installment_plan_id to an ordinary, previously-unlinked transaction is
+-- rejected (WITH CHECK violation on the new row) — mirrors 11.8's
+-- obligation_id test (attach direction fails WITH CHECK, not a silent
+-- no-op, since the OLD row's installment_plan_id IS NULL passes USING).
+SAVEPOINT sp_13_8;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_plan_id UUID;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'מקרר חדש', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_plan_id;
+
+  BEGIN
+    UPDATE transactions SET installment_plan_id = v_plan_id, installment_index = 1 WHERE id = '5f000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 13.8: a direct UPDATE linked an ordinary transaction to an installment plan';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('13.8', 'a direct client UPDATE attempting to set installment_plan_id on an ordinary transaction is rejected — only generate_installment_transactions() may link a transaction to an instalment');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_8;
+
+-- 13.9: generate_installment_transactions() materializes every due
+-- instalment in one call (catch-up, mirroring generate_recurring_
+-- transactions()), the last instalment absorbs the floor-division
+-- remainder, and sum(materialized instalments) == total_agorot exactly for
+-- a non-evenly-divisible pair (100000 / 3).
+SAVEPOINT sp_13_9;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_plan_id UUID; v_result JSONB; v_count INT; v_sum BIGINT; v_last_amount BIGINT;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, category_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, is_shared, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', '5c000000-0000-0000-0000-000000000001', 'מזגן', 100000, 3, 33333, (CURRENT_DATE - INTERVAL '2 months')::date, TRUE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_plan_id;
+
+  SELECT generate_installment_transactions() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 13.9: expected ok, got %', v_result;
+  END IF;
+
+  SELECT count(*), sum(-amount_agorot) INTO v_count, v_sum
+  FROM transactions WHERE installment_plan_id = v_plan_id;
+  IF v_count <> 3 THEN
+    RAISE EXCEPTION 'FAIL 13.9: expected all 3 due instalments materialized in one catch-up call, got %', v_count;
+  END IF;
+  IF v_sum <> 100000 THEN
+    RAISE EXCEPTION 'FAIL 13.9: expected sum(instalments) = total_agorot (100000), got %', v_sum;
+  END IF;
+
+  SELECT -amount_agorot INTO v_last_amount FROM transactions WHERE installment_plan_id = v_plan_id AND installment_index = 3;
+  IF v_last_amount <> 33334 THEN
+    RAISE EXCEPTION 'FAIL 13.9: expected the last instalment to absorb the remainder (33334), got %', v_last_amount;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM transactions
+    WHERE installment_plan_id = v_plan_id AND category_id = '5c000000-0000-0000-0000-000000000001'
+      AND account_id = '5a000000-0000-0000-0000-000000000005' AND is_shared = TRUE AND source = 'manual'
+  ) THEN
+    RAISE EXCEPTION 'FAIL 13.9: materialized instalments did not correctly inherit the plan''s category/account/is_shared, or used a widened source value';
+  END IF;
+
+  PERFORM _pass('13.9', 'generate_installment_transactions() materializes every due instalment in one catch-up call; the last instalment absorbs the floor-division remainder so sum(instalments) == total_agorot exactly; each row inherits the plan''s category/account/is_shared and keeps source=''manual''');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_9;
+
+-- 13.10: cross-household D2 coherence — a household 2 member cannot create
+-- an installment plan referencing household 1's credit_card account or
+-- category.
+SAVEPOINT sp_13_10;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+    VALUES ('22222222-2222-2222-2222-222222222222', '5a000000-0000-0000-0000-000000000005', 'חשבון חוצה בית', 300000, 3, 100000, CURRENT_DATE, 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+    RAISE EXCEPTION 'FAIL 13.10: household 2 could reference household 1''s credit_card account';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('13.10', 'installment_plans_insert rejects an account_id belonging to a different household (D2 coherence)');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_10;
+
+-- 13.11: delete_installment_plan() — a materialized instalment survives
+-- with installment_plan_id set to NULL (ON DELETE SET NULL), never a raw
+-- FK-violation exception, matching matched_rule_id/obligation_id's
+-- precedent.
+SAVEPOINT sp_13_11;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_plan_id UUID; v_txn_id UUID; v_delete_result JSONB;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'מקרר חדש', 300000, 3, 100000, CURRENT_DATE, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  RETURNING id INTO v_plan_id;
+
+  PERFORM generate_installment_transactions();
+  SELECT id INTO v_txn_id FROM transactions WHERE installment_plan_id = v_plan_id AND installment_index = 1;
+
+  SELECT delete_installment_plan(v_plan_id, 1) INTO v_delete_result;
+  IF NOT (v_delete_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 13.11: expected ok deleting a plan with a materialized instalment, got %', v_delete_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM transactions WHERE id = v_txn_id AND installment_plan_id IS NULL AND installment_index IS NULL) THEN
+    RAISE EXCEPTION 'FAIL 13.11: the materialized instalment did not survive with installment_plan_id/installment_index set to NULL';
+  END IF;
+  PERFORM _pass('13.11', 'delete_installment_plan() on a plan with a materialized instalment succeeds cleanly (ON DELETE SET NULL) — the real transaction survives, only the provenance link and index are lost');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_11;
+
+-- 13.12 [database-security-reviewer finding]: leave_household() nulls
+-- installment_plans.created_by for a departing member of a continuing
+-- household — regression test for the fix baked into migration 016 §7
+-- (mirrors 8.6's identical check for transactions.created_by).
+SAVEPOINT sp_13_12;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_plan_id UUID; v_result JSONB; v_created_by UUID;
+BEGIN
+  INSERT INTO installment_plans (household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by)
+  VALUES ('11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000005', 'תוכנית של B', 300000, 3, 100000, CURRENT_DATE, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+  RETURNING id INTO v_plan_id;
+
+  SELECT leave_household() INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 13.12: expected leave_household() to succeed, got %', v_result;
+  END IF;
+
+  SELECT created_by INTO v_created_by FROM installment_plans WHERE id = v_plan_id;
+  IF v_created_by IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 13.12: installment_plans.created_by was not nulled for the departing member, got %', v_created_by;
+  END IF;
+  PERFORM _pass('13.12', 'leave_household() nulls installment_plans.created_by for a departing member of a continuing household, matching every other financial-table created_by column');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_13_12;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 
@@ -5439,7 +5746,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008; Group 10 optimistic concurrency protection, migration 009) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008; Group 10 optimistic concurrency protection, migration 009; Group 11 obligation-transaction link, migration 012; Group 12 savings goal progress source, migration 015; Group 13 credit-card + installment plans, migration 016, minus INSTALLMENT.CONCURRENT) ===', v_total;
 END $$;
 
 ROLLBACK;
@@ -5668,6 +5975,86 @@ DELETE FROM households WHERE id = '77777777-7777-7777-7777-777777777777';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000020', 'f0000000-0000-0000-0000-000000000021');
 
 -- ============================================================================
+-- Test INSTALLMENT.CONCURRENT — true concurrency: two members of the SAME
+-- household call generate_installment_transactions() at the same time for
+-- the same due plan (migration 016 / ADR-037). Same shape as RECURRING.
+-- CONCURRENT above — required by database-security-reviewer's design-stage
+-- finding: without the FOR UPDATE row lock on installment_plans in
+-- generate_installment_transactions(), two concurrent calls could both read
+-- "0 of 3 materialized" and both insert installment_index = 1, double-
+-- counting one real expense — precisely the invariant this whole milestone
+-- exists to protect.
+-- ============================================================================
+
+INSERT INTO auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+) VALUES
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000030', 'authenticated', 'authenticated', 'race-installment-1@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Race Installment 1"}', NOW(), NOW(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'f0000000-0000-0000-0000-000000000031', 'authenticated', 'authenticated', 'race-installment-2@test.local', crypt('Test123!', gen_salt('bf')), NOW(), '{"provider":"email","providers":["email"]}', '{"display_name":"Race Installment 2"}', NOW(), NOW(), '', '', '', '');
+
+INSERT INTO households (id, name, created_by) VALUES
+  ('66666666-6666-6666-6666-666666666666', 'בית מרוץ תשלומים', 'f0000000-0000-0000-0000-000000000030');
+INSERT INTO household_members (household_id, user_id, role) VALUES
+  ('66666666-6666-6666-6666-666666666666', 'f0000000-0000-0000-0000-000000000030', 'admin'),
+  ('66666666-6666-6666-6666-666666666666', 'f0000000-0000-0000-0000-000000000031', 'member');
+INSERT INTO accounts (id, household_id, name, type) VALUES
+  ('6a000000-0000-0000-0000-000000000001', '66666666-6666-6666-6666-666666666666', 'כרטיס מרוץ תשלומים', 'credit_card');
+INSERT INTO installment_plans (id, household_id, account_id, description, total_agorot, installment_count, monthly_agorot, first_charge_date, created_by) VALUES
+  ('6e000000-0000-0000-0000-000000000001', '66666666-6666-6666-6666-666666666666', '6a000000-0000-0000-0000-000000000001', 'מזגן מרוץ', 300000, 3, 100000, CURRENT_DATE, 'f0000000-0000-0000-0000-000000000030');
+
+DO $$
+DECLARE
+  v_r1 JSONB;
+  v_r2 JSONB;
+  v_txn_count INT;
+BEGIN
+  PERFORM dblink_connect('conn1', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+  PERFORM dblink_connect('conn2', 'host=db port=5432 dbname=postgres user=postgres password=postgres');
+
+  PERFORM dblink_exec('conn1', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn1', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000030","role":"authenticated"}'$q$);
+  PERFORM dblink_exec('conn2', 'SET ROLE authenticated');
+  PERFORM dblink_exec('conn2', $q$SET request.jwt.claims = '{"sub":"f0000000-0000-0000-0000-000000000031","role":"authenticated"}'$q$);
+
+  -- Both household members race generate_installment_transactions() for
+  -- the SAME due plan at the same time.
+  PERFORM dblink_send_query('conn1', $q$SELECT generate_installment_transactions()$q$);
+  PERFORM dblink_send_query('conn2', $q$SELECT generate_installment_transactions()$q$);
+
+  SELECT res INTO v_r1 FROM dblink_get_result('conn1') AS t(res JSONB);
+  SELECT res INTO v_r2 FROM dblink_get_result('conn2') AS t(res JSONB);
+  PERFORM dblink_get_result('conn1');
+  PERFORM dblink_get_result('conn2');
+
+  PERFORM dblink_disconnect('conn1');
+  PERFORM dblink_disconnect('conn2');
+
+  SELECT count(*) INTO v_txn_count FROM transactions WHERE installment_plan_id = '6e000000-0000-0000-0000-000000000001';
+
+  IF v_txn_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL INSTALLMENT.CONCURRENT: expected exactly 1 transaction generated (installment_index=1) from two concurrent calls, got % (r1=%, r2=%)', v_txn_count, v_r1, v_r2;
+  END IF;
+  IF EXISTS (
+    SELECT installment_index FROM transactions WHERE installment_plan_id = '6e000000-0000-0000-0000-000000000001'
+    GROUP BY installment_index HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'FAIL INSTALLMENT.CONCURRENT: two transactions were generated with the same installment_index';
+  END IF;
+
+  RAISE NOTICE 'PASS INSTALLMENT.CONCURRENT: two concurrent generate_installment_transactions() calls from different household members on the same due plan => exactly one instalment materialized, no duplicate installment_index';
+END $$;
+
+-- Cleanup — real DELETEs, since this section committed its own fixture.
+DELETE FROM transactions WHERE installment_plan_id = '6e000000-0000-0000-0000-000000000001';
+DELETE FROM installment_plans WHERE id = '6e000000-0000-0000-0000-000000000001';
+DELETE FROM accounts WHERE id = '6a000000-0000-0000-0000-000000000001';
+DELETE FROM household_members WHERE household_id = '66666666-6666-6666-6666-666666666666';
+DELETE FROM households WHERE id = '66666666-6666-6666-6666-666666666666';
+DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000030', 'f0000000-0000-0000-0000-000000000031');
+
+-- ============================================================================
 -- Test DELETE_ACCOUNT.CONCURRENT — true concurrency: the two members of a
 -- 2-person household both call delete_own_account() at the same moment.
 -- Milestone 9 — the specific scenario database-security-reviewer found a
@@ -5845,4 +6232,4 @@ DELETE FROM household_members WHERE household_id = '55555555-5555-5555-5555-5555
 DELETE FROM households WHERE id = '55555555-5555-5555-5555-555555555555';
 DELETE FROM auth.users WHERE id IN ('f0000000-0000-0000-0000-000000000050', 'f0000000-0000-0000-0000-000000000051');
 
-DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + DELETE_ACCOUNT.CONCURRENT + LEAVE.CONCURRENT) ==='; END $$;
+DO $$ BEGIN RAISE NOTICE '=== ALL RLS TESTS PASSED (main transaction + 5.9 + ADR-020-race + RECURRING.CONCURRENT + INSTALLMENT.CONCURRENT + DELETE_ACCOUNT.CONCURRENT + LEAVE.CONCURRENT) ==='; END $$;

@@ -1742,6 +1742,115 @@ call's result.
 
 ---
 
+## ADR-037
+### Hard-attach FK columns (`obligation_id`, `installment_plan_id`): a named pattern, and credit-card/instalment modeling built on it
+
+**Status:** Accepted
+
+**Context.** [ADR-035](#adr-035) established the mechanism — an existing RLS policy widened to require
+`some_fk IS NULL` in both `USING` and `WITH CHECK`, so only a `SECURITY DEFINER` RPC bypassing that RLS
+can ever set the column — for `transfer_id`. Migration 012 (`supabase/migrations/012_obligation_transaction_link.sql`)
+reused the identical mechanism for `transactions.obligation_id`, but no ADR was ever written for it — a
+citation gap an architecture-reviewer pass for this ADR's own milestone found by grepping `docs/DECISIONS.md`
+for `obligation_id`/`complete_planned_obligation` and getting zero matches. This ADR closes that gap
+retroactively and, in the same document, records the design for this milestone's own use of the pattern:
+`transactions.installment_plan_id`, added by `supabase/migrations/016_installment_plans.sql` for
+first-class credit-card instalment purchases (Phases B/C of the Israeli-household product-evolution
+audit). Both are recorded together because they are the same decision applied twice, not two decisions.
+
+**Decision.**
+
+1. **The hard-attach pattern, named:** a nullable FK column on `transactions` (`transfer_id`,
+   `obligation_id`, now `installment_plan_id`) whose owning RLS policies (`transactions_insert`/`_update`)
+   require it `IS NULL` — in `WITH CHECK` for INSERT, and in **both** `USING` and `WITH CHECK` for UPDATE
+   (the `USING` half matters independently: without it, a single `UPDATE transactions SET some_fk = NULL,
+   amount_agorot = ... WHERE id = <a linked row>` would detach and mutate a protected row in one
+   statement). The column can only ever be set by one specific `SECURITY DEFINER` function that bypasses
+   this RLS for its own write. Use this pattern — not a softer D2-style household-coherence `WITH CHECK`
+   leg — whenever the FK's presence is itself an economic assertion ("this row is the recognized
+   settlement of that transfer/obligation/instalment") rather than mere provenance/grouping metadata
+   (`matched_rule_id`, `recurring_id`, `payer_id` stay on the softer coherence-check pattern deliberately —
+   attributing a transaction to the wrong rule or recurring template is a correctness nuisance, not a
+   double-counted expense).
+2. **`generate_installment_transactions()` is `SECURITY DEFINER`, unlike `generate_recurring_transactions()`
+   (migration 003, `SECURITY INVOKER`).** This is not an inconsistency — it is the direct consequence of
+   point 1. `recurring_id` uses the softer coherence check, so a `SECURITY INVOKER` function running under
+   the caller's own RLS can set it. `installment_plan_id` uses the hard-attach pattern (point 1), so only a
+   `SECURITY DEFINER` bypass can set it at all, mirroring `complete_planned_obligation()`'s reasoning
+   exactly. A future reader adding a new generator function should pick INVOKER or DEFINER by asking which
+   attach pattern its own new FK column uses — not by copying whichever precedent happens to be nearest in
+   the file.
+3. **Financial-figure columns on `installment_plans` (`account_id`, `total_agorot`, `installment_count`,
+   `monthly_agorot`, `first_charge_date`) are permanently immutable once a plan exists** —
+   `update_installment_plan()` can only ever change `description`/`merchant_name`/`category_id`/
+   `is_shared`. A database-security-reviewer pass for this milestone required at minimum a guard blocking
+   these fields once any instalment has materialized; this decision goes further and makes them
+   unconditionally immutable, which trivially satisfies that requirement (an unconditional block is a
+   strict subset of a conditional one) while staying simpler to reason about and test. A mis-entered plan
+   is deleted and recreated, not edited — the same correction path a real תשלומים plan needs in the real
+   world.
+4. **No `card_statements` table, no `transactions.statement_id` column.** A credit-card statement's
+   period and next-charge date are fully re-derivable from a new `accounts.billing_cycle_day` (nullable
+   `INTEGER CHECK (billing_cycle_day BETWEEN 1 AND 28)`, credit-card-only by app-layer convention — Postgres
+   cannot express a cross-table CHECK, the same limitation `installment_plans_insert`'s own account-type
+   coherence leg already lives with). "Current cycle spend" is `WHERE account_id = ... AND txn_date BETWEEN
+   period_start AND period_end`, computed at query time, never persisted — the same "compute live, never
+   persist" discipline `features/accounts/lib/computeAccountBalances.ts` and, this same milestone,
+   `features/savings/lib/goalProgress.ts` (linked savings-goal progress, [ADR-036](#adr-036)'s migration
+   015 companion) already establish. A stored, client-writable `period_start`/`period_end` with no overlap
+   constraint would have been a fabricable-figure surface for zero engine benefit.
+5. **Settlement of a credit-card statement (the bank debiting checking for the aggregated total) is an
+   ordinary internal transfer ([ADR-035](#adr-035)), not a new mechanism.** A credit-card purchase is
+   already a real, categorized `transactions` row on the credit-card account the moment it happens — the
+   expense is recognized once, then. The later bank debit moves money between two of the household's own
+   accounts and is modeled exactly as any other transfer: `transfer_id IS NOT NULL` rows are already
+   excluded from every expense/budget/Safe-to-Spend query, so this needs zero engine changes and cannot
+   double-count the purchase. This is the concrete resolution of the governing invariant for this
+   milestone: *a purchase is an expense once; moving money between internal accounts, paying a
+   credit-card statement, or settling an already-recognized obligation must never create a second expense.*
+6. **Not-yet-materialized instalments are forecast-only, never pre-inserted.** `generate_installment_transactions()`
+   only ever materializes an instalment whose charge date (`first_charge_date + (index - 1) months`) has
+   already arrived, row-locking each household's `installment_plans` rows first (`FOR UPDATE ORDER BY id`,
+   identical discipline to `generate_recurring_transactions()`) so two concurrent calls cannot both insert
+   the same `installment_index` and double-count one real expense. A future `installment_index` is a pure
+   computed number (`lib/engines/cashflow/forecastInstallmentOccurrences.ts`, extending
+   `calculateSafeToSpend.ts`/`calculateCashFlowForecast.ts` the same way `forecastRecurringOccurrences.ts`
+   already does — no parallel engine), never a transaction, never summed into realized spending. The final
+   instalment absorbs the floor-division remainder (`monthly_agorot = total_agorot / installment_count`,
+   enforced by a `CHECK` so the client cannot supply a mismatched value; the last instalment's actual
+   amount, `total_agorot - monthly_agorot * (installment_count - 1)`, is computed inside the generator, not
+   trusted from a stored field) — `sum(all materialized instalments)` always equals `total_agorot` exactly,
+   with no float division anywhere.
+7. **`installment_plans.created_by` is nullable + `ON DELETE SET NULL` from creation** — not retrofitted
+   later, the same discipline point 6 of [ADR-035](#adr-035) established for `transfers.created_by`.
+   `leave_household()`/`delete_own_account()` are re-created in migration 016 (immutable-history
+   convention) with one added statement each, nulling `installment_plans.created_by` for a departing
+   member of a continuing household.
+8. **`source` stays `'manual'` for generated instalment transactions** — the existing `source` `CHECK`
+   (`'manual'`/`'csv_import'`/`'recurring'`) is not widened, matching migration 008 (transfer legs) and
+   migration 012 (obligation-linked transactions)'s identical choice: `installment_plan_id IS NOT NULL` is
+   itself the complete, sufficient signal, and widening a `CHECK` for a value nothing currently reads is
+   speculative.
+
+**Consequences.** No changes to `calculateSafeToSpend.ts`/`calculateCashFlowForecast.ts`'s existing
+formulas — both gain one new forecast input source (instalment occurrences) the same way they already
+compose recurring occurrences and planned obligations, and both already treat transfers as invisible by
+construction (point 5). No `card_statements`/`transactions.statement_id` surface exists to review, test,
+or keep coherent going forward — deliberately smaller than `docs/DATABASE_SCHEMA.md`'s original "Future
+model — installments" sketch (resolved by [Q18](#open-questions)) in exactly these two ways.
+
+**Related:** [ADR-029](#adr-029) (transaction identity invariants — a materialized instalment is still
+"one row = one movement of money," never a lump-sum row), [ADR-012](#adr-012) (deterministic financial
+logic — the remainder-resolution rule is a pure, reproducible function, never inferred), [ADR-013](
+#adr-013) (no new domain event type needed — a settlement transfer already emits `transfer.created`),
+[ADR-023](#adr-023) (structural RLS guards, inline household scoping — every new RPC follows this),
+[ADR-032](#adr-032)/[ADR-034](#adr-034)/[ADR-035](#adr-035)/[ADR-036](#adr-036) (the `SECURITY DEFINER`
+RPC, hard-attach RLS, and optimistic-concurrency conventions this design reuses throughout). See
+`supabase/migrations/012_obligation_transaction_link.sql` (the pattern's first use) and
+`supabase/migrations/016_installment_plans.sql` (this milestone's implementation).
+
+---
+
 ## Release versioning convention
 
 Not an ADR (no architectural reversal is at stake) — documented here, alongside the ADRs, because no
