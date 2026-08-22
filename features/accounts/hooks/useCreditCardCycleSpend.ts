@@ -20,7 +20,7 @@ export function useCreditCardCycleSpend(accountId: string | null | undefined, bi
     queryFn: async () => {
       const { data, error } = await supabase
         .from('transactions')
-        .select('amount_agorot, txn_date, transfer_id')
+        .select('amount_agorot, txn_date, transfer_id, is_excluded')
         .eq('account_id', accountId as string)
       if (error) throw error
       return data

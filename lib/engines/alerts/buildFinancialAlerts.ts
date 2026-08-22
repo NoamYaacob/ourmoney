@@ -50,6 +50,7 @@
 
 import i18n from '@/i18n'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import type { CashFlowForecastResult } from '../cashflow/calculateCashFlowForecast'
 import type { PlannedObligationForecastInput } from '../cashflow/calculateSafeToSpend'
 import type { PriceIncreaseDetection } from '@/features/recurring/lib/priceIncreaseDetection'
@@ -140,7 +141,7 @@ function buildForecastShortfallAlert(
     severity: forecastShortfallSeverity(daysUntil),
     title: i18n.t('alerts.forecastShortfall.title'),
     description: i18n.t('alerts.forecastShortfall.description', {
-      date: forecast.firstShortfallDate,
+      date: formatDateDisplay(forecast.firstShortfallDate),
       amount: formatILS(shortfallAgorot),
     }),
     date: forecast.firstShortfallDate,
@@ -178,7 +179,7 @@ function buildObligationAlerts(
       title,
       description: i18n.t('alerts.upcomingObligation.description', {
         amount: formatILS(obligation.amountAgorot),
-        date: obligation.dueDate,
+        date: formatDateDisplay(obligation.dueDate),
       }),
       date: obligation.dueDate,
       amountAgorot: obligation.amountAgorot,

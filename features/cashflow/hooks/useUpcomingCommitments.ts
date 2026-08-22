@@ -39,15 +39,15 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
     .map((a) => a.id)
 
   // Lean, dedicated query (account_id/amount_agorot/txn_date/transfer_id/
-  // is_shared only) — deliberately NOT useTransactions' full-row household
-  // query: this hook only ever needs credit-card accounts' own rows to
-  // compute their current cycle's spend.
+  // is_shared/is_excluded only) — deliberately NOT useTransactions' full-row
+  // household query: this hook only ever needs credit-card accounts' own
+  // rows to compute their current cycle's spend.
   const creditCardTransactions = useQuery({
     queryKey: upcomingCommitmentsCreditCardTransactionsQueryKey(householdId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('transactions')
-        .select('account_id, amount_agorot, txn_date, transfer_id, is_shared')
+        .select('account_id, amount_agorot, txn_date, transfer_id, is_shared, is_excluded')
         .eq('household_id', householdId as string)
         .in('account_id', creditCardAccountIds)
       if (error) throw error
@@ -124,6 +124,7 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
                   amount_agorot: t.amount_agorot,
                   txn_date: t.txn_date,
                   transfer_id: t.transfer_id,
+                  is_excluded: t.is_excluded,
                   isShared: t.is_shared,
                 })),
             })),

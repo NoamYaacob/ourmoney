@@ -81,6 +81,17 @@ export interface CycleSpendTransaction {
   amount_agorot: number
   txn_date: string
   transfer_id: string | null
+  // A household-excluded transaction (e.g. a reimbursed purchase) is not
+  // real spend for ANY financial figure in this app —
+  // features/analytics/lib/analyticsTransaction.ts's filterForAnalytics
+  // (budget progress, category baselines) already drops these; this cycle
+  // total must agree, so a household's "current cycle spend" reads the same
+  // whether it's shown here, in a high-cycle-spend alert, or in the "next
+  // 30 days" commitments summary. Does NOT change which DATES belong to a
+  // cycle (getCurrentBillingCycleRange/getPreviousBillingCycleRange are
+  // untouched) — only which transactions WITHIN that cycle count toward the
+  // total.
+  is_excluded: boolean
 }
 
 // Excludes transfer legs (transfer_id IS NOT NULL) — a statement payment is
@@ -88,11 +99,20 @@ export interface CycleSpendTransaction {
 // landing on the card as a positive amount; it is money paid TOWARD the
 // card, never a purchase, and must never appear as "spend." Only negative
 // (expense) amounts count, same as every other spend total in this app.
+// Also excludes is_excluded rows, matching filterForAnalytics's own
+// convention (see the field's own doc comment above).
 export function computeCurrentCycleSpendAgorot(
   transactions: readonly CycleSpendTransaction[],
   range: CreditCardCycleRange
 ): number {
   return transactions
-    .filter((t) => t.transfer_id === null && t.amount_agorot < 0 && t.txn_date >= range.start && t.txn_date <= range.end)
+    .filter(
+      (t) =>
+        t.transfer_id === null &&
+        !t.is_excluded &&
+        t.amount_agorot < 0 &&
+        t.txn_date >= range.start &&
+        t.txn_date <= range.end
+    )
     .reduce((sum, t) => sum - t.amount_agorot, 0)
 }

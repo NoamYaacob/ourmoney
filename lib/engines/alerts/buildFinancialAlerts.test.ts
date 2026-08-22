@@ -125,6 +125,12 @@ describe('buildFinancialAlerts', () => {
     expect(alerts[0]?.severity).toBe('warning')
   })
 
+  it('formats the due date in the description as DD.MM.YYYY, never the raw ISO string', () => {
+    const alerts = buildFinancialAlerts(baseInput({ obligations: [obligation({ dueDate: '2026-08-19' })] }))
+    expect(alerts[0]?.description).toContain('19.08.2026')
+    expect(alerts[0]?.description).not.toContain('2026-08-19')
+  })
+
   it('produces an info alert for an obligation due in 7 days', () => {
     const alerts = buildFinancialAlerts(baseInput({ obligations: [obligation({ dueDate: '2026-08-23' })] }))
     expect(alerts[0]?.severity).toBe('info')
@@ -153,6 +159,14 @@ describe('buildFinancialAlerts', () => {
     expect(alerts[0]?.type).toBe('forecast_shortfall')
     expect(alerts[0]?.severity).toBe('critical')
     expect(alerts[0]?.amountAgorot).toBe(12400)
+  })
+
+  it('formats the shortfall date in the description as DD.MM.YYYY, never the raw ISO string', () => {
+    const alerts = buildFinancialAlerts(
+      baseInput({ forecast: forecast({ firstShortfallDate: '2026-08-18', lowestBalanceAgorot: -12400 }) })
+    )
+    expect(alerts[0]?.description).toContain('18.08.2026')
+    expect(alerts[0]?.description).not.toContain('2026-08-18')
   })
 
   it('reports the balance on firstShortfallDate itself, not the horizon-wide lowest balance', () => {
@@ -338,8 +352,8 @@ describe('buildFinancialAlerts', () => {
           creditCardCycles: [
             creditCardCycleAccount({
               transactions: [
-                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null }, // previous cycle: ₪1000
-                { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null }, // current cycle: ₪1400
+                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false }, // previous cycle: ₪1000
+                { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // current cycle: ₪1400
               ],
             }),
           ],
@@ -357,8 +371,8 @@ describe('buildFinancialAlerts', () => {
           creditCardCycles: [
             creditCardCycleAccount({
               transactions: [
-                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-                { amount_agorot: -200000, txn_date: '2026-08-12', transfer_id: null }, // ₪2000, +100%
+                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+                { amount_agorot: -200000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // ₪2000, +100%
               ],
             }),
           ],
@@ -372,7 +386,7 @@ describe('buildFinancialAlerts', () => {
         baseInput({
           creditCardCycles: [
             creditCardCycleAccount({
-              transactions: [{ amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null }],
+              transactions: [{ amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }],
             }),
           ],
         })
@@ -386,8 +400,8 @@ describe('buildFinancialAlerts', () => {
           creditCardCycles: [
             creditCardCycleAccount({
               transactions: [
-                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-                { amount_agorot: -110000, txn_date: '2026-08-12', transfer_id: null }, // +10%, ₪100 excess
+                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+                { amount_agorot: -110000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // +10%, ₪100 excess
               ],
             }),
           ],

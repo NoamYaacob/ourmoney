@@ -130,7 +130,12 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
             billingCycleDay: account.billing_cycle_day as number,
             transactions: recentTransactions.transactions
               .filter((t) => t.account_id === account.id)
-              .map((t) => ({ amount_agorot: t.amount_agorot, txn_date: t.txn_date, transfer_id: t.transfer_id })),
+              .map((t) => ({
+                amount_agorot: t.amount_agorot,
+                txn_date: t.txn_date,
+                transfer_id: t.transfer_id,
+                is_excluded: t.is_excluded,
+              })),
           })),
     categorySpend:
       recentTransactions.error || categories.error

@@ -179,8 +179,8 @@ describe('buildUpcomingCommitments', () => {
         creditCardAccounts: [
           creditCardAccount({
             transactions: [
-              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, isShared: true },
-              { amount_agorot: -10000, txn_date: '2026-08-13', transfer_id: null, isShared: false },
+              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false, isShared: true },
+              { amount_agorot: -10000, txn_date: '2026-08-13', transfer_id: null, is_excluded: false, isShared: false },
             ],
           }),
         ],
@@ -198,14 +198,32 @@ describe('buildUpcomingCommitments', () => {
     expect(items.filter((i) => i.source === 'credit_card_cycle')).toEqual([])
   })
 
+  it('excludes a household-excluded transaction (e.g. a reimbursed purchase) from the credit card cycle total and its shared/personal split', () => {
+    const items = buildUpcomingCommitments(
+      baseInput({
+        creditCardAccounts: [
+          creditCardAccount({
+            transactions: [
+              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false, isShared: true },
+              { amount_agorot: -30000, txn_date: '2026-08-13', transfer_id: null, is_excluded: true, isShared: true },
+            ],
+          }),
+        ],
+      })
+    )
+    const cardItem = items.find((i) => i.source === 'credit_card_cycle')
+    expect(cardItem?.amountAgorot).toBe(20000)
+    expect(cardItem?.sharedAgorot).toBe(20000)
+  })
+
   it('excludes a statement-payment transfer leg from the credit card cycle total', () => {
     const items = buildUpcomingCommitments(
       baseInput({
         creditCardAccounts: [
           creditCardAccount({
             transactions: [
-              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, isShared: true },
-              { amount_agorot: 50000, txn_date: '2026-08-13', transfer_id: 'transfer-1', isShared: true },
+              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false, isShared: true },
+              { amount_agorot: 50000, txn_date: '2026-08-13', transfer_id: 'transfer-1', is_excluded: false, isShared: true },
             ],
           }),
         ],
@@ -223,7 +241,7 @@ describe('buildUpcomingCommitments', () => {
         installmentPlans: [installmentPlan()],
         creditCardAccounts: [
           creditCardAccount({
-            transactions: [{ amount_agorot: -10000, txn_date: '2026-08-12', transfer_id: null, isShared: true }],
+            transactions: [{ amount_agorot: -10000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false, isShared: true }],
           }),
         ],
       })
@@ -244,8 +262,8 @@ describe('buildUpcomingCommitments', () => {
         creditCardAccounts: [
           creditCardAccount({
             transactions: [
-              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, isShared: true },
-              { amount_agorot: -10000, txn_date: '2026-08-13', transfer_id: null, isShared: false },
+              { amount_agorot: -20000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false, isShared: true },
+              { amount_agorot: -10000, txn_date: '2026-08-13', transfer_id: null, is_excluded: false, isShared: false },
             ],
           }),
         ],

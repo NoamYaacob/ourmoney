@@ -65,8 +65,8 @@ describe('computeCurrentCycleSpendAgorot', () => {
   it('sums expenses within the cycle range', () => {
     const result = computeCurrentCycleSpendAgorot(
       [
-        { amount_agorot: -10000, txn_date: '2026-08-20', transfer_id: null },
-        { amount_agorot: -5000, txn_date: '2026-09-01', transfer_id: null },
+        { amount_agorot: -10000, txn_date: '2026-08-20', transfer_id: null, is_excluded: false },
+        { amount_agorot: -5000, txn_date: '2026-09-01', transfer_id: null, is_excluded: false },
       ],
       range
     )
@@ -74,28 +74,47 @@ describe('computeCurrentCycleSpendAgorot', () => {
   })
 
   it('excludes an income (positive) transaction', () => {
-    const result = computeCurrentCycleSpendAgorot([{ amount_agorot: 20000, txn_date: '2026-08-20', transfer_id: null }], range)
+    const result = computeCurrentCycleSpendAgorot([{ amount_agorot: 20000, txn_date: '2026-08-20', transfer_id: null, is_excluded: false }], range)
     expect(result).toBe(0)
   })
 
   it('excludes a transfer leg (a statement payment, not a purchase) even though it is negative', () => {
     const result = computeCurrentCycleSpendAgorot(
-      [{ amount_agorot: -30000, txn_date: '2026-08-20', transfer_id: 'transfer-1' }],
+      [{ amount_agorot: -30000, txn_date: '2026-08-20', transfer_id: 'transfer-1', is_excluded: false }],
       range
     )
     expect(result).toBe(0)
   })
 
+  it('excludes a household-excluded transaction (e.g. a reimbursed purchase) even though it is a negative, in-range, non-transfer expense', () => {
+    const result = computeCurrentCycleSpendAgorot(
+      [{ amount_agorot: -30000, txn_date: '2026-08-20', transfer_id: null, is_excluded: true }],
+      range
+    )
+    expect(result).toBe(0)
+  })
+
+  it('still counts the rest of the cycle normally alongside one excluded transaction', () => {
+    const result = computeCurrentCycleSpendAgorot(
+      [
+        { amount_agorot: -10000, txn_date: '2026-08-20', transfer_id: null, is_excluded: false },
+        { amount_agorot: -30000, txn_date: '2026-08-21', transfer_id: null, is_excluded: true },
+      ],
+      range
+    )
+    expect(result).toBe(10000)
+  })
+
   it('excludes a transaction outside the cycle range', () => {
-    const result = computeCurrentCycleSpendAgorot([{ amount_agorot: -10000, txn_date: '2026-08-01', transfer_id: null }], range)
+    const result = computeCurrentCycleSpendAgorot([{ amount_agorot: -10000, txn_date: '2026-08-01', transfer_id: null, is_excluded: false }], range)
     expect(result).toBe(0)
   })
 
   it('includes a transaction exactly on the range boundaries (inclusive)', () => {
     const result = computeCurrentCycleSpendAgorot(
       [
-        { amount_agorot: -1000, txn_date: '2026-08-16', transfer_id: null },
-        { amount_agorot: -2000, txn_date: '2026-09-15', transfer_id: null },
+        { amount_agorot: -1000, txn_date: '2026-08-16', transfer_id: null, is_excluded: false },
+        { amount_agorot: -2000, txn_date: '2026-09-15', transfer_id: null, is_excluded: false },
       ],
       range
     )

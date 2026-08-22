@@ -16,7 +16,7 @@ function account(overrides: Partial<CreditCardCycleAccountInput> = {}): CreditCa
 describe('detectHighCreditCardCycleSpend', () => {
   it('returns null when there is no previous-cycle spend at all (no baseline)', () => {
     const result = detectHighCreditCardCycleSpend(
-      account({ transactions: [{ amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null }] }),
+      account({ transactions: [{ amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }] }),
       TODAY
     )
     expect(result).toBeNull()
@@ -26,8 +26,8 @@ describe('detectHighCreditCardCycleSpend', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-          { amount_agorot: -50000, txn_date: '2026-08-12', transfer_id: null },
+          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -50000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false },
         ],
       }),
       TODAY
@@ -39,8 +39,8 @@ describe('detectHighCreditCardCycleSpend', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-          { amount_agorot: -105000, txn_date: '2026-08-12', transfer_id: null }, // +₪50, +5%
+          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -105000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // +₪50, +5%
         ],
       }),
       TODAY
@@ -52,8 +52,8 @@ describe('detectHighCreditCardCycleSpend', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -1000000, txn_date: '2026-07-20', transfer_id: null }, // ₪10,000
-          { amount_agorot: -1035000, txn_date: '2026-08-12', transfer_id: null }, // +₪350, +3.5%
+          { amount_agorot: -1000000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false }, // ₪10,000
+          { amount_agorot: -1035000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // +₪350, +3.5%
         ],
       }),
       TODAY
@@ -65,8 +65,8 @@ describe('detectHighCreditCardCycleSpend', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null },
+          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false },
         ],
       }),
       TODAY
@@ -79,13 +79,27 @@ describe('detectHighCreditCardCycleSpend', () => {
     expect(result?.currentCycleEnd).toBe('2026-09-10')
   })
 
+  it('excludes household-excluded transactions from both cycle totals (e.g. a reimbursed purchase never counts as real spend)', () => {
+    const result = detectHighCreditCardCycleSpend(
+      account({
+        transactions: [
+          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false },
+          { amount_agorot: -900000, txn_date: '2026-08-13', transfer_id: null, is_excluded: true }, // reimbursed
+        ],
+      }),
+      TODAY
+    )
+    expect(result?.currentCycleSpendAgorot).toBe(140000)
+  })
+
   it('excludes transfer legs from both cycle totals (a statement payment is not spend)', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null },
-          { amount_agorot: 300000, txn_date: '2026-08-12', transfer_id: 'transfer-1' }, // statement payment
+          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false },
+          { amount_agorot: 300000, txn_date: '2026-08-12', transfer_id: 'transfer-1', is_excluded: false }, // statement payment
         ],
       }),
       TODAY
@@ -97,9 +111,9 @@ describe('detectHighCreditCardCycleSpend', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null },
-          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null },
-          { amount_agorot: 5000, txn_date: '2026-08-12', transfer_id: null }, // a refund/credit
+          { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false },
+          { amount_agorot: 5000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // a refund/credit
         ],
       }),
       TODAY
@@ -111,8 +125,8 @@ describe('detectHighCreditCardCycleSpend', () => {
     const result = detectHighCreditCardCycleSpend(
       account({
         transactions: [
-          { amount_agorot: -200000, txn_date: '2026-07-20', transfer_id: null },
-          { amount_agorot: -100000, txn_date: '2026-08-12', transfer_id: null },
+          { amount_agorot: -200000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+          { amount_agorot: -100000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false },
         ],
       }),
       TODAY

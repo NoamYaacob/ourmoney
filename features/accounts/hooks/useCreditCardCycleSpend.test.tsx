@@ -35,17 +35,17 @@ describe('useCreditCardCycleSpend', () => {
     expect(builder.select).not.toHaveBeenCalled()
   })
 
-  it('scopes the query to the given account id, selecting only amount_agorot/txn_date/transfer_id', async () => {
+  it('scopes the query to the given account id, selecting amount_agorot/txn_date/transfer_id/is_excluded', async () => {
     const builder = createQueryBuilderMock({ data: [], error: null })
     jest.mocked(supabase.from).mockReturnValue(builder as unknown as ReturnType<typeof supabase.from>)
 
     await renderHook(() => useCreditCardCycleSpend('acct-1', 15), { wrapper })
 
-    await waitFor(() => expect(builder.select).toHaveBeenCalledWith('amount_agorot, txn_date, transfer_id'))
+    await waitFor(() => expect(builder.select).toHaveBeenCalledWith('amount_agorot, txn_date, transfer_id, is_excluded'))
     expect(builder.eq).toHaveBeenCalledWith('account_id', 'acct-1')
   })
 
-  it('computes current-cycle spend from the fetched transactions, excluding a transaction outside the range and a transfer leg', async () => {
+  it('computes current-cycle spend from the fetched transactions, excluding a transaction outside the range, a transfer leg, and a household-excluded transaction', async () => {
     // Derive a guaranteed-in-range date from the real function under test —
     // computeCurrentCycleSpendAgorot's own exhaustive boundary-case coverage
     // already lives in creditCardCycle.test.ts; this only proves the hook
@@ -56,9 +56,10 @@ describe('useCreditCardCycleSpend', () => {
     jest.mocked(supabase.from).mockReturnValue(
       createQueryBuilderMock({
         data: [
-          { amount_agorot: -12000, txn_date: range.start, transfer_id: null },
-          { amount_agorot: -50000, txn_date: '2000-01-01', transfer_id: null },
-          { amount_agorot: -30000, txn_date: range.start, transfer_id: 'transfer-1' },
+          { amount_agorot: -12000, txn_date: range.start, transfer_id: null, is_excluded: false },
+          { amount_agorot: -50000, txn_date: '2000-01-01', transfer_id: null, is_excluded: false },
+          { amount_agorot: -30000, txn_date: range.start, transfer_id: 'transfer-1', is_excluded: false },
+          { amount_agorot: -90000, txn_date: range.start, transfer_id: null, is_excluded: true },
         ],
         error: null,
       }) as unknown as ReturnType<typeof supabase.from>
