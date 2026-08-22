@@ -17,6 +17,7 @@ import { CashFlowForecastChart } from '@/features/cashflow/components/CashFlowFo
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import type { CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -161,7 +162,7 @@ export default function CashFlow() {
                             <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(item.amountAgorot)}</Text>
                           </View>
                           <View className="mt-0.5 flex-row items-center justify-between">
-                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{item.date}</Text>
+                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{formatDateDisplay(item.date)}</Text>
                             <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{t(`cashFlow.source.${item.sourceType}`)}</Text>
                           </View>
                         </Pressable>
@@ -244,7 +245,7 @@ export default function CashFlow() {
                             </Text>
                           </View>
                           <View className="mt-0.5 flex-row items-center justify-between">
-                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{event.date}{event.pastDue ? ` · ${t('cashFlow.forecast.pastDue')}` : ''}</Text>
+                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{formatDateDisplay(event.date)}{event.pastDue ? ` · ${t('cashFlow.forecast.pastDue')}` : ''}</Text>
                             <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{forecastEventSourceLabel(event, t)}</Text>
                           </View>
                         </Pressable>
@@ -311,7 +312,7 @@ export default function CashFlow() {
                   </View>
                   <View className="mt-0.5 flex-row items-center justify-between">
                     <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                      {item.date} · {t(`cashFlow.commitments.source.${item.source}`)}
+                      {formatDateDisplay(item.date)} · {t(`cashFlow.commitments.source.${item.source}`)}
                     </Text>
                     {item.sharedAgorot > 0 && item.personalAgorot > 0 && (
                       <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
