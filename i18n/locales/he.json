@@ -28,6 +28,7 @@
     "settings": "הגדרות"
   },
   "nav": {
+    "tagline": "הכסף של הבית, במקום אחד",
     "groups": {
       "insights": "תובנות",
       "obligations": "תכנון וחובות",
@@ -194,6 +195,8 @@
       "credit_card": "כרטיס אשראי",
       "cash": "מזומן",
       "investment": "השקעות",
+      "loan": "הלוואה",
+      "mortgage": "משכנתא",
       "other": "אחר"
     },
     "form": {
@@ -261,11 +264,11 @@
     }
   },
   "recurring": {
-    "title": "הוראות קבע",
-    "empty": "עדיין אין הוראות קבע.",
-    "addButton": "הוספת הוראת קבע",
+    "title": "חיובים קבועים",
+    "empty": "עדיין אין חיובים קבועים.",
+    "addButton": "הוספת חיוב קבוע",
     "nextDue": "תאריך הבא:",
-    "inactive": "מושהית",
+    "inactive": "מושהה",
     "priceIncrease": {
       "sectionTitle": "עליות מחיר שזוהו",
       "badge": "המחיר עלה",
@@ -273,7 +276,7 @@
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
-      "notFound": "הוראת הקבע לא נמצאה"
+      "notFound": "החיוב הקבוע לא נמצא"
     },
     "frequency": {
       "daily": "יומי",
@@ -286,7 +289,7 @@
     "form": {
       "frequencyLabel": "תדירות",
       "nextDueDateLabel": "תאריך הבא",
-      "submit": "הוספת הוראת קבע",
+      "submit": "הוספת חיוב קבוע",
       "errors": {
         "missingAccount": "יש לבחור חשבון",
         "missingDescription": "יש להזין תיאור"
@@ -299,7 +302,7 @@
       "pause": "השהיה",
       "resume": "הפעלה מחדש",
       "delete": "מחיקה",
-      "deleteConfirmTitle": "מחיקת הוראת קבע",
+      "deleteConfirmTitle": "מחיקת חיוב קבוע",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
     }
   },
@@ -310,7 +313,9 @@
     "completed": "היעד הושג! 🎉",
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
-      "notFound": "יעד החיסכון לא נמצא"
+      "notFound": "יעד החיסכון לא נמצא",
+      "accountAlreadyLinked": "החשבון הזה כבר מקושר כמקור ההתקדמות של יעד אחר. אפשר לבחור חשבון אחר או להשאיר את היעד במעקב ידני.",
+      "linkedAccountRequiresAccount": "כדי לעקוב לפי יתרת חשבון יש לבחור חשבון מקושר"
     },
     "form": {
       "nameLabel": "שם היעד",
@@ -321,6 +326,9 @@
       "hasTargetDate": "עם תאריך יעד",
       "noTargetDate": "ללא תאריך יעד",
       "submit": "הוספת יעד",
+      "progressSourceLabel": "מקור ההתקדמות",
+      "progressSourceManual": "עדכון ידני",
+      "progressSourceLinked": "לפי יתרת החשבון המקושר",
       "errors": {
         "missingName": "יש להזין שם ליעד"
       }
@@ -329,6 +337,7 @@
       "save": "שמירה",
       "updateProgressLabel": "עדכון סכום נוכחי",
       "updateProgressSubmit": "עדכון",
+      "linkedProgressNote": "ההתקדמות מחושבת אוטומטית לפי יתרת החשבון המקושר",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת יעד חיסכון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
@@ -640,7 +649,7 @@
     },
     "availableCash": "יתרה זמינה",
     "plannedObligations": "התחייבויות קרובות",
-    "recurringCharges": "הוראות קבע צפויות",
+    "recurringCharges": "חיובים קבועים צפויים",
     "reserved": "סה״כ שמור",
     "safeToSpend": "אפשר להוציא",
     "shortfall": "חסר {{amount}} לכיסוי ההתחייבויות הקרובות",
@@ -648,9 +657,9 @@
     "itemsTitle": "פירוט",
     "source": {
       "obligation": "התחייבות",
-      "recurring": "הוראת קבע"
+      "recurring": "חיוב קבוע"
     },
-    "empty": "אין התחייבויות או הוראות קבע צפויות בטווח הזמן שנבחר.",
+    "empty": "אין התחייבויות או חיובים קבועים צפויים בטווח הזמן שנבחר.",
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
     },
@@ -667,8 +676,8 @@
       "upcomingEventsTitle": "אירועים קרובים",
       "source": {
         "planned_obligation": "התחייבות",
-        "recurring": "הוראת קבע",
-        "recurringIncome": "הוראת קבע / הכנסה חוזרת"
+        "recurring": "חיוב קבוע",
+        "recurringIncome": "חיוב קבוע / הכנסה חוזרת"
       },
       "pastDue": "באיחור",
       "shortfallWarningTitle": "צפוי חוסר בכיסוי",
@@ -772,7 +781,7 @@
       "title": "ניהול כספים",
       "accounts": "חשבונות",
       "categories": "קטגוריות וכללי סיווג",
-      "recurring": "הוראות קבע",
+      "recurring": "חיובים קבועים",
       "goals": "יעדי חיסכון",
       "obligations": "התחייבויות עתידיות"
     },

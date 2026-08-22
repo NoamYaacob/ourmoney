@@ -252,7 +252,7 @@ describe('CashFlow forecast section', () => {
     expect(getByText('משכורת')).toBeTruthy()
     expect(getByText('שכר דירה')).toBeTruthy()
     expect(getByText('חשמל')).toBeTruthy()
-    // "התחייבות"/"הוראת קבע" text also appears in the Safe-to-Spend section
+    // "התחייבות"/"חיוב קבוע" text also appears in the Safe-to-Spend section
     // above (same underlying Hebrew label, different i18n namespace) — at
     // least one occurrence is enough to prove this section rendered it.
     expect(getAllByText(i18n.t('cashFlow.forecast.source.planned_obligation')).length).toBeGreaterThanOrEqual(1)

@@ -24,6 +24,9 @@ jest.mock('@/features/household/hooks/useHousehold', () => ({
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [{ id: 'acc-1', name: 'עו״ש', type: 'checking' }], isLoading: false }),
 }))
+jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
+  useAccountBalances: () => ({ balances: {}, isLoading: false }),
+}))
 const mockCreateGoalMutate = jest.fn(
   (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
     callbacks?.onSuccess?.()
@@ -34,8 +37,24 @@ jest.mock('@/features/savings/hooks/useCreateSavingsGoal', () => ({
 }))
 
 const GOALS = [
-  { id: 'goal-1', name: 'קרן חירום', current_agorot: 100000, target_agorot: 500000, is_completed: false },
-  { id: 'goal-2', name: 'חופשה', current_agorot: 20000, target_agorot: 300000, is_completed: false },
+  {
+    id: 'goal-1',
+    name: 'קרן חירום',
+    current_agorot: 100000,
+    target_agorot: 500000,
+    is_completed: false,
+    progress_source: 'manual',
+    account_id: null,
+  },
+  {
+    id: 'goal-2',
+    name: 'חופשה',
+    current_agorot: 20000,
+    target_agorot: 300000,
+    is_completed: false,
+    progress_source: 'manual',
+    account_id: null,
+  },
 ]
 const mockUseSavingsGoals = jest.fn()
 jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({

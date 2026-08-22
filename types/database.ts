@@ -576,6 +576,7 @@ export type Database = {
           id: string
           is_completed: boolean
           name: string
+          progress_source: string
           target_agorot: number
           target_date: string | null
           updated_at: string
@@ -592,6 +593,7 @@ export type Database = {
           id?: string
           is_completed?: boolean
           name: string
+          progress_source?: string
           target_agorot: number
           target_date?: string | null
           updated_at?: string
@@ -608,6 +610,7 @@ export type Database = {
           id?: string
           is_completed?: boolean
           name?: string
+          progress_source?: string
           target_agorot?: number
           target_date?: string | null
           updated_at?: string

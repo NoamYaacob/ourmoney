@@ -8,9 +8,10 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useCreateSavingsGoal } from '@/features/savings/hooks/useCreateSavingsGoal'
-import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
+import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
@@ -32,6 +33,7 @@ export default function Goals() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { balances } = useAccountBalances(householdId)
   const { goals, isLoading: isGoalsLoading, error } = useSavingsGoals(householdId)
   const createGoal = useCreateSavingsGoal(householdId)
 
@@ -103,7 +105,9 @@ export default function Goals() {
               accounts/index.tsx. */}
           <View className={goals.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {goals.map((goal) => {
-            const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+            const currentAgorot = resolveGoalCurrentAgorot(goal, balances)
+            const isCompleted = resolveGoalIsCompleted(goal, balances)
+            const percent = goalProgressPercent(currentAgorot, goal.target_agorot)
             return (
               <Pressable
                 key={goal.id}
@@ -114,14 +118,14 @@ export default function Goals() {
                 <Card>
                   <View className="mb-1 flex-row items-center justify-between">
                     <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
-                    {goal.is_completed && (
+                    {isCompleted && (
                       <Text className="text-xs font-semibold text-accent-light dark:text-accent-dark">
                         {t('savings.completed')}
                       </Text>
                     )}
                   </View>
                   <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
+                    {formatILS(currentAgorot)} / {formatILS(goal.target_agorot)}
                   </Text>
                   <ProgressBar percent={percent} positiveAtLimit />
                 </Card>

@@ -5153,6 +5153,183 @@ END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_11_11;
 
+-- ============================================================================
+-- Group 12 — Savings goal progress source (manual vs. linked_account,
+-- migration 015). Product decision under test: a goal's progress is either
+-- 'manual' (unchanged default/behavior) or 'linked_account' (derived from
+-- the linked account's balance client-side); at most one goal may have a
+-- given account as its linked_account source at a time, enforced both in
+-- update_savings_goal() (a clean error code) and by a partial unique index
+-- (defense in depth against a direct INSERT bypassing the RPC).
+-- ============================================================================
+
+-- 12.1: update_savings_goal() with progress_source='linked_account' and no
+-- account_id is rejected — "use the linked account's balance" needs an
+-- account to read.
+SAVEPOINT sp_12_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד חיסכון בית 1', 100000, NULL, NULL, NULL, NULL, 'linked_account'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'linked_account_requires_account' THEN
+    RAISE EXCEPTION 'FAIL 12.1: expected linked_account_requires_account, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND version <> 1) THEN
+    RAISE EXCEPTION 'FAIL 12.1: version changed despite the rejected update';
+  END IF;
+  PERFORM _pass('12.1', 'update_savings_goal() rejects progress_source=linked_account with no account_id (linked_account_requires_account), row untouched');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_12_1;
+
+-- 12.2: update_savings_goal() with progress_source='linked_account' and a
+-- valid, unused account_id succeeds and persists both columns.
+SAVEPOINT sp_12_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד חיסכון בית 1', 100000, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, NULL, NULL, 'linked_account'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean OR (v_result->>'version')::bigint <> 2 THEN
+    RAISE EXCEPTION 'FAIL 12.2: expected ok with version 2, got %', v_result;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM savings_goals
+    WHERE id = '59000000-0000-0000-0000-000000000001' AND progress_source = 'linked_account'
+      AND account_id = '5a000000-0000-0000-0000-000000000001'
+  ) THEN
+    RAISE EXCEPTION 'FAIL 12.2: progress_source/account_id were not actually persisted';
+  END IF;
+  PERFORM _pass('12.2', 'update_savings_goal() with progress_source=linked_account and a valid, unused account_id succeeds and persists both');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_12_2;
+
+-- 12.3: "do not automatically assign its full balance to multiple goals" —
+-- linking a second goal's progress to an account already linked to another
+-- goal is rejected with a clean, catchable error, and neither row changes.
+SAVEPOINT sp_12_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB; v_second_goal_id UUID;
+BEGIN
+  SELECT update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד חיסכון בית 1', 100000, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, NULL, NULL, 'linked_account'
+  ) INTO v_result;
+  IF NOT (v_result->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL 12.3 setup: expected linking goal 1 to succeed, got %', v_result;
+  END IF;
+
+  -- INSERT is still directly grantable (migration 009) — a second
+  -- household-1 goal, still 'manual' at creation, pointing descriptively at
+  -- the same account is fine (unchanged pre-existing behavior; the unique
+  -- index only applies once progress_source='linked_account').
+  INSERT INTO savings_goals (household_id, account_id, name, target_agorot, created_by)
+  VALUES (
+    '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001',
+    'יעד שני', 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  )
+  RETURNING id INTO v_second_goal_id;
+
+  SELECT update_savings_goal(
+    v_second_goal_id, 1, 'יעד שני', 50000, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, NULL, NULL, 'linked_account'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'account_already_linked' THEN
+    RAISE EXCEPTION 'FAIL 12.3: expected account_already_linked, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE id = v_second_goal_id AND progress_source = 'linked_account') THEN
+    RAISE EXCEPTION 'FAIL 12.3: the second goal was linked despite the rejection';
+  END IF;
+
+  PERFORM _pass('12.3', 'update_savings_goal() rejects linking a second goal''s progress to an account already linked to another goal (account_already_linked) — preserves the safe/manual path instead of double-counting one account''s balance across goals');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_12_3;
+
+-- 12.4: "avoid double counting/manual progress ambiguity" — once a goal is
+-- linked_account, update_savings_goal_progress() (the manual write path)
+-- is rejected server-side, not only hidden in the UI.
+SAVEPOINT sp_12_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  PERFORM update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד חיסכון בית 1', 100000, '5a000000-0000-0000-0000-000000000001'::uuid, NULL, NULL, NULL, 'linked_account'
+  );
+
+  SELECT update_savings_goal_progress('59000000-0000-0000-0000-000000000001'::uuid, 2, 75000) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'progress_is_linked' THEN
+    RAISE EXCEPTION 'FAIL 12.4: expected progress_is_linked for a manual-progress write on a linked goal, got %', v_result;
+  END IF;
+  IF EXISTS (SELECT 1 FROM savings_goals WHERE id = '59000000-0000-0000-0000-000000000001' AND current_agorot = 75000) THEN
+    RAISE EXCEPTION 'FAIL 12.4: current_agorot was written despite the goal being linked_account';
+  END IF;
+  PERFORM _pass('12.4', 'update_savings_goal_progress() rejects a manual current_agorot write on a linked_account goal (progress_is_linked), closing the gap server-side, not only in the UI');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_12_4;
+
+-- 12.5: an unrecognized progress_source value is rejected cleanly.
+SAVEPOINT sp_12_5;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT update_savings_goal(
+    '59000000-0000-0000-0000-000000000001'::uuid, 1,
+    'יעד חיסכון בית 1', 100000, NULL, NULL, NULL, NULL, 'not_a_real_source'
+  ) INTO v_result;
+  IF (v_result->>'ok')::boolean OR v_result->>'error' <> 'invalid_progress_source' THEN
+    RAISE EXCEPTION 'FAIL 12.5: expected invalid_progress_source, got %', v_result;
+  END IF;
+  PERFORM _pass('12.5', 'update_savings_goal() rejects an unrecognized progress_source value (invalid_progress_source)');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_12_5;
+
+-- 12.6: defense in depth — the partial unique index itself (not only the
+-- RPC's pre-check) blocks a second linked_account goal on the same account,
+-- even via a direct client INSERT (still directly grantable, migration 009).
+SAVEPOINT sp_12_6;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO savings_goals (household_id, account_id, name, target_agorot, created_by, progress_source)
+  VALUES (
+    '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001',
+    'יעד א', 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'linked_account'
+  );
+
+  BEGIN
+    INSERT INTO savings_goals (household_id, account_id, name, target_agorot, created_by, progress_source)
+    VALUES (
+      '11111111-1111-1111-1111-111111111111', '5a000000-0000-0000-0000-000000000001',
+      'יעד ב', 50000, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'linked_account'
+    );
+    RAISE EXCEPTION 'FAIL 12.6: a second linked_account goal on the same account was allowed by a direct INSERT';
+  EXCEPTION WHEN unique_violation THEN
+    PERFORM _pass('12.6', 'the partial unique index on (account_id) WHERE progress_source=linked_account blocks a second linked_account goal on the same account even via a direct client INSERT, not only inside the RPC — defense in depth');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_12_6;
+
 -- Group 6 — Structural guards (full)
 -- ============================================================================
 

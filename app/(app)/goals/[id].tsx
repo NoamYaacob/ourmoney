@@ -5,11 +5,13 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useUpdateSavingsGoal } from '@/features/savings/hooks/useUpdateSavingsGoal'
 import { useUpdateSavingsGoalProgress } from '@/features/savings/hooks/useUpdateSavingsGoalProgress'
 import { useDeleteSavingsGoal } from '@/features/savings/hooks/useDeleteSavingsGoal'
-import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
+import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
+import type { SavingsGoalProgressSource } from '@/types/app'
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
@@ -35,6 +37,7 @@ export default function GoalDetail() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { balances } = useAccountBalances(householdId)
   const { goals, isLoading: isGoalsLoading, refetch } = useSavingsGoals(householdId)
   const updateGoal = useUpdateSavingsGoal(householdId)
   const updateProgress = useUpdateSavingsGoalProgress(householdId)
@@ -43,6 +46,7 @@ export default function GoalDetail() {
   const [nameText, setNameText] = useState('')
   const [targetText, setTargetText] = useState('')
   const [accountId, setAccountId] = useState<string | null>(null)
+  const [progressSource, setProgressSource] = useState<SavingsGoalProgressSource>('manual')
   const [hasTargetDate, setHasTargetDate] = useState(false)
   const [targetDateText, setTargetDateText] = useState(localDateString())
   const [editValidationError, setEditValidationError] = useState<string | null>(null)
@@ -73,6 +77,7 @@ export default function GoalDetail() {
     setNameText(goal.name)
     setTargetText(String(goal.target_agorot / 100))
     setAccountId(goal.account_id)
+    setProgressSource(goal.progress_source)
     setHasTargetDate(goal.target_date !== null)
     setTargetDateText(goal.target_date ?? localDateString())
     setEditingVersion(goal.version)
@@ -116,7 +121,9 @@ export default function GoalDetail() {
     )
   }
 
-  const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+  const resolvedCurrentAgorot = resolveGoalCurrentAgorot(goal, balances)
+  const resolvedIsCompleted = resolveGoalIsCompleted(goal, balances)
+  const percent = goalProgressPercent(resolvedCurrentAgorot, goal.target_agorot)
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   function handleSaveEdit() {
@@ -143,6 +150,7 @@ export default function GoalDetail() {
         targetDate: hasTargetDate ? targetDateText : null,
         icon: goal.icon,
         color: goal.color,
+        progressSource,
       },
       {
         // qa-adversarial-reviewer finding: a successful save never advanced
@@ -159,6 +167,10 @@ export default function GoalDetail() {
             setConflict({ kind: 'conflict', source: 'edit' })
           } else if (isNotFoundError(error)) {
             setConflict({ kind: 'not_found', source: 'edit' })
+          } else if (error instanceof Error && error.message === 'account_already_linked') {
+            setEditValidationError(t('savings.errors.accountAlreadyLinked'))
+          } else if (error instanceof Error && error.message === 'linked_account_requires_account') {
+            setEditValidationError(t('savings.errors.linkedAccountRequiresAccount'))
           } else {
             setEditValidationError(t('savings.errors.generic'))
           }
@@ -276,6 +288,19 @@ export default function GoalDetail() {
         onChange={setAccountId}
         placeholder={t('transactions.form.accountPlaceholder')}
       />
+      <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('savings.form.progressSourceLabel')}</Text>
+      <View className="mb-4 flex-row gap-2">
+        <Chip
+          label={t('savings.form.progressSourceManual')}
+          selected={progressSource === 'manual'}
+          onPress={() => setProgressSource('manual')}
+        />
+        <Chip
+          label={t('savings.form.progressSourceLinked')}
+          selected={progressSource === 'linked_account'}
+          onPress={() => setProgressSource('linked_account')}
+        />
+      </View>
       <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('savings.form.targetDateLabel')}</Text>
       <View className="mb-4 flex-row gap-2">
         <Chip label={t('savings.form.hasTargetDate')} selected={hasTargetDate} onPress={() => setHasTargetDate(true)} />
@@ -292,37 +317,45 @@ export default function GoalDetail() {
 
       <View className={`mt-4 ${DESKTOP_PANEL_CLASS}`}>
       <Text className="mb-2 text-lg text-inkMuted-light dark:text-inkMuted-dark">
-        {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
+        {formatILS(resolvedCurrentAgorot)} / {formatILS(goal.target_agorot)}
       </Text>
       <View className="mb-6">
         <ProgressBar percent={percent} positiveAtLimit />
       </View>
-      {goal.is_completed && (
+      {resolvedIsCompleted && (
         <Text className="mb-6 text-base font-semibold text-accent-light dark:text-accent-dark">
           {t('savings.completed')}
         </Text>
       )}
 
-      <View className="web:desktop:flex-row web:desktop:items-end web:desktop:gap-4">
-        <View className="web:desktop:flex-1">
-          <Input
-            label={t('savings.detail.updateProgressLabel')}
-            value={progressText}
-            onChangeText={setProgressText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
-        </View>
-        <View className="web:desktop:w-[160px]">
-          <Button
-            title={t('savings.detail.updateProgressSubmit')}
-            onPress={handleUpdateProgress}
-            loading={updateProgress.isPending}
-          />
-        </View>
-      </View>
-      {(validationError || updateProgress.isError) && (
-        <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
+      {goal.progress_source === 'linked_account' ? (
+        <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
+          {t('savings.detail.linkedProgressNote')}
+        </Text>
+      ) : (
+        <>
+          <View className="web:desktop:flex-row web:desktop:items-end web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('savings.detail.updateProgressLabel')}
+                value={progressText}
+                onChangeText={setProgressText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View className="web:desktop:w-[160px]">
+              <Button
+                title={t('savings.detail.updateProgressSubmit')}
+                onPress={handleUpdateProgress}
+                loading={updateProgress.isPending}
+              />
+            </View>
+          </View>
+          {(validationError || updateProgress.isError) && (
+            <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
+          )}
+        </>
       )}
       </View>
 

@@ -183,7 +183,7 @@ export default function Recurring() {
               className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
             >
               {/* Paused items are dimmed and get a bolded status word instead
-                  of blending into the muted caption — the inline "· מושהית"
+                  of blending into the muted caption — the inline "· מושהה"
                   suffix alone was too easy to miss when scanning the list
                   (UX-completeness audit finding). */}
               <Card

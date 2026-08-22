@@ -13,8 +13,9 @@ import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { severityIconName, severityColorToken } from '@/features/alerts/lib/alertDisplay'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { daysUntilDue, filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
-import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
+import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
 import { usePeriodStore } from '@/store/periodStore'
 import { shiftMonth, localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
@@ -115,7 +116,8 @@ export default function Dashboard() {
     .filter((o): o is NonNullable<typeof o> => o !== undefined)
 
   const { goals, isLoading: isGoalsLoading, error: goalsError } = useSavingsGoals(householdId)
-  const topGoals = goals.filter((g) => !g.is_completed).slice(0, 3)
+  const { balances: goalAccountBalances } = useAccountBalances(householdId)
+  const topGoals = goals.filter((g) => !resolveGoalIsCompleted(g, goalAccountBalances)).slice(0, 3)
 
   // Analytics — lives inside Dashboard, not a separate route (no route is
   // reserved for it anywhere in the app tree). A widened 6-month window,
@@ -583,7 +585,8 @@ export default function Dashboard() {
             ) : (
               <Card>
                 {topGoals.map((goal, index) => {
-                  const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+                  const currentAgorot = resolveGoalCurrentAgorot(goal, goalAccountBalances)
+                  const percent = goalProgressPercent(currentAgorot, goal.target_agorot)
                   return (
                     <Pressable key={goal.id} onPress={() => router.push(`/goals/${goal.id}`)} accessibilityRole="button">
                       {index > 0 && (
@@ -595,7 +598,7 @@ export default function Dashboard() {
                         {goal.name}
                       </Text>
                       <Text className="mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                        {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
+                        {formatILS(currentAgorot)} / {formatILS(goal.target_agorot)}
                       </Text>
                       <View className="mt-1.5">
                         <ProgressBar percent={percent} positiveAtLimit />

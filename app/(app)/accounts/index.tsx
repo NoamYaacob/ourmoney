@@ -30,7 +30,16 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { AccountType } from '@/types/app'
 
-const ACCOUNT_TYPE_OPTIONS: AccountType[] = ['checking', 'savings', 'credit_card', 'cash', 'investment', 'other']
+const ACCOUNT_TYPE_OPTIONS: AccountType[] = [
+  'checking',
+  'savings',
+  'credit_card',
+  'cash',
+  'investment',
+  'loan',
+  'mortgage',
+  'other',
+]
 
 export default function Accounts() {
   const { t } = useTranslation()

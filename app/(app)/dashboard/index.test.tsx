@@ -84,6 +84,9 @@ const mockUseSavingsGoals = jest.fn<() => typeof DEFAULT_GOALS>()
 jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
   useSavingsGoals: () => mockUseSavingsGoals(),
 }))
+jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
+  useAccountBalances: () => ({ balances: {}, isLoading: false }),
+}))
 const mockUseTransactions =
   jest.fn<(householdId: string | null | undefined, filters?: TransactionFilters) => {
     transactions: unknown[]

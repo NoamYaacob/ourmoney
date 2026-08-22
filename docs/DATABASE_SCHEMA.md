@@ -140,7 +140,7 @@ CREATE TABLE accounts (
   type              TEXT        NOT NULL
                                 CHECK (type IN (
                                   'checking','savings','credit_card',
-                                  'cash','investment','other'
+                                  'cash','investment','loan','mortgage','other'
                                 )),
   currency          TEXT        NOT NULL DEFAULT 'ILS',
   balance_agorot    BIGINT      NOT NULL DEFAULT 0,

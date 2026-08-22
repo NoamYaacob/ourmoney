@@ -158,7 +158,7 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
     <View className="sticky top-0 hidden h-screen w-[228px] shrink-0 border-s border-border-light/70 bg-surfaceMuted-light px-3.5 py-5 web:desktop:flex dark:border-border-dark/70 dark:bg-surfaceMuted-dark">
       <View className="mb-5 px-2.5">
         <Text className="text-lg font-bold text-ink-light dark:text-ink-dark">OurMoney</Text>
-        <Text className="mt-0.5 text-xs text-inkMuted-light dark:text-inkMuted-dark">הכסף של הבית, במקום אחד</Text>
+        <Text className="mt-0.5 text-xs text-inkMuted-light dark:text-inkMuted-dark">{t('nav.tagline')}</Text>
       </View>
 
       <View className="mb-4 rounded-card border border-border-light/70 bg-surface-light p-2 dark:border-border-dark/70 dark:bg-surface-dark">

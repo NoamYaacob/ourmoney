@@ -33,7 +33,15 @@ export interface HouseholdMemberWithProfile {
 // Milestone 6 — MVP-2 Core Financial Loop
 // ============================================================================
 
-export type AccountType = 'checking' | 'savings' | 'credit_card' | 'cash' | 'investment' | 'other'
+export type AccountType =
+  | 'checking'
+  | 'savings'
+  | 'credit_card'
+  | 'cash'
+  | 'investment'
+  | 'loan'
+  | 'mortgage'
+  | 'other'
 export type CategoryRuleField = 'description' | 'merchant_name'
 export type CategoryRuleOperator = 'contains' | 'equals' | 'starts_with'
 export type TransactionSource = 'manual' | 'csv_import' | 'recurring'
@@ -85,10 +93,19 @@ export interface RecurringTransaction extends Omit<Tables<'recurring_transaction
 }
 
 // is_completed is DB-derived (migration 003's derive_savings_goal_completion
-// trigger: current_agorot >= target_agorot) — never client-set. No narrowing
-// beyond the generated row shape is needed since every column here already
-// has a concrete type.
-export type SavingsGoal = Tables<'savings_goals'>
+// trigger: current_agorot >= target_agorot) — never client-set for a
+// 'manual' goal. progress_source (migration 015) narrows a CHECK-constrained
+// TEXT column the same way RecurringTransaction narrows frequency above.
+// For a 'linked_account' goal, current_agorot/is_completed as stored are NOT
+// the source of truth for display — features/savings/lib/goalProgress.ts's
+// resolveGoalCurrentAgorot() derives the real progress live from the linked
+// account's balance, the same "compute live, never persist" precedent
+// lib/engines/cashflow uses for Safe-to-Spend.
+export type SavingsGoalProgressSource = 'manual' | 'linked_account'
+
+export type SavingsGoal = Omit<Tables<'savings_goals'>, 'progress_source'> & {
+  progress_source: SavingsGoalProgressSource
+}
 
 // ============================================================================
 // Migration 007 — Planned obligations (Annual Expenses / Planned Obligations)

@@ -44,6 +44,10 @@ jest.mock('@/features/household/hooks/useHousehold', () => ({
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [{ id: 'acc-1', name: 'עו״ש', type: 'checking' }], isLoading: false }),
 }))
+const mockAccountBalances: Record<string, number> = {}
+jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
+  useAccountBalances: () => ({ balances: mockAccountBalances, isLoading: false }),
+}))
 
 const BASE_GOAL = {
   id: 'goal-1',
@@ -52,6 +56,7 @@ const BASE_GOAL = {
   target_agorot: 500000,
   current_agorot: 100000,
   account_id: null as string | null,
+  progress_source: 'manual' as 'manual' | 'linked_account',
   target_date: null as string | null,
   icon: null,
   color: null,
@@ -107,6 +112,7 @@ describe('GoalDetail edit', () => {
     jest.clearAllMocks()
     mockBack.mockClear()
     mockGoal = { ...BASE_GOAL }
+    for (const key of Object.keys(mockAccountBalances)) delete mockAccountBalances[key]
   })
 
   it('prefills the edit form with the goal current name/target', async () => {
@@ -133,8 +139,61 @@ describe('GoalDetail edit', () => {
         expectedVersion: 1,
         name: 'טיול לחו״ל',
         targetAgorot: 800000,
+        progressSource: 'manual',
       }),
       expect.anything()
+    )
+  })
+
+  // Foundation item — savings goal progress source (manual vs linked
+  // account): explicit opt-in switch, default preserved for existing goals.
+  it('defaults the progress-source toggle to manual and sends it unchanged on an uncontested save', async () => {
+    const { getByText } = await render(<GoalDetail />)
+    await fireEvent.press(getByText('שמירה'))
+    expect(mockUpdateGoalMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ progressSource: 'manual' }),
+      expect.anything()
+    )
+  })
+
+  it('switching the toggle to linked-account and picking an account sends progressSource: linked_account', async () => {
+    const { getByText, getByLabelText } = await render(<GoalDetail />)
+
+    await fireEvent.press(getByLabelText('חשבון מקושר (אופציונלי)'))
+    await fireEvent.press(getByText('עו״ש'))
+    await fireEvent.press(getByText('לפי יתרת החשבון המקושר'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateGoalMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'acc-1', progressSource: 'linked_account' }),
+      expect.anything()
+    )
+  })
+
+  it('hides the manual progress-update input and shows the linked-progress note for a linked_account goal', async () => {
+    mockGoal = { ...BASE_GOAL, account_id: 'acc-1', progress_source: 'linked_account' }
+    mockAccountBalances['acc-1'] = 150000
+    const { getByText, queryByLabelText } = await render(<GoalDetail />)
+
+    expect(queryByLabelText('עדכון סכום נוכחי')).toBeNull()
+    expect(getByText('ההתקדמות מחושבת אוטומטית לפי יתרת החשבון המקושר')).toBeTruthy()
+  })
+
+  it('shows a specific error and does not save when linking an account already linked to another goal', async () => {
+    mockUpdateGoalMutate.mockImplementationOnce((_variables, callbacks) => {
+      callbacks?.onError?.(new Error('account_already_linked'))
+    })
+    const { getByText, getByLabelText } = await render(<GoalDetail />)
+
+    await fireEvent.press(getByLabelText('חשבון מקושר (אופציונלי)'))
+    await fireEvent.press(getByText('עו״ש'))
+    await fireEvent.press(getByText('לפי יתרת החשבון המקושר'))
+    await fireEvent.press(getByText('שמירה'))
+
+    await waitFor(() =>
+      expect(
+        getByText('החשבון הזה כבר מקושר כמקור ההתקדמות של יעד אחר. אפשר לבחור חשבון אחר או להשאיר את היעד במעקב ידני.')
+      ).toBeTruthy()
     )
   })
 
