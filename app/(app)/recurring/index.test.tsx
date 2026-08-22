@@ -98,8 +98,10 @@ describe('Recurring list', () => {
 
   // UX-completeness audit P2 fix: a paused (is_active: false) card rendered
   // with the exact same styling as an active one, indistinguishable at a
-  // glance beyond the small "· מושהה" text suffix.
-  it('gives a paused template a visually muted card and a bold inactive suffix, leaving an active one untouched', async () => {
+  // glance beyond a status badge. Mobile redesign: the plain "· מושהה" text
+  // suffix became a StatusChip, matching every other status readout in the
+  // app (never color alone — see StatusChip.tsx's own header comment).
+  it('gives a paused template a visually muted card and an inactive status chip, leaving an active one untouched', async () => {
     mockUseRecurringTransactions.mockReturnValue({
       recurringTransactions: [{ ...RECURRING[0], id: 'rec-1', is_active: false }, RECURRING[1]],
       isLoading: false,
@@ -108,7 +110,7 @@ describe('Recurring list', () => {
 
     const { getByText } = await render(<Recurring />)
 
-    expect(getByText('· מושהה').props.className).toContain('font-semibold')
+    expect(getByText('מושהה')).toBeTruthy()
 
     let pausedCard = getByText('שכירות').parent
     while (pausedCard && !(pausedCard.props.className as string | undefined)?.includes('opacity-60')) {

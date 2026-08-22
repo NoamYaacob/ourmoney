@@ -27,6 +27,8 @@ import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { RowIcon } from '@/components/ui/ListCard'
+import { StatusChip } from '@/components/ui/StatusChip'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { AccountType } from '@/types/app'
 
@@ -149,19 +151,13 @@ export default function Accounts() {
             >
               <Card>
                 <View className="flex-row items-center gap-3">
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                  <RowIcon>
                     <Ionicons name={accountIconName(account.type)} size={17} color={iconColor} />
-                  </View>
+                  </RowIcon>
                   <View className="flex-1">
                     <View className="flex-row items-center gap-2">
-                      <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{account.name}</Text>
-                      {!account.is_active && (
-                        <View className="rounded-full border border-border-light bg-surface-light px-2 py-0.5 dark:border-border-dark dark:bg-surface-dark">
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {t('accounts.detail.archived')}
-                          </Text>
-                        </View>
-                      )}
+                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{account.name}</Text>
+                      {!account.is_active && <StatusChip label={t('accounts.detail.archived')} />}
                     </View>
                     <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                       {t(`accounts.types.${account.type}`)}
@@ -203,9 +199,9 @@ export default function Accounts() {
               placeholder={t('accounts.form.typeLabel')}
               sheetTitle={t('accounts.form.typeLabel')}
               leadingIcon={
-                <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                <RowIcon>
                   <Ionicons name={accountIconName(type)} size={17} color={iconColor} />
-                </View>
+                </RowIcon>
               }
             />
             {type === 'credit_card' && (
