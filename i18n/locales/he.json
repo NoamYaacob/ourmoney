@@ -335,6 +335,7 @@
     "rules": {
       "empty": "עדיין אין כללי סיווג.",
       "applyRetroactively": "החלת הכללים על תנועות קיימות",
+      "ruleBadge": "כלל",
       "ifLabel": "אם",
       "thenLabel": "אז",
       "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
