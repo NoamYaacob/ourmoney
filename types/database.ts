@@ -37,6 +37,7 @@ export type Database = {
       accounts: {
         Row: {
           balance_agorot: number
+          billing_cycle_day: number | null
           color: string | null
           created_at: string
           currency: string
@@ -52,6 +53,7 @@ export type Database = {
         }
         Insert: {
           balance_agorot?: number
+          billing_cycle_day?: number | null
           color?: string | null
           created_at?: string
           currency?: string
@@ -67,6 +69,7 @@ export type Database = {
         }
         Update: {
           balance_agorot?: number
+          billing_cycle_day?: number | null
           color?: string | null
           created_at?: string
           currency?: string
@@ -340,6 +343,82 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      installment_plans: {
+        Row: {
+          account_id: string
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          first_charge_date: string
+          household_id: string
+          id: string
+          installment_count: number
+          is_shared: boolean
+          merchant_name: string | null
+          monthly_agorot: number
+          total_agorot: number
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          account_id: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description: string
+          first_charge_date: string
+          household_id: string
+          id?: string
+          installment_count: number
+          is_shared?: boolean
+          merchant_name?: string | null
+          monthly_agorot: number
+          total_agorot: number
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          account_id?: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          first_charge_date?: string
+          household_id?: string
+          id?: string
+          installment_count?: number
+          is_shared?: boolean
+          merchant_name?: string | null
+          monthly_agorot?: number
+          total_agorot?: number
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "installment_plans_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "installment_plans_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "installment_plans_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invitations: {
         Row: {
@@ -644,6 +723,8 @@ export type Database = {
           description: string
           household_id: string
           id: string
+          installment_index: number | null
+          installment_plan_id: string | null
           is_excluded: boolean
           is_shared: boolean
           matched_rule_id: string | null
@@ -668,6 +749,8 @@ export type Database = {
           description: string
           household_id: string
           id?: string
+          installment_index?: number | null
+          installment_plan_id?: string | null
           is_excluded?: boolean
           is_shared?: boolean
           matched_rule_id?: string | null
@@ -692,6 +775,8 @@ export type Database = {
           description?: string
           household_id?: string
           id?: string
+          installment_index?: number | null
+          installment_plan_id?: string | null
           is_excluded?: boolean
           is_shared?: boolean
           matched_rule_id?: string | null
@@ -719,6 +804,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_installment_plan_id_fkey"
+            columns: ["installment_plan_id"]
+            isOneToOne: false
+            referencedRelation: "installment_plans"
             referencedColumns: ["id"]
           },
           {
@@ -887,6 +979,10 @@ export type Database = {
         Returns: Record<string, unknown>[]
       }
       dblink_is_busy: { Args: { "": string }; Returns: number }
+      delete_installment_plan: {
+        Args: { p_expected_version: number; p_id: string }
+        Returns: Json
+      }
       delete_own_account: { Args: never; Returns: Json }
       delete_planned_obligation: {
         Args: { p_expected_version: number; p_id: string }
@@ -901,6 +997,7 @@ export type Database = {
         Returns: Json
       }
       delete_transfer: { Args: { p_transfer_id: string }; Returns: Json }
+      generate_installment_transactions: { Args: never; Returns: Json }
       generate_recurring_transactions: { Args: never; Returns: Json }
       is_household_admin: { Args: { hid: string }; Returns: boolean }
       is_household_member: { Args: { hid: string }; Returns: boolean }
@@ -919,6 +1016,17 @@ export type Database = {
       }
       skip_recurring_occurrence: {
         Args: { p_recurring_id: string }
+        Returns: Json
+      }
+      update_installment_plan: {
+        Args: {
+          p_category_id: string | null
+          p_description: string
+          p_expected_version: number
+          p_id: string
+          p_is_shared: boolean
+          p_merchant_name: string | null
+        }
         Returns: Json
       }
       update_planned_obligation: {
