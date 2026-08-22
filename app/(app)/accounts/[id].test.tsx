@@ -36,12 +36,16 @@ const ACCOUNT = {
   type: 'checking',
   is_active: true,
   balance_agorot: 0, // dead column — deliberately not what the screen displays
+  billing_cycle_day: null,
 }
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [ACCOUNT], isLoading: false }),
 }))
 jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: { 'acct-1': 543200 }, isLoading: false }),
+}))
+jest.mock('@/features/accounts/hooks/useCreditCardCycleSpend', () => ({
+  useCreditCardCycleSpend: () => ({ spendAgorot: null, range: null, isLoading: false, error: null }),
 }))
 const mockArchiveMutate = jest.fn(
   (_id: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
@@ -88,6 +92,7 @@ describe('AccountDetail', () => {
       id: 'acct-1',
       name: 'חשבון עו״ש חדש',
       type: 'checking',
+      billingCycleDay: null,
     })
   })
 

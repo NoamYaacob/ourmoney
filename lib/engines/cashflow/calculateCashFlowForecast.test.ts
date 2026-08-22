@@ -5,6 +5,7 @@ import { sumEligibleCashAgorot } from './eligibleCashAccounts'
 import { getDayRangeHorizon } from './horizonRange'
 import type { PlannedObligationForecastInput } from './calculateSafeToSpend'
 import type { RecurringForecastTemplate } from './forecastRecurringOccurrences'
+import type { InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
 
 function obligation(overrides: Partial<PlannedObligationForecastInput> = {}): PlannedObligationForecastInput {
   return {
@@ -34,6 +35,21 @@ function recurring(overrides: Partial<RecurringForecastTemplate> = {}): Recurrin
   }
 }
 
+function installmentPlan(overrides: Partial<InstallmentPlanForecastTemplate> = {}): InstallmentPlanForecastTemplate {
+  return {
+    id: 'plan-1',
+    description: 'מקרר חדש',
+    totalAgorot: 300000,
+    installmentCount: 3,
+    monthlyAgorot: 100000,
+    firstChargeDate: '2026-08-20',
+    materializedCount: 0,
+    categoryId: null,
+    accountId: null,
+    ...overrides,
+  }
+}
+
 function baseInput(overrides: Partial<CashFlowForecastInput> = {}): CashFlowForecastInput {
   return {
     startingBalanceAgorot: 500000,
@@ -41,6 +57,7 @@ function baseInput(overrides: Partial<CashFlowForecastInput> = {}): CashFlowFore
     endDate: '2026-09-14',
     obligations: [],
     recurringTemplates: [],
+    installmentPlans: [],
     ...overrides,
   }
 }
@@ -340,6 +357,38 @@ describe('calculateCashFlowForecast', () => {
     for (const value of values) expect(Number.isInteger(value)).toBe(true)
   })
 
+  it('applies a not-yet-materialized instalment as an outflow on its charge date', () => {
+    const result = calculateCashFlowForecast(baseInput({ installmentPlans: [installmentPlan({ firstChargeDate: '2026-08-20' })] }))
+    expect(result.totalOutflowsAgorot).toBe(100000)
+    expect(result.endingBalanceAgorot).toBe(400000)
+    const event = result.events.find((e) => e.source === 'installment_plan')
+    expect(event?.direction).toBe('outflow')
+    expect(event?.amountAgorot).toBe(100000)
+    expect(event?.sourceId).toBe('plan-1')
+  })
+
+  it('forecasts every not-yet-materialized instalment within the horizon, each on its own charge date', () => {
+    const result = calculateCashFlowForecast(
+      baseInput({ endDate: '2026-09-30', installmentPlans: [installmentPlan()] })
+    )
+    const dates = result.events.filter((e) => e.source === 'installment_plan').map((e) => e.date)
+    expect(dates).toEqual(['2026-08-20', '2026-09-20'])
+  })
+
+  it('applies an overdue instalment at day 0 (startDate), flagged pastDue', () => {
+    const result = calculateCashFlowForecast(
+      baseInput({ startDate: '2026-08-16', installmentPlans: [installmentPlan({ firstChargeDate: '2026-08-01' })] })
+    )
+    const event = result.events.find((e) => e.source === 'installment_plan' && e.sourceId === 'plan-1')
+    expect(event?.pastDue).toBe(true)
+    expect(event?.date).toBe('2026-08-16')
+  })
+
+  it('ignores an instalment plan that is already fully materialized', () => {
+    const result = calculateCashFlowForecast(baseInput({ installmentPlans: [installmentPlan({ materializedCount: 3 })] }))
+    expect(result.events).toEqual([])
+  })
+
   it('counts upcoming obligations correctly, excluding recurring items', () => {
     const result = calculateCashFlowForecast(
       baseInput({
@@ -363,6 +412,7 @@ describe('calculateCashFlowForecast', () => {
         availableCashAgorot,
         obligations: [obligation()],
         recurringTemplates: [recurring()],
+        installmentPlans: [],
         horizonEnd: '2026-08-31',
       })
       const forecast = calculateCashFlowForecast({
@@ -371,6 +421,7 @@ describe('calculateCashFlowForecast', () => {
         endDate: '2026-08-31',
         obligations: [obligation()],
         recurringTemplates: [recurring()],
+        installmentPlans: [],
       })
 
       expect(safeToSpend.availableCashAgorot).toBe(availableCashAgorot)

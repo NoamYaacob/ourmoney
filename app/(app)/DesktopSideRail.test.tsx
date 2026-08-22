@@ -97,7 +97,7 @@ describe('DesktopSideRail', () => {
     mockPush.mockClear()
   })
 
-  it('renders exactly the 10 navigation destinations across the 4 cadence groups', async () => {
+  it('renders exactly the 11 navigation destinations across the 4 cadence groups', async () => {
     const { getByText, getAllByRole } = await render(<DesktopSideRail activeSegment="dashboard" />)
 
     // Everyday group (no header)
@@ -115,13 +115,14 @@ describe('DesktopSideRail', () => {
     expect(getByText(i18n.t('settings.financial.recurring'))).toBeTruthy()
     expect(getByText(i18n.t('settings.financial.goals'))).toBeTruthy()
     expect(getByText(i18n.t('settings.financial.obligations'))).toBeTruthy()
+    expect(getByText(i18n.t('settings.financial.installments'))).toBeTruthy()
 
     // Management group
     expect(getByText(i18n.t('nav.groups.management'))).toBeTruthy()
     expect(getByText(i18n.t('settings.financial.accounts'))).toBeTruthy()
     expect(getByText(i18n.t('tabs.settings'))).toBeTruthy()
 
-    expect(navButtons(getAllByRole('button'))).toHaveLength(10)
+    expect(navButtons(getAllByRole('button'))).toHaveLength(11)
   })
 
   // Quick Actions are tested separately from nav destinations per the file
@@ -135,8 +136,8 @@ describe('DesktopSideRail', () => {
 
     const buttons = getAllByRole('button')
     expect(quickActionButtons(buttons)).toHaveLength(3)
-    expect(navButtons(buttons)).toHaveLength(10)
-    expect(buttons).toHaveLength(13)
+    expect(navButtons(buttons)).toHaveLength(11)
+    expect(buttons).toHaveLength(14)
 
     expect(getByText(i18n.t('nav.quickActions.title'))).toBeTruthy()
     expect(getByText(i18n.t('nav.quickActions.newTransaction'))).toBeTruthy()
@@ -186,10 +187,10 @@ describe('DesktopSideRail', () => {
   })
 
   // Exactly one nav destination is ever marked selected at a time, even
-  // though the rail now renders 13 total buttons — the Quick Actions never
+  // though the rail now renders 14 total buttons — the Quick Actions never
   // participate in "selected" semantics (they're actions, not destinations
   // that can be "current"), so this counts only within navButtons().
-  it('marks exactly one of the 10 nav destinations as selected, never zero or more than one', async () => {
+  it('marks exactly one of the 11 nav destinations as selected, never zero or more than one', async () => {
     const { getAllByRole } = await render(<DesktopSideRail activeSegment="recurring" />)
 
     const selected = navButtons(getAllByRole('button')).filter((b) => b.props.accessibilityState?.selected === true)

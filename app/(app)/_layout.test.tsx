@@ -53,6 +53,9 @@ jest.mock('@/features/transactions/hooks/useTransactionsRealtimeSync', () => ({
 jest.mock('@/features/recurring/hooks/useGenerateRecurringTransactions', () => ({
   useGenerateRecurringTransactions: () => undefined,
 }))
+jest.mock('@/features/installments/hooks/useGenerateInstallmentTransactions', () => ({
+  useGenerateInstallmentTransactions: () => undefined,
+}))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
 // test verifies — same rationale as mocking any other icon/asset library
@@ -90,6 +93,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'recurring/[id]': STUB_SCREEN,
         'obligations/index': STUB_SCREEN,
         'obligations/[id]': STUB_SCREEN,
+        'installments/index': STUB_SCREEN,
+        'installments/[id]': STUB_SCREEN,
         'transfers/[id]': STUB_SCREEN,
         'cash-flow/index': STUB_SCREEN,
         'alerts/index': STUB_SCREEN,
@@ -150,6 +155,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'recurring/[id]': STUB_SCREEN,
         'obligations/index': STUB_SCREEN,
         'obligations/[id]': STUB_SCREEN,
+        'installments/index': STUB_SCREEN,
+        'installments/[id]': STUB_SCREEN,
         'transfers/[id]': STUB_SCREEN,
         'cash-flow/index': STUB_SCREEN,
         'alerts/index': STUB_SCREEN,

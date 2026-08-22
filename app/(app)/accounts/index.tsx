@@ -58,15 +58,30 @@ export default function Accounts() {
   const [isAdding, setIsAdding] = useState(false)
   const [name, setName] = useState('')
   const [type, setType] = useState<AccountType>('cash')
+  const [billingCycleDayText, setBillingCycleDayText] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
 
   function handleCreate() {
     if (!householdId || !name.trim() || createAccount.isPending) return
+    setCreateError(null)
+
+    let billingCycleDay: number | null = null
+    if (type === 'credit_card' && billingCycleDayText.trim()) {
+      const parsed = Number(billingCycleDayText.trim())
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) {
+        setCreateError(t('accounts.form.errors.invalidBillingCycleDay'))
+        return
+      }
+      billingCycleDay = parsed
+    }
+
     createAccount.mutate(
-      { householdId, name: name.trim(), type },
+      { householdId, name: name.trim(), type, billingCycleDay },
       {
         onSuccess: () => {
           setName('')
           setType('cash')
+          setBillingCycleDayText('')
           setIsAdding(false)
         },
       }
@@ -189,7 +204,18 @@ export default function Accounts() {
                 </View>
               }
             />
-            {createAccount.isError && <ErrorMessage message={t('accounts.errors.generic')} />}
+            {type === 'credit_card' && (
+              <Input
+                label={t('accounts.form.billingCycleDayLabel')}
+                value={billingCycleDayText}
+                onChangeText={setBillingCycleDayText}
+                placeholder={t('accounts.form.billingCycleDayPlaceholder')}
+                keyboardType="number-pad"
+              />
+            )}
+            {(createError || createAccount.isError) && (
+              <ErrorMessage message={createError ?? t('accounts.errors.generic')} />
+            )}
             <View className="mt-2">
               <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
             </View>

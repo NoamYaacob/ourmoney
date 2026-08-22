@@ -153,3 +153,14 @@ export interface FinancialAlert {
   // typed Href needed at the engine layer.
   actionRoute: string
 }
+
+// ============================================================================
+// Migration 016 (ADR-037) — Credit-card settlement + instalment purchases
+// ============================================================================
+
+// No column needs narrowing beyond what's already generated — every CHECK
+// on installment_plans (positive amounts, monthly_agorot = floor-division
+// remainder-aware split) is a numeric constraint, not a literal union, the
+// same reason Account/Category/Transfer/Budget above are plain Tables<...>
+// aliases rather than Omit<...> & {...} narrowings.
+export type InstallmentPlan = Tables<'installment_plans'>

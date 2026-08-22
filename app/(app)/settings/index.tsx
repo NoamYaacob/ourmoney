@@ -453,6 +453,11 @@ export default function Settings() {
           label={t('settings.financial.obligations')}
           onPress={() => router.push('/obligations')}
         />
+        <SettingsRow
+          iconName="layers-outline"
+          label={t('settings.financial.installments')}
+          onPress={() => router.push('/installments')}
+        />
       </SettingsSection>
       </View>
 

@@ -10,13 +10,15 @@ interface UpdateAccountInput {
   color?: string | null
   icon?: string | null
   includeInTotal?: boolean
+  // Only meaningful for type 'credit_card' — see useCreateAccount.ts.
+  billingCycleDay?: number | null
 }
 
 export function useUpdateAccount(householdId: string | null | undefined) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ id, name, type, color, icon, includeInTotal }: UpdateAccountInput) => {
+    mutationFn: async ({ id, name, type, color, icon, includeInTotal, billingCycleDay }: UpdateAccountInput) => {
       const { error } = await supabase
         .from('accounts')
         .update({
@@ -25,6 +27,7 @@ export function useUpdateAccount(householdId: string | null | undefined) {
           ...(color !== undefined && { color }),
           ...(icon !== undefined && { icon }),
           ...(includeInTotal !== undefined && { include_in_total: includeInTotal }),
+          ...(billingCycleDay !== undefined && { billing_cycle_day: billingCycleDay }),
         })
         .eq('id', id)
       if (error) throw error

@@ -202,7 +202,12 @@
     "form": {
       "nameLabel": "שם החשבון",
       "typeLabel": "סוג חשבון",
-      "submit": "הוספת חשבון"
+      "submit": "הוספת חשבון",
+      "billingCycleDayLabel": "יום סגירת מחזור חיוב",
+      "billingCycleDayPlaceholder": "לדוגמה: 10",
+      "errors": {
+        "invalidBillingCycleDay": "יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28"
+      }
     },
     "detail": {
       "title": "פרטי חשבון",
@@ -214,7 +219,8 @@
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת חשבון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
-      "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום."
+      "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום.",
+      "currentCycleSpend": "הוצאות במחזור החיוב הנוכחי"
     }
   },
   "categories": {
@@ -395,6 +401,47 @@
     "history": {
       "showButton": "היסטוריית התחייבויות",
       "hideButton": "הסתרת היסטוריה"
+    }
+  },
+  "installments": {
+    "title": "רכישות בתשלומים",
+    "empty": "עדיין אין רכישות בתשלומים.",
+    "addButton": "הוספת רכישה בתשלומים",
+    "noCreditCardAccounts": "כדי להוסיף רכישה בתשלומים יש קודם להוסיף חשבון כרטיס אשראי",
+    "installmentProgress": "שולמו {{materialized}} מתוך {{total}} תשלומים",
+    "remainingAmount": "יתרה לתשלום",
+    "monthlyAmount": "תשלום חודשי",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "הרכישה לא נמצאה"
+    },
+    "form": {
+      "descriptionLabel": "תיאור הרכישה",
+      "descriptionPlaceholder": "לדוגמה: מקרר חדש",
+      "merchantLabel": "בית עסק",
+      "merchantPlaceholder": "לא חובה",
+      "totalAmountLabel": "סכום כולל",
+      "totalAmountPlaceholder": "0.00",
+      "installmentCountLabel": "מספר תשלומים",
+      "installmentCountPlaceholder": "לדוגמה: 12",
+      "firstChargeDateLabel": "תאריך חיוב ראשון",
+      "submit": "הוספת רכישה",
+      "errors": {
+        "missingDescription": "יש להזין תיאור לרכישה",
+        "missingAccount": "יש לבחור חשבון כרטיס אשראי",
+        "invalidTotalAmount": "יש להזין סכום כולל תקין",
+        "invalidInstallmentCount": "יש להזין מספר תשלומים תקין (1 ומעלה)",
+        "missingFirstChargeDate": "יש לבחור תאריך חיוב ראשון"
+      }
+    },
+    "detail": {
+      "title": "פרטי הרכישה",
+      "edit": "עריכה",
+      "save": "שמירה",
+      "immutableNotice": "סכום, מספר תשלומים, חשבון ותאריך החיוב הראשון קבועים ולא ניתנים לעריכה לאחר יצירת הרכישה.",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת רכישה בתשלומים",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. תשלומים שכבר נוצרו כתנועות בפועל יישארו ברשימת התנועות."
     }
   },
   "import": {
@@ -783,7 +830,8 @@
       "categories": "קטגוריות וכללי סיווג",
       "recurring": "חיובים קבועים",
       "goals": "יעדי חיסכון",
-      "obligations": "התחייבויות עתידיות"
+      "obligations": "התחייבויות עתידיות",
+      "installments": "רכישות בתשלומים"
     },
     "appearance": {
       "title": "מראה"

@@ -121,7 +121,7 @@ describe('Accounts list', () => {
     await fireEvent.press(getByText('הוספת חשבון'))
 
     expect(mockCreateAccountMutate).toHaveBeenCalledWith(
-      { householdId: 'household-1', name: 'קופת חיסכון', type: 'investment' },
+      { householdId: 'household-1', name: 'קופת חיסכון', type: 'investment', billingCycleDay: null },
       expect.anything()
     )
   })

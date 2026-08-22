@@ -10,6 +10,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
+import { useGenerateInstallmentTransactions } from '@/features/installments/hooks/useGenerateInstallmentTransactions'
 import { colors } from '@/constants/colors'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 
@@ -23,6 +24,7 @@ type RailHref =
   | '/recurring'
   | '/goals'
   | '/obligations'
+  | '/installments'
   | '/accounts'
 
 interface RailDestination {
@@ -93,6 +95,13 @@ const RAIL_GROUPS: RailGroup[] = [
         labelKey: 'settings.financial.obligations',
         icon: 'calendar-outline',
         iconActive: 'calendar',
+      },
+      {
+        segment: 'installments',
+        href: '/installments',
+        labelKey: 'settings.financial.installments',
+        icon: 'layers-outline',
+        iconActive: 'layers',
       },
     ],
   },
@@ -240,6 +249,7 @@ export default function AppLayout() {
   const { householdId } = useHousehold(user?.id)
   useTransactionsRealtimeSync(householdId)
   useGenerateRecurringTransactions(householdId)
+  useGenerateInstallmentTransactions(householdId)
   const { colorScheme: scheme } = useColorScheme()
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
@@ -337,6 +347,8 @@ export default function AppLayout() {
               <Tabs.Screen name="settings/categories" options={{ href: null }} />
               <Tabs.Screen name="obligations/index" options={{ href: null }} />
               <Tabs.Screen name="obligations/[id]" options={{ href: null }} />
+              <Tabs.Screen name="installments/index" options={{ href: null }} />
+              <Tabs.Screen name="installments/[id]" options={{ href: null }} />
             </Tabs>
           </View>
         </View>
