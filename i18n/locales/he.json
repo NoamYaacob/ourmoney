@@ -65,11 +65,10 @@
       "summary": "{{count}} חיובים · {{amount}}",
       "viewAll": "כל מה שמגיע",
       "empty": "אין חיובים ידועים בשבועות הקרובים",
-      "inDays_one": "בעוד יום",
-      "inDays_other": "בעוד {{count}} ימים",
       "today": "היום",
       "tomorrow": "מחר",
-      "pastDue": "באיחור"
+      "pastDue": "באיחור",
+      "inDays": "בעוד {{count}} ימים"
     },
     "budget": {
       "title": "תקציב {{month}}",
@@ -90,21 +89,18 @@
     "availableCash": "כסף זמין כרגע",
     "availableCashSubtitle": "עו״ש ומזומן",
     "obligations": "התחייבויות קרובות",
-    "obligationsSubtitle_one": "חיוב חד־פעמי אחד עד סוף התקופה",
-    "obligationsSubtitle_other": "{{count}} חיובים חד־פעמיים עד סוף התקופה",
     "recurring": "הוצאות קבועות צפויות",
-    "recurringSubtitle_one": "חיוב קבוע אחד שעוד לא ירד",
-    "recurringSubtitle_other": "{{count}} חיובים קבועים שעוד לא ירדו",
     "installments": "תשלומים שעוד לא חויבו",
-    "installmentsSubtitle_one": "תשלום אחד בתוכנית פעילה",
-    "installmentsSubtitle_other": "{{count}} תשלומים בתוכניות פעילות",
     "result": "פנוי באמת",
     "shortfallResult": "חסרים",
     "excludedTitle": "מה לא נכנס לחישוב.",
     "excludedBody": "חיסכון, השקעות וכרטיסי האשראי. הם קיימים, אבל הם לא כסף שאפשר להוציא עכשיו.",
     "showItems": "לפתוח",
     "hideItems": "לסגור",
-    "empty": "אין חיובים ידועים בטווח הזה"
+    "empty": "אין חיובים ידועים בטווח הזה",
+    "obligationsSubtitle": "{{count}} חיובים חד־פעמיים עד סוף התקופה",
+    "recurringSubtitle": "{{count}} חיובים קבועים שעוד לא ירדו",
+    "installmentsSubtitle": "{{count}} תשלומים בתוכניות פעילות"
   },
   "more": {
     "title": "עוד",
@@ -118,12 +114,11 @@
     "accounts": "חשבונות ומקורות",
     "accountsSubtitle": "זמין {{amount}}",
     "goals": "יעדי חיסכון",
-    "goalsSubtitle_one": "יעד אחד פעיל",
-    "goalsSubtitle_other": "{{count}} פעילים",
     "goalsEmpty": "עוד לא הגדרתם יעד",
     "import": "ייבוא מ־CSV",
     "categories": "קטגוריות וכללי סיווג",
-    "settings": "הגדרות"
+    "settings": "הגדרות",
+    "goalsSubtitle": "{{count}} פעילים"
   },
   "transactions": {
     "title": "תנועות",
@@ -233,7 +228,21 @@
       "categorizedByRule": "סווג אוטומטית לפי הכלל",
       "editRule": "עריכת הכלל"
     },
-    "transferLabel": "העברה"
+    "transferLabel": "העברה",
+    "mobile": {
+      "today": "היום",
+      "yesterday": "אתמול",
+      "filterButton": "סינון",
+      "searchButton": "חיפוש",
+      "filterSheetTitle": "סינון תנועות",
+      "applyFilters": "הצגת תוצאות",
+      "resetFilters": "איפוס",
+      "uncategorizedSubtitle": "{{amount}} שלא נספרים בתקציב",
+      "uncategorizedAction": "לסווג",
+      "transferLinked": "קושר אוטומטית",
+      "uncategorizedTitle": "{{count}} תנועות בלי קטגוריה",
+      "activeFilterCount": "{{count}} מסננים פעילים"
+    }
   },
   "transfers": {
     "detail": {
@@ -872,11 +881,10 @@
       "lowPoint": "הנקודה הנמוכה",
       "atEnd": "בסוף",
       "eventsTitle": "מה קורה בדרך",
-      "eventsCount_one": "אירוע אחד",
-      "eventsCount_other": "{{count}} אירועים",
       "causeTag": "זה מה שמוריד אותנו מתחת לאפס",
       "causeTagLow": "זה מה שמוריד לנקודה הנמוכה",
-      "eventsEmpty": "אין אירועים צפויים בטווח הזה"
+      "eventsEmpty": "אין אירועים צפויים בטווח הזה",
+      "eventsCount": "{{count}} אירועים"
     }
   },
   "alerts": {
@@ -884,8 +892,6 @@
     "viewAll": "כל ההתראות",
     "allGoodMessage": "הכל נראה תקין כרגע.",
     "screenTitle": "התראות ותובנות",
-    "badgeCritical_one": "פריט אחד דורש טיפול",
-    "badgeCritical_other": "{{count}} פריטים דורשים טיפול",
     "groups": {
       "critical": "דורש טיפול",
       "warning": "כדאי לשים לב",
@@ -934,7 +940,8 @@
       "title": "היתרה הפנויה מתקרבת לאפס",
       "negativeTitle": "היתרה הפנויה כבר שלילית",
       "description": "פנוי באמת: {{amount}}"
-    }
+    },
+    "badgeCritical": "{{count}} פריטים דורשים טיפול"
   },
   "household": {
     "errors": {
