@@ -1170,9 +1170,12 @@ BEGIN
   SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
   -- User D belongs to no household — proves system-category visibility is
   -- not household-membership-gated at all.
+  -- 23 from migration 002's original seed + 3 from migration 014's
+  -- Israeli-category-gap additions (ארנונה, עמלות ותשלומים פיננסיים,
+  -- קצבאות וביטוח לאומי) = 26.
   SELECT count(*) INTO v_count FROM categories WHERE is_system = TRUE;
-  IF v_count <> 23 THEN RAISE EXCEPTION 'FAIL 4.1: expected 23 system categories visible, got %', v_count; END IF;
-  PERFORM _pass('4.1', 'any authenticated user (even with no household) can SELECT all 23 system categories');
+  IF v_count <> 26 THEN RAISE EXCEPTION 'FAIL 4.1: expected 26 system categories visible, got %', v_count; END IF;
+  PERFORM _pass('4.1', 'any authenticated user (even with no household) can SELECT all 26 system categories');
 END $$;
 RESET role;
 
