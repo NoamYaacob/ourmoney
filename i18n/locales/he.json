@@ -515,6 +515,11 @@
     "assignCategoryButton": "שיוך לקטגוריה",
     "assignCategoryLabel": "קטגוריה",
     "assignCategorySubmit": "שיוך",
+    "pace": {
+      "label": "צפי לסוף החודש בקצב הנוכחי",
+      "onTrack": "בקצב הזה תעמדו בתקציב",
+      "overBy": "בקצב הזה תחרגו בכ-{{amount}}"
+    },
     "copyPrevious": {
       "actionButton": "העתקת התקציב מהחודש הקודם",
       "title": "העתקת תקציב מ{{fromMonth}}",

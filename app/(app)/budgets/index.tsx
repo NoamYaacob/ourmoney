@@ -23,7 +23,8 @@ import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncate
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
 import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
-import { shiftMonth, formatMonthLabel } from '@/features/budgets/lib/budgetPeriod'
+import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { calculateBudgetPace } from '@/lib/engines/budgets/calculateBudgetPace'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
 import { spentPercent } from '@/lib/money/arithmetic'
@@ -267,6 +268,16 @@ export default function Budgets() {
   const overallPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot)
   const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
   const addableCategories = categories.filter((c) => !progress.some((p) => p.categoryId === c.id))
+  // Deliberately null (not just "unused") for any period other than the
+  // one containing today — calculateBudgetPace.ts's own header explains
+  // why a past/future month has nothing meaningful to project.
+  const pace = calculateBudgetPace({
+    allocatedAgorot: totalAllocatedAgorot,
+    spentAgorot: totalSpentAgorot,
+    periodStart,
+    periodEnd: getPeriodEnd(periodStart),
+    today: localDateString(),
+  })
 
   return (
     <Screen width="wide">
@@ -326,6 +337,30 @@ export default function Budgets() {
                 </Text>
               </View>
             </View>
+
+            {/* End-of-month spending pace — deterministic linear
+                extrapolation (lib/engines/budgets/calculateBudgetPace.ts),
+                hidden entirely (not shown as a guess) whenever there isn't
+                yet enough of the month's data to extrapolate from. */}
+            {pace && (
+              <View className="mt-4 web:desktop:mt-6 border-t border-border-light pt-4 dark:border-border-dark">
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.pace.label')}
+                </Text>
+                <Text
+                  className={`mt-0.5 text-heading font-semibold web:desktop:text-[19px] ${
+                    pace.isProjectedOverspend ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
+                  }`}
+                >
+                  {formatILS(pace.projectedEndOfMonthAgorot)}
+                </Text>
+                <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {pace.isProjectedOverspend
+                    ? t('budgets.pace.overBy', { amount: formatILS(pace.projectedOverspendAgorot) })
+                    : t('budgets.pace.onTrack')}
+                </Text>
+              </View>
+            )}
           </Card>
 
           {/* Desktop polish pass: each column below now renders as its own
