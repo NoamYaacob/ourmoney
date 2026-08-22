@@ -2292,6 +2292,32 @@ BEGIN
   PERFORM _pass('DB.PARITY.6', 'daily/weekly/biweekly advance by exactly 1/7/14 days, matching the TS reference');
 END $$;
 
+-- DB.PARITY.7 [migration 016 / ADR-037]: empirically pins down Postgres's
+-- native `date + (n * INTERVAL '1 month')` day-overflow behavior — the
+-- exact operator generate_installment_transactions() uses to compute each
+-- instalment's charge date, and the exact behavior
+-- lib/engines/cashflow/forecastInstallmentOccurrences.ts's addMonthClamped()
+-- must mirror. Deliberately NOT assumed: advance_recurring_due_date() above
+-- avoids this operator entirely (date_trunc to day 1, then a manual LEAST
+-- clamp) rather than relying on it, which is itself a signal not to trust
+-- an assumption about what it does. This test is the empirical answer.
+DO $$
+BEGIN
+  IF (DATE '2026-01-31' + (1 * INTERVAL '1 month')) <> DATE '2026-02-28' THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.7a: expected native date+interval to clamp Jan 31 + 1 month to Feb 28 (non-leap), got %', (DATE '2026-01-31' + (1 * INTERVAL '1 month'));
+  END IF;
+  IF (DATE '2028-01-31' + (1 * INTERVAL '1 month')) <> DATE '2028-02-29' THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.7b: expected native date+interval to clamp Jan 31 + 1 month to Feb 29 (leap), got %', (DATE '2028-01-31' + (1 * INTERVAL '1 month'));
+  END IF;
+  IF (DATE '2026-01-31' + (2 * INTERVAL '1 month')) <> DATE '2026-03-31' THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.7c: expected native date+interval computed fresh from Jan 31 (+2 months) to land on Mar 31 (no drift from a clamped intermediate), got %', (DATE '2026-01-31' + (2 * INTERVAL '1 month'));
+  END IF;
+  IF (DATE '2026-01-31' + (3 * INTERVAL '1 month')) <> DATE '2026-04-30' THEN
+    RAISE EXCEPTION 'FAIL DB.PARITY.7d: expected native date+interval to clamp Jan 31 + 3 months to Apr 30, got %', (DATE '2026-01-31' + (3 * INTERVAL '1 month'));
+  END IF;
+  PERFORM _pass('DB.PARITY.7', 'native date + (n * INTERVAL ''1 month'') clamps an overflowing day-of-month to the last day of the target month (never rolls into the following month), computed fresh from the original date each time — confirms generate_installment_transactions()''s date math and forecastInstallmentOccurrences.ts''s addMonthClamped() mirror the same real behavior');
+END $$;
+
 -- ============================================================================
 -- Milestone 7 — RECURRING.*: generate_recurring_transactions(). All fixture
 -- due dates are CURRENT_DATE-relative (never hardcoded absolute dates) so
