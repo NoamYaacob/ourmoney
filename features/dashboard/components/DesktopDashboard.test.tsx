@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
-import Dashboard from './index'
+import { DesktopDashboard as Dashboard } from './DesktopDashboard'
 import type { TransactionFilters } from '@/features/transactions/hooks/useTransactions'
 import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'

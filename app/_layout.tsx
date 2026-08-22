@@ -6,6 +6,14 @@ import '../features/budgets/lib/budgetThresholdSubscriber'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native'
 import * as Updates from 'expo-updates'
+import { useFonts } from 'expo-font'
+import {
+  Assistant_400Regular,
+  Assistant_500Medium,
+  Assistant_600SemiBold,
+  Assistant_700Bold,
+} from '@expo-google-fonts/assistant'
+import { Heebo_500Medium, Heebo_700Bold, Heebo_800ExtraBold } from '@expo-google-fonts/heebo'
 import { Slot } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -83,6 +91,49 @@ function SplashReadySignal({ children }: { children: ReactNode }) {
   useEffect(() => {
     hideSplashScreen()
   }, [])
+
+  return <>{children}</>
+}
+
+// Holds first paint until Heebo and Assistant are resident, so the product
+// never paints one frame in the system font and then reflows into its own
+// typography — the same cold-start flash ThemeGate below exists to prevent,
+// and far more visible here because every screen's figures change width.
+//
+// Only the seven weights the design system actually names are loaded (four
+// Assistant, three Heebo). Loading a family's full range would cost startup
+// time for faces no screen ever asks for.
+//
+// Deliberately proceeds on failure as well as on success: `useFonts` reports
+// an error if a face can't be decoded, and a household that can't read its
+// balance because a webfont 404'd is a far worse outcome than one reading it
+// in the system font. The Tailwind `fontFamily` stacks all end in
+// `system-ui, sans-serif` precisely so that degradation is a fallback rather
+// than a blank screen.
+function FontGate({ children }: { children: ReactNode }) {
+  const [loaded, error] = useFonts({
+    Assistant_400Regular,
+    Assistant_500Medium,
+    Assistant_600SemiBold,
+    Assistant_700Bold,
+    Heebo_500Medium,
+    Heebo_700Bold,
+    Heebo_800ExtraBold,
+  })
+
+  useEffect(() => {
+    if (error) {
+      console.warn('[fonts] falling back to the system font', error)
+    }
+  }, [error])
+
+  if (!loaded && !error) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
+        <ActivityIndicator />
+      </View>
+    )
+  }
 
   return <>{children}</>
 }
@@ -167,9 +218,11 @@ export default function RootLayout() {
             captureException(error, { componentStack: info.componentStack ?? '' })
           }}
         >
-          <ThemeGate>
-            <AuthGate />
-          </ThemeGate>
+          <FontGate>
+            <ThemeGate>
+              <AuthGate />
+            </ThemeGate>
+          </FontGate>
         </AppErrorBoundary>
       </QueryClientProvider>
     </SafeAreaProvider>

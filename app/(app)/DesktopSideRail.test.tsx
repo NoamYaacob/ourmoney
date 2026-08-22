@@ -63,6 +63,17 @@ jest.mock('@/features/transactions/hooks/useTransactionsRealtimeSync', () => ({
 jest.mock('@/features/recurring/hooks/useGenerateRecurringTransactions', () => ({
   useGenerateRecurringTransactions: () => undefined,
 }))
+jest.mock('@/features/installments/hooks/useGenerateInstallmentTransactions', () => ({
+  useGenerateInstallmentTransactions: () => undefined,
+}))
+// Mobile redesign: the "עוד" tab icon asks the alerts engine whether
+// anything critical is hiding behind it, which pulls the whole
+// Supabase-backed alert chain into this structural test. Stubbed to an
+// empty result — the badge's own behavior is covered in features/alerts,
+// not here.
+jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
+  useFinancialAlerts: () => ({ alerts: [], isLoading: false, hasPartialError: false }),
+}))
 
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
