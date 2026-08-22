@@ -5043,22 +5043,29 @@ RESET role;
 ROLLBACK TO SAVEPOINT sp_11_7;
 
 -- 11.8 [design-stage review finding]: a direct client UPDATE attempting to
--- set obligation_id on an ordinary, already-existing transaction is equally
--- rejected — affects 0 rows, since obligation_id IS NULL is required in
--- transactions_update's USING clause too (same "not even a reachable UPDATE
--- target" shape as transfer_id's 9.8/9.9).
+-- set obligation_id on an ordinary, already-existing transaction (whose
+-- obligation_id is currently NULL) is rejected — but NOT via a silent
+-- 0-row no-op the way 9.8/9.9's DETACH direction is (transfer_id going
+-- non-null -> NULL fails transactions_update's USING clause on the OLD row,
+-- so the row is never even selected). This is the opposite, ATTACH
+-- direction: the OLD row's obligation_id IS NULL, so USING passes and the
+-- row IS selected — it's the NEW row's obligation_id (now non-null) that
+-- fails WITH CHECK, which Postgres raises as an explicit RLS-violation
+-- exception rather than silently affecting 0 rows. Both directions are
+-- fully blocked; only the failure shape differs, matching 11.7's own
+-- exception-catching style (same underlying WITH CHECK violation), not
+-- 9.8/9.9's ROW_COUNT-based one.
 SAVEPOINT sp_11_8;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 DO $$
-DECLARE v_rows INT;
 BEGIN
-  UPDATE transactions SET obligation_id = '58000000-0000-0000-0000-000000000001' WHERE id = '5f000000-0000-0000-0000-000000000001';
-  GET DIAGNOSTICS v_rows = ROW_COUNT;
-  IF v_rows <> 0 THEN
-    RAISE EXCEPTION 'FAIL 11.8: a direct UPDATE linked an ordinary transaction to an obligation — % row(s) affected', v_rows;
-  END IF;
-  PERFORM _pass('11.8', 'a direct client UPDATE attempting to set obligation_id on an ordinary transaction affects 0 rows — only complete_planned_obligation() may link a transaction to an obligation');
+  BEGIN
+    UPDATE transactions SET obligation_id = '58000000-0000-0000-0000-000000000001' WHERE id = '5f000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'FAIL 11.8: a direct UPDATE linked an ordinary transaction to an obligation';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    PERFORM _pass('11.8', 'a direct client UPDATE attempting to set obligation_id on an ordinary transaction is rejected (WITH CHECK violation on the new row) — only complete_planned_obligation() may link a transaction to an obligation');
+  END;
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_11_8;
