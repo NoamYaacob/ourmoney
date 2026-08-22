@@ -852,6 +852,19 @@
       "errors": {
         "partial": "חלק מהנתונים לא זמינים כרגע — מוצג מידע חלקי."
       }
+    },
+    "mobile": {
+      "answerShortfall": "הכסף מחזיק עד {{date}}, ואז חסרים {{amount}}.",
+      "answerOk": "לפי מה שידוע היום היתרה לא יורדת מתחת לאפס. הנקודה הנמוכה היא {{amount}} ב־{{date}}.",
+      "today": "היום",
+      "lowPoint": "הנקודה הנמוכה",
+      "atEnd": "בסוף",
+      "eventsTitle": "מה קורה בדרך",
+      "eventsCount_one": "אירוע אחד",
+      "eventsCount_other": "{{count}} אירועים",
+      "causeTag": "זה מה שמוריד אותנו מתחת לאפס",
+      "causeTagLow": "זה מה שמוריד לנקודה הנמוכה",
+      "eventsEmpty": "אין אירועים צפויים בטווח הזה"
     }
   },
   "alerts": {

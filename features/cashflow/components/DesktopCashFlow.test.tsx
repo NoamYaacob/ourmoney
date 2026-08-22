@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
-import CashFlow from './index'
+import { DesktopCashFlow as CashFlow } from './DesktopCashFlow'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import type { CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
