@@ -1,5 +1,5 @@
-// Smart Financial Alerts V1 — the aggregation engine. Combines FOUR
-// already-computed domain sources into one deterministic, deduplicated,
+// Smart Financial Alerts V1(+expansion) — the aggregation engine. Combines
+// NINE already-computed domain sources into one deterministic, deduplicated,
 // severity-sorted list. Computes NOTHING itself that one of those sources
 // doesn't already own:
 //
@@ -14,6 +14,22 @@
 //   BUDGET_RISK              ← features/budgets/hooks/useBudgetProgress.ts's
 //                               already-computed percentSpent per category —
 //                               no new budget calculation
+//   HIGH_CREDIT_CARD_CYCLE_SPEND ← lib/engines/alerts/detectHighCreditCardCycleSpend.ts,
+//                               itself built entirely on
+//                               features/accounts/lib/creditCardCycle.ts's
+//                               existing cycle-range/spend functions
+//   CATEGORY_SPEND_ABOVE_TYPICAL ← lib/engines/alerts/detectCategorySpendAboveTypical.ts,
+//                               fed by features/analytics/lib/categoryBreakdown.ts's
+//                               existing computeCategoryBreakdown()
+//   SAVINGS_GOAL_BEHIND       ← lib/engines/savings/calculateSavingsPace.ts's
+//                               own isOverdue/isOnTrack fields, reused as-is —
+//                               no second savings-pace calculation
+//   EXCESS_CASH_AVAILABLE    ← the same SafeToSpendResult.safeToSpendAgorot
+//                               the Dashboard/Cash-Flow screens already show
+//   LOW_BALANCE_WARNING      ← the same SafeToSpendResult.safeToSpendAgorot,
+//                               read as a CURRENT state rather than a future
+//                               projected date (distinct from
+//                               FORECAST_SHORTFALL above)
 //
 // i18n: this module calls i18n.t() directly to compose each alert's
 // title/description ONCE (not duplicated across the Dashboard section and
@@ -37,8 +53,41 @@ import { formatILS } from '@/lib/money/format'
 import type { CashFlowForecastResult } from '../cashflow/calculateCashFlowForecast'
 import type { PlannedObligationForecastInput } from '../cashflow/calculateSafeToSpend'
 import type { PriceIncreaseDetection } from '@/features/recurring/lib/priceIncreaseDetection'
+import {
+  detectHighCreditCardCycleSpend,
+  type CreditCardCycleAccountInput,
+} from './detectHighCreditCardCycleSpend'
+import {
+  detectCategorySpendAboveTypical,
+  type CategoryMonthObservation,
+} from './detectCategorySpendAboveTypical'
+import { calculateSavingsPace } from '../savings/calculateSavingsPace'
 import type { BudgetCategoryProgress, FinancialAlert } from '@/types/app'
-import { budgetRiskSeverity, daysBetween, forecastShortfallSeverity, obligationAlertSeverity, SEVERITY_ORDER } from './alertSeverity'
+import {
+  budgetRiskSeverity,
+  creditCardCycleSeverity,
+  daysBetween,
+  EXCESS_CASH_MEANINGFUL_AGOROT,
+  forecastShortfallSeverity,
+  lowBalanceSeverity,
+  obligationAlertSeverity,
+  SEVERITY_ORDER,
+} from './alertSeverity'
+
+// The minimal savings-goal shape this engine needs — deliberately not the
+// full SavingsGoal DB row (progress_source/current_agorot resolution for
+// linked-account goals happens in the caller, via
+// features/savings/lib/goalProgress.ts's existing resolveGoalCurrentAgorot,
+// exactly the milestone's own "for account-linked goals derive progress
+// from the linked account balance" instruction — this engine never touches
+// account balances itself).
+export interface SavingsGoalAlertInput {
+  id: string
+  name: string
+  currentAgorot: number
+  targetAgorot: number
+  targetDate: string | null
+}
 
 export interface BuildFinancialAlertsInput {
   today: string
@@ -50,6 +99,17 @@ export interface BuildFinancialAlertsInput {
   obligations: readonly PlannedObligationForecastInput[]
   priceIncreaseDetections: readonly PriceIncreaseDetection[]
   budgetCategories: readonly BudgetCategoryProgress[]
+  creditCardCycles: readonly CreditCardCycleAccountInput[]
+  categorySpend: {
+    currentMonth: readonly CategoryMonthObservation[]
+    historicalMonths: readonly (readonly CategoryMonthObservation[])[]
+  } | null
+  savingsGoals: readonly SavingsGoalAlertInput[]
+  // Just the one field every new source below actually needs — never the
+  // full SafeToSpendResult, so this engine can't accidentally start
+  // recomputing something eligibleCashAccounts.ts/calculateSafeToSpend.ts
+  // already own.
+  safeToSpendAgorot: number | null
 }
 
 function buildForecastShortfallAlert(
@@ -183,12 +243,170 @@ function buildBudgetRiskAlerts(categories: readonly BudgetCategoryProgress[]): F
   return alerts
 }
 
+function buildCreditCardCycleAlerts(accounts: readonly CreditCardCycleAccountInput[], today: string): FinancialAlert[] {
+  const alerts: FinancialAlert[] = []
+
+  for (const account of accounts) {
+    const detection = detectHighCreditCardCycleSpend(account, today)
+    if (!detection) continue
+
+    alerts.push({
+      id: `high_credit_card_cycle_spend:${detection.accountId}`,
+      type: 'high_credit_card_cycle_spend',
+      severity: creditCardCycleSeverity(detection.excessPercent),
+      title: i18n.t('alerts.highCreditCardCycleSpend.title', { name: detection.accountName }),
+      description: i18n.t('alerts.highCreditCardCycleSpend.description', {
+        current: formatILS(detection.currentCycleSpendAgorot),
+        previous: formatILS(detection.previousCycleSpendAgorot),
+      }),
+      date: detection.currentCycleEnd,
+      amountAgorot: detection.excessAgorot,
+      source: 'account',
+      sourceId: detection.accountId,
+      actionRoute: `/accounts/${detection.accountId}`,
+    })
+  }
+
+  return alerts
+}
+
+function buildCategorySpendAlerts(
+  categorySpend: BuildFinancialAlertsInput['categorySpend']
+): FinancialAlert[] {
+  if (!categorySpend) return []
+
+  return detectCategorySpendAboveTypical(categorySpend.currentMonth, categorySpend.historicalMonths).map(
+    (detection) => ({
+      id: `category_spend_above_typical:${detection.categoryId}`,
+      type: 'category_spend_above_typical',
+      // Always warning — the detector's own dual threshold already filters
+      // to meaningful excesses only, same reasoning as
+      // buildPriceIncreaseAlerts.
+      severity: 'warning',
+      title: i18n.t('alerts.categorySpendAboveTypical.title', { category: detection.categoryNameHe }),
+      description: i18n.t('alerts.categorySpendAboveTypical.description', {
+        category: detection.categoryNameHe,
+        current: formatILS(detection.currentSpentAgorot),
+        typical: formatILS(detection.typicalAgorot),
+      }),
+      date: null,
+      amountAgorot: detection.excessAgorot,
+      source: 'budget',
+      sourceId: detection.categoryId,
+      actionRoute: '/budgets',
+    })
+  )
+}
+
+function buildSavingsGoalBehindAlerts(goals: readonly SavingsGoalAlertInput[], today: string): FinancialAlert[] {
+  const alerts: FinancialAlert[] = []
+
+  for (const goal of goals) {
+    const pace = calculateSavingsPace({
+      currentAgorot: goal.currentAgorot,
+      targetAgorot: goal.targetAgorot,
+      targetDate: goal.targetDate,
+      today,
+    })
+    // Same single-source-of-truth reasoning as app/(app)/goals/[id].tsx and
+    // goals/index.tsx: "behind" is read from the pace calculation's own
+    // remainingAgorot/isOverdue, never from a separately-derived completion
+    // flag that could drift one render behind.
+    if (!pace || pace.remainingAgorot === 0 || !pace.isOverdue) continue
+
+    alerts.push({
+      id: `savings_goal_behind:${goal.id}`,
+      type: 'savings_goal_behind',
+      severity: 'warning',
+      title: i18n.t('alerts.savingsGoalBehind.title', { name: goal.name }),
+      description: i18n.t('alerts.savingsGoalBehind.description', {
+        name: goal.name,
+        amount: formatILS(pace.remainingAgorot),
+      }),
+      date: goal.targetDate,
+      amountAgorot: pace.remainingAgorot,
+      source: 'savings_goal',
+      sourceId: goal.id,
+      actionRoute: `/goals/${goal.id}`,
+    })
+  }
+
+  return alerts
+}
+
+function buildExcessCashAlert(
+  safeToSpendAgorot: number | null,
+  goals: readonly SavingsGoalAlertInput[],
+  today: string
+): FinancialAlert | null {
+  if (safeToSpendAgorot === null || safeToSpendAgorot < EXCESS_CASH_MEANINGFUL_AGOROT) return null
+
+  // Only meaningful if there is at least one incomplete goal to accelerate —
+  // "meaningful excess cash" that could accelerate a savings goal has
+  // nothing to accelerate otherwise.
+  const hasIncompleteGoal = goals.some((goal) => {
+    const pace = calculateSavingsPace({
+      currentAgorot: goal.currentAgorot,
+      targetAgorot: goal.targetAgorot,
+      targetDate: goal.targetDate,
+      today,
+    })
+    // A goal with no target date still has a positive remainingAgorot to
+    // accelerate even though calculateSavingsPace itself returns null for
+    // it (no date to project against) — checked directly here rather than
+    // via pace, which is null in exactly that case.
+    return goal.currentAgorot < goal.targetAgorot || (pace !== null && pace.remainingAgorot > 0)
+  })
+  if (!hasIncompleteGoal) return null
+
+  return {
+    id: 'excess_cash_available',
+    type: 'excess_cash_available',
+    severity: 'info',
+    title: i18n.t('alerts.excessCashAvailable.title'),
+    description: i18n.t('alerts.excessCashAvailable.description', { amount: formatILS(safeToSpendAgorot) }),
+    date: null,
+    amountAgorot: safeToSpendAgorot,
+    source: 'cash_flow',
+    sourceId: null,
+    actionRoute: '/goals',
+  }
+}
+
+function buildLowBalanceAlert(safeToSpendAgorot: number | null): FinancialAlert | null {
+  if (safeToSpendAgorot === null) return null
+  const severity = lowBalanceSeverity(safeToSpendAgorot)
+  if (severity === null) return null
+
+  return {
+    id: 'low_balance_warning',
+    type: 'low_balance_warning',
+    severity,
+    title: i18n.t(
+      severity === 'critical' ? 'alerts.lowBalanceWarning.negativeTitle' : 'alerts.lowBalanceWarning.title'
+    ),
+    description: i18n.t('alerts.lowBalanceWarning.description', { amount: formatILS(safeToSpendAgorot) }),
+    date: null,
+    amountAgorot: safeToSpendAgorot,
+    source: 'cash_flow',
+    sourceId: null,
+    actionRoute: '/cash-flow',
+  }
+}
+
 export function buildFinancialAlerts(input: BuildFinancialAlertsInput): FinancialAlert[] {
   const alerts: FinancialAlert[] = [
     ...[buildForecastShortfallAlert(input.forecast, input.today)].filter((a): a is FinancialAlert => a !== null),
     ...buildObligationAlerts(input.obligations, input.today),
     ...buildPriceIncreaseAlerts(input.priceIncreaseDetections),
     ...buildBudgetRiskAlerts(input.budgetCategories),
+    ...buildCreditCardCycleAlerts(input.creditCardCycles, input.today),
+    ...buildCategorySpendAlerts(input.categorySpend),
+    ...buildSavingsGoalBehindAlerts(input.savingsGoals, input.today),
+    ...[buildExcessCashAlert(input.safeToSpendAgorot, input.savingsGoals, input.today)].filter(
+      (a): a is FinancialAlert => a !== null
+    ),
+    ...[buildLowBalanceAlert(input.safeToSpendAgorot)].filter((a): a is FinancialAlert => a !== null),
   ]
 
   // Severity first, then urgency (soonest date first — undated alerts, e.g.

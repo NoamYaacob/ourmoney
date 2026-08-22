@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { computeCurrentCycleSpendAgorot, getCurrentBillingCycleRange } from './creditCardCycle'
+import { computeCurrentCycleSpendAgorot, getCurrentBillingCycleRange, getPreviousBillingCycleRange } from './creditCardCycle'
 
 describe('getCurrentBillingCycleRange', () => {
   it('when today is before this month\'s closing day, the cycle runs from the day after last month\'s close through this month\'s close', () => {
@@ -30,6 +30,32 @@ describe('getCurrentBillingCycleRange', () => {
   it('handles a leap-year February close correctly', () => {
     const range = getCurrentBillingCycleRange(29, '2028-03-10')
     expect(range).toEqual({ start: '2028-03-01', end: '2028-03-29' })
+  })
+})
+
+describe('getPreviousBillingCycleRange', () => {
+  it('returns the cycle immediately before the current open one', () => {
+    const range = getPreviousBillingCycleRange(15, '2026-08-20')
+    // Current open cycle (same today) is 2026-08-16..2026-09-15.
+    expect(range).toEqual({ start: '2026-07-16', end: '2026-08-15' })
+  })
+
+  it("is consistent whether today is mid-cycle or exactly this month's closing day", () => {
+    expect(getPreviousBillingCycleRange(15, '2026-08-10')).toEqual(getPreviousBillingCycleRange(15, '2026-08-15'))
+  })
+
+  it('handles a year boundary correctly', () => {
+    const range = getPreviousBillingCycleRange(15, '2027-01-10')
+    // Current open cycle is 2026-12-16..2027-01-15.
+    expect(range).toEqual({ start: '2026-11-16', end: '2026-12-15' })
+  })
+
+  it('clamps a closing day that overflows a shorter month (billingCycleDay 31, previous cycle closing in February)', () => {
+    // Current open cycle (today 2026-03-20, before this month's 31st close)
+    // is 2026-03-01..2026-03-31; the previous cycle's own close is
+    // therefore February's clamped last day, not the 31st.
+    const range = getPreviousBillingCycleRange(31, '2026-03-20')
+    expect(range).toEqual({ start: '2026-02-01', end: '2026-02-28' })
   })
 })
 

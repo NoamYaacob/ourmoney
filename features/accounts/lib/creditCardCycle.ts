@@ -24,6 +24,13 @@ function addOneDayIso(iso: string): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
 
+function subtractOneDayIso(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number) as [number, number, number]
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() - 1)
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
 export interface CreditCardCycleRange {
   start: string
   end: string
@@ -55,6 +62,19 @@ export function getCurrentBillingCycleRange(billingCycleDay: number, todayIso: s
     start: addOneDayIso(closingDateForMonth(prevYear, prevMonthNormalized, billingCycleDay)),
     end: closingThisMonth,
   }
+}
+
+// The most recently CLOSED billing cycle — the one immediately before
+// getCurrentBillingCycleRange's own result. Reuses that function rather than
+// re-deriving the closing-date math a second time: the day before the
+// current cycle's start is itself always the previous cycle's closing date,
+// and passing a closing date as "today" is exactly the boundary case
+// getCurrentBillingCycleRange's own todayIso > closingThisMonth check
+// already handles correctly (falls into the "todayIso IS this month's
+// closing date" branch).
+export function getPreviousBillingCycleRange(billingCycleDay: number, todayIso: string): CreditCardCycleRange {
+  const current = getCurrentBillingCycleRange(billingCycleDay, todayIso)
+  return getCurrentBillingCycleRange(billingCycleDay, subtractOneDayIso(current.start))
 }
 
 export interface CycleSpendTransaction {

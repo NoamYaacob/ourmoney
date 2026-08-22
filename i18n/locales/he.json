@@ -782,6 +782,27 @@
     "budgetRisk": {
       "title": "תקציב בסיכון",
       "description": "{{category}}: נוצלו {{percent}}% מהתקציב"
+    },
+    "highCreditCardCycleSpend": {
+      "title": "חיוב גבוה מהרגיל בכרטיס {{name}}",
+      "description": "החיוב הנוכחי כבר עומד על {{current}}, לעומת {{previous}} בחודש החיוב הקודם"
+    },
+    "categorySpendAboveTypical": {
+      "title": "הוצאה גבוהה מהרגיל ב{{category}}",
+      "description": "הוצאתם {{current}} על {{category}} החודש, לעומת כ-{{typical}} בדרך כלל"
+    },
+    "savingsGoalBehind": {
+      "title": "{{name}} מפגר בקצב",
+      "description": "עבר תאריך היעד ונותרו עוד {{amount}} לחיסכון עבור {{name}}"
+    },
+    "excessCashAvailable": {
+      "title": "יש לכם עודף פנוי",
+      "description": "פנוי באמת {{amount}} מעבר להתחייבויות הידועות — אפשר להאיץ יעד חיסכון"
+    },
+    "lowBalanceWarning": {
+      "title": "היתרה הפנויה מתקרבת לאפס",
+      "negativeTitle": "היתרה הפנויה כבר שלילית",
+      "description": "פנוי באמת: {{amount}}"
     }
   },
   "household": {

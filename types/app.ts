@@ -126,11 +126,20 @@ export interface PlannedObligation extends Omit<Tables<'planned_obligations'>, '
 // point BudgetCategoryProgress above already lives at this level for.
 // ============================================================================
 
-export type FinancialAlertType = 'forecast_shortfall' | 'upcoming_obligation' | 'recurring_price_increase' | 'budget_risk'
+export type FinancialAlertType =
+  | 'forecast_shortfall'
+  | 'upcoming_obligation'
+  | 'recurring_price_increase'
+  | 'budget_risk'
+  | 'high_credit_card_cycle_spend'
+  | 'category_spend_above_typical'
+  | 'savings_goal_behind'
+  | 'excess_cash_available'
+  | 'low_balance_warning'
 
 export type FinancialAlertSeverity = 'info' | 'warning' | 'critical'
 
-export type FinancialAlertSource = 'cash_flow' | 'planned_obligation' | 'recurring' | 'budget'
+export type FinancialAlertSource = 'cash_flow' | 'planned_obligation' | 'recurring' | 'budget' | 'account' | 'savings_goal'
 
 export interface FinancialAlert {
   // Deterministic, derived from type + source identity — never random, never
