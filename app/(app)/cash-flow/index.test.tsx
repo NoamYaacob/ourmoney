@@ -112,6 +112,31 @@ jest.mock('@/features/cashflow/hooks/useCashFlowForecast', () => ({
     mockUseCashFlowForecast(householdId, horizonDays),
 }))
 
+const DEFAULT_COMMITMENTS_RESULT = {
+  commitments: [] as {
+    id: string
+    source: 'obligation' | 'recurring' | 'installment' | 'credit_card_cycle'
+    sourceId: string
+    description: string
+    amountAgorot: number
+    sharedAgorot: number
+    personalAgorot: number
+    date: string
+    categoryId: string | null
+    accountId: string | null
+  }[],
+  isLoading: false,
+  hasPartialError: false,
+}
+const mockUseUpcomingCommitments = jest.fn<(householdId: string | null | undefined) => typeof DEFAULT_COMMITMENTS_RESULT>()
+jest.mock('@/features/cashflow/hooks/useUpcomingCommitments', () => ({
+  useUpcomingCommitments: (householdId: string | null | undefined) => mockUseUpcomingCommitments(householdId),
+}))
+
+function defaultCommitmentsResult(overrides: Partial<typeof DEFAULT_COMMITMENTS_RESULT> = {}) {
+  return { ...DEFAULT_COMMITMENTS_RESULT, ...overrides }
+}
+
 describe('CashFlow detail screen', () => {
   beforeEach(() => {
     mockPush.mockClear()
@@ -119,6 +144,8 @@ describe('CashFlow detail screen', () => {
     mockUseSafeToSpend.mockReturnValue(defaultResult())
     mockUseCashFlowForecast.mockReset()
     mockUseCashFlowForecast.mockReturnValue(defaultForecastResult())
+    mockUseUpcomingCommitments.mockReset()
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult())
   })
 
   it('renders the full breakdown: available cash, obligations, recurring, reserved, safe-to-spend', async () => {
@@ -210,6 +237,8 @@ describe('CashFlow forecast section', () => {
     mockUseSafeToSpend.mockReturnValue(defaultResult())
     mockUseCashFlowForecast.mockReset()
     mockUseCashFlowForecast.mockReturnValue(defaultForecastResult())
+    mockUseUpcomingCommitments.mockReset()
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult())
   })
 
   it('renders the starting, ending, and lowest balance summary', async () => {
@@ -393,5 +422,137 @@ describe('CashFlow forecast section', () => {
 
     const forecastPanel = climbToPanel(getByText(i18n.t('cashFlow.forecast.sectionTitle')))
     expect(forecastPanel?.parent).toBe(rowWrapper)
+  })
+})
+
+describe('CashFlow upcoming commitments section', () => {
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockUseSafeToSpend.mockReset()
+    mockUseSafeToSpend.mockReturnValue(defaultResult())
+    mockUseCashFlowForecast.mockReset()
+    mockUseCashFlowForecast.mockReturnValue(defaultForecastResult())
+    mockUseUpcomingCommitments.mockReset()
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult())
+  })
+
+  it('shows the empty state when there are no upcoming commitments', async () => {
+    const { getByText } = await render(<CashFlow />)
+    expect(getByText(i18n.t('cashFlow.commitments.empty'))).toBeTruthy()
+  })
+
+  it('renders each commitment with its source label and date', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(
+      defaultCommitmentsResult({
+        commitments: [
+          {
+            id: 'obligation:ob-1',
+            source: 'obligation',
+            sourceId: 'ob-1',
+            description: 'ארנונה',
+            amountAgorot: 50000,
+            sharedAgorot: 50000,
+            personalAgorot: 0,
+            date: '2026-08-25',
+            categoryId: null,
+            accountId: null,
+          },
+          {
+            id: 'credit_card_cycle:acc-cc-1',
+            source: 'credit_card_cycle',
+            sourceId: 'acc-cc-1',
+            description: 'ויזה',
+            amountAgorot: 30000,
+            sharedAgorot: 20000,
+            personalAgorot: 10000,
+            date: '2026-09-10',
+            categoryId: null,
+            accountId: 'acc-cc-1',
+          },
+        ],
+      })
+    )
+
+    const { getAllByText, getByText } = await render(<CashFlow />)
+
+    expect(getAllByText('ארנונה').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('ויזה')).toBeTruthy()
+    expect(getAllByText(i18n.t('cashFlow.commitments.source.obligation'), { exact: false }).length).toBeGreaterThanOrEqual(1)
+    expect(getByText(i18n.t('cashFlow.commitments.source.credit_card_cycle'), { exact: false })).toBeTruthy()
+  })
+
+  it('shows the shared/personal split only when a commitment has both', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(
+      defaultCommitmentsResult({
+        commitments: [
+          {
+            id: 'obligation:ob-1',
+            source: 'obligation',
+            sourceId: 'ob-1',
+            description: 'ארנונה',
+            amountAgorot: 50000,
+            sharedAgorot: 50000,
+            personalAgorot: 0,
+            date: '2026-08-25',
+            categoryId: null,
+            accountId: null,
+          },
+          {
+            id: 'credit_card_cycle:acc-cc-1',
+            source: 'credit_card_cycle',
+            sourceId: 'acc-cc-1',
+            description: 'ויזה',
+            amountAgorot: 30000,
+            sharedAgorot: 20000,
+            personalAgorot: 10000,
+            date: '2026-09-10',
+            categoryId: null,
+            accountId: 'acc-cc-1',
+          },
+        ],
+      })
+    )
+
+    const { queryByText, getByText } = await render(<CashFlow />)
+
+    // The fully-shared obligation never shows a split line.
+    expect(
+      queryByText(i18n.t('cashFlow.commitments.sharedPersonalSplit', { shared: '₪500.00', personal: '₪0.00' }))
+    ).toBeNull()
+    // The mixed credit-card cycle line does.
+    expect(getByText(/משותף/)).toBeTruthy()
+  })
+
+  it('navigates to the correct detail route per commitment source', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(
+      defaultCommitmentsResult({
+        commitments: [
+          {
+            id: 'installment:inst-1:2',
+            source: 'installment',
+            sourceId: 'inst-1',
+            description: 'מקרר',
+            amountAgorot: 100000,
+            sharedAgorot: 100000,
+            personalAgorot: 0,
+            date: '2026-09-01',
+            categoryId: null,
+            accountId: null,
+          },
+        ],
+      })
+    )
+
+    const { getByText } = await render(<CashFlow />)
+    fireEvent.press(getByText('מקרר'))
+
+    expect(mockPush).toHaveBeenCalledWith('/installments/inst-1')
+  })
+
+  it('shows a non-blocking note when a commitment source partially failed', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult({ hasPartialError: true }))
+
+    const { getByText } = await render(<CashFlow />)
+    expect(getByText(i18n.t('cashFlow.commitments.errors.partial'))).toBeTruthy()
   })
 })

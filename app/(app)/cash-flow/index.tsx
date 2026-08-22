@@ -12,6 +12,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
 import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
+import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
 import { CashFlowForecastChart } from '@/features/cashflow/components/CashFlowForecastChart'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import type { CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
@@ -55,6 +56,11 @@ export default function CashFlow() {
     isLoading: isForecastLoading,
     error: forecastError,
   } = useCashFlowForecast(householdId, Number(forecastDays))
+  const {
+    commitments,
+    isLoading: isCommitmentsLoading,
+    hasPartialError: hasCommitmentsPartialError,
+  } = useUpcomingCommitments(householdId)
 
   if (isHouseholdLoading) {
     return (
@@ -251,6 +257,76 @@ export default function CashFlow() {
             )}
           </View>
         </View>
+      </View>
+
+      {/* Unified "next 30 days" commitments summary — deliberately a FIXED
+          30-day window, independent of the safe-to-spend horizon selector
+          above (that selector answers "what can we spend," this section
+          answers "what's already committed," which doesn't change when the
+          user switches horizons). Combines the same canonical sources the
+          items list above already uses (obligations/recurring) plus
+          installments and each credit card's current open cycle — see
+          lib/engines/commitments/buildUpcomingCommitments.ts for the full
+          double-count-guard reasoning. */}
+      <View className="mt-8">
+        <Text className="mb-1 text-sm font-semibold text-ink-light dark:text-ink-dark">
+          {t('cashFlow.commitments.sectionTitle')}
+        </Text>
+        <Text className="mb-3 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+          {t('cashFlow.commitments.subtitle')}
+        </Text>
+        {hasCommitmentsPartialError && (
+          <View className="mb-3">
+            <ErrorMessage message={t('cashFlow.commitments.errors.partial')} />
+          </View>
+        )}
+        {isCommitmentsLoading ? (
+          <LoadingSpinner />
+        ) : commitments.length === 0 ? (
+          <EmptyState icon="🗓️" message={t('cashFlow.commitments.empty')} compact />
+        ) : (
+          <Card>
+            {commitments.map((item, index) => (
+              <View key={item.id}>
+                {index > 0 && <View className="my-3"><Divider /></View>}
+                <Pressable
+                  onPress={() =>
+                    item.source === 'obligation'
+                      ? router.push(`/obligations/${item.sourceId}`)
+                      : item.source === 'recurring'
+                        ? router.push(`/recurring/${item.sourceId}`)
+                        : item.source === 'installment'
+                          ? router.push(`/installments/${item.sourceId}`)
+                          : router.push(`/accounts/${item.sourceId}`)
+                  }
+                  accessibilityRole="button"
+                >
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {item.description}
+                    </Text>
+                    <Text className="text-body font-medium text-ink-light dark:text-ink-dark">
+                      {formatILS(item.amountAgorot)}
+                    </Text>
+                  </View>
+                  <View className="mt-0.5 flex-row items-center justify-between">
+                    <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                      {item.date} · {t(`cashFlow.commitments.source.${item.source}`)}
+                    </Text>
+                    {item.sharedAgorot > 0 && item.personalAgorot > 0 && (
+                      <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                        {t('cashFlow.commitments.sharedPersonalSplit', {
+                          shared: formatILS(item.sharedAgorot),
+                          personal: formatILS(item.personalAgorot),
+                        })}
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+              </View>
+            ))}
+          </Card>
+        )}
       </View>
     </Screen>
   )
