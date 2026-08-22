@@ -155,7 +155,10 @@ export default function Installments() {
                         </View>
                       </View>
                       <View className="items-end">
-                        <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+                        <Text
+                          accessibilityLabel={`${t('installments.remainingAmount')} ${formatILS(remainingAgorot)}`}
+                          className="text-sm font-semibold text-ink-light dark:text-ink-dark"
+                        >
                           {formatILS(remainingAgorot)}
                         </Text>
                         <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
@@ -175,7 +178,19 @@ export default function Installments() {
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Card>
             {creditCardAccounts.length === 0 ? (
-              <ErrorMessage message={t('installments.noCreditCardAccounts')} />
+              <>
+                <ErrorMessage message={t('installments.noCreditCardAccounts')} />
+                {/* mobile-expo-reviewer finding: this branch also renders
+                    transiently while useAccounts is still resolving (its
+                    default is an empty array until the query settles), and
+                    for a household that genuinely has zero credit-card
+                    accounts it renders permanently — either way, without an
+                    explicit way back, isAdding stayed true forever with no
+                    control left to close the form. */}
+                <View className="mt-3">
+                  <Button title={t('common.cancel')} variant="secondary" onPress={() => setIsAdding(false)} />
+                </View>
+              </>
             ) : (
               <>
                 <View className="web:desktop:flex-row web:desktop:gap-4">

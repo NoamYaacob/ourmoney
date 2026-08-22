@@ -15,14 +15,15 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+const mockUseAccounts = jest.fn(() => ({
+  accounts: [
+    { id: 'acc-cc', name: 'ויזה כאל', type: 'credit_card', is_active: true },
+    { id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true },
+  ],
+  isLoading: false,
+}))
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
-  useAccounts: () => ({
-    accounts: [
-      { id: 'acc-cc', name: 'ויזה כאל', type: 'credit_card', is_active: true },
-      { id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true },
-    ],
-    isLoading: false,
-  }),
+  useAccounts: () => mockUseAccounts(),
 }))
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({
@@ -73,6 +74,13 @@ describe('Installments list', () => {
     mockCreateMutate.mockClear()
     mockUseInstallmentPlans.mockReturnValue({ plans: PLANS, isLoading: false, error: null })
     mockUseInstallmentMaterializedCounts.mockReturnValue({ materializedCounts: { 'plan-1': 1 } })
+    mockUseAccounts.mockReturnValue({
+      accounts: [
+        { id: 'acc-cc', name: 'ויזה כאל', type: 'credit_card', is_active: true },
+        { id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true },
+      ],
+      isLoading: false,
+    })
   })
 
   it('lists plans with remaining balance and installment progress', async () => {
@@ -167,5 +175,27 @@ describe('Installments list', () => {
     expect(variables.accountId).toBe('acc-cc')
     expect(variables.totalAgorot).toBe(300000)
     expect(variables.installmentCount).toBe(3)
+  })
+
+  // mobile-expo-reviewer finding: a household with zero active credit-card
+  // accounts (or the accounts query still resolving, since useAccounts
+  // defaults to an empty array until it settles) hit a dead end — the form
+  // rendered only an error message with no way back, leaving isAdding stuck
+  // true forever.
+  it('offers a way back out of the add form when there are no credit-card accounts to choose from', async () => {
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseAccounts.mockReturnValue({
+      accounts: [{ id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true }],
+      isLoading: false,
+    })
+    const { getByText, queryByText } = await render(<Installments />)
+
+    await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
+    expect(getByText('כדי להוסיף רכישה בתשלומים יש קודם להוסיף חשבון כרטיס אשראי')).toBeTruthy()
+
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(queryByText('כדי להוסיף רכישה בתשלומים יש קודם להוסיף חשבון כרטיס אשראי')).toBeNull()
+    expect(getByText('הוספת רכישה בתשלומים')).toBeTruthy()
   })
 })
