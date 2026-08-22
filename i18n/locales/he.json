@@ -317,6 +317,13 @@
     "empty": "עדיין אין יעדי חיסכון.",
     "addButton": "הוספת יעד חיסכון",
     "completed": "היעד הושג! 🎉",
+    "pace": {
+      "requiredMonthlyLabel": "חיסכון חודשי נדרש",
+      "remainingByDate": "נותרו {{amount}} עד {{date}}",
+      "onTrack": "בקצב",
+      "behind": "מפגר בקצב",
+      "overdue": "עבר התאריך היעד"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "יעד החיסכון לא נמצא",

@@ -4,7 +4,7 @@
 // web-compiled CSS does not — the first goal (source order) must render
 // top-right, continuing the RTL reading order into the wrap. First test
 // coverage for this screen.
-import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Goals from './index'
@@ -111,5 +111,65 @@ describe('Goals list', () => {
     }
     const gridContainer = node?.parent
     expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
+  })
+})
+
+describe('Goals list — behind-schedule badge', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    // Fixed "today," independent of the real calendar — every target_date
+    // below is set relative to this literal, not to whatever day the suite
+    // actually runs on.
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(2026, 7, 22))
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it('shows an overdue badge for an incomplete goal whose target date has already passed', async () => {
+    mockUseSavingsGoals.mockReturnValue({
+      goals: [{ ...GOALS[0], target_date: '2026-08-01' }],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText } = await render(<Goals />)
+    expect(getByText('עבר התאריך היעד')).toBeTruthy()
+  })
+
+  it('shows no badge for an incomplete goal with a future target date', async () => {
+    mockUseSavingsGoals.mockReturnValue({
+      goals: [{ ...GOALS[0], target_date: '2026-12-01' }],
+      isLoading: false,
+      error: null,
+    })
+
+    const { queryByText } = await render(<Goals />)
+    expect(queryByText('עבר התאריך היעד')).toBeNull()
+    expect(queryByText('מפגר בקצב')).toBeNull()
+  })
+
+  it('shows no badge for a goal with no target date at all', async () => {
+    mockUseSavingsGoals.mockReturnValue({
+      goals: [{ ...GOALS[0], target_date: null }],
+      isLoading: false,
+      error: null,
+    })
+
+    const { queryByText } = await render(<Goals />)
+    expect(queryByText('עבר התאריך היעד')).toBeNull()
+  })
+
+  it('prefers the completed badge over a behind-schedule badge for a completed goal, even with an overdue target date', async () => {
+    mockUseSavingsGoals.mockReturnValue({
+      goals: [{ ...GOALS[0], is_completed: true, current_agorot: 500000, target_date: '2020-01-01' }],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText, queryByText } = await render(<Goals />)
+    expect(getByText('היעד הושג! 🎉')).toBeTruthy()
+    expect(queryByText('עבר התאריך היעד')).toBeNull()
   })
 })

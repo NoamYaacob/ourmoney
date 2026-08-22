@@ -12,6 +12,7 @@ import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useCreateSavingsGoal } from '@/features/savings/hooks/useCreateSavingsGoal'
 import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
+import { calculateSavingsPace } from '@/lib/engines/savings/calculateSavingsPace'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
@@ -108,6 +109,17 @@ export default function Goals() {
             const currentAgorot = resolveGoalCurrentAgorot(goal, balances)
             const isCompleted = resolveGoalIsCompleted(goal, balances)
             const percent = goalProgressPercent(currentAgorot, goal.target_agorot)
+            // Same single-source-of-truth reasoning as goals/[id].tsx: a
+            // goal reads as "behind" from the pace calculation's own
+            // remainingAgorot/isOnTrack, not from the separately-derived
+            // isCompleted flag.
+            const pace = calculateSavingsPace({
+              currentAgorot,
+              targetAgorot: goal.target_agorot,
+              targetDate: goal.target_date,
+              today: localDateString(),
+            })
+            const isBehind = pace !== null && pace.remainingAgorot > 0 && !pace.isOnTrack
             return (
               <Pressable
                 key={goal.id}
@@ -118,10 +130,16 @@ export default function Goals() {
                 <Card>
                   <View className="mb-1 flex-row items-center justify-between">
                     <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
-                    {isCompleted && (
+                    {isCompleted ? (
                       <Text className="text-xs font-semibold text-accent-light dark:text-accent-dark">
                         {t('savings.completed')}
                       </Text>
+                    ) : (
+                      isBehind && (
+                        <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
+                          {t(pace?.isOverdue ? 'savings.pace.overdue' : 'savings.pace.behind')}
+                        </Text>
+                      )
                     )}
                   </View>
                   <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">

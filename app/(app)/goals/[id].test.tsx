@@ -14,10 +14,11 @@
 // reload re-snapshots name/target from the fresh row without touching the
 // separate progress-update form, and a conflict on the progress update uses
 // the goal's live-rendered version (no separate edit session for it).
-import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import '@/i18n'
 import { ConcurrencyError } from '@/lib/mutations/concurrencyError'
+import { formatILS } from '@/lib/money/format'
 import GoalDetail from './[id]'
 
 const mockBack = jest.fn()
@@ -387,5 +388,66 @@ describe('GoalDetail edit', () => {
     // show some error to the user rather than silently doing nothing.
     expect(mockBack).not.toHaveBeenCalled()
     await waitFor(() => expect(getByText('משהו השתבש. נסו שוב')).toBeTruthy())
+  })
+})
+
+describe('GoalDetail — required monthly saving pace', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockBack.mockClear()
+    for (const key of Object.keys(mockAccountBalances)) delete mockAccountBalances[key]
+    // A fixed "today" fully independent of whatever date this suite
+    // actually runs on — every target_date below is set relative to it,
+    // not to the real calendar.
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(2026, 7, 22))
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it('shows no pace projection when the goal has no target date', async () => {
+    mockGoal = { ...BASE_GOAL, target_date: null }
+    const { queryByText } = await render(<GoalDetail />)
+    expect(queryByText('חיסכון חודשי נדרש')).toBeNull()
+  })
+
+  it('shows the required monthly saving and an on-track badge for a goal with a future target date', async () => {
+    // remaining = 500000 - 100000 = 400000; Aug 22 -> Dec 1 = 3 months -> ceil(400000/3) = 133334
+    mockGoal = { ...BASE_GOAL, target_date: '2026-12-01' }
+    const { getByText } = await render(<GoalDetail />)
+
+    expect(getByText('חיסכון חודשי נדרש')).toBeTruthy()
+    expect(getByText(formatILS(133334))).toBeTruthy()
+    expect(getByText('בקצב')).toBeTruthy()
+  })
+
+  it('shows an overdue badge for an incomplete goal past its target date, requiring the full remainder', async () => {
+    mockGoal = { ...BASE_GOAL, target_date: '2026-08-01' }
+    const { getByText } = await render(<GoalDetail />)
+
+    expect(getByText('עבר התאריך היעד')).toBeTruthy()
+    expect(getByText(formatILS(400000))).toBeTruthy() // full remainder, not divided by months
+  })
+
+  it('hides the pace card once the goal is complete, even with a target date set', async () => {
+    mockGoal = { ...BASE_GOAL, current_agorot: 500000, target_date: '2026-12-01' }
+    const { queryByText } = await render(<GoalDetail />)
+    expect(queryByText('חיסכון חודשי נדרש')).toBeNull()
+  })
+
+  it('derives the projection from the live linked-account balance, not the stale stored current_agorot, for a linked_account goal', async () => {
+    mockAccountBalances['acc-1'] = 450000
+    mockGoal = {
+      ...BASE_GOAL,
+      account_id: 'acc-1',
+      progress_source: 'linked_account',
+      current_agorot: 100000, // stale — must be ignored in favor of the live balance
+      target_date: '2026-12-01',
+    }
+    const { getByText } = await render(<GoalDetail />)
+
+    // remaining = 500000 - 450000 = 50000; 3 months -> ceil(50000/3) = 16667
+    expect(getByText(formatILS(16667))).toBeTruthy()
   })
 })

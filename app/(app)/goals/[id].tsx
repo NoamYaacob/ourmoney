@@ -11,6 +11,8 @@ import { useUpdateSavingsGoal } from '@/features/savings/hooks/useUpdateSavingsG
 import { useUpdateSavingsGoalProgress } from '@/features/savings/hooks/useUpdateSavingsGoalProgress'
 import { useDeleteSavingsGoal } from '@/features/savings/hooks/useDeleteSavingsGoal'
 import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
+import { calculateSavingsPace } from '@/lib/engines/savings/calculateSavingsPace'
+import { formatDateDisplay } from '@/lib/dates/format'
 import type { SavingsGoalProgressSource } from '@/types/app'
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
@@ -125,6 +127,19 @@ export default function GoalDetail() {
   const resolvedIsCompleted = resolveGoalIsCompleted(goal, balances)
   const percent = goalProgressPercent(resolvedCurrentAgorot, goal.target_agorot)
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
+  // Single source of truth for "is there anything left to project": the
+  // pace calculation's own remainingAgorot, not the separate
+  // resolveGoalIsCompleted signal — that reads is_completed, a stored
+  // column a manual goal's DB trigger derives from current_agorot, which
+  // is one more hop than comparing the two live numbers already in hand
+  // here and could in principle drift a render behind them.
+  const pace = calculateSavingsPace({
+    currentAgorot: resolvedCurrentAgorot,
+    targetAgorot: goal.target_agorot,
+    targetDate: goal.target_date,
+    today: localDateString(),
+  })
+  const showPace = pace !== null && pace.remainingAgorot > 0
 
   function handleSaveEdit() {
     if (!householdId || !goal || updateGoal.isPending || editingVersion === null) return
@@ -326,6 +341,46 @@ export default function GoalDetail() {
         <Text className="mb-6 text-base font-semibold text-accent-light dark:text-accent-dark">
           {t('savings.completed')}
         </Text>
+      )}
+
+      {/* Required-monthly-saving projection toward the target date —
+          lib/engines/savings/calculateSavingsPace.ts. Hidden entirely
+          (never a guess) when the goal has no target date at all, or once
+          it's already complete. */}
+      {showPace && pace && (
+        <View className="mb-6 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <View className="flex-row items-center justify-between web:flex-row">
+            <View>
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('savings.pace.requiredMonthlyLabel')}
+              </Text>
+              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
+                {formatILS(pace.requiredMonthlyAgorot)}
+              </Text>
+            </View>
+            <View
+              className={`rounded-full px-2.5 py-1 ${
+                pace.isOnTrack
+                  ? 'bg-positive-light/15 dark:bg-positive-dark/15'
+                  : 'bg-danger-light/15 dark:bg-danger-dark/15'
+              }`}
+            >
+              <Text
+                className={`text-caption font-medium ${
+                  pace.isOnTrack ? 'text-positive-light dark:text-positive-dark' : 'text-danger-light dark:text-danger-dark'
+                }`}
+              >
+                {t(pace.isOverdue ? 'savings.pace.overdue' : pace.isOnTrack ? 'savings.pace.onTrack' : 'savings.pace.behind')}
+              </Text>
+            </View>
+          </View>
+          <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+            {t('savings.pace.remainingByDate', {
+              amount: formatILS(pace.remainingAgorot),
+              date: goal.target_date ? formatDateDisplay(goal.target_date) : '',
+            })}
+          </Text>
+        </View>
       )}
 
       {goal.progress_source === 'linked_account' ? (
