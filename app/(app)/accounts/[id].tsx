@@ -95,7 +95,10 @@ export default function AccountDetail() {
 
     let billingCycleDay: number | null = null
     if (type === 'credit_card' && billingCycleDayText.trim()) {
-      const parsed = Number(billingCycleDayText.trim())
+      // Plain digits only — see useCreateAccount's create-form counterpart
+      // for why Number(...) alone isn't strict enough.
+      const trimmed = billingCycleDayText.trim()
+      const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
       if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) {
         setSaveError(t('accounts.form.errors.invalidBillingCycleDay'))
         return

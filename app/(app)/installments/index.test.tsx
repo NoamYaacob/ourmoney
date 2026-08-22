@@ -92,6 +92,15 @@ describe('Installments list', () => {
     expect(getByText(/2,000/)).toBeTruthy()
   })
 
+  it('shows an error message instead of the list when useInstallmentPlans errors', async () => {
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: new Error('network error') })
+
+    const { getByText, queryByText } = await render(<Installments />)
+
+    expect(getByText('משהו השתבש. נסו שוב')).toBeTruthy()
+    expect(queryByText('עדיין אין רכישות בתשלומים.')).toBeNull()
+  })
+
   it('shows an empty state when there are no plans', async () => {
     mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
     mockUseInstallmentMaterializedCounts.mockReturnValue({ materializedCounts: {} })

@@ -126,6 +126,57 @@ describe('Accounts list', () => {
     )
   })
 
+  it('does not show a billing-cycle-day field for a non-credit_card type', async () => {
+    const { getByText, queryByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    expect(queryByLabelText('יום סגירת מחזור חיוב')).toBeNull()
+  })
+
+  it('creates a credit_card account with the entered billing cycle day', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'ויזה כאל')
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '10')
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(mockCreateAccountMutate).toHaveBeenCalledWith(
+      { householdId: 'household-1', name: 'ויזה כאל', type: 'credit_card', billingCycleDay: 10 },
+      expect.anything()
+    )
+  })
+
+  it('rejects a billing cycle day outside 1-28 without creating the account', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'ויזה כאל')
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '40')
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(getByText('יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28')).toBeTruthy()
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-plain-digit billing cycle day (e.g. scientific notation) rather than silently coercing it via Number(...)', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'ויזה כאל')
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '1e1')
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(getByText('יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28')).toBeTruthy()
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
+  })
+
   // Desktop/RTL polish pass (real-browser regression): the 2-column wrap
   // grid declared plain flex-row (not flex-row-reverse), which native
   // auto-mirrors via Yoga under the forced-RTL flag but NativeWind's

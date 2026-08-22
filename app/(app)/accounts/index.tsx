@@ -67,7 +67,11 @@ export default function Accounts() {
 
     let billingCycleDay: number | null = null
     if (type === 'credit_card' && billingCycleDayText.trim()) {
-      const parsed = Number(billingCycleDayText.trim())
+      // Plain digits only — rejects "1e1"/"0x1"/whitespace-padded forms
+      // Number(...) alone would silently accept, the same discipline
+      // agorotFromILS's own stricter regex already applies to money.
+      const trimmed = billingCycleDayText.trim()
+      const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
       if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) {
         setCreateError(t('accounts.form.errors.invalidBillingCycleDay'))
         return
