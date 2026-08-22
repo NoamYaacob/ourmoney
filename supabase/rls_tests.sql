@@ -5586,7 +5586,12 @@ ROLLBACK TO SAVEPOINT sp_13_10;
 -- 13.11: delete_installment_plan() — a materialized instalment survives
 -- with installment_plan_id set to NULL (ON DELETE SET NULL), never a raw
 -- FK-violation exception, matching matched_rule_id/obligation_id's
--- precedent.
+-- precedent. installment_index is deliberately left as-is (CI's real
+-- Postgres run caught that a symmetry CHECK requiring it to also go NULL
+-- fights ON DELETE SET NULL, which only ever touches the FK column itself
+-- — see migration 016's transactions_installment_index_positive comment) —
+-- the row keeps remembering "this was instalment #1" even after its plan
+-- is gone.
 SAVEPOINT sp_13_11;
 SET LOCAL role = authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
@@ -5604,10 +5609,10 @@ BEGIN
   IF NOT (v_delete_result->>'ok')::boolean THEN
     RAISE EXCEPTION 'FAIL 13.11: expected ok deleting a plan with a materialized instalment, got %', v_delete_result;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM transactions WHERE id = v_txn_id AND installment_plan_id IS NULL AND installment_index IS NULL) THEN
-    RAISE EXCEPTION 'FAIL 13.11: the materialized instalment did not survive with installment_plan_id/installment_index set to NULL';
+  IF NOT EXISTS (SELECT 1 FROM transactions WHERE id = v_txn_id AND installment_plan_id IS NULL AND installment_index = 1) THEN
+    RAISE EXCEPTION 'FAIL 13.11: the materialized instalment did not survive with installment_plan_id set to NULL and installment_index preserved';
   END IF;
-  PERFORM _pass('13.11', 'delete_installment_plan() on a plan with a materialized instalment succeeds cleanly (ON DELETE SET NULL) — the real transaction survives, only the provenance link and index are lost');
+  PERFORM _pass('13.11', 'delete_installment_plan() on a plan with a materialized instalment succeeds cleanly (ON DELETE SET NULL) — the real transaction survives with its provenance link cleared but its historical installment_index preserved');
 END $$;
 RESET role;
 ROLLBACK TO SAVEPOINT sp_13_11;

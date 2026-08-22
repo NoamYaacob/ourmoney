@@ -179,11 +179,22 @@ ALTER TABLE transactions
   ADD COLUMN installment_plan_id UUID REFERENCES installment_plans(id) ON DELETE SET NULL,
   ADD COLUMN installment_index   INTEGER;
 
--- Defense-in-depth structural guards (cheap, independent of the RLS/RPC
--- surface below): the two columns are set together or not at all, and the
--- index is always a positive 1-based ordinal.
-ALTER TABLE transactions ADD CONSTRAINT transactions_installment_index_coherence
-  CHECK ((installment_plan_id IS NULL) = (installment_index IS NULL));
+-- Defense-in-depth structural guard (cheap, independent of the RLS/RPC
+-- surface below): the index is always a positive 1-based ordinal.
+--
+-- Deliberately NOT a symmetry CHECK requiring (installment_plan_id IS NULL)
+-- = (installment_index IS NULL) — CI's real Postgres run caught exactly why
+-- that would be wrong: installment_plan_id's own ON DELETE SET NULL (above)
+-- fires when a plan is deleted and nulls only the FK column, never
+-- installment_index alongside it, so a materialized instalment surviving
+-- its plan's deletion (§5, delete_installment_plan()) always ends up with
+-- installment_plan_id NULL and installment_index still set — and that is
+-- the correct, desired end state, not a bug to prevent: the row keeps
+-- remembering "this was instalment #1" the same way matched_rule_id's own
+-- ON DELETE SET NULL (migration 006) leaves a transaction's history
+-- otherwise intact once its rule is deleted. A symmetry CHECK here would
+-- fight the very ON DELETE SET NULL behavior this migration's header
+-- deliberately chose over ON DELETE CASCADE.
 ALTER TABLE transactions ADD CONSTRAINT transactions_installment_index_positive
   CHECK (installment_index IS NULL OR installment_index >= 1);
 
