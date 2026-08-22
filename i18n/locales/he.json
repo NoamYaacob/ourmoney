@@ -667,10 +667,11 @@
     "thisMonth": {
       "title": "הכנסות והוצאות החודש"
     },
-    "upcomingObligations": {
+    "commitments": {
       "title": "התחייבויות עתידיות",
-      "viewAll": "כל ההתחייבויות",
-      "empty": "אין התחייבויות קרובות."
+      "viewAll": "לצפייה בכל ההתחייבויות",
+      "empty": "אין התחייבויות ידועות ב-30 הימים הקרובים.",
+      "creditCardBurden": "מתוכן {{amount}} בכרטיסי אשראי"
     },
     "savingsGoalsWidget": {
       "title": "יעדי חיסכון",

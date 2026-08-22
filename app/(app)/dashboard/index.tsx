@@ -11,8 +11,8 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { severityIconName, severityColorToken } from '@/features/alerts/lib/alertDisplay'
-import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
-import { daysUntilDue, filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
+import { daysUntilDue, isPastDue } from '@/features/obligations/lib/upcomingObligations'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
@@ -100,21 +100,26 @@ export default function Dashboard() {
   // shows fewer alerts.
   const topAlerts = isAlertsLoading ? [] : alerts.slice(0, 3)
 
-  // Comprehensive upgrade pass §2/§11/§9: compact "at a glance" widgets —
-  // upcoming obligations and savings-goals status — reusing the exact same
-  // hooks/pure helpers their own screens already use (usePlannedObligations
-  // + filterUpcomingObligations/daysUntilDue, useSavingsGoals +
-  // goalProgressPercent). No new query, no new calculation logic.
-  const { obligations, isLoading: isObligationsLoading, error: obligationsError } = usePlannedObligations(householdId)
+  // Dashboard product redesign — C/D: unified upcoming commitments (every
+  // canonical upcoming-money-out source, including each credit card's
+  // current open cycle), reusing lib/engines/commitments/
+  // buildUpcomingCommitments.ts via useUpcomingCommitments.ts exactly as
+  // the /cash-flow screen's own new section does — no second aggregation
+  // here, just the top few for a compact "at a glance" preview.
+  const {
+    commitments,
+    isLoading: isCommitmentsLoading,
+    hasPartialError: hasCommitmentsPartialError,
+  } = useUpcomingCommitments(householdId)
   const today = localDateString()
-  const upcomingObligationIds = filterUpcomingObligations(
-    obligations.map((o) => ({ id: o.id, dueDate: o.due_date, status: o.status }))
-  ).slice(0, 3)
-  const obligationsById = new Map(obligations.map((o) => [o.id, o]))
-  const topUpcomingObligations = upcomingObligationIds
-    .map((item) => obligationsById.get(item.id))
-    .filter((o): o is NonNullable<typeof o> => o !== undefined)
+  const topCommitments = commitments.slice(0, 3)
+  const creditCardBurdenAgorot = commitments
+    .filter((c) => c.source === 'credit_card_cycle')
+    .reduce((sum, c) => sum + c.amountAgorot, 0)
 
+  // F: savings-goals status — reusing the exact same hooks/pure helpers the
+  // Goals screen itself uses (useSavingsGoals + goalProgressPercent). No
+  // new query, no new calculation logic.
   const { goals, isLoading: isGoalsLoading, error: goalsError } = useSavingsGoals(householdId)
   const { balances: goalAccountBalances } = useAccountBalances(householdId)
   const topGoals = goals.filter((g) => !resolveGoalIsCompleted(g, goalAccountBalances)).slice(0, 3)
@@ -211,32 +216,20 @@ export default function Dashboard() {
         </Text>
       </View>
 
-      {/* Desktop Visual/Responsive Design pass: Safe-to-Spend, the month
-          navigator, and the budget-summary hero previously stacked as three
-          separate full-width blocks — a lot of vertical space for what's
-          really two related "where do we stand right now" cards. Paired
-          into one row at desktop only.
-          architecture-reviewer finding (post-implementation review): an
-          earlier version of this pairing moved the alerts section's own JSX
-          to render AFTER this row instead of in its original position
-          (between Safe-to-Spend and the month navigator). This row is a
-          plain View with no unprefixed flex-row of its own, so mobile falls
-          back to the default column direction and simply stacks children in
-          DOM order — meaning that JSX move silently changed mobile's alert
-          position too, which was never the intent (the brief's own framing
-          was a desktop-only pairing). Fixed by keeping alerts in its
-          ORIGINAL DOM position — still a direct sibling between Safe-to-
-          Spend and the month/hero block, restoring mobile's exact original
-          stacking order — and using CSS `order` (reorders flex layout
-          without touching DOM/reading order) to visually pull Safe-to-Spend
-          and the hero onto one line at desktop, with alerts
-          (`web:desktop:w-full`, so it can never share a line with the 50/50
-          pair) wrapping onto its own full-width row below them.
-          Mobile/tablet render exactly the original stacked order — every
-          class this depends on (`order-*`, `flex-wrap`) is `web:desktop:`
-          prefixed. */}
-      <View className="web:desktop:flex-row web:desktop:flex-wrap web:desktop:items-start web:desktop:gap-5">
-        <View className="mb-6 web:desktop:order-1 web:desktop:mb-0 web:desktop:flex-1">
+      {/* Dashboard product redesign (household-financial-state hierarchy):
+          A. פנוי באמת (Safe-to-Spend, including B. current available cash
+          as its own breakdown line) paired here with E. this month's budget
+          status — the two "where do we stand right now" numbers, side by
+          side at desktop, stacked on mobile. C/D (upcoming commitments,
+          including credit-card burden), F (savings), G (alerts), and H
+          (recent activity) each now follow in their own section below, in
+          that priority order — see the section comments further down for
+          each. Alerts no longer interleaves inside this row (it previously
+          did, via an `order-*` CSS trick — removed along with it now that
+          it lives in its own later section, which also removes the need for
+          that trick entirely). */}
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
           {/* Safe-to-Spend — the household's own real cash position, not tied
               to the month navigator alongside it (always "from right now,"
               fixed at the 'month' horizon here; the detail screen offers the
@@ -324,72 +317,7 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
-        {/* Compact, optional section — renders nothing at all when there are
-            no alerts (chosen over a persistent "everything's fine" banner:
-            no existing screen in this app has that kind of standing chrome,
-            and the milestone's own brief explicitly allows either choice).
-            Max 3, highest-priority first (buildFinancialAlerts.ts's own
-            severity→date→id sort) — the full grouped list lives at /alerts.
-            The header + "כל ההתראות" link is always visible, even with zero
-            current alerts — the alerts screen (grouped by severity, with its
-            own well-built empty state) was previously unreachable from
-            anywhere in the app whenever a household had no alerts (UX-
-            completeness audit finding). The alert list itself still only
-            renders when there's something to show, deliberately not adding an
-            "everything's fine" banner no other screen in this app has.
-            Desktop Visual/Responsive Design pass: `web:desktop:order-3` +
-            `web:desktop:w-full` — see the row's own comment above for why
-            this stays in its original DOM position (between Safe-to-Spend
-            and the month/hero block) while still rendering as a full-width
-            row below the paired hero cards at desktop. */}
-        {!isAlertsLoading && (
-          <View className="mb-6 mt-6 web:desktop:order-3 web:desktop:mb-0 web:desktop:mt-0 web:desktop:w-full">
-            <View className="mb-2 flex-row items-center justify-between">
-              <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
-                {t('alerts.dashboardSectionTitle')}
-              </Text>
-              <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
-                <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
-                  {t('alerts.viewAll')}
-                </Text>
-              </Pressable>
-            </View>
-            {topAlerts.length > 0 && (
-              <Card>
-                {topAlerts.map((alert, index) => (
-                  <View key={alert.id}>
-                    {index > 0 && (
-                      <View className="my-3">
-                        <Divider />
-                      </View>
-                    )}
-                    <Pressable
-                      onPress={() => router.push(alert.actionRoute)}
-                      accessibilityRole="button"
-                      className="flex-row items-center gap-3"
-                    >
-                      <Ionicons
-                        name={severityIconName(alert.severity)}
-                        size={20}
-                        color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
-                      />
-                      <View className="flex-1">
-                        <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                          {alert.title}
-                        </Text>
-                        <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                          {alert.description}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  </View>
-                ))}
-              </Card>
-            )}
-          </View>
-        )}
-
-        <View className="mb-6 web:desktop:order-2 web:desktop:mb-0 web:desktop:flex-1">
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
           <MonthNavigator periodStart={periodStart} onChange={setPeriodStart} />
 
           {progressError ? (
@@ -457,15 +385,101 @@ export default function Dashboard() {
         </View>
       </View>
 
-      {/* Comprehensive upgrade pass §2/§9/§11: three compact "at a glance"
-          widgets the household otherwise had to leave the dashboard to see —
-          this month's income/expense, the nearest upcoming obligations, and
-          savings-goal progress. Same three-panel convention as the analytics
-          row below it (DESKTOP_PANEL/DesktopPanelHeader, `flex-row-reverse`
-          on web so DOM order [thisMonth, obligations, goals] renders
-          thisMonth rightmost — the primary "where do we stand" figure).
-          Mobile/tablet stay a single stacked column. */}
+      {/* Dashboard product redesign — C/D: upcoming commitments (including
+          credit-card burden) is now the primary panel in this row (DOM
+          FIRST, so `flex-row-reverse` renders it rightmost — same
+          convention this row already used for its previous primary panel),
+          followed by this month's income/expense as a secondary stat. F:
+          savings-goal progress stays the row's third panel, unchanged.
+          Same three-panel convention as the analytics row below it
+          (DESKTOP_PANEL/DesktopPanelHeader). Mobile/tablet stay a single
+          stacked column, in the same [commitments, thisMonth, goals] DOM
+          order. */}
       <View className="mt-6 web:desktop:mt-5 web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
+        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
+          <View className={DESKTOP_PANEL}>
+            <DesktopPanelHeader
+              icon="calendar-outline"
+              title={t('dashboard.commitments.title')}
+              action={
+                topCommitments.length > 0 && (
+                  <Pressable onPress={() => router.push('/cash-flow')} accessibilityRole="button">
+                    <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                      {t('dashboard.commitments.viewAll')}
+                    </Text>
+                  </Pressable>
+                )
+              }
+            />
+            {hasCommitmentsPartialError && (
+              <View className="mb-2">
+                <ErrorMessage message={t('cashFlow.commitments.errors.partial')} />
+              </View>
+            )}
+            {creditCardBurdenAgorot > 0 && (
+              <Text className="mb-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('dashboard.commitments.creditCardBurden', { amount: formatILS(creditCardBurdenAgorot) })}
+              </Text>
+            )}
+            {isCommitmentsLoading ? (
+              <SkeletonList rows={2} />
+            ) : topCommitments.length === 0 ? (
+              <EmptyState iconName="calendar-outline" message={t('dashboard.commitments.empty')} compact />
+            ) : (
+              <Card>
+                {topCommitments.map((item, index) => {
+                  const pastDue = isPastDue(item.date, today)
+                  const days = daysUntilDue(item.date, today)
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() =>
+                        item.source === 'obligation'
+                          ? router.push(`/obligations/${item.sourceId}`)
+                          : item.source === 'recurring'
+                            ? router.push(`/recurring/${item.sourceId}`)
+                            : item.source === 'installment'
+                              ? router.push(`/installments/${item.sourceId}`)
+                              : router.push(`/accounts/${item.sourceId}`)
+                      }
+                      accessibilityRole="button"
+                    >
+                      {index > 0 && (
+                        <View className="my-3">
+                          <Divider />
+                        </View>
+                      )}
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1">
+                          <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                            {item.description}
+                          </Text>
+                          <Text
+                            className={`text-caption ${
+                              pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
+                            }`}
+                          >
+                            {formatDateDisplay(item.date)}
+                            {' · '}
+                            {pastDue
+                              ? t('obligations.pastDue')
+                              : days === 0
+                                ? t('obligations.dueToday')
+                                : t('obligations.inDays', { count: days })}
+                          </Text>
+                        </View>
+                        <Text className="text-body font-medium text-ink-light dark:text-ink-dark">
+                          {formatILS(item.amountAgorot)}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  )
+                })}
+              </Card>
+            )}
+          </View>
+        </View>
+
         <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
           <View className={DESKTOP_PANEL}>
             <DesktopPanelHeader icon="swap-vertical-outline" title={t('dashboard.thisMonth.title')} />
@@ -490,74 +504,6 @@ export default function Dashboard() {
                 </View>
               </View>
             </Card>
-          </View>
-        </View>
-
-        <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
-          <View className={DESKTOP_PANEL}>
-            <DesktopPanelHeader
-              icon="calendar-outline"
-              title={t('dashboard.upcomingObligations.title')}
-              action={
-                topUpcomingObligations.length > 0 && (
-                  <Pressable onPress={() => router.push('/obligations')} accessibilityRole="button">
-                    <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
-                      {t('dashboard.upcomingObligations.viewAll')}
-                    </Text>
-                  </Pressable>
-                )
-              }
-            />
-            {obligationsError ? (
-              <ErrorMessage message={t('dashboard.errors.generic')} />
-            ) : isObligationsLoading ? (
-              <SkeletonList rows={2} />
-            ) : topUpcomingObligations.length === 0 ? (
-              <EmptyState iconName="calendar-outline" message={t('dashboard.upcomingObligations.empty')} compact />
-            ) : (
-              <Card>
-                {topUpcomingObligations.map((obligation, index) => {
-                  const pastDue = isPastDue(obligation.due_date, today)
-                  const days = daysUntilDue(obligation.due_date, today)
-                  return (
-                    <Pressable
-                      key={obligation.id}
-                      onPress={() => router.push(`/obligations/${obligation.id}`)}
-                      accessibilityRole="button"
-                    >
-                      {index > 0 && (
-                        <View className="my-3">
-                          <Divider />
-                        </View>
-                      )}
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-1">
-                          <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                            {obligation.name}
-                          </Text>
-                          <Text
-                            className={`text-caption ${
-                              pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
-                            }`}
-                          >
-                            {formatDateDisplay(obligation.due_date)}
-                            {' · '}
-                            {pastDue
-                              ? t('obligations.pastDue')
-                              : days === 0
-                                ? t('obligations.dueToday')
-                                : t('obligations.inDays', { count: days })}
-                          </Text>
-                        </View>
-                        <Text className="text-body font-medium text-ink-light dark:text-ink-dark">
-                          {formatILS(obligation.amount_agorot)}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  )
-                })}
-              </Card>
-            )}
           </View>
         </View>
 
@@ -611,6 +557,64 @@ export default function Dashboard() {
           </View>
         </View>
       </View>
+
+      {/* Dashboard product redesign — G: alerts requiring attention, now its
+          own standalone full-width section (previously interleaved inside
+          the Safe-to-Spend/budget-hero row via a CSS `order-*` trick — see
+          that row's own comment above). Renders nothing at all when there
+          are no alerts (chosen over a persistent "everything's fine" banner
+          — no other screen in this app has that kind of standing chrome).
+          Max 3, highest-priority first (buildFinancialAlerts.ts's own
+          severity→date→id sort) — the full grouped list lives at /alerts.
+          The header + "כל ההתראות" link is always visible even with zero
+          current alerts, so /alerts stays reachable from the Dashboard
+          either way (UX-completeness audit finding this originally fixed). */}
+      {!isAlertsLoading && (
+        <View className="mt-6">
+          <View className="mb-2 flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+              {t('alerts.dashboardSectionTitle')}
+            </Text>
+            <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('alerts.viewAll')}
+              </Text>
+            </Pressable>
+          </View>
+          {topAlerts.length > 0 && (
+            <Card>
+              {topAlerts.map((alert, index) => (
+                <View key={alert.id}>
+                  {index > 0 && (
+                    <View className="my-3">
+                      <Divider />
+                    </View>
+                  )}
+                  <Pressable
+                    onPress={() => router.push(alert.actionRoute)}
+                    accessibilityRole="button"
+                    className="flex-row items-center gap-3"
+                  >
+                    <Ionicons
+                      name={severityIconName(alert.severity)}
+                      size={20}
+                      color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                    />
+                    <View className="flex-1">
+                      <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {alert.title}
+                      </Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                        {alert.description}
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
+              ))}
+            </Card>
+          )}
+        </View>
+      )}
 
       <View className="hidden web:desktop:mt-2 web:desktop:flex" />
 
