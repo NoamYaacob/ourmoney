@@ -1,7 +1,7 @@
 // "Available cash" for Safe-to-Spend deliberately does not mean "every
-// account balance." Product decision (audited against the six account
-// types in supabase/migrations/002_financial_schema.sql, i18n labels in
-// i18n/locales/he.json's accounts.types):
+// account balance." Product decision (audited against the account types in
+// supabase/migrations/002_financial_schema.sql + 013_loan_mortgage_account_types.sql,
+// i18n labels in i18n/locales/he.json's accounts.types):
 //
 //   checking (עו״ש)     — included: the household's everyday spending account.
 //   cash (מזומן)         — included: physically-held money, immediately spendable.

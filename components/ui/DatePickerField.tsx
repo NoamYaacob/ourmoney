@@ -8,7 +8,9 @@
 import { useState } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
+import { useColorScheme } from 'nativewind'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { colors } from '@/constants/colors'
 
 interface DatePickerFieldProps {
   label: string
@@ -18,6 +20,7 @@ interface DatePickerFieldProps {
 
 export function DatePickerField({ label, value, onChange }: DatePickerFieldProps) {
   const [isOpen, setIsOpen] = useState(Platform.OS === 'ios')
+  const { colorScheme: scheme } = useColorScheme()
 
   // Parsed with an explicit local-midnight time component (no 'Z' suffix) —
   // `new Date('YYYY-MM-DD')` alone is parsed as UTC midnight per spec, which
@@ -60,6 +63,19 @@ export function DatePickerField({ label, value, onChange }: DatePickerFieldProps
           toggle needed) — the browser owns the trigger and the calendar
           popup itself. iOS/Android behavior above is untouched. */}
       {Platform.OS === 'web' && (
+        // Visual QA + Desktop Polish pass: this previously hardcoded a
+        // light-only border color (`#d1d5db`, not even one of this app's
+        // own tokens) and never set the CSS `colorScheme` property — a
+        // native `<input type="date">`'s calendar icon and popup are
+        // browser-chrome-rendered, not stylable via CSS beyond that one
+        // property, so in dark mode the field kept a light background/icon
+        // while everything else on the page went dark, reading as visually
+        // disconnected. Now reads its border/background/text colors from
+        // this app's own tokens (constants/colors.ts) and sets
+        // `colorScheme` so the browser renders its native chrome (the
+        // calendar icon and the popup calendar itself) in the matching
+        // theme — matching every other Input/Select's already-themed
+        // border/fill.
         <input
           type="date"
           value={value}
@@ -70,7 +86,10 @@ export function DatePickerField({ label, value, onChange }: DatePickerFieldProps
             boxSizing: 'border-box',
             padding: '12px 16px',
             borderRadius: 12,
-            border: '1px solid #d1d5db',
+            border: `1px solid ${scheme === 'dark' ? colors.border.dark : colors.border.light}`,
+            backgroundColor: scheme === 'dark' ? colors.surfaceMuted.dark : colors.surfaceMuted.light,
+            color: scheme === 'dark' ? colors.ink.dark : colors.ink.light,
+            colorScheme: scheme === 'dark' ? 'dark' : 'light',
             fontSize: 16,
             fontFamily: 'inherit',
           }}

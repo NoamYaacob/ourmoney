@@ -36,12 +36,17 @@ const ACCOUNT = {
   type: 'checking',
   is_active: true,
   balance_agorot: 0, // dead column — deliberately not what the screen displays
+  billing_cycle_day: null as number | null,
 }
+const mockUseAccounts = jest.fn(() => ({ accounts: [ACCOUNT], isLoading: false }))
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
-  useAccounts: () => ({ accounts: [ACCOUNT], isLoading: false }),
+  useAccounts: () => mockUseAccounts(),
 }))
 jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: { 'acct-1': 543200 }, isLoading: false }),
+}))
+jest.mock('@/features/accounts/hooks/useCreditCardCycleSpend', () => ({
+  useCreditCardCycleSpend: () => ({ spendAgorot: null, range: null, isLoading: false, error: null }),
 }))
 const mockArchiveMutate = jest.fn(
   (_id: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
@@ -64,6 +69,7 @@ describe('AccountDetail', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'admin', isLoading: false })
+    mockUseAccounts.mockReturnValue({ accounts: [ACCOUNT], isLoading: false })
   })
 
   it('renders the edit form prefilled with the account name', async () => {
@@ -88,6 +94,62 @@ describe('AccountDetail', () => {
       id: 'acct-1',
       name: 'חשבון עו״ש חדש',
       type: 'checking',
+      billingCycleDay: null,
+    })
+  })
+
+  it('does not show a billing-cycle-day field while the account type is not credit_card', async () => {
+    const { queryByLabelText } = await render(<AccountDetail />)
+    expect(queryByLabelText('יום סגירת מחזור חיוב')).toBeNull()
+  })
+
+  it('switching type to credit_card reveals the billing-cycle-day field, and saving sends the entered value', async () => {
+    mockUpdateMutate.mockClear()
+    const { getByText, getByLabelText } = await render(<AccountDetail />)
+
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '12')
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateMutate).toHaveBeenCalledWith({
+      id: 'acct-1',
+      name: 'עו״ש בנק לאומי',
+      type: 'credit_card',
+      billingCycleDay: 12,
+    })
+  })
+
+  it('rejects a billing cycle day outside 1-28 without saving', async () => {
+    mockUpdateMutate.mockClear()
+    const { getByText, getByLabelText } = await render(<AccountDetail />)
+
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '0')
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(getByText('יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28')).toBeTruthy()
+    expect(mockUpdateMutate).not.toHaveBeenCalled()
+  })
+
+  it('switching type away from credit_card and saving explicitly nulls billing_cycle_day', async () => {
+    mockUpdateMutate.mockClear()
+    const CREDIT_CARD_ACCOUNT = { ...ACCOUNT, type: 'credit_card', billing_cycle_day: 12 }
+    mockUseAccounts.mockReturnValue({ accounts: [CREDIT_CARD_ACCOUNT], isLoading: false })
+
+    const { getByText, getByLabelText } = await render(<AccountDetail />)
+    expect(getByLabelText('יום סגירת מחזור חיוב').props.value).toBe('12')
+
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('עו״ש'))
+    await fireEvent.press(getByText('שמירה'))
+
+    expect(mockUpdateMutate).toHaveBeenCalledWith({
+      id: 'acct-1',
+      name: 'עו״ש בנק לאומי',
+      type: 'checking',
+      billingCycleDay: null,
     })
   })
 

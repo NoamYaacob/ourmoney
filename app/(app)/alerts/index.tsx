@@ -22,6 +22,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { FinancialAlert, FinancialAlertSeverity } from '@/types/app'
 
 const SEVERITY_GROUPS: { severity: FinancialAlertSeverity; labelKey: string }[] = [
@@ -48,7 +49,9 @@ export default function Alerts() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('alerts.screenTitle')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('alerts.screenTitle')}
+      </Text>
 
       {/* A single failed source degrades to fewer alerts, never a blank
           screen (useFinancialAlerts.ts's own partial-availability design)
@@ -59,11 +62,28 @@ export default function Alerts() {
         </View>
       )}
 
-      <View className="web:desktop:max-w-[600px]">
+      <View className={INLINE_FORM_WIDTH_CLASS}>
         {isLoading ? (
           <SkeletonList rows={3} />
         ) : alerts.length === 0 ? (
-          <EmptyState icon="✅" message={t('alerts.empty')} />
+          // Visual QA + Desktop Polish pass: a small icon + one line was the
+          // entire desktop page below the title — the same "reads as
+          // broken/empty" problem Budgets/Transactions' true-empty states
+          // already solved with a bounded, padded card. Mobile/tablet keep
+          // the exact original (non-compact) EmptyState, unchanged; desktop
+          // additionally wraps its own copy in a roomier bordered card.
+          // architecture-reviewer finding: an earlier version of this fix
+          // switched the mobile copy to `compact`, which would have shrunk
+          // mobile's existing empty state — not requested, and not what the
+          // comment claimed.
+          <>
+            <View className="web:desktop:hidden">
+              <EmptyState icon="✅" message={t('alerts.empty')} />
+            </View>
+            <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+              <EmptyState icon="✅" message={t('alerts.empty')} />
+            </View>
+          </>
         ) : (
           SEVERITY_GROUPS.map((group) => {
             const groupAlerts = alerts.filter((alert) => alert.severity === group.severity)

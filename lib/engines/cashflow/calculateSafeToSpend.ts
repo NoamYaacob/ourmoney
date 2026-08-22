@@ -1,5 +1,5 @@
 // The Safe-to-Spend V1 engine — deterministic, no AI, no network (CLAUDE.md
-// § Deterministic Financial Logic vs. AI / ADR-012). Combines three things
+// § Deterministic Financial Logic vs. AI / ADR-012). Combines the things
 // the household already has:
 //
 //   available cash        (eligible cash accounts' computed balance)
@@ -7,7 +7,18 @@
 //                            within the horizon)
 //   − upcoming recurring   (active, expense-only recurring_transactions
 //                            charges, forecasted within the horizon)
+//   − upcoming instalments (not-yet-materialized installment_plans charges,
+//                            forecasted within the horizon — migration 016,
+//                            ADR-037)
 //   = safe to spend
+//
+// Instalments are reserved here even though the credit-card account itself
+// is never in availableCashAgorot (eligibleCashAccounts.ts excludes
+// 'credit_card'): the instalment is charged to the card today, but the
+// household's own cash eventually settles that statement via an ordinary
+// transfer (ADR-037's settlement-as-transfer decision). Not reserving it
+// would let Safe-to-Spend ignore a real, already-committed future claim on
+// cash purely because of which account type happened to record it.
 //
 // Deliberately excludes budget-remaining from the formula. Subtracting both
 // a specific planned obligation/recurring charge AND the full remaining
@@ -44,6 +55,7 @@
 // scope guard against expanding into a per-member ("שלי") figure.
 
 import { forecastRecurringOccurrences, type RecurringForecastTemplate } from './forecastRecurringOccurrences'
+import { forecastInstallmentOccurrences, type InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
 import type { PlannedObligationStatus } from '@/types/app'
 
 export interface PlannedObligationForecastInput {
@@ -57,7 +69,7 @@ export interface PlannedObligationForecastInput {
   accountId: string | null
 }
 
-export type SafeToSpendItemSource = 'obligation' | 'recurring'
+export type SafeToSpendItemSource = 'obligation' | 'recurring' | 'installment'
 
 export interface SafeToSpendItem {
   sourceType: SafeToSpendItemSource
@@ -73,6 +85,7 @@ export interface SafeToSpendInput {
   availableCashAgorot: number
   obligations: readonly PlannedObligationForecastInput[]
   recurringTemplates: readonly RecurringForecastTemplate[]
+  installmentPlans: readonly InstallmentPlanForecastTemplate[]
   horizonEnd: string
 }
 
@@ -80,6 +93,7 @@ export interface SafeToSpendResult {
   availableCashAgorot: number
   plannedObligationsAgorot: number
   recurringAgorot: number
+  installmentsAgorot: number
   reservedAgorot: number
   safeToSpendAgorot: number
   // 0 unless safeToSpendAgorot is negative, in which case its positive
@@ -126,12 +140,29 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
       accountId: occurrence.accountId,
     }))
 
+  // forecastInstallmentOccurrences reports every amount as negative (always
+  // an expense, no income concept — see its own header), same reason the
+  // recurring branch above negates only occurrences it filtered to
+  // amountAgorot < 0.
+  const installmentItems: SafeToSpendItem[] = forecastInstallmentOccurrences(input.installmentPlans, input.horizonEnd).map(
+    (occurrence) => ({
+      sourceType: 'installment',
+      sourceId: occurrence.installmentPlanId,
+      description: occurrence.description,
+      amountAgorot: -occurrence.amountAgorot,
+      date: occurrence.date,
+      categoryId: occurrence.categoryId,
+      accountId: occurrence.accountId,
+    })
+  )
+
   const plannedObligationsAgorot = sumAgorot(obligationItems)
   const recurringAgorot = sumAgorot(recurringItems)
-  const reservedAgorot = plannedObligationsAgorot + recurringAgorot
+  const installmentsAgorot = sumAgorot(installmentItems)
+  const reservedAgorot = plannedObligationsAgorot + recurringAgorot + installmentsAgorot
   const safeToSpendAgorot = input.availableCashAgorot - reservedAgorot
 
-  const items = [...obligationItems, ...recurringItems].sort(
+  const items = [...obligationItems, ...recurringItems, ...installmentItems].sort(
     (a, b) => a.date.localeCompare(b.date) || a.sourceId.localeCompare(b.sourceId)
   )
 
@@ -139,6 +170,7 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
     availableCashAgorot: input.availableCashAgorot,
     plannedObligationsAgorot,
     recurringAgorot,
+    installmentsAgorot,
     reservedAgorot,
     safeToSpendAgorot,
     shortfallAgorot: safeToSpendAgorot < 0 ? -safeToSpendAgorot : 0,

@@ -112,6 +112,31 @@ jest.mock('@/features/cashflow/hooks/useCashFlowForecast', () => ({
     mockUseCashFlowForecast(householdId, horizonDays),
 }))
 
+const DEFAULT_COMMITMENTS_RESULT = {
+  commitments: [] as {
+    id: string
+    source: 'obligation' | 'recurring' | 'installment' | 'credit_card_cycle'
+    sourceId: string
+    description: string
+    amountAgorot: number
+    sharedAgorot: number
+    personalAgorot: number
+    date: string
+    categoryId: string | null
+    accountId: string | null
+  }[],
+  isLoading: false,
+  hasPartialError: false,
+}
+const mockUseUpcomingCommitments = jest.fn<(householdId: string | null | undefined) => typeof DEFAULT_COMMITMENTS_RESULT>()
+jest.mock('@/features/cashflow/hooks/useUpcomingCommitments', () => ({
+  useUpcomingCommitments: (householdId: string | null | undefined) => mockUseUpcomingCommitments(householdId),
+}))
+
+function defaultCommitmentsResult(overrides: Partial<typeof DEFAULT_COMMITMENTS_RESULT> = {}) {
+  return { ...DEFAULT_COMMITMENTS_RESULT, ...overrides }
+}
+
 describe('CashFlow detail screen', () => {
   beforeEach(() => {
     mockPush.mockClear()
@@ -119,6 +144,8 @@ describe('CashFlow detail screen', () => {
     mockUseSafeToSpend.mockReturnValue(defaultResult())
     mockUseCashFlowForecast.mockReset()
     mockUseCashFlowForecast.mockReturnValue(defaultForecastResult())
+    mockUseUpcomingCommitments.mockReset()
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult())
   })
 
   it('renders the full breakdown: available cash, obligations, recurring, reserved, safe-to-spend', async () => {
@@ -210,6 +237,8 @@ describe('CashFlow forecast section', () => {
     mockUseSafeToSpend.mockReturnValue(defaultResult())
     mockUseCashFlowForecast.mockReset()
     mockUseCashFlowForecast.mockReturnValue(defaultForecastResult())
+    mockUseUpcomingCommitments.mockReset()
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult())
   })
 
   it('renders the starting, ending, and lowest balance summary', async () => {
@@ -252,7 +281,7 @@ describe('CashFlow forecast section', () => {
     expect(getByText('משכורת')).toBeTruthy()
     expect(getByText('שכר דירה')).toBeTruthy()
     expect(getByText('חשמל')).toBeTruthy()
-    // "התחייבות"/"הוראת קבע" text also appears in the Safe-to-Spend section
+    // "התחייבות"/"חיוב קבוע" text also appears in the Safe-to-Spend section
     // above (same underlying Hebrew label, different i18n namespace) — at
     // least one occurrence is enough to prove this section rendered it.
     expect(getAllByText(i18n.t('cashFlow.forecast.source.planned_obligation')).length).toBeGreaterThanOrEqual(1)
@@ -362,5 +391,168 @@ describe('CashFlow forecast section', () => {
     const { getByText } = await render(<CashFlow />)
 
     expect(getByText(i18n.t('cashFlow.forecast.errors.generic'))).toBeTruthy()
+  })
+
+  // Visual QA + Desktop Polish pass: the safe-to-spend and forecast columns
+  // now match every other two-region desktop split in this app (Dashboard/
+  // Budgets/Settings/Categories) — `web:desktop:flex-row-reverse` keeps
+  // DOM/source order [safe-to-spend, forecast] while visually placing
+  // safe-to-spend (primary) on the right, the correct RTL reading order —
+  // see _layout.tsx's DesktopSideRail comment for why `-reverse` is needed
+  // on web at all. Exact whitespace-token membership, not a `.toContain()`
+  // substring check (which can't distinguish `flex-row` from
+  // `flex-row-reverse`) — see this app's other desktop-split regression
+  // tests for why that distinction matters.
+  it('uses flex-row-reverse (not plain flex-row) so safe-to-spend reads on the right in RTL', async () => {
+    const { getByText } = await render(<CashFlow />)
+
+    function climbToPanel(textNode: any) {
+      let current = textNode
+      while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:rounded-card')) {
+        current = current.parent
+      }
+      return current
+    }
+
+    const safeToSpendPanel = climbToPanel(getByText(i18n.t('cashFlow.availableCash')))
+    const rowWrapper = safeToSpendPanel?.parent
+    const tokens = ((rowWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
+
+    const forecastPanel = climbToPanel(getByText(i18n.t('cashFlow.forecast.sectionTitle')))
+    expect(forecastPanel?.parent).toBe(rowWrapper)
+  })
+})
+
+describe('CashFlow upcoming commitments section', () => {
+  beforeEach(() => {
+    mockPush.mockClear()
+    mockUseSafeToSpend.mockReset()
+    mockUseSafeToSpend.mockReturnValue(defaultResult())
+    mockUseCashFlowForecast.mockReset()
+    mockUseCashFlowForecast.mockReturnValue(defaultForecastResult())
+    mockUseUpcomingCommitments.mockReset()
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult())
+  })
+
+  it('shows the empty state when there are no upcoming commitments', async () => {
+    const { getByText } = await render(<CashFlow />)
+    expect(getByText(i18n.t('cashFlow.commitments.empty'))).toBeTruthy()
+  })
+
+  it('renders each commitment with its source label and date', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(
+      defaultCommitmentsResult({
+        commitments: [
+          {
+            id: 'obligation:ob-1',
+            source: 'obligation',
+            sourceId: 'ob-1',
+            description: 'ארנונה',
+            amountAgorot: 50000,
+            sharedAgorot: 50000,
+            personalAgorot: 0,
+            date: '2026-08-25',
+            categoryId: null,
+            accountId: null,
+          },
+          {
+            id: 'credit_card_cycle:acc-cc-1',
+            source: 'credit_card_cycle',
+            sourceId: 'acc-cc-1',
+            description: 'ויזה',
+            amountAgorot: 30000,
+            sharedAgorot: 20000,
+            personalAgorot: 10000,
+            date: '2026-09-10',
+            categoryId: null,
+            accountId: 'acc-cc-1',
+          },
+        ],
+      })
+    )
+
+    const { getAllByText, getByText } = await render(<CashFlow />)
+
+    expect(getAllByText('ארנונה').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('ויזה')).toBeTruthy()
+    expect(getAllByText(i18n.t('cashFlow.commitments.source.obligation'), { exact: false }).length).toBeGreaterThanOrEqual(1)
+    expect(getByText(i18n.t('cashFlow.commitments.source.credit_card_cycle'), { exact: false })).toBeTruthy()
+  })
+
+  it('shows the shared/personal split only when a commitment has both', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(
+      defaultCommitmentsResult({
+        commitments: [
+          {
+            id: 'obligation:ob-1',
+            source: 'obligation',
+            sourceId: 'ob-1',
+            description: 'ארנונה',
+            amountAgorot: 50000,
+            sharedAgorot: 50000,
+            personalAgorot: 0,
+            date: '2026-08-25',
+            categoryId: null,
+            accountId: null,
+          },
+          {
+            id: 'credit_card_cycle:acc-cc-1',
+            source: 'credit_card_cycle',
+            sourceId: 'acc-cc-1',
+            description: 'ויזה',
+            amountAgorot: 30000,
+            sharedAgorot: 20000,
+            personalAgorot: 10000,
+            date: '2026-09-10',
+            categoryId: null,
+            accountId: 'acc-cc-1',
+          },
+        ],
+      })
+    )
+
+    const { queryByText, getByText } = await render(<CashFlow />)
+
+    // The fully-shared obligation never shows a split line.
+    expect(
+      queryByText(i18n.t('cashFlow.commitments.sharedPersonalSplit', { shared: '₪500.00', personal: '₪0.00' }))
+    ).toBeNull()
+    // The mixed credit-card cycle line does.
+    expect(getByText(/משותף/)).toBeTruthy()
+  })
+
+  it('navigates to the correct detail route per commitment source', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(
+      defaultCommitmentsResult({
+        commitments: [
+          {
+            id: 'installment:inst-1:2',
+            source: 'installment',
+            sourceId: 'inst-1',
+            description: 'מקרר',
+            amountAgorot: 100000,
+            sharedAgorot: 100000,
+            personalAgorot: 0,
+            date: '2026-09-01',
+            categoryId: null,
+            accountId: null,
+          },
+        ],
+      })
+    )
+
+    const { getByText } = await render(<CashFlow />)
+    fireEvent.press(getByText('מקרר'))
+
+    expect(mockPush).toHaveBeenCalledWith('/installments/inst-1')
+  })
+
+  it('shows a non-blocking note when a commitment source partially failed', async () => {
+    mockUseUpcomingCommitments.mockReturnValue(defaultCommitmentsResult({ hasPartialError: true }))
+
+    const { getByText } = await render(<CashFlow />)
+    expect(getByText(i18n.t('cashFlow.commitments.errors.partial'))).toBeTruthy()
   })
 })

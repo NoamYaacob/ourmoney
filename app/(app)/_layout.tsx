@@ -10,6 +10,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
+import { useGenerateInstallmentTransactions } from '@/features/installments/hooks/useGenerateInstallmentTransactions'
 import { colors } from '@/constants/colors'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 
@@ -23,6 +24,7 @@ type RailHref =
   | '/recurring'
   | '/goals'
   | '/obligations'
+  | '/installments'
   | '/accounts'
 
 interface RailDestination {
@@ -35,21 +37,10 @@ interface RailDestination {
 
 interface RailGroup {
   key: string
-  // null for the first (primary/everyday) group — it reads as the rail's
-  // default top-level list; every group after it gets a header so a longer
-  // rail groups rather than reading as one flat list of equally-weighted
-  // rows (Desktop Visual/Responsive Design pass, section H).
   labelKey: string | null
   destinations: RailDestination[]
 }
 
-// Desktop Visual/Responsive Design pass (section H): before this, only
-// Dashboard/Transactions/Budgets/Settings were reachable from the sidebar —
-// Accounts/Recurring/Goals/Obligations/Cash Flow/Alerts existed only as
-// Settings cards or a Dashboard-card deep link, with no primary desktop
-// entry point. Grouped by cadence rather than flattened into one list of 10
-// equally-weighted rows: everyday actions, then planning/insight screens
-// checked less often, then account-level management.
 const RAIL_GROUPS: RailGroup[] = [
   {
     key: 'everyday',
@@ -66,9 +57,15 @@ const RAIL_GROUPS: RailGroup[] = [
       { segment: 'budgets', href: '/budgets', labelKey: 'tabs.budgets', icon: 'wallet-outline', iconActive: 'wallet' },
     ],
   },
+  // Visual QA + Desktop Polish pass: split from one 5-item "Planning &
+  // Insights" group into two smaller, more legibly-labeled groups — a
+  // real-browser screenshot review found the single group's label read as
+  // generic and didn't clearly signal that recurring charges/goals/
+  // obligations (the household's ongoing financial commitments) were in
+  // there alongside cash-flow/alerts (analytical, not commitment, screens).
   {
-    key: 'planning',
-    labelKey: 'nav.groups.planning',
+    key: 'insights',
+    labelKey: 'nav.groups.insights',
     destinations: [
       {
         segment: 'cash-flow',
@@ -78,6 +75,12 @@ const RAIL_GROUPS: RailGroup[] = [
         iconActive: 'trending-up',
       },
       { segment: 'alerts', href: '/alerts', labelKey: 'nav.alerts', icon: 'notifications-outline', iconActive: 'notifications' },
+    ],
+  },
+  {
+    key: 'obligations',
+    labelKey: 'nav.groups.obligations',
+    destinations: [
       {
         segment: 'recurring',
         href: '/recurring',
@@ -92,6 +95,13 @@ const RAIL_GROUPS: RailGroup[] = [
         labelKey: 'settings.financial.obligations',
         icon: 'calendar-outline',
         iconActive: 'calendar',
+      },
+      {
+        segment: 'installments',
+        href: '/installments',
+        labelKey: 'settings.financial.installments',
+        icon: 'layers-outline',
+        iconActive: 'layers',
       },
     ],
   },
@@ -111,26 +121,6 @@ const RAIL_GROUPS: RailGroup[] = [
   },
 ]
 
-// Responsive/desktop pass: replaces the bottom tab bar with a right-side
-// (RTL-correct) rail at the `desktop` breakpoint on web only — same 4
-// destinations, no hidden routes exposed. Only ever mounted when
-// `Platform.OS === 'web'` (see AppLayout below), so it never renders under
-// jest-expo's default native platform and can't affect
-// `_layout.test.tsx`'s "exactly 4 tab buttons" assertion.
-//
-// Desktop polish pass: visually verified in a real browser that plain
-// `flex-row` was placing this rail on the LEFT, not the right — wrong for
-// this Hebrew/RTL app. Root cause: native Yoga auto-mirrors `row` layouts
-// under `I18nManager.isRTL`, but NativeWind's web-compiled CSS does not
-// consult that flag (and the app sets no `dir="rtl"` on the web document —
-// see app/_layout.tsx's RTL bootstrap, which is a no-op reload on web), so
-// `flex-row` on web renders as plain physical left-to-right regardless of
-// the app's forced-RTL state. AppLayout below uses `flex-row-reverse`
-// instead (web-only, see its own comment) — a deterministic, standard CSS
-// mechanism, not a hack — to place this first-rendered child on the
-// physical right. `border-s` (inline-start) therefore resolves to the
-// rail's LEFT edge here (this element renders in an LTR-computed box, since
-// no `dir="rtl"` is set), which is the edge adjacent to the content column.
 export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const { t } = useTranslation()
   const router = useRouter()
@@ -138,12 +128,69 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
+  // Visual QA + Desktop Polish pass: labels were hardcoded Hebrew literals
+  // (CLAUDE.md: "No hardcoded Hebrew text in components... i18n keys are
+  // English, camelCase"). `key` is a stable React key independent of the
+  // translated label — the same separation RAIL_GROUPS above already uses
+  // (`segment`/`labelKey`), so a future wording change can't also disturb
+  // list-item identity.
+  const quickActions = [
+    {
+      key: 'newTransaction',
+      labelKey: 'nav.quickActions.newTransaction',
+      icon: 'add-circle-outline' as const,
+      onPress: () => router.push('/transactions/new'),
+    },
+    {
+      key: 'importCsv',
+      labelKey: 'nav.quickActions.importCsv',
+      icon: 'cloud-upload-outline' as const,
+      onPress: () => router.push('/transactions/import'),
+    },
+    {
+      key: 'manageAccounts',
+      labelKey: 'nav.quickActions.manageAccounts',
+      icon: 'card-outline' as const,
+      onPress: () => router.push('/accounts'),
+    },
+  ]
+
   return (
-    <View className="hidden web:desktop:flex w-[220px] shrink-0 border-s border-border-light bg-surface-light px-3 pt-8 dark:border-border-dark dark:bg-surface-dark">
+    // Visual QA + Desktop Polish pass: narrowed from 252px and the
+    // translucent `/70` fill dropped — a semi-transparent surfaceMuted over
+    // the page's own surface tone was what made the rail read as a heavy
+    // gray slab rather than a crisp panel; a flat, fully-opaque fill plus a
+    // softer border tint reads lighter despite being the exact same token.
+    // Row/section spacing also tightened slightly (py-6->py-5, mb-4->mb-3)
+    // to reduce the rail's overall visual weight without losing group
+    // separation.
+    <View className="sticky top-0 hidden h-screen w-[228px] shrink-0 border-s border-border-light/70 bg-surfaceMuted-light px-3.5 py-5 web:desktop:flex dark:border-border-dark/70 dark:bg-surfaceMuted-dark">
+      <View className="mb-5 px-2.5">
+        <Text className="text-lg font-bold text-ink-light dark:text-ink-dark">OurMoney</Text>
+        <Text className="mt-0.5 text-xs text-inkMuted-light dark:text-inkMuted-dark">{t('nav.tagline')}</Text>
+      </View>
+
+      <View className="mb-4 rounded-card border border-border-light/70 bg-surface-light p-2 dark:border-border-dark/70 dark:bg-surface-dark">
+        <Text className="mb-1 px-2 pt-1 text-xs font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+          {t('nav.quickActions.title')}
+        </Text>
+        {quickActions.map((action) => (
+          <Pressable
+            key={action.key}
+            onPress={action.onPress}
+            accessibilityRole="button"
+            className="flex-row items-center gap-2 rounded-control px-2 py-2 web:hover:bg-surfaceMuted-light dark:web:hover:bg-surfaceMuted-dark"
+          >
+            <Ionicons name={action.icon} size={18} color={activeColor} />
+            <Text className="text-sm font-medium text-ink-light dark:text-ink-dark">{t(action.labelKey)}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       {RAIL_GROUPS.map((group) => (
-        <View key={group.key} className="mb-4">
+        <View key={group.key} className="mb-3">
           {group.labelKey && (
-            <Text className="mb-1 px-3 text-caption font-semibold uppercase tracking-wide text-inkMuted-light dark:text-inkMuted-dark">
+            <Text className="mb-1 px-2.5 text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
               {t(group.labelKey)}
             </Text>
           )}
@@ -156,9 +203,21 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
                 onPress={() => router.push(dest.href)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: focused }}
-                className={`mb-1 flex-row items-center gap-3 rounded-control px-3 py-2.5 ${focused ? 'bg-surfaceMuted-light dark:bg-surfaceMuted-dark' : ''}`}
+                // Visual QA + Desktop Polish pass: the selected fill was
+                // raised from a barely-visible /10 accent tint to /14, and a
+                // thin `border-s-2` accent-colored bar was added on the
+                // selected row's leading (start) edge — the same "active
+                // rail" affordance convention as tab bars/side navs
+                // elsewhere, giving the current destination a clear, stable
+                // anchor point instead of relying on a faint background
+                // tint and bold text alone.
+                className={`mb-0.5 flex-row items-center gap-3 rounded-control border-s-2 px-2.5 py-2.5 ${
+                  focused
+                    ? 'border-accent-light bg-accent-light/[0.14] dark:border-accent-dark dark:bg-accent-dark/[0.14]'
+                    : 'border-transparent web:hover:bg-surface-light dark:web:hover:bg-surface-dark'
+                }`}
               >
-                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={22} />
+                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={20} />
                 <Text className={focused ? 'text-body font-semibold' : 'text-body font-normal'} style={{ color }}>
                   {t(dest.labelKey)}
                 </Text>
@@ -171,14 +230,6 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   )
 }
 
-// Design Phase 1: the active tab previously read only from the icon/label
-// tint swap, which is faint at a glance. Bolding the active label adds a
-// second, independent active-state cue (weight, not just hue) without
-// touching layout — labelStyle itself can't key off `focused`, so this
-// renders the label directly. A standalone named component (rather than a
-// factory returning an inline arrow function) so it has a display name for
-// React DevTools/lint, and so its identity is stable across AppLayout's
-// re-renders instead of being recreated as a new closure every time.
 function TabBarLabel({ title, focused, color }: { title: string; focused: boolean; color: ColorValue }) {
   return (
     <Text
@@ -191,79 +242,22 @@ function TabBarLabel({ title, focused, color }: { title: string; focused: boolea
   )
 }
 
-// Milestone 5's real tab bar (Dashboard/Transactions/Budgets/Settings),
-// replacing Milestone 1's single-screen Stack placeholder. The biometric
-// re-lock overlay (PHASE_1_PLAN §3.7) stays an untouched sibling in the same
-// fragment — it's absolutely positioned outside whatever navigator sits
-// underneath it, so swapping Stack for Tabs doesn't affect it: the Tabs and
-// its screens stay mounted while locked, so unlocking never re-triggers
-// queries or loses scroll/tab position. No RTL-specific tab-bar logic is
-// needed — I18nManager.forceRTL(true) already runs at root before anything
-// renders, and React Navigation's bottom-tab-bar is a plain RN
-// flexDirection:'row' layout, auto-mirrored under a forced RTL flag exactly
-// like every other flex-row in this app (verified in Milestone 0).
-//
-// Expo Router auto-registers every route FILE physically present under this
-// directory as a tab unless that route explicitly opts out via
-// `options={{ href: null }}` — confirmed root cause of a reported bug: every
-// non-tab screen below (accounts, goals, recurring, settings/categories,
-// and every transactions/* screen except the list) was leaking into the tab
-// bar as an extra, unlabeled, raw-route-name tab. Each of those screens'
-// own file header already documented the intent ("reached from Settings,
-// not a tab" — accounts/index.tsx, goals/index.tsx, recurring/index.tsx,
-// settings/categories.tsx); this was a missing exclusion, not a design
-// change. `href: null` removes a route from the tab bar (and from the
-// header back-button's "up" target) while leaving it fully reachable via
-// router.push/router.replace exactly as it already was.
-//
-// useColorScheme is imported from 'nativewind', NOT 'react-native' — see
-// components/ui/Button.tsx's header comment for why.
-//
-// While locked, the Tabs subtree is hidden from the accessibility tree
-// (importantForAccessibility/accessibilityElementsHidden) and the overlay is
-// marked as a modal (accessibilityViewIsModal) — the BlurView's
-// pointerEvents="auto" already blocks touches, but a screen reader navigates
-// the accessibility tree independently of touch handling, so without this a
-// VoiceOver/TalkBack user could still reach protected content underneath the
-// blur (adversarial/mobile review finding).
 export default function AppLayout() {
   const { t } = useTranslation()
   const { isLocked } = useBiometricGuard()
   const { user } = useAuth()
   const { householdId } = useHousehold(user?.id)
   useTransactionsRealtimeSync(householdId)
-  // Milestone 7 — client-on-open recurring generation (ADR-003/Q2). Mounted
-  // once here, next to the realtime sync, for the same reason: this hook
-  // owns its own subscribe/trigger lifecycle, so it must not be mounted
-  // more than once (would just mean redundant, harmlessly idempotent RPC
-  // calls, but still — one owner, matching the realtime sync's convention).
   useGenerateRecurringTransactions(householdId)
+  useGenerateInstallmentTransactions(householdId)
   const { colorScheme: scheme } = useColorScheme()
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const backgroundColor = scheme === 'dark' ? colors.surface.dark : colors.surface.light
   const borderColor = scheme === 'dark' ? colors.border.dark : colors.border.light
-  // Responsive/desktop pass: `tabBarStyle` is a plain native style object,
-  // not a className, so hiding the bottom bar only at the desktop
-  // breakpoint needs an actual width read rather than a CSS media query —
-  // this is the one nav-shell decision that needs it (per the task brief's
-  // own fallback guidance), everything else in this pass stays CSS-driven.
-  // The DesktopSideRail's own visibility is still purely CSS
-  // (`hidden web:desktop:flex`); this value only controls the bottom bar.
   const { width: windowWidth } = useWindowDimensions()
   const isWeb = Platform.OS === 'web'
   const isDesktopWeb = isWeb && windowWidth >= DESKTOP_BREAKPOINT_PX
-  // segments[0] is the '(app)' route group; segments[1] is the tab root
-  // ('dashboard' | 'transactions' | 'budgets' | 'settings' | ...). Without a
-  // generated .expo/types/router.d.ts (this sandboxed environment never runs
-  // a full `expo start` dev server), expo-router's typed-routes fallback
-  // types useSegments()'s return as a fixed 1-element tuple, so a literal
-  // `segments[1]` is a genuine out-of-range tuple index under TypeScript
-  // (TS2493) even though it's valid at runtime. `.at(1)` has no such
-  // fixed-length restriction — it's defined on the array/tuple's element
-  // type regardless of the tuple's statically-known length — so it
-  // expresses the identical runtime intent ("the second segment, or none")
-  // without a cast or a suppressed diagnostic.
   const segments = useSegments()
   const activeSegment = segments.at(1) ?? ''
 
@@ -274,22 +268,17 @@ export default function AppLayout() {
         importantForAccessibility={isLocked ? 'no-hide-descendants' : 'auto'}
         accessibilityElementsHidden={isLocked}
       >
-        {/* `web:flex-row-reverse` no-ops on native (Platform.OS !== 'web'
-            never matches the `web:` variant), so this wrapper is a plain
-            flex:1 column — byte-identical to the previous single View —
-            everywhere except a real web build. The side rail itself is only
-            ever mounted when Platform.OS === 'web', so native's render tree
-            (and `_layout.test.tsx`'s exactly-4-tab-buttons assertion, which
-            runs under jest-expo's default native platform) is completely
-            unaffected.
-            `row-reverse` (not `row`) — see DesktopSideRail's own comment for
-            why plain `flex-row` renders left-to-right on web regardless of
-            the app's forced RTL state, and why reversing the axis here is
-            the correct, deterministic fix rather than a hack: DOM/source
-            order stays [rail, content] (so a screen reader still announces
-            navigation first, the logical RTL reading order), while the
-            visual position flips — rail on the right, content immediately
-            to its left. */}
+        {/* RTL regression fix: plain `flex-row` does not auto-mirror on web
+            the way native Yoga does under I18nManager.forceRTL(true) — no
+            `dir="rtl"` is ever set on the web document (see app/_layout.tsx's
+            RTL bootstrap comment), so `web:flex-row` renders left-to-right
+            regardless of the app's forced-RTL state, placing the sidebar on
+            the wrong (left) side for this Hebrew app. `flex-row-reverse`
+            keeps DOM/source order [rail, content] (so a screen reader still
+            reaches navigation first) while visually placing the
+            first-rendered child — the rail — on the physical right, which is
+            the correct RTL reading position. Native (no `web:` match) is
+            unaffected either way. */}
         <View className="flex-1 web:flex-row-reverse">
           {isWeb && <DesktopSideRail activeSegment={activeSegment} />}
           <View className="flex-1">
@@ -317,8 +306,6 @@ export default function AppLayout() {
                 name="transactions/index"
                 options={{
                   title: t('tabs.transactions'),
-                  // receipt reads as "line-item money movements" — more coherent
-                  // with the tab's actual content than the generic list glyph.
                   tabBarIcon: ({ color, size, focused }) => (
                     <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color} size={size} />
                   ),
@@ -345,9 +332,6 @@ export default function AppLayout() {
                   tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.settings')} focused={focused} color={color} />,
                 }}
               />
-              {/* Every screen below is reached via router.push from Settings (or
-                  from a list screen's own row), never as a tab — excluded from
-                  the tab bar via href: null. See this file's own header comment. */}
               <Tabs.Screen name="transactions/new" options={{ href: null }} />
               <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
               <Tabs.Screen name="transfers/[id]" options={{ href: null }} />
@@ -361,14 +345,10 @@ export default function AppLayout() {
               <Tabs.Screen name="cash-flow/index" options={{ href: null }} />
               <Tabs.Screen name="alerts/index" options={{ href: null }} />
               <Tabs.Screen name="settings/categories" options={{ href: null }} />
-              {/* Desktop Visual/Responsive Design pass: these two were missing
-                  from this exclusion list — obligations was leaking into the
-                  mobile bottom tab bar as an extra, unlabeled tab (same root
-                  cause this file's own header comment documents for the other
-                  screens below; this pair was simply never added at the time
-                  obligations/ was built). */}
               <Tabs.Screen name="obligations/index" options={{ href: null }} />
               <Tabs.Screen name="obligations/[id]" options={{ href: null }} />
+              <Tabs.Screen name="installments/index" options={{ href: null }} />
+              <Tabs.Screen name="installments/[id]" options={{ href: null }} />
             </Tabs>
           </View>
         </View>
@@ -384,9 +364,6 @@ export default function AppLayout() {
   )
 }
 
-// NativeWind does not patch expo-blur's BlurView for `className` support
-// (no cssInterop registration exists for it) — positioning has to be a real
-// style, unlike the inner View/Text which NativeWind does patch by default.
 const styles = StyleSheet.create({
   flex: {
     flex: 1,

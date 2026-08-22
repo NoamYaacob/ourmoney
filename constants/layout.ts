@@ -41,5 +41,24 @@ export const DIALOG_WIDTH_CLASS = 'web:max-w-[560px] web:self-center'
 // and Budgets' lower-section columns — border/radius/fill/padding only.
 // Each caller appends its own `web:desktop:min-h-[...]` (panel count and
 // content differ per screen, so one shared floor height doesn't fit both).
+//
+// Visual QA + Desktop Polish pass: the border was previously full-strength
+// (`border-border-light`, the same token used for hairline dividers) with
+// no shadow at all — every panel on Dashboard/Budgets/Settings read as a
+// heavy outlined box. Softened to a lighter border tint plus the same
+// `shadow-sm` Card.tsx already carries (BASE_CARD_CLASS), so panels read as
+// subtle depth/elevation rather than a hard outline — matching the rest of
+// the app's card language instead of predating it.
 export const DESKTOP_PANEL_CLASS =
-  'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-6 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark'
+  'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light/70 web:desktop:bg-surfaceMuted-light web:desktop:p-6 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70 dark:web:desktop:bg-surfaceMuted-dark'
+
+// Visual QA + Desktop Polish pass: the same `web:desktop:max-w-[600px]`
+// literal was independently duplicated across Recurring/Goals/Obligations/
+// Alerts/Accounts (each wrapping its own inline add/edit form or list,
+// never the whole `<Screen>`) — a per-screen magic number, not a shared
+// token. This is deliberately NOT one of the CONTENT_WIDTH tiers above:
+// those clamp a `<Screen>`'s own root content column (`w-full ... mx-auto`,
+// active from `tablet` up), while every one of these call sites wraps an
+// inner `<View>` that already sits inside a wider `Screen` (`wide`) and
+// only ever needs the desktop-only cap itself.
+export const INLINE_FORM_WIDTH_CLASS = 'web:desktop:max-w-[600px]'

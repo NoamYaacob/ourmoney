@@ -27,9 +27,19 @@ import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { AccountType } from '@/types/app'
 
-const ACCOUNT_TYPE_OPTIONS: AccountType[] = ['checking', 'savings', 'credit_card', 'cash', 'investment', 'other']
+const ACCOUNT_TYPE_OPTIONS: AccountType[] = [
+  'checking',
+  'savings',
+  'credit_card',
+  'cash',
+  'investment',
+  'loan',
+  'mortgage',
+  'other',
+]
 
 export default function Accounts() {
   const { t } = useTranslation()
@@ -48,24 +58,69 @@ export default function Accounts() {
   const [isAdding, setIsAdding] = useState(false)
   const [name, setName] = useState('')
   const [type, setType] = useState<AccountType>('cash')
+  const [billingCycleDayText, setBillingCycleDayText] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
 
   function handleCreate() {
     if (!householdId || !name.trim() || createAccount.isPending) return
+    setCreateError(null)
+
+    let billingCycleDay: number | null = null
+    if (type === 'credit_card' && billingCycleDayText.trim()) {
+      // Plain digits only — rejects "1e1"/"0x1"/whitespace-padded forms
+      // Number(...) alone would silently accept, the same discipline
+      // agorotFromILS's own stricter regex already applies to money.
+      const trimmed = billingCycleDayText.trim()
+      const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) {
+        setCreateError(t('accounts.form.errors.invalidBillingCycleDay'))
+        return
+      }
+      billingCycleDay = parsed
+    }
+
     createAccount.mutate(
-      { householdId, name: name.trim(), type },
+      { householdId, name: name.trim(), type, billingCycleDay },
       {
         onSuccess: () => {
           setName('')
           setType('cash')
+          setBillingCycleDayText('')
           setIsAdding(false)
         },
       }
     )
   }
 
+  // Visual QA + Desktop Polish pass: desktop-only total-balance summary —
+  // Accounts previously had no top-level figure at all, reading as "just a
+  // sparse list." Sums every ACTIVE account's already-computed live balance
+  // (the same `balances` map every row below already reads from) — no new
+  // data, no invented figure, and archived accounts are excluded the same
+  // way they already are from every other financial total in this app.
+  // Desktop-only (`hidden web:desktop:flex`): mobile's layout is untouched.
+  const activeAccountBalances = accounts.filter((a) => a.is_active).map((a) => balances[a.id] ?? 0)
+  const totalBalanceAgorot = activeAccountBalances.reduce((sum, agorot) => sum + agorot, 0)
+
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('accounts.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('accounts.title')}
+      </Text>
+
+      {!error && !isLoading && accounts.length > 0 && (
+        <View className="mb-6 hidden web:desktop:flex">
+          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('accounts.totalBalance')}</Text>
+            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[36px]">
+              {isBalancesLoading ? '' : formatILS(totalBalanceAgorot)}
+            </Text>
+            <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('accounts.activeAccountCount', { count: activeAccountBalances.length })}
+            </Text>
+          </Card>
+        </View>
+      )}
 
       {error ? (
         <ErrorMessage message={t('accounts.errors.generic')} />
@@ -84,7 +139,7 @@ export default function Accounts() {
               two even columns with a natural gap between them in Yoga/RN's
               flexbox (there is no CSS Grid on native). Mobile/tablet keep
               the original single-column list untouched. */}
-          <View className={accounts.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
+          <View className={accounts.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {accounts.map((account) => (
             <Pressable
               key={account.id}
@@ -132,7 +187,7 @@ export default function Accounts() {
       {/* Add-account form/button stay narrow even on a wide desktop
           container — capped independently of the list above. */}
       {isAdding ? (
-        <View className="web:desktop:max-w-[600px]">
+        <View className={INLINE_FORM_WIDTH_CLASS}>
           <Card>
             <Input label={t('accounts.form.nameLabel')} value={name} onChangeText={setName} />
             <Select
@@ -153,14 +208,25 @@ export default function Accounts() {
                 </View>
               }
             />
-            {createAccount.isError && <ErrorMessage message={t('accounts.errors.generic')} />}
+            {type === 'credit_card' && (
+              <Input
+                label={t('accounts.form.billingCycleDayLabel')}
+                value={billingCycleDayText}
+                onChangeText={setBillingCycleDayText}
+                placeholder={t('accounts.form.billingCycleDayPlaceholder')}
+                keyboardType="number-pad"
+              />
+            )}
+            {(createError || createAccount.isError) && (
+              <ErrorMessage message={createError ?? t('accounts.errors.generic')} />
+            )}
             <View className="mt-2">
               <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
             </View>
           </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('accounts.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

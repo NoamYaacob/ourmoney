@@ -18,8 +18,9 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useCreatePlannedObligation } from '@/features/obligations/hooks/useCreatePlannedObligation'
-import { filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { daysUntilDue, filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
@@ -34,6 +35,7 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Obligations() {
   const { t } = useTranslation()
@@ -143,7 +145,7 @@ export default function Obligations() {
               single-column list untouched. */}
           <View
             className={
-              upcoming.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
+              upcoming.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined
             }
           >
             {upcoming.map((item) => {
@@ -159,8 +161,8 @@ export default function Obligations() {
                   className={upcoming.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
                 >
                   <Card>
-                    <View className="flex-row items-center justify-between web:flex-row-reverse">
-                      <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
+                    <View className="flex-row items-center justify-between web:flex-row">
+                      <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                         <CategoryIcon icon={category?.icon} size="sm" />
                         <View className="flex-1">
                           <Text className="text-base font-semibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
@@ -171,8 +173,13 @@ export default function Obligations() {
                               pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
                             }`}
                           >
-                            {obligation.due_date}
-                            {pastDue ? ` · ${t('obligations.pastDue')}` : ''}
+                            {formatDateDisplay(obligation.due_date)}
+                            {' · '}
+                            {pastDue
+                              ? t('obligations.pastDue')
+                              : daysUntilDue(obligation.due_date, today) === 0
+                                ? t('obligations.dueToday')
+                                : t('obligations.inDays', { count: daysUntilDue(obligation.due_date, today) })}
                             {' · '}
                             {obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
                           </Text>
@@ -193,7 +200,7 @@ export default function Obligations() {
               <Pressable
                 onPress={() => setIsHistoryVisible((v) => !v)}
                 accessibilityRole="button"
-                className="flex-row items-center gap-1 web:flex-row-reverse"
+                className="flex-row items-center gap-1 web:flex-row"
               >
                 <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
                   {t(isHistoryVisible ? 'obligations.history.hideButton' : 'obligations.history.showButton')}
@@ -217,8 +224,8 @@ export default function Obligations() {
                               <Divider />
                             </View>
                           )}
-                          <View className="flex-row items-center justify-between web:flex-row-reverse">
-                            <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
+                          <View className="flex-row items-center justify-between web:flex-row">
+                            <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                               <CategoryIcon icon={category?.icon} size="sm" />
                               <View className="flex-1">
                                 <Text
@@ -228,7 +235,7 @@ export default function Obligations() {
                                   {obligation.name}
                                 </Text>
                                 <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                                  {obligation.due_date}
+                                  {formatDateDisplay(obligation.due_date)}
                                   {' · '}
                                   {t(`obligations.status.${obligation.status}`)}
                                 </Text>
@@ -250,30 +257,48 @@ export default function Obligations() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
-          <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
+          {/* Visual QA + Desktop Polish pass: name+amount and category+
+              account pair into rows at desktop, matching every other add/
+              edit form in this app — this form previously stayed a single
+              stretched column even inside its own width-capped wrapper.
+              Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
           <DatePickerField label={t('obligations.form.dueDateLabel')} value={dueDate} onChange={setDueDate} />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountIdOverride}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountIdOverride}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('transactions.form.sharedLabel')}</Text>
           <View className="mb-4 flex-row gap-2">
@@ -292,8 +317,11 @@ export default function Obligations() {
           {(validationError || createObligation.isError) && (
             <ErrorMessage message={validationError ?? t('obligations.errors.generic')} />
           )}
+          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="web:desktop:flex-1">
           <Button title={t('obligations.form.submit')} onPress={handleCreate} loading={createObligation.isPending} />
-          <View className="mt-3">
+          </View>
+          <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
             <Button
               title={t('common.cancel')}
               variant="secondary"
@@ -304,9 +332,11 @@ export default function Obligations() {
               }}
             />
           </View>
+          </View>
+          </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('obligations.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

@@ -25,6 +25,7 @@ import { TRANSACTION_PERIODS, type TransactionPeriod } from '@/features/transact
 import { intersectWithVisible, selectAllVisible, toggleSelection } from '@/features/transactions/lib/transactionSelection'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
 import { HIT_SLOP } from '@/constants/accessibility'
@@ -245,7 +246,7 @@ export default function Transactions() {
       width="medium"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <View className="mb-6 flex-row items-center justify-between web:flex-row-reverse">
+      <View className="mb-6 flex-row items-center justify-between web:flex-row">
         <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
           {t('transactions.title')}
         </Text>
@@ -272,7 +273,7 @@ export default function Transactions() {
           combined (`flex-[3]` on their wrapper, `flex-1` each), and the
           whole thing stops wrapping (`flex-nowrap`) once there's room.
           Mobile/tablet keep the exact original stacked layout. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-3">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-3">
         <View className="web:desktop:flex-[2]">
           <Input
             label={t('transactions.filters.searchLabel')}
@@ -322,7 +323,7 @@ export default function Transactions() {
           row at desktop with a small vertical separator between the two
           groups, instead of two full rows each claiming their own line.
           Mobile/tablet keep the original two stacked rows. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:items-center web:desktop:gap-3">
+      <View className="web:desktop:flex-row web:desktop:flex-wrap web:desktop:items-center web:desktop:gap-3">
         <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-4">
           {TYPE_FILTER_VALUES.map((value) => (
             <Chip
@@ -349,7 +350,7 @@ export default function Transactions() {
       </View>
 
       {!isPageLoading && !error && !isSelectionMode && (
-        <View className="mb-4 flex-row items-center justify-between web:flex-row-reverse">
+        <View className="mb-4 flex-row items-center justify-between web:flex-row">
           <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.filters.resultCount', { count: filteredTransactions.length })}
           </Text>
@@ -374,7 +375,7 @@ export default function Transactions() {
 
       {isSelectionMode && (
         <View className="mb-4">
-          <View className="mb-2 flex-row items-center justify-between web:flex-row-reverse">
+          <View className="mb-2 flex-row items-center justify-between web:flex-row">
             <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
               {t('transactions.selection.selectedCount', { count: selectedIds.size })}
             </Text>
@@ -546,10 +547,10 @@ export default function Transactions() {
                       </Text>
                       <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
                         {isTransfer
-                          ? `${t('transactions.transferLabel')} · ${item.txn_date}`
+                          ? `${t('transactions.transferLabel')} · ${formatDateDisplay(item.txn_date)}`
                           : categoryName
-                            ? `${categoryName} · ${item.txn_date}`
-                            : item.txn_date}
+                            ? `${categoryName} · ${formatDateDisplay(item.txn_date)}`
+                            : formatDateDisplay(item.txn_date)}
                         {!isTransfer && !item.is_shared ? ` · ${t('transactions.form.personal')}` : ''}
                       </Text>
                     </View>

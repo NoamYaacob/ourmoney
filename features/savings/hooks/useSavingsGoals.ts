@@ -21,7 +21,9 @@ export function useSavingsGoals(householdId: string | null | undefined) {
         .eq('household_id', householdId as string)
         .order('created_at', { ascending: true })
       if (error) throw error
-      return data
+      // progress_source narrows a CHECK-constrained TEXT column the same
+      // way RecurringTransaction narrows frequency (useRecurringTransactions.ts).
+      return data as SavingsGoal[]
     },
     enabled: !!householdId,
   })

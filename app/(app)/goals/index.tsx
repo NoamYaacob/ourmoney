@@ -8,9 +8,11 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useCreateSavingsGoal } from '@/features/savings/hooks/useCreateSavingsGoal'
-import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
+import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
+import { calculateSavingsPace } from '@/lib/engines/savings/calculateSavingsPace'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
@@ -24,6 +26,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Goals() {
   const { t } = useTranslation()
@@ -31,6 +34,7 @@ export default function Goals() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { balances } = useAccountBalances(householdId)
   const { goals, isLoading: isGoalsLoading, error } = useSavingsGoals(householdId)
   const createGoal = useCreateSavingsGoal(householdId)
 
@@ -83,7 +87,9 @@ export default function Goals() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('savings.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('savings.title')}
+      </Text>
 
       {error ? (
         <ErrorMessage message={t('savings.errors.generic')} />
@@ -98,9 +104,22 @@ export default function Goals() {
           {/* Responsive/desktop pass: a 2-column card grid once there's more
               than one goal, desktop only — same calc()-free pattern as
               accounts/index.tsx. */}
-          <View className={goals.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
+          <View className={goals.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
           {goals.map((goal) => {
-            const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+            const currentAgorot = resolveGoalCurrentAgorot(goal, balances)
+            const isCompleted = resolveGoalIsCompleted(goal, balances)
+            const percent = goalProgressPercent(currentAgorot, goal.target_agorot)
+            // Same single-source-of-truth reasoning as goals/[id].tsx: a
+            // goal reads as "behind" from the pace calculation's own
+            // remainingAgorot/isOnTrack, not from the separately-derived
+            // isCompleted flag.
+            const pace = calculateSavingsPace({
+              currentAgorot,
+              targetAgorot: goal.target_agorot,
+              targetDate: goal.target_date,
+              today: localDateString(),
+            })
+            const isBehind = pace !== null && pace.remainingAgorot > 0 && !pace.isOnTrack
             return (
               <Pressable
                 key={goal.id}
@@ -111,14 +130,20 @@ export default function Goals() {
                 <Card>
                   <View className="mb-1 flex-row items-center justify-between">
                     <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
-                    {goal.is_completed && (
+                    {isCompleted ? (
                       <Text className="text-xs font-semibold text-accent-light dark:text-accent-dark">
                         {t('savings.completed')}
                       </Text>
+                    ) : (
+                      isBehind && (
+                        <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
+                          {t(pace?.isOverdue ? 'savings.pace.overdue' : 'savings.pace.behind')}
+                        </Text>
+                      )
                     )}
                   </View>
                   <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
+                    {formatILS(currentAgorot)} / {formatILS(goal.target_agorot)}
                   </Text>
                   <ProgressBar percent={percent} positiveAtLimit />
                 </Card>
@@ -130,15 +155,27 @@ export default function Goals() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
-          <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
-          <Input
-            label={t('savings.form.targetLabel')}
-            value={targetText}
-            onChangeText={setTargetText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
+          {/* Visual QA + Desktop Polish pass: name+target pair into a row at
+              desktop (the same field-pairing pattern used by every other
+              add/edit form in this app), and the form now sits inside a
+              Card so it reads as one cohesive block rather than fields
+              floating loose below the list. Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input label={t('savings.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('savings.form.namePlaceholder')} />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('savings.form.targetLabel')}
+                value={targetText}
+                onChangeText={setTargetText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
           <Select
             label={t('savings.form.accountLabel')}
             options={accountOptions}
@@ -158,9 +195,10 @@ export default function Goals() {
             <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
           )}
           <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
+          </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('savings.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

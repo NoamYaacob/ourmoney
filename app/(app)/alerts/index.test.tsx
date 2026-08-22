@@ -174,12 +174,17 @@ describe('Alerts screen', () => {
     expect(getByText('ארנונה בעוד 3 ימים')).toBeTruthy()
   })
 
+  // Visual QA + Desktop Polish pass: the empty state now renders twice
+  // (compact mobile + full desktop, same dual-render pattern Budgets/
+  // Transactions already use for their true-empty states) — getAllByText,
+  // not getByText, so this doesn't assume how many of those two elements
+  // render in this test's non-web render environment.
   it('shows the empty state when there are zero alerts', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText(i18n.t('alerts.empty'))).toBeTruthy()
+    expect(getAllByText(i18n.t('alerts.empty')).length).toBeGreaterThan(0)
   })
 
   it('shows a loading state while alerts are being gathered', async () => {

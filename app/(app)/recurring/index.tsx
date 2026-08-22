@@ -13,6 +13,7 @@ import { useCreateRecurringTransaction } from '@/features/recurring/hooks/useCre
 import { usePriceIncreaseDetections } from '@/features/recurring/hooks/usePriceIncreaseDetections'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
@@ -25,6 +26,7 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { RecurringFrequency } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
@@ -106,10 +108,12 @@ export default function Recurring() {
 
   return (
     <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('recurring.title')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('recurring.title')}
+      </Text>
 
       {priceIncreaseDetections.length > 0 && (
-        <View className="mb-4 web:desktop:max-w-[600px]">
+        <View className={`mb-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
             {t('recurring.priceIncrease.sectionTitle')}
           </Text>
@@ -168,7 +172,7 @@ export default function Recurring() {
               pattern as accounts/index.tsx. */}
           <View
             className={
-              recurringTransactions.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
+              recurringTransactions.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined
             }
           >
           {recurringTransactions.map((item) => (
@@ -179,7 +183,7 @@ export default function Recurring() {
               className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
             >
               {/* Paused items are dimmed and get a bolded status word instead
-                  of blending into the muted caption — the inline "· מושהית"
+                  of blending into the muted caption — the inline "· מושהה"
                   suffix alone was too easy to miss when scanning the list
                   (UX-completeness audit finding). */}
               <Card
@@ -198,7 +202,7 @@ export default function Recurring() {
                   </Text>
                 </View>
                 <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                  {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
+                  {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {formatDateDisplay(item.next_due_date)}
                   {!item.is_active && (
                     <Text className="font-semibold text-ink-light dark:text-ink-dark"> · {t('recurring.inactive')}</Text>
                   )}
@@ -211,51 +215,75 @@ export default function Recurring() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
           </View>
 
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
-          <Input
-            label={t('transactions.form.descriptionLabel')}
-            value={description}
-            onChangeText={setDescription}
-            placeholder={t('transactions.form.descriptionPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('recurring.form.frequencyLabel')}
-            options={frequencyOptions}
-            value={frequency}
-            onChange={(value) => setFrequency(value as RecurringFrequency)}
-            placeholder={t('recurring.form.frequencyLabel')}
-          />
-          <DatePickerField
-            label={t('recurring.form.nextDueDateLabel')}
-            value={nextDueDate}
-            onChange={setNextDueDate}
-          />
+          {/* Visual QA + Desktop Polish pass: amount+description and
+              account+category pair into rows at desktop, matching every
+              other add/edit form in this app — this form previously stayed
+              a single stretched column even inside its own width-capped
+              wrapper. Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.descriptionLabel')}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={t('transactions.form.descriptionPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('recurring.form.frequencyLabel')}
+                options={frequencyOptions}
+                value={frequency}
+                onChange={(value) => setFrequency(value as RecurringFrequency)}
+                placeholder={t('recurring.form.frequencyLabel')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <DatePickerField
+                label={t('recurring.form.nextDueDateLabel')}
+                value={nextDueDate}
+                onChange={setNextDueDate}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.form.sharedLabel')}
@@ -269,9 +297,10 @@ export default function Recurring() {
             <ErrorMessage message={validationError ?? t('recurring.errors.generic')} />
           )}
           <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
+          </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('recurring.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

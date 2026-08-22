@@ -199,12 +199,19 @@ describe('Categories settings screen', () => {
   // web-compiled CSS does not. Categories (source-order-first, the primary
   // column) must render on the right, matching every other desktop grid
   // in this app.
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH the
+  // reversed and unreversed forms — so it silently kept passing through a
+  // real regression where the split reverted to plain `flex-row`. Rewritten
+  // to exact whitespace-token membership.
   it('reverses the categories/rules desktop split so categories (primary) render on the right', async () => {
     const { getByText } = await render(<Categories />)
 
     const categoriesColumn = getByText('קטגוריות מותאמות אישית').parent
     const splitContainer = categoriesColumn?.parent
-    expect(splitContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    const tokens = ((splitContainer?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
 
     const rulesColumn = getByText('כללי סיווג').parent
     expect(rulesColumn?.parent).toBe(splitContainer)

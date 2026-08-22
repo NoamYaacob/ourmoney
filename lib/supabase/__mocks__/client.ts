@@ -23,6 +23,9 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     gt: jest.Mock
     is: jest.Mock
     or: jest.Mock
+    // Credit-card instalment purchases milestone: materialized-count query
+    // chains this.
+    not: jest.Mock
     // Bulk Categorization milestone: bulk update/select queries chain this.
     in: jest.Mock
     order: jest.Mock
@@ -45,6 +48,7 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     gt: jest.fn(() => builder),
     is: jest.fn(() => builder),
     or: jest.fn(() => builder),
+    not: jest.fn(() => builder),
     in: jest.fn(() => builder),
     order: jest.fn(() => builder),
     limit: jest.fn(() => builder),

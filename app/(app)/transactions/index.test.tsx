@@ -16,6 +16,7 @@ import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Transactions from './index'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 
 let mockSearchParams: Record<string, string> = {}
 const mockSetParams = jest.fn()
@@ -182,7 +183,7 @@ describe('Transactions list', () => {
     const { getByText } = await render(<Transactions />)
 
     const header = getByText('תנועות').parent
-    expect(header?.props.className as string).toContain('web:flex-row-reverse')
+    expect(header?.props.className as string).toContain('web:flex-row')
   })
 
   // Desktop polish pass: a simple 3-column row list (icon, description,
@@ -212,7 +213,7 @@ describe('Transactions list', () => {
 
     const searchField = getByLabelText('חיפוש')
     const row = climbTo(searchField, 'web:desktop:items-start')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const periodField = getByLabelText('תקופה')
     const accountField = getByLabelText('חשבון')
@@ -232,7 +233,7 @@ describe('Transactions list', () => {
 
     const typeChip = getByTestId('transactions-filter-type-expense')
     const row = climbTo(typeChip, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const sharedChip = getByTestId('transactions-filter-shared-shared')
     expect(climbTo(sharedChip, 'web:desktop:items-center')).toBe(row)
@@ -309,7 +310,7 @@ describe('Transactions list', () => {
 
       const { getByText, queryByText } = await render(<Transactions />)
 
-      expect(getByText(`העברה · ${TRANSFER_LEG.txn_date}`)).toBeTruthy()
+      expect(getByText(`העברה · ${formatDateDisplay(TRANSFER_LEG.txn_date)}`)).toBeTruthy()
       expect(queryByText('אישית')).toBeNull()
     })
 

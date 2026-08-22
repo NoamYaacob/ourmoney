@@ -280,7 +280,7 @@ describe('NewTransaction (Add Transaction)', () => {
 
     const descriptionField = getByLabelText('תיאור')
     const row = climbToClass(descriptionField, 'web:desktop:gap-4')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const merchantField = getByLabelText('בית עסק (אופציונלי)')
     expect(climbToClass(merchantField, 'web:desktop:gap-4')).toBe(row)
@@ -312,7 +312,7 @@ describe('NewTransaction (Add Transaction)', () => {
 
     const accountField = getByLabelText('חשבון')
     const row = climbToClass(accountField, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const categoryField = getByLabelText('קטגוריה (אופציונלי)')
     expect(climbToClass(categoryField, 'web:desktop:items-center')).toBe(row)
@@ -325,9 +325,23 @@ describe('NewTransaction (Add Transaction)', () => {
 
     const fromField = getByLabelText('מהחשבון')
     const row = climbToClass(fromField, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:desktop:flex-row')
 
     const toField = getByLabelText('לחשבון')
     expect(climbToClass(toField, 'web:desktop:items-center')).toBe(row)
+  })
+
+  // Visual QA + Desktop Polish pass: the whole form (amount hero,
+  // description/merchant, account/category) now shares one bounded desktop
+  // panel — the same DESKTOP_PANEL_CLASS token Dashboard/Budgets/Settings
+  // already use — instead of reading as loose sections floating on an
+  // otherwise-empty desktop page. `web:desktop:rounded-card` is that token's
+  // own marker class.
+  it('wraps the form in a shared bounded desktop panel', async () => {
+    const { getByLabelText } = await render(<NewTransaction />)
+
+    const descriptionField = getByLabelText('תיאור')
+    const panel = climbToClass(descriptionField, 'web:desktop:rounded-card')
+    expect(panel?.props.className as string).toContain('web:desktop:shadow-sm')
   })
 })

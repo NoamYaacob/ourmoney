@@ -13,6 +13,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 import { throwOnMutationFailure, type VersionedMutationResult } from '@/lib/mutations/concurrencyError'
+import type { SavingsGoalProgressSource } from '@/types/app'
 import { savingsGoalsQueryKey } from './useSavingsGoals'
 
 export interface UpdateSavingsGoalInput {
@@ -24,6 +25,7 @@ export interface UpdateSavingsGoalInput {
   targetDate: string | null
   icon: string | null
   color: string | null
+  progressSource: SavingsGoalProgressSource
 }
 
 export function useUpdateSavingsGoal(householdId: string | null | undefined) {
@@ -40,6 +42,7 @@ export function useUpdateSavingsGoal(householdId: string | null | undefined) {
         p_target_date: input.targetDate,
         p_icon: input.icon,
         p_color: input.color,
+        p_progress_source: input.progressSource,
       })
       if (error) throw error
 

@@ -8,7 +8,7 @@
 //   2. Uncategorized-transactions fetch errors were silently hidden: the
 //      hook's data falls back to [] on error, which rendered the exact same
 //      "all categorized" success EmptyState as a genuinely empty queue.
-import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import Budgets from './index'
@@ -302,6 +302,60 @@ describe('Budgets', () => {
     expect(getByText(formatILS(80000))).toBeTruthy() // remaining
   })
 
+  describe('end-of-month spending pace', () => {
+    // Pins "today" to the 15th of the real current month/year, whatever
+    // that happens to be when this suite runs — TARGET_PERIOD_START above
+    // is itself derived from the real current date, so this keeps "today"
+    // inside that same period without hardcoding a date the test could
+    // outlive.
+    function pinMidMonth() {
+      const [year, month] = TARGET_PERIOD_START.split('-').map(Number) as [number, number]
+      jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(year, month - 1, 15))
+    }
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('shows the projected end-of-month total once mid-month, computed from the same totals as the hero figures', async () => {
+      pinMidMonth()
+      const { getByText } = await render(<Budgets />)
+
+      expect(getByText('צפי לסוף החודש בקצב הנוכחי')).toBeTruthy()
+    })
+
+    it('does not show a pace projection on day 1 of the month — not enough data to average yet', async () => {
+      const [year, month] = TARGET_PERIOD_START.split('-').map(Number) as [number, number]
+      jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(year, month - 1, 1))
+
+      const { queryByText } = await render(<Budgets />)
+      expect(queryByText('צפי לסוף החודש בקצב הנוכחי')).toBeNull()
+    })
+
+    it('does not show a pace projection when viewing a month with no budget allocated', async () => {
+      mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+        periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : EMPTY_PROGRESS_RESULT
+      )
+      pinMidMonth()
+
+      const { queryByText } = await render(<Budgets />)
+      expect(queryByText('צפי לסוף החודש בקצב הנוכחי')).toBeNull()
+    })
+
+    it('flags a projected overspend distinctly from an on-track projection', async () => {
+      mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+        periodStart === PREVIOUS_PERIOD_START
+          ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+          : { ...DEFAULT_PROGRESS_RESULT, totalAllocatedAgorot: 30000, totalSpentAgorot: 25000 }
+      )
+      pinMidMonth()
+
+      const { getByText, queryByText } = await render(<Budgets />)
+      expect(getByText(/בקצב הזה תחרגו/)).toBeTruthy()
+      expect(queryByText('בקצב הזה תעמדו בתקציב')).toBeNull()
+    })
+  })
+
   it("shows the category's remaining amount in a healthy (non-exceeded) tone", async () => {
     const { getByText } = await render(<Budgets />)
 
@@ -370,12 +424,19 @@ describe('Budgets', () => {
   // flex-row-reverse (not plain flex-row) so categories (source-order-first,
   // the primary column) reads on the right in this RTL app — not a fake
   // pixel/viewport assertion.
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH the
+  // reversed and unreversed forms — so it silently kept passing through a
+  // real regression where the grid reverted to plain `flex-row`. Rewritten
+  // to exact whitespace-token membership.
   it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
     const gridWrapper = categoriesPanel?.parent?.parent
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row-reverse')
+    expect(tokens).not.toContain('web:desktop:flex-row')
 
     const uncategorizedPanel = climbToPanel(getByText('תנועות ללא קטגוריה'))
     expect(uncategorizedPanel?.parent?.parent).toBe(gridWrapper)

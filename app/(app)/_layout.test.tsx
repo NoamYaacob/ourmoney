@@ -7,6 +7,17 @@
 // same bug (missed at the time obligations/ was built, found during the
 // Desktop Visual/Responsive Design pass) — now covered here too.
 //
+// The `renderRouter()` fixture objects below stand in for the real file
+// tree — every `<Tabs.Screen name="X" .../>` the real _layout.tsx renders
+// needs a matching stub entry here, or expo-router logs a harmless but
+// noisy "[Layout children]: No route named X exists in nested children"
+// console.warn (it can't find a screen component for a name the real
+// layout referenced but this fixture never declared). transfers/[id],
+// cash-flow/index, and alerts/index were added to _layout.tsx's
+// Tabs.Screen list in an earlier milestone but never added to this test's
+// fixture — Visual QA + Desktop Polish pass: added below so the fixture
+// matches every route the real layout registers.
+//
 // `href: null`'s exclusion is a runtime react-navigation concept, not
 // something derivable from the file tree, and it isn't observable through
 // component-prop inspection either: @testing-library/react-native v14
@@ -41,6 +52,9 @@ jest.mock('@/features/transactions/hooks/useTransactionsRealtimeSync', () => ({
 }))
 jest.mock('@/features/recurring/hooks/useGenerateRecurringTransactions', () => ({
   useGenerateRecurringTransactions: () => undefined,
+}))
+jest.mock('@/features/installments/hooks/useGenerateInstallmentTransactions', () => ({
+  useGenerateInstallmentTransactions: () => undefined,
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -79,6 +93,11 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'recurring/[id]': STUB_SCREEN,
         'obligations/index': STUB_SCREEN,
         'obligations/[id]': STUB_SCREEN,
+        'installments/index': STUB_SCREEN,
+        'installments/[id]': STUB_SCREEN,
+        'transfers/[id]': STUB_SCREEN,
+        'cash-flow/index': STUB_SCREEN,
+        'alerts/index': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
@@ -106,6 +125,15 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
   // static JSX and renders regardless of platform, so this asserts the
   // structural fact that actually matters: the source declares the
   // reversed direction, not a fake pixel/viewport assertion.
+  //
+  // Visual QA + Desktop Polish pass: this test previously matched
+  // `className.includes('web:flex-row')`, which is satisfied by BOTH
+  // `web:flex-row` and `web:flex-row-reverse` (the former is a literal
+  // substring of the latter) — so it silently kept passing through a real
+  // regression where the wrapper reverted to plain `web:flex-row` (rail
+  // rendered on the wrong side again). Rewritten to tokenize each
+  // className on whitespace and check for exact token membership, so it
+  // can actually distinguish the two and fail if the wrong one reappears.
   it('declares the desktop rail wrapper as flex-row-reverse, not flex-row, for correct RTL placement', async () => {
     const result = await renderRouter(
       {
@@ -127,20 +155,36 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'recurring/[id]': STUB_SCREEN,
         'obligations/index': STUB_SCREEN,
         'obligations/[id]': STUB_SCREEN,
+        'installments/index': STUB_SCREEN,
+        'installments/[id]': STUB_SCREEN,
+        'transfers/[id]': STUB_SCREEN,
+        'cash-flow/index': STUB_SCREEN,
+        'alerts/index': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
 
-    function findByClassName(node: unknown, substring: string): boolean {
+    // Exact whitespace-token membership, not a substring match — see the
+    // test's own header comment above for why a substring check can't tell
+    // `web:flex-row` and `web:flex-row-reverse` apart.
+    function hasExactClassToken(node: unknown, token: string): boolean {
       if (!node || typeof node !== 'object') return false
-      if (Array.isArray(node)) return node.some((n) => findByClassName(n, substring))
+      if (Array.isArray(node)) return node.some((n) => hasExactClassToken(n, token))
       // react-test-renderer's toJSON() shape is {type, props, children} —
       // `children` is a sibling of `props`, not nested inside it.
       const asRecord = node as { props?: { className?: unknown }; children?: unknown }
-      if (typeof asRecord.props?.className === 'string' && asRecord.props.className.includes(substring)) return true
-      return findByClassName(asRecord.children, substring)
+      if (typeof asRecord.props?.className === 'string' && asRecord.props.className.split(/\s+/).includes(token)) {
+        return true
+      }
+      return hasExactClassToken(asRecord.children, token)
     }
 
-    expect(findByClassName(result.toJSON(), 'web:flex-row-reverse')).toBe(true)
+    const tree = result.toJSON()
+    expect(hasExactClassToken(tree, 'web:flex-row-reverse')).toBe(true)
+    // The regression this test exists to catch: the wrapper reverting to
+    // the bare (non-reversed) form. Asserted as a separate node, not just
+    // "not exactly one match," so this fails clearly if the wrapper is ever
+    // rendered with BOTH classes at once (which would be a different bug).
+    expect(hasExactClassToken(tree, 'web:flex-row')).toBe(false)
   })
 })
