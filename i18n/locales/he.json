@@ -79,12 +79,6 @@
       "empty": "עוד לא הגדרתם תקציב לחודש הזה",
       "setUp": "להגדיר תקציב"
     },
-    "state": {
-      "onTrack": "בקצב",
-      "approaching": "מתקרב",
-      "over": "חריגה",
-      "overPace": "מעל הקצב"
-    },
     "analytics": {
       "toggle": "ניתוח החודש",
       "hide": "לסגור"
@@ -628,6 +622,24 @@
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
+    },
+    "state": {
+      "onTrack": "בקצב תקין",
+      "approaching": "מתקרב לגבול",
+      "over": "חריגה"
+    },
+    "summary": {
+      "remainingLabel": "נותר להוציא",
+      "spentOf": "הוצא {{spent}} מתוך {{total}}",
+      "paceMarker": "הקו הכהה מסמן איפה אמורים להיות היום",
+      "projectionOver": "בקצב הזה התקציב ייגמר לפני סוף החודש. חריגה צפויה של {{amount}}",
+      "projectionOk": "בקצב הזה תעמדו בתקציב"
+    },
+    "category": {
+      "spentOf": "{{spent}} מתוך {{total}}",
+      "remaining": "נותרו {{amount}}",
+      "exceeded": "חריגה {{amount}}",
+      "projectedOver": "צפי לחריגה {{amount}}"
     }
   },
   "appearance": {

@@ -293,13 +293,20 @@ describe('Budgets', () => {
   // Design Phase 3 coverage: the hero summary card, the localized month
   // label (MonthNavigator), and the category row's remaining/exceeded
   // state text weren't asserted on before this phase.
-  it('shows the localized month label and the hero total/spent/remaining figures', async () => {
-    const { getByText } = await render(<Budgets />)
+  // Mobile redesign: the summary's hero figure is now what is LEFT, not
+  // what was allocated — a household opens this screen to decide against
+  // the remainder, and the allocation appears as the denominator it is.
+  it('shows the localized month label and leads with what is left', async () => {
+    const { getByText, getAllByText } = await render(<Budgets />)
 
     expect(getByText(formatMonthLabel(getCurrentMonthPeriodStart()))).toBeTruthy()
-    expect(getByText(formatILS(100000))).toBeTruthy() // total budget (hero figure)
-    expect(getByText(formatILS(20000))).toBeTruthy() // spent
-    expect(getByText(formatILS(80000))).toBeTruthy() // remaining
+    // Remaining is the hero. It also appears as the category's own
+    // remaining line, since the fixture has one category carrying the
+    // whole budget.
+    expect(getAllByText(formatILS(80000)).length).toBeGreaterThan(0)
+    expect(
+      getByText(i18n.t('budgets.summary.spentOf', { spent: formatILS(20000), total: formatILS(100000) }))
+    ).toBeTruthy()
   })
 
   describe('end-of-month spending pace', () => {
@@ -321,7 +328,10 @@ describe('Budgets', () => {
       pinMidMonth()
       const { getByText } = await render(<Budgets />)
 
-      expect(getByText('צפי לסוף החודש בקצב הנוכחי')).toBeTruthy()
+      // The projection is now a sentence rather than a labelled figure —
+      // "בקצב הזה תעמדו בתקציב" for a month on course, the overspend
+      // wording below when it is not.
+      expect(getByText(i18n.t('budgets.summary.projectionOk'))).toBeTruthy()
     })
 
     it('does not show a pace projection on day 1 of the month — not enough data to average yet', async () => {
@@ -329,7 +339,8 @@ describe('Budgets', () => {
       jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(year, month - 1, 1))
 
       const { queryByText } = await render(<Budgets />)
-      expect(queryByText('צפי לסוף החודש בקצב הנוכחי')).toBeNull()
+      expect(queryByText(i18n.t('budgets.summary.projectionOk'))).toBeNull()
+      expect(queryByText(i18n.t('budgets.summary.paceMarker'))).toBeNull()
     })
 
     it('does not show a pace projection when viewing a month with no budget allocated', async () => {
@@ -339,7 +350,8 @@ describe('Budgets', () => {
       pinMidMonth()
 
       const { queryByText } = await render(<Budgets />)
-      expect(queryByText('צפי לסוף החודש בקצב הנוכחי')).toBeNull()
+      expect(queryByText(i18n.t('budgets.summary.projectionOk'))).toBeNull()
+      expect(queryByText(i18n.t('budgets.summary.paceMarker'))).toBeNull()
     })
 
     it('flags a projected overspend distinctly from an on-track projection', async () => {
@@ -351,15 +363,22 @@ describe('Budgets', () => {
       pinMidMonth()
 
       const { getByText, queryByText } = await render(<Budgets />)
-      expect(getByText(/בקצב הזה תחרגו/)).toBeTruthy()
-      expect(queryByText('בקצב הזה תעמדו בתקציב')).toBeNull()
+      expect(getByText(/חריגה צפויה של/)).toBeTruthy()
+      expect(queryByText(i18n.t('budgets.summary.projectionOk'))).toBeNull()
+      // Amber, not red: the month is over pace but still inside its
+      // allocation, and the state chip has to say which.
+      expect(getByText(i18n.t('budgets.state.approaching'))).toBeTruthy()
     })
   })
 
-  it("shows the category's remaining amount in a healthy (non-exceeded) tone", async () => {
-    const { getByText } = await render(<Budgets />)
+  it("shows the category's remaining amount, and says it is on track", async () => {
+    const { getByText, getAllByText } = await render(<Budgets />)
 
-    expect(getByText(`נותרו ${formatILS(80000)}`)).toBeTruthy()
+    expect(getByText(i18n.t('budgets.category.remaining', { amount: formatILS(80000) }))).toBeTruthy()
+    // Status reaches the household as a word, never as a color alone —
+    // twice here, since the month summary and its single category are both
+    // on track in this fixture.
+    expect(getAllByText(i18n.t('budgets.state.onTrack')).length).toBe(2)
   })
 
   it('shows an exceeded state for a category that has spent past its allocation', async () => {
@@ -374,7 +393,8 @@ describe('Budgets', () => {
 
     const { getByText } = await render(<Budgets />)
 
-    expect(getByText(`חריגה של ${formatILS(20000)}`)).toBeTruthy()
+    expect(getByText(i18n.t('budgets.category.exceeded', { amount: formatILS(20000) }))).toBeTruthy()
+    expect(getByText(i18n.t('budgets.state.over'))).toBeTruthy()
   })
 
   it('shows a compact empty state when no categories have a budget yet', async () => {

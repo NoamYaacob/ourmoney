@@ -34,8 +34,8 @@ import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCom
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { getCurrentMonthPeriodStart, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
-import { calculateBudgetPace } from '@/lib/engines/budgets/calculateBudgetPace'
-import { remainingAgorot, spentPercent } from '@/lib/money/arithmetic'
+import { budgetState, BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE } from '@/features/budgets/lib/budgetState'
+import { remainingAgorot } from '@/lib/money/arithmetic'
 import { formatILS } from '@/lib/money/format'
 import { commitmentUrgency, greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
@@ -128,25 +128,15 @@ export function MobileHome() {
   const recurringPercent = Math.max(0, 100 - freePercent - obligationsPercent)
 
   const budgetRemaining = remainingAgorot(totalAllocatedAgorot, totalSpentAgorot)
-  // null means "no allocation to divide by" — the branch below that renders
-  // the bar is already gated on `totalAllocatedAgorot === 0`, so by the time
-  // a percent reaches BudgetBar it is never the null case. Defaulted rather
-  // than asserted so a future edit to that gate degrades to an empty bar
-  // instead of a crash.
-  const budgetPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot) ?? 0
-  const pace = calculateBudgetPace({
+  // The same classifier the Budget screen and every category row use, so
+  // this block and that screen can never describe one month two ways.
+  const monthState = budgetState({
     allocatedAgorot: totalAllocatedAgorot,
     spentAgorot: totalSpentAgorot,
     periodStart,
     periodEnd,
     today,
   })
-  const pacePercent = pace ? Math.round((pace.daysElapsed / pace.daysInMonth) * 100) : null
-  const budgetState =
-    totalSpentAgorot > totalAllocatedAgorot ? 'over' : pace?.isProjectedOverspend ? 'approaching' : 'healthy'
-  const budgetStateLabel =
-    budgetState === 'over' ? t('home.state.over') : budgetState === 'approaching' ? t('home.state.overPace') : t('home.state.onTrack')
-  const budgetTone = budgetState === 'over' ? 'danger' : budgetState === 'approaching' ? 'warning' : 'positive'
   const monthLabel = new Intl.DateTimeFormat('he-IL', { month: 'long' }).format(
     new Date(Number(periodStart.slice(0, 4)), Number(periodStart.slice(5, 7)) - 1, 1)
   )
@@ -389,7 +379,15 @@ export function MobileHome() {
             </>
           ) : (
             <>
-              <CardHeading trailing={<StatusChip label={budgetStateLabel} tone={budgetTone} dot />}>
+              <CardHeading
+                trailing={
+                  <StatusChip
+                    label={t(BUDGET_STATE_LABEL_KEY[monthState.state])}
+                    tone={BUDGET_STATE_TONE[monthState.state]}
+                    dot
+                  />
+                }
+              >
                 {t('home.budget.title', { month: monthLabel })}
               </CardHeading>
               <View className="mt-2 flex-row items-baseline gap-2">
@@ -400,17 +398,17 @@ export function MobileHome() {
               </View>
               <View className="mt-2.5">
                 <BudgetBar
-                  percent={budgetPercent}
-                  pacePercent={pacePercent}
-                  state={budgetState}
+                  percent={monthState.percentSpent ?? 0}
+                  pacePercent={monthState.pacePercent}
+                  state={monthState.state}
                   height={9}
-                  accessibilityLabel={`${budgetStateLabel}, ${budgetPercent}%`}
+                  accessibilityLabel={`${t(BUDGET_STATE_LABEL_KEY[monthState.state])}, ${monthState.percentSpent ?? 0}%`}
                 />
               </View>
-              {pace && (
+              {monthState.hasProjection && (
                 <Text className="mt-2 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                  {pace.isProjectedOverspend
-                    ? t('home.budget.projectionOver', { amount: formatILS(pace.projectedOverspendAgorot) })
+                  {monthState.projectedOverspendAgorot > 0
+                    ? t('home.budget.projectionOver', { amount: formatILS(monthState.projectedOverspendAgorot) })
                     : t('home.budget.projectionOk')}
                 </Text>
               )}

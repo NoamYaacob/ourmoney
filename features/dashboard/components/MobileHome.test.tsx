@@ -183,11 +183,16 @@ describe('MobileHome — what comes next', () => {
 })
 
 describe('MobileHome — the budget block', () => {
-  it('shows what is left, against the allocation', async () => {
-    const { getByText } = await render(<MobileHome />)
+  it('shows what is left, against the allocation, with a status word', async () => {
+    const { getByText, getAllByText } = await render(<MobileHome />)
 
     expect(getByText(formatILS(870_000 - 701_000))).toBeTruthy()
     expect(getByText(i18n.t('home.budget.remainingOf', { total: formatILS(870_000) }))).toBeTruthy()
+    // 701,000 of 870,000 is inside the allocation, so the state is decided
+    // by the projection rather than by the spend alone. Matched with
+    // getAllByText because the projection sentence underneath the bar can
+    // legitimately repeat the same word as the chip.
+    expect(getAllByText(/בקצב תקין|מתקרב לגבול|חריגה/).length).toBeGreaterThan(0)
   })
 
   it('invites setting a budget rather than rendering a zeroed bar', async () => {
@@ -196,7 +201,10 @@ describe('MobileHome — the budget block', () => {
 
     expect(getByText(i18n.t('home.budget.empty'))).toBeTruthy()
     // A household with no budget must not be shown a status for one.
-    expect(queryByText(i18n.t('home.state.onTrack'))).toBeNull()
-    expect(queryByText(i18n.t('home.state.over'))).toBeNull()
+    // These are the same keys the Budget screen renders — Home and that
+    // screen share one classifier, so asserting on them here would catch a
+    // regression in either.
+    expect(queryByText(i18n.t('budgets.state.onTrack'))).toBeNull()
+    expect(queryByText(i18n.t('budgets.state.over'))).toBeNull()
   })
 })
