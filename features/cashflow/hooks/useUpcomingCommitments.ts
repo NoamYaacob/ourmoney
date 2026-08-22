@@ -88,7 +88,14 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
           accountId: r.account_id,
           isShared: r.is_shared,
         })),
-    installmentPlans: installmentPlans.error
+    // Gated on materializedCounts.error too, not just installmentPlans.error:
+    // useInstallmentMaterializedCounts.ts degrades to an empty {} object on
+    // its own query failure (never throws), so without this guard every
+    // plan's materializedCount would silently read as 0 on that one query's
+    // failure alone — re-forecasting already-materialized, already-posted
+    // instalments as still-upcoming (qa-adversarial-reviewer finding: a
+    // real double-count, not just a display gap).
+    installmentPlans: installmentPlans.error || materializedCounts.error
       ? []
       : installmentPlans.plans.map((p) => ({
           id: p.id,
@@ -130,7 +137,15 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
       recurring.isLoading ||
       installmentPlans.isLoading ||
       materializedCounts.isLoading ||
-      creditCardTransactions.isPending,
+      // Same `enabled`-matching guard every other hook in this codebase
+      // applies to its own `query.isPending` (see useAccounts.ts,
+      // usePlannedObligations.ts, etc.) — a disabled TanStack Query never
+      // leaves status 'pending', so raw `isPending` alone would report
+      // `true` forever for the very common case of a household with no
+      // credit-card account at all (creditCardAccountIds.length === 0),
+      // permanently stuck on a loading placeholder instead of ever
+      // reaching the real empty state.
+      (creditCardAccountIds.length > 0 && creditCardTransactions.isPending),
     hasPartialError: !!(
       accounts.error ||
       obligations.error ||

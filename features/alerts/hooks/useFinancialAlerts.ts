@@ -139,7 +139,17 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
             currentMonth: breakdownToObservations(currentMonthStart),
             historicalMonths: historicalMonthStarts.map((start) => breakdownToObservations(start)),
           },
-    savingsGoals: savingsGoals.error || accountBalances.error
+    // Gated on savingsGoals.error only — NOT accountBalances.error too.
+    // resolveGoalCurrentAgorot only reads accountBalances for a
+    // 'linked_account' goal (a 'manual' goal returns its own current_agorot
+    // untouched); coupling the whole list to accountBalances.error would
+    // silently drop savings_goal_behind/excess_cash_available alerts for
+    // every manual goal too on a transient balances-query failure
+    // (qa-adversarial-reviewer finding). accountBalances.balances already
+    // degrades to {} on its own error (useAccountBalances.ts), so a
+    // linked-account goal still resolves — just to 0 rather than crashing —
+    // exactly the same partial-degradation every other source here accepts.
+    savingsGoals: savingsGoals.error
       ? []
       : savingsGoals.goals.map((goal) => ({
           id: goal.id,

@@ -387,14 +387,15 @@ export default function Dashboard() {
 
       {/* Dashboard product redesign — C/D: upcoming commitments (including
           credit-card burden) is now the primary panel in this row (DOM
-          FIRST, so `flex-row-reverse` renders it rightmost — same
-          convention this row already used for its previous primary panel),
-          followed by this month's income/expense as a secondary stat. F:
-          savings-goal progress stays the row's third panel, unchanged.
-          Same three-panel convention as the analytics row below it
-          (DESKTOP_PANEL/DesktopPanelHeader). Mobile/tablet stay a single
-          stacked column, in the same [commitments, thisMonth, goals] DOM
-          order. */}
+          FIRST, so `flex-row-reverse` renders it rightmost — this row
+          previously had this-month income/expense DOM-first/rightmost;
+          commitments takes that spot now, reflecting its higher priority in
+          the new A-H hierarchy), followed by this month's income/expense as
+          a secondary stat. F: savings-goal progress stays the row's third
+          panel, unchanged. Same three-panel convention as the analytics row
+          below it (DESKTOP_PANEL/DesktopPanelHeader). Mobile/tablet stay a
+          single stacked column, in the same [commitments, thisMonth, goals]
+          DOM order. */}
       <View className="mt-6 web:desktop:mt-5 web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
         <View className="mb-6 web:desktop:mb-0 web:desktop:flex-1">
           <View className={DESKTOP_PANEL}>
