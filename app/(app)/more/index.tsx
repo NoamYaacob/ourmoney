@@ -135,6 +135,20 @@ export default function More() {
           }
           onPress={() => router.push('/goals')}
         />
+        {/* Locked/informational, never a working (even mocked) connection —
+            see connections/index.tsx's own header comment for why. The
+            "בקרוב" badge here is the same signal the target screen repeats
+            on every row, so nobody taps through expecting a real flow. */}
+        <ListRow
+          title={t('more.connections')}
+          leading={
+            <RowIcon>
+              <Ionicons name="link-outline" size={18} color={iconColor} />
+            </RowIcon>
+          }
+          badges={<StatusChip label={t('connections.comingSoon')} />}
+          onPress={() => router.push('/connections')}
+        />
       </ListCard>
 
       <ListCard className="mt-3">
