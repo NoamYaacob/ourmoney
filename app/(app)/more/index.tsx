@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -81,7 +82,7 @@ export default function More() {
             <RowIcon tone={criticalCount > 0 ? 'danger' : 'neutral'}>
               <Ionicons
                 name="notifications-outline"
-                size={18}
+                size={ICON.row}
                 color={criticalCount > 0 ? (scheme === 'dark' ? colors.danger.dark : colors.dangerStrong.light) : iconColor}
               />
             </RowIcon>
@@ -98,7 +99,7 @@ export default function More() {
           }
           leading={
             <RowIcon>
-              <Ionicons name="card-outline" size={18} color={iconColor} />
+              <Ionicons name="card-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/installments')}
@@ -108,7 +109,7 @@ export default function More() {
           subtitle={t('more.planningSubtitle')}
           leading={
             <RowIcon>
-              <Ionicons name="calendar-outline" size={18} color={iconColor} />
+              <Ionicons name="calendar-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/obligations')}
@@ -118,7 +119,7 @@ export default function More() {
           subtitle={t('more.accountsSubtitle', { amount: formatILS(safeToSpend.availableCashAgorot) })}
           leading={
             <RowIcon>
-              <Ionicons name="wallet-outline" size={18} color={iconColor} />
+              <Ionicons name="wallet-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/accounts')}
@@ -130,7 +131,7 @@ export default function More() {
           }
           leading={
             <RowIcon>
-              <Ionicons name="flag-outline" size={18} color={iconColor} />
+              <Ionicons name="flag-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/goals')}
@@ -143,7 +144,7 @@ export default function More() {
           title={t('more.connections')}
           leading={
             <RowIcon>
-              <Ionicons name="link-outline" size={18} color={iconColor} />
+              <Ionicons name="link-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           badges={<StatusChip label={t('common.comingSoon')} />}
@@ -156,7 +157,7 @@ export default function More() {
           title={t('more.import')}
           leading={
             <RowIcon>
-              <Ionicons name="cloud-upload-outline" size={18} color={iconColor} />
+              <Ionicons name="cloud-upload-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/transactions/import')}
@@ -165,7 +166,7 @@ export default function More() {
           title={t('more.categories')}
           leading={
             <RowIcon>
-              <Ionicons name="pricetags-outline" size={18} color={iconColor} />
+              <Ionicons name="pricetags-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/settings/categories')}
@@ -174,7 +175,7 @@ export default function More() {
           title={t('more.settings')}
           leading={
             <RowIcon>
-              <Ionicons name="settings-outline" size={18} color={iconColor} />
+              <Ionicons name="settings-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           onPress={() => router.push('/settings')}

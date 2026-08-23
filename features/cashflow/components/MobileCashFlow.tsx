@@ -22,6 +22,7 @@ import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -114,7 +115,7 @@ export function MobileCashFlow() {
             >
               <Ionicons
                 name={hasShortfall ? 'trending-down' : 'checkmark-circle-outline'}
-                size={19}
+                size={ICON.nav}
                 color={
                   hasShortfall
                     ? isDark

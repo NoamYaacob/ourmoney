@@ -57,10 +57,21 @@ describe('DesktopTopBar', () => {
     expect(mockPush).toHaveBeenCalledWith('/transactions/new')
   })
 
-  it('renders nothing recognisable for an unknown segment rather than crashing', async () => {
-    // A route with no title mapping (a detail screen, say) still gets the
-    // bar's actions — it just has no title of its own.
-    const { getByText } = await render(<DesktopTopBar activeSegment="not-a-real-segment" />)
-    expect(getByText(i18n.t('transactions.addButton'))).toBeTruthy()
+  it('carries no actions on a screen the mockup gives none', async () => {
+    // Only the two frames the mockup draws in full carry header actions.
+    // Everything else gets the title alone and keeps its own controls in
+    // the screen body, which is where those frames put them.
+    const { queryByText } = await render(<DesktopTopBar activeSegment="accounts" />)
+    expect(queryByText(i18n.t('transactions.addButton'))).toBeNull()
+    expect(queryByText(i18n.t('dashboard.searchPlaceholder'))).toBeNull()
+  })
+
+  it('offers CSV import on Transactions, and only there', async () => {
+    const onTransactions = await render(<DesktopTopBar activeSegment="transactions" />)
+    expect(onTransactions.getByText(i18n.t('more.import'))).toBeTruthy()
+    expect(onTransactions.queryByText(i18n.t('dashboard.searchPlaceholder'))).toBeNull()
+
+    const onDashboard = await render(<DesktopTopBar activeSegment="dashboard" />)
+    expect(onDashboard.queryByText(i18n.t('more.import'))).toBeNull()
   })
 })

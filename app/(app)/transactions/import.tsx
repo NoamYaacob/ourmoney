@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
@@ -316,7 +317,7 @@ export default function TransactionsImport() {
               changed). */}
           <View className="items-center rounded-card border-2 border-dashed border-border-light bg-surfaceMuted-light px-6 py-10 web:desktop:py-14 dark:border-border-dark dark:bg-surfaceMuted-dark">
             <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-light/10 dark:bg-accent-dark/10">
-              <Ionicons name="cloud-upload-outline" size={24} color={accentColor} />
+              <Ionicons name="cloud-upload-outline" size={ICON.hero} color={accentColor} />
             </View>
             <Text className="mt-4 text-body font-semibold text-ink-light dark:text-ink-dark">
               {t('import.pickHint')}

@@ -20,6 +20,7 @@ import { accountIconName } from '@/features/accounts/lib/accountIcon'
 import { sumEligibleCashAgorot } from '@/lib/engines/cashflow/eligibleCashAccounts'
 import { formatILS } from '@/lib/money/format'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -133,7 +134,7 @@ export default function Accounts() {
         <Card>
           <View className="flex-row items-center gap-3">
             <RowIcon>
-              <Ionicons name={accountIconName(account.type)} size={17} color={iconColor} />
+              <Ionicons name={accountIconName(account.type)} size={ICON.row} color={iconColor} />
             </RowIcon>
             <View className="flex-1">
               <View className="flex-row items-center gap-2">
@@ -161,7 +162,7 @@ export default function Accounts() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('accounts.title')}
       </Text>
 
@@ -257,7 +258,7 @@ export default function Accounts() {
               sheetTitle={t('accounts.form.typeLabel')}
               leadingIcon={
                 <RowIcon>
-                  <Ionicons name={accountIconName(type)} size={17} color={iconColor} />
+                  <Ionicons name={accountIconName(type)} size={ICON.row} color={iconColor} />
                 </RowIcon>
               }
             />

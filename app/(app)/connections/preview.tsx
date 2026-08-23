@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
 import { SectionLabel } from '@/components/ui/SectionLabel'
 import { ListCard, ListRow, RowIcon } from '@/components/ui/ListCard'
@@ -37,7 +38,7 @@ export default function ConnectionsPreview() {
       <View className="mb-6 flex-row items-start gap-3 rounded-card border border-dangerBorder-light bg-dangerSurface-light p-4 dark:border-dangerBorder-dark dark:bg-dangerSurface-dark">
         <Ionicons
           name="alert-circle"
-          size={20}
+          size={ICON.nav}
           color={scheme === 'dark' ? colors.danger.dark : colors.danger.light}
         />
         <View className="flex-1">
@@ -57,7 +58,7 @@ export default function ConnectionsPreview() {
           subtitle={`${t('connections.preview.exampleAccountSubtitle')} · ${t('connections.preview.exampleUpdatedNote')}`}
           leading={
             <RowIcon>
-              <Ionicons name="business-outline" size={18} color={iconColor} />
+              <Ionicons name="business-outline" size={ICON.row} color={iconColor} />
             </RowIcon>
           }
           badges={<StatusChip label={t('connections.preview.connectedBadge')} tone="positive" dot />}
@@ -69,7 +70,7 @@ export default function ConnectionsPreview() {
       <SectionLabel className="mb-2 mt-6">{t('connections.preview.statesSectionTitle')}</SectionLabel>
       <View className="gap-3">
         <View className="flex-row items-start gap-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Ionicons name="checkmark-circle" size={20} color={scheme === 'dark' ? colors.positive.dark : colors.positive.light} />
+          <Ionicons name="checkmark-circle" size={ICON.nav} color={scheme === 'dark' ? colors.positive.dark : colors.positive.light} />
           <View className="flex-1">
             <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
               {t('connections.preview.states.successTitle')}
@@ -81,7 +82,7 @@ export default function ConnectionsPreview() {
         </View>
 
         <View className="flex-row items-start gap-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Ionicons name="close-circle" size={20} color={scheme === 'dark' ? colors.danger.dark : colors.danger.light} />
+          <Ionicons name="close-circle" size={ICON.nav} color={scheme === 'dark' ? colors.danger.dark : colors.danger.light} />
           <View className="flex-1">
             <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
               {t('connections.preview.states.failedTitle')}
@@ -93,7 +94,7 @@ export default function ConnectionsPreview() {
         </View>
 
         <View className="flex-row items-start gap-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Ionicons name="time-outline" size={20} color={scheme === 'dark' ? colors.warning.dark : colors.warning.light} />
+          <Ionicons name="time-outline" size={ICON.nav} color={scheme === 'dark' ? colors.warning.dark : colors.warning.light} />
           <View className="flex-1">
             <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
               {t('connections.preview.states.expiredTitle')}

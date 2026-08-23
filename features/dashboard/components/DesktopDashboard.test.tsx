@@ -382,7 +382,6 @@ describe('Dashboard hero — a negative safe-to-spend', () => {
     // not the bank balance. Regression guard for that.
     mockUseSafeToSpend.mockReturnValue({
       result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: -760_000, shortfallAgorot: 760_000 },
-      horizon: { start: '2026-08-01', end: '2026-08-31' },
       isLoading: false,
       error: null,
     })

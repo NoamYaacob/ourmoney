@@ -30,6 +30,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 
 export default function TransferDetail() {
   const { t } = useTranslation()
@@ -127,7 +128,7 @@ export default function TransferDetail() {
   return (
     <Screen keyboardAvoiding width="form">
       <View className="mb-6 flex-row items-center gap-2">
-        <Ionicons name="swap-horizontal" size={22} color={mutedColor} />
+        <Ionicons name="swap-horizontal" size={ICON.hero} color={mutedColor} />
         <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark">{t('transfers.detail.title')}</Text>
       </View>
 
@@ -141,7 +142,7 @@ export default function TransferDetail() {
         sheetTitle={t('transfers.detail.fromLabel')}
         leadingIcon={
           <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-            <Ionicons name={accountIconName(selectedFromAccount?.type)} size={17} color={mutedColor} />
+            <Ionicons name={accountIconName(selectedFromAccount?.type)} size={ICON.row} color={mutedColor} />
           </View>
         }
       />
@@ -155,7 +156,7 @@ export default function TransferDetail() {
         sheetTitle={t('transfers.detail.toLabel')}
         leadingIcon={
           <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-            <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
+            <Ionicons name={accountIconName(selectedToAccount?.type)} size={ICON.row} color={mutedColor} />
           </View>
         }
       />

@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useRTL } from '@/hooks/useRTL'
 import { HIT_SLOP } from '@/constants/accessibility'
 import { formatMonthLabel, shiftMonth } from '../lib/budgetPeriod'
@@ -47,7 +48,7 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
         hitSlop={HIT_SLOP}
         className="h-10 w-10 items-center justify-center rounded-full bg-surfaceMuted-light active:opacity-70 dark:bg-surfaceMuted-dark"
       >
-        <Ionicons name={flip('chevron-back', 'chevron-forward')} size={20} color={iconColor} />
+        <Ionicons name={flip('chevron-back', 'chevron-forward')} size={ICON.nav} color={iconColor} />
       </Pressable>
       <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">
         {formatMonthLabel(periodStart)}
@@ -59,7 +60,7 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
         hitSlop={HIT_SLOP}
         className="h-10 w-10 items-center justify-center rounded-full bg-surfaceMuted-light active:opacity-70 dark:bg-surfaceMuted-dark"
       >
-        <Ionicons name={flip('chevron-forward', 'chevron-back')} size={20} color={iconColor} />
+        <Ionicons name={flip('chevron-forward', 'chevron-back')} size={ICON.nav} color={iconColor} />
       </Pressable>
     </View>
   )

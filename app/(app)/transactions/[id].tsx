@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
@@ -228,7 +229,7 @@ export default function TransactionDetail() {
                   sheetTitle={t('transactions.form.accountLabel')}
                   leadingIcon={
                     <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                      <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                      <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />
                     </View>
                   }
                 />

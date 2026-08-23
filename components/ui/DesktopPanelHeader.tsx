@@ -15,6 +15,7 @@ import { Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 
 interface DesktopPanelHeaderProps {
   icon: ComponentProps<typeof Ionicons>['name']
@@ -30,7 +31,7 @@ export function DesktopPanelHeader({ icon, title, action }: DesktopPanelHeaderPr
     <View className="mb-2 mt-6 web:desktop:mt-0 flex-row items-center justify-between web:flex-row">
       <View className="flex-row items-center gap-2 web:flex-row">
         <View className="hidden h-7 w-7 items-center justify-center rounded-full bg-accent-light/10 web:desktop:flex dark:bg-accent-dark/10">
-          <Ionicons name={icon} size={14} color={iconColor} />
+          <Ionicons name={icon} size={ICON.chip} color={iconColor} />
         </View>
         <Text className="text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">{title}</Text>
       </View>

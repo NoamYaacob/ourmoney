@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
 import { ListCard, ListRow, RowIcon } from '@/components/ui/ListCard'
 import { StatusChip } from '@/components/ui/StatusChip'
@@ -50,7 +51,7 @@ export default function Connections() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-2 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+      <Text className="mb-2 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('connections.title')}
       </Text>
       <Text className="mb-6 text-body text-inkMuted-light dark:text-inkMuted-dark">
@@ -67,7 +68,7 @@ export default function Connections() {
                 subtitle={t('connections.notAvailableYet')}
                 leading={
                   <RowIcon>
-                    <Ionicons name={type.icon} size={18} color={iconColor} />
+                    <Ionicons name={type.icon} size={ICON.row} color={iconColor} />
                   </RowIcon>
                 }
                 badges={<StatusChip label={t('common.comingSoon')} />}
@@ -127,7 +128,7 @@ export default function Connections() {
             className="web:desktop:mt-2 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:bg-hero-light web:desktop:p-4 dark:web:desktop:bg-hero-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-heroBorder-light">
-              <Ionicons name="business-outline" size={20} color={colors.heroAccent.light} />
+              <Ionicons name="business-outline" size={ICON.nav} color={colors.heroAccent.light} />
             </View>
             <View className="web:desktop:flex-1">
               <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2">
@@ -145,7 +146,7 @@ export default function Connections() {
             className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:bg-hero-light web:desktop:p-4 dark:web:desktop:bg-hero-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-heroBorder-light">
-              <Ionicons name="card-outline" size={20} color={colors.heroAccent.light} />
+              <Ionicons name="card-outline" size={ICON.nav} color={colors.heroAccent.light} />
             </View>
             <View className="web:desktop:flex-1">
               <Text className="text-body font-sansSemibold text-heroInk-light">{t('connections.types.creditCard')}</Text>
@@ -159,7 +160,7 @@ export default function Connections() {
             className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark">
-              <Ionicons name="cash-outline" size={20} color={iconColor} />
+              <Ionicons name="cash-outline" size={ICON.nav} color={iconColor} />
             </View>
             <View className="web:desktop:flex-1">
               <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
@@ -177,7 +178,7 @@ export default function Connections() {
             className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark">
-              <Ionicons name="document-attach-outline" size={20} color={iconColor} />
+              <Ionicons name="document-attach-outline" size={ICON.nav} color={iconColor} />
             </View>
             <View className="web:desktop:flex-1">
               <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">

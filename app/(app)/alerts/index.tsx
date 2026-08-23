@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { SectionLabel } from '@/components/ui/SectionLabel'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { FinancialAlert, FinancialAlertSeverity } from '@/types/app'
+import { ICON } from '@/constants/icons'
 
 const SEVERITY_GROUPS: { severity: FinancialAlertSeverity; labelKey: string }[] = [
   { severity: 'critical', labelKey: 'alerts.groups.critical' },
@@ -50,7 +51,7 @@ export default function Alerts() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('alerts.screenTitle')}
       </Text>
 
@@ -113,7 +114,7 @@ export default function Alerts() {
                       >
                         <Ionicons
                           name={severityIconName(alert.severity)}
-                          size={20}
+                          size={ICON.nav}
                           color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
                         />
                         <View className="flex-1">
@@ -142,7 +143,7 @@ export default function Alerts() {
                     >
                       <Ionicons
                         name={severityIconName(alert.severity)}
-                        size={20}
+                        size={ICON.nav}
                         color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
                       />
                       <View className="web:desktop:flex-1">

@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useTranslation } from 'react-i18next'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 
 function readOnlineState(): boolean {
   try {
@@ -64,7 +65,7 @@ export function OfflineBanner() {
       accessibilityLiveRegion="polite"
       className="flex-row items-center justify-center gap-2 bg-warningTint-light px-4 py-2 dark:bg-warningTint-dark"
     >
-      <Ionicons name="cloud-offline-outline" size={16} color={iconColor} />
+      <Ionicons name="cloud-offline-outline" size={ICON.row} color={iconColor} />
       <Text className="text-caption font-sansSemibold text-warningStrong-light dark:text-warningStrong-dark">
         {t('common.offline')}
       </Text>

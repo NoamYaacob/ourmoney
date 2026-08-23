@@ -15,6 +15,7 @@ import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/use
 import { useGenerateInstallmentTransactions } from '@/features/installments/hooks/useGenerateInstallmentTransactions'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 import { Avatar } from '@/components/ui/Avatar'
 import { DesktopTopBar } from '@/components/ui/DesktopTopBar'
@@ -192,7 +193,7 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
                   focused ? 'bg-surface-light dark:bg-surface-dark' : 'web:hover:bg-surface-light dark:web:hover:bg-surface-dark'
                 }`}
               >
-                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={19} />
+                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={ICON.nav} />
                 <Text
                   className={focused ? 'text-body font-sansSemibold text-ink-light dark:text-ink-dark' : 'text-body font-sansMedium text-inkMuted-light dark:text-inkMuted-dark'}
                 >
@@ -219,7 +220,7 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
             {role === 'admin' ? t('settings.household.roleAdmin') : t('settings.household.roleMember')}
           </Text>
         </View>
-        <Ionicons name="ellipsis-horizontal" size={17} color={mutedIconColor} />
+        <Ionicons name="ellipsis-horizontal" size={ICON.row} color={mutedIconColor} />
       </Pressable>
     </View>
   )

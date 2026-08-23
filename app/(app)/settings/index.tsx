@@ -219,7 +219,7 @@ export default function Settings() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('settings.title')}
       </Text>
 

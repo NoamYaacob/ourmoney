@@ -45,6 +45,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 export default function NewTransaction() {
@@ -264,7 +265,7 @@ export default function NewTransaction() {
                       sheetTitle={t('transactions.form.fromAccountLabel')}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />
                         </View>
                       }
                     />
@@ -284,7 +285,7 @@ export default function NewTransaction() {
                       sheetTitle={t('transactions.form.toAccountLabel')}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
+                          <Ionicons name={accountIconName(selectedToAccount?.type)} size={ICON.row} color={mutedColor} />
                         </View>
                       }
                     />
@@ -309,7 +310,7 @@ export default function NewTransaction() {
                       sheetTitle={t('transactions.form.accountLabel')}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />
                         </View>
                       }
                     />

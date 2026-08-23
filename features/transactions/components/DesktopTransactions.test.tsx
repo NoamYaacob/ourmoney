@@ -115,10 +115,9 @@ describe('Transactions list', () => {
     // exist in the tree at once.
     expect(getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').length).toBe(2)
     // Desktop Claude Design pass: the mockup's header carries a real, always-
-    // visible "add transaction" button — the screen's floatingAction FAB
-    // (`web:desktop:hidden`) is a second, inert instance of the same label
-    // still present in the tree, not the only CTA anymore.
-    expect(getAllByLabelText('הוספת תנועה').length).toBe(2)
+    // Only the FAB now: the header's own add button became the shell bar's
+    // (components/ui/DesktopTopBar), so this screen renders one CTA.
+    expect(getAllByLabelText('הוספת תנועה').length).toBe(1)
     // The header button is the first in document order (the FAB renders
     // last, as Screen's floatingAction) — the visible, real CTA.
     await fireEvent.press(getAllByRole('button', { name: 'הוספת תנועה' })[0]!)
@@ -211,14 +210,9 @@ describe('Transactions list', () => {
   // the forced-RTL flag but NativeWind's web-compiled CSS does not — a
   // headless-browser measurement found the title rendering on the physical
   // left on web (should be right, since it's listed first/primary).
-  it('reverses the title/CSV-import header row on web so the title renders on the right', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
-
-    const { getByText } = await render(<Transactions />)
-
-    const header = getByText('תנועות').parent
-    expect(header?.props.className as string).toContain('web:flex-row')
-  })
+  // The title/CSV-import/add header row moved to the shell bar
+  // (components/ui/DesktopTopBar), where the mockup's own Transactions frame
+  // puts it. Its layout and contents are covered by that component's tests.
 
   // Desktop Claude Design pass: the mockup pairs the transaction feed with a
   // 300px sidebar (this view's summary + active rules) — the flat, single-
@@ -228,10 +222,21 @@ describe('Transactions list', () => {
   it('uses the wide (1150px) desktop content cap, giving room for the sidebar column', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
-    const { getByText } = await render(<Transactions />)
+    // Anchored on the empty-state message rather than the screen title,
+    // which is the shell bar's now. Walks up to the Screen's own content
+    // column, which is what carries the width cap.
+    const { getAllByText } = await render(<Transactions />)
 
-    const contentColumn = getByText('תנועות').parent?.parent
-    const className = contentColumn?.props.className as string
+    let node = getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')[0]?.parent
+    let className = ''
+    for (let depth = 0; depth < 12 && node; depth += 1) {
+      const candidate = (node.props?.className as string | undefined) ?? ''
+      if (candidate.includes('web:desktop:max-w-[1150px]')) {
+        className = candidate
+        break
+      }
+      node = node.parent
+    }
     expect(className).toContain('web:desktop:max-w-[1150px]')
   })
 

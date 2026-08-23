@@ -13,6 +13,7 @@ import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 
 type CardState = 'default' | 'warning' | 'danger'
 
@@ -98,7 +99,7 @@ export function ListRow({
         // into the stack) is the back-facing one. Getting this backwards was
         // a real regression in the desktop pass; the design file's own
         // drill-in rows point the same way.
-        <Ionicons name="chevron-back" size={18} color={chevronColor} />
+        <Ionicons name="chevron-back" size={ICON.row} color={chevronColor} />
       )}
     </View>
   )

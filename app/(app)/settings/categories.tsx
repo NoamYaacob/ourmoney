@@ -31,6 +31,7 @@ import { useApplyRulesRetroactively } from '@/features/categories/hooks/useApply
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -110,7 +111,7 @@ export default function Categories() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('categories.title')}</Text>
+      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">{t('categories.title')}</Text>
 
       {/* Responsive/desktop pass: categories in one column, rules in a
           second column — desktop only (`web:desktop:flex-row`; see
@@ -401,7 +402,7 @@ export default function Categories() {
             sheetTitle={t('categories.rules.form.categoryLabel')}
             leadingIcon={
               <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                <Ionicons name="pricetag-outline" size={17} color={accentColor} />
+                <Ionicons name="pricetag-outline" size={ICON.row} color={accentColor} />
               </View>
             }
           />

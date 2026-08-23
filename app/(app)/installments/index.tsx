@@ -146,9 +146,8 @@ export default function Installments() {
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('installments.title')}
       </Text>
-      <Text className="mb-6 hidden text-title font-bold text-ink-light dark:text-ink-dark web:desktop:flex web:desktop:text-[20px]">
-        {t('nav.creditAndPayments')}
-      </Text>
+      {/* The desktop title is the shell bar's now (DesktopTopBar); only
+          the mobile header above remains. */}
 
       {creditCardCycleCommitments.length > 0 && (
         <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:flex-row web:desktop:gap-4">

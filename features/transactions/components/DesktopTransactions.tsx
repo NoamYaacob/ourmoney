@@ -52,6 +52,7 @@ import { formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { HIT_SLOP } from '@/constants/accessibility'
 import { DESKTOP_CARD_CLASS } from '@/constants/layout'
 import { Screen } from '@/components/ui/Screen'
@@ -305,34 +306,10 @@ export function DesktopTransactions() {
       width="wide"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <View className="mb-6 flex-row items-center justify-between web:flex-row web:desktop:flex-row">
-        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
-          {t('transactions.title')}
-        </Text>
-        <View className="flex-row items-center gap-4 web:desktop:flex-row web:desktop:gap-3.5">
-          <Pressable
-            onPress={() => router.push('/transactions/import')}
-            accessibilityRole="button"
-            className="flex-row items-center gap-1 web:desktop:flex-row"
-          >
-            <Ionicons name="cloud-upload-outline" size={16} color={accentColor} />
-            <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
-              {t('import.entryButton')}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/transactions/new')}
-            accessibilityRole="button"
-            accessibilityLabel={t('transactions.addButton')}
-            className="hidden web:desktop:flex web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-accent-light web:desktop:px-3.5 web:desktop:py-2.5 dark:web:desktop:bg-accent-dark"
-          >
-            <Ionicons name="add" size={17} color={scheme === 'dark' ? '#141310' : '#ffffff'} />
-            <Text className="text-caption font-sansSemibold text-surface-light dark:text-surface-dark">
-              {t('transactions.addButton')}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+      {/* The title, the CSV-import link and the primary action are the
+          shell bar's on desktop now (components/ui/DesktopTopBar.tsx) — the
+          mockup's own Transactions frame puts exactly those three in its
+          68px band. This screen used to draw them again underneath it. */}
 
       <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
         <View className="web:desktop:flex-1">
@@ -511,7 +488,7 @@ export function DesktopTransactions() {
               className="web:desktop:mb-3 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-warning-light/40 web:desktop:bg-surfaceMuted-light web:desktop:p-3.5 dark:web:desktop:border-warning-dark/40 dark:web:desktop:bg-surfaceMuted-dark"
             >
               <View className="web:desktop:h-8 web:desktop:w-8 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-warningTint-light dark:web:desktop:bg-warningTint-dark">
-                <Ionicons name="pricetag-outline" size={17} color={colors.warningStrong[scheme === 'dark' ? 'dark' : 'light']} />
+                <Ionicons name="pricetag-outline" size={ICON.row} color={colors.warningStrong[scheme === 'dark' ? 'dark' : 'light']} />
               </View>
               <View className="web:desktop:flex-1">
                 <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
@@ -669,7 +646,7 @@ export function DesktopTransactions() {
                           {isSelectionMode && !isTransfer && (
                             <Ionicons
                               name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-                              size={20}
+                              size={ICON.nav}
                               color={isSelected ? accentColor : mutedColor}
                             />
                           )}
@@ -679,7 +656,7 @@ export function DesktopTransactions() {
                               importantForAccessibility="no-hide-descendants"
                               className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark"
                             >
-                              <Ionicons name="swap-horizontal" size={16} color={accentColor} />
+                              <Ionicons name="swap-horizontal" size={ICON.row} color={accentColor} />
                             </View>
                           ) : (
                             <CategoryIcon icon={item.category_id ? categoryIconById[item.category_id] : undefined} size="sm" />

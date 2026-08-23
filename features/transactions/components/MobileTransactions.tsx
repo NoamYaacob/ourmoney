@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
@@ -201,7 +202,7 @@ export function MobileTransactions() {
                       >
                         <Ionicons
                           name="swap-horizontal"
-                          size={18}
+                          size={ICON.row}
                           color={isDark ? colors.accent.dark : colors.accentStrong.light}
                         />
                       </View>
@@ -281,7 +282,7 @@ export function MobileTransactions() {
             accessibilityLabel={t('transactions.mobile.searchButton')}
             className="h-11 w-11 items-center justify-center"
           >
-            <Ionicons name={isSearchOpen ? 'close' : 'search-outline'} size={22} color={inkColor} />
+            <Ionicons name={isSearchOpen ? 'close' : 'search-outline'} size={ICON.hero} color={inkColor} />
           </Pressable>
           <Pressable
             onPress={() => setFilterSheetOpen(true)}
@@ -289,7 +290,7 @@ export function MobileTransactions() {
             accessibilityLabel={t('transactions.mobile.filterButton')}
             className="h-11 w-11 items-center justify-center"
           >
-            <Ionicons name="options-outline" size={22} color={inkColor} />
+            <Ionicons name="options-outline" size={ICON.hero} color={inkColor} />
             {chips.length > 0 && (
               <View
                 className="absolute end-1.5 top-1.5 h-4 min-w-[16px] items-center justify-center rounded-full px-1"
@@ -331,7 +332,7 @@ export function MobileTransactions() {
               className="min-h-[32px] flex-row items-center gap-1.5 rounded-full bg-hero-light px-3 py-1.5 dark:bg-hero-dark"
             >
               <Text className="text-caption font-sansSemibold text-heroInk-light">{chip.label}</Text>
-              <Ionicons name="close" size={14} color={colors.heroInk.light} />
+              <Ionicons name="close" size={ICON.chip} color={colors.heroInk.light} />
             </Pressable>
           ))}
           <Pressable
@@ -358,7 +359,7 @@ export function MobileTransactions() {
           <View className="h-9 w-9 items-center justify-center rounded-row bg-warningTint-light dark:bg-warningTint-dark">
             <Ionicons
               name="pricetag-outline"
-              size={18}
+              size={ICON.row}
               color={isDark ? colors.warning.dark : colors.warningStrong.light}
             />
           </View>

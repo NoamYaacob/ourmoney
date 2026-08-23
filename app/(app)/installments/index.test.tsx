@@ -274,9 +274,11 @@ describe('Installments — desktop billing-cycle cards', () => {
     expect(queryByText(new RegExp(i18n.t('installments.cycleCards.nextCharge')))).toBeNull()
   })
 
-  it('shows the desktop-only "Credit & Payments" title instead of the mobile installments title', async () => {
+  // The desktop title moved to the shell bar (components/ui/DesktopTopBar),
+  // which titles itself from the route segment and is covered by that
+  // component's own tests. The screen keeps only its mobile header.
+  it('keeps its mobile header', async () => {
     const { getByText } = await render(<Installments />)
-
-    expect(getByText(i18n.t('nav.creditAndPayments'))).toBeTruthy()
+    expect(getByText(i18n.t('installments.title'))).toBeTruthy()
   })
 })

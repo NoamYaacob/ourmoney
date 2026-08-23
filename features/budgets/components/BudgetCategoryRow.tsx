@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { StatusChip, StatusDot } from '@/components/ui/StatusChip'
@@ -66,7 +67,7 @@ export function BudgetCategoryRow({ category, state, onPress, testID }: BudgetCa
         <StatusChip label={t(BUDGET_STATE_LABEL_KEY[state.state])} tone={tone} />
         <Ionicons
           name="chevron-back"
-          size={16}
+          size={ICON.row}
           color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
         />
       </View>

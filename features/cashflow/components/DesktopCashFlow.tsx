@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next'
 import { useColorScheme } from 'nativewind'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
@@ -116,7 +117,7 @@ export function DesktopCashFlow() {
           >
             <Ionicons
               name={hasShortfall ? 'alert-circle' : 'checkmark-circle'}
-              size={24}
+              size={ICON.hero}
               color={hasShortfall ? (isDark ? colors.danger.dark : colors.danger.light) : isDark ? colors.positive.dark : colors.positive.light}
             />
             <Text className="web:desktop:flex-1 text-body font-sans text-ink-light dark:text-ink-dark web:desktop:text-[17px]">

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { DESKTOP_BREAKPOINT_PX, DIALOG_WIDTH_CLASS } from '@/constants/layout'
 
 export interface SelectOption {
@@ -155,7 +156,7 @@ export function Select({
               {selectedLabel ?? placeholder}
             </Text>
           </View>
-          <Ionicons name="chevron-down" size={18} color={mutedColor} />
+          <Ionicons name="chevron-down" size={ICON.row} color={mutedColor} />
         </Pressable>
       ) : (
         <View className="mb-4">
@@ -176,7 +177,7 @@ export function Select({
             <Text className={selectedLabel ? 'text-ink-light dark:text-ink-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'}>
               {selectedLabel ?? placeholder}
             </Text>
-            <Ionicons name="chevron-down" size={18} color={mutedColor} />
+            <Ionicons name="chevron-down" size={ICON.row} color={mutedColor} />
           </Pressable>
         </View>
       )}
@@ -223,13 +224,13 @@ export function Select({
                   >
                     {item.iconName && (
                       <View className="h-7 w-7 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                        <Ionicons name={item.iconName} size={15} color={mutedColor} />
+                        <Ionicons name={item.iconName} size={ICON.chip} color={mutedColor} />
                       </View>
                     )}
                     <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                       {item.label}
                     </Text>
-                    {item.value === value && <Ionicons name="checkmark" size={16} color={accentColor} />}
+                    {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
                   </Pressable>
                 )}
               />
@@ -267,11 +268,11 @@ export function Select({
                     >
                       {item.iconName && (
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={item.iconName} size={18} color={mutedColor} />
+                          <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
                         </View>
                       )}
                       <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
-                      {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
+                      {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
                     </Pressable>
                   )}
                 />
@@ -302,11 +303,11 @@ export function Select({
                     >
                       {item.iconName && (
                         <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={item.iconName} size={16} color={mutedColor} />
+                          <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
                         </View>
                       )}
                       <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
-                      {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
+                      {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
                     </Pressable>
                   )}
                 />

@@ -53,6 +53,7 @@ import { CommitmentRow } from '@/components/ui/CommitmentRow'
 import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { CountdownRing } from '@/components/ui/CountdownRing'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { DESKTOP_CARD_CLASS } from '@/constants/layout'
 
 const HORIZON_ORDER: HorizonKind[] = ['week', 'month', 'days30']
@@ -261,7 +262,7 @@ export function DesktopDashboard() {
                     accessibilityRole="button"
                     className="web:desktop:mt-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:pt-4"
                   >
-                    <Ionicons name="alert-circle" size={17} color="#e8a79b" />
+                    <Ionicons name="alert-circle" size={ICON.row} color="#e8a79b" />
                     <HeroNote className="web:desktop:flex-1">
                       {t('dashboard.hero.overspendWarning', {
                         date: formatDateDisplay(commitments[0].date),
@@ -498,7 +499,7 @@ export function DesktopDashboard() {
                   >
                     <Ionicons
                       name={severityIconName(alert.severity)}
-                      size={16}
+                      size={ICON.row}
                       color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
                     />
                     <View className="web:desktop:flex-1">

@@ -12,9 +12,17 @@
 // design has a per-screen header and a bottom tab bar instead, and this
 // component never mounts there.
 //
-// The month stepper appears only where a month is the screen's own context.
-// On Transactions or Accounts a month control would be a lie — those screens
-// are not scoped to one.
+// The bar's ACTIONS are per screen, exactly as the mockup draws them. Its two
+// full-shell frames differ: Home carries [title · month · search · תנועה
+// חדשה], Transactions carries [title · ייבוא מ־CSV · תנועה חדשה] with no
+// search field and no month. The remaining frames are drawn as the content
+// column alone ("המשך המסכים מוצג כעמודת התוכן בלבד"), so they specify no
+// header actions and get the title by itself; their own contextual actions
+// stay in the screen body where those frames put them.
+//
+// A month stepper only appears where a month is genuinely the screen's
+// context. On Transactions — which spans whatever range its filters select —
+// or on Accounts, it would claim a scope the screen does not have.
 
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
@@ -22,6 +30,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatMonthLabel, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 
@@ -44,6 +53,12 @@ const TITLE_KEY_BY_SEGMENT: Record<string, string> = {
 
 // Only these two are scoped to a single month in the design.
 const MONTH_SCOPED_SEGMENTS = new Set(['dashboard', 'budgets'])
+// The mockup shows the search field on Home only.
+const SEARCH_SEGMENTS = new Set(['dashboard'])
+// ...and the CSV-import link on Transactions only.
+const IMPORT_SEGMENTS = new Set(['transactions'])
+// The primary action appears on the two frames the mockup draws in full.
+const ADD_SEGMENTS = new Set(['dashboard', 'transactions'])
 
 export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const { t } = useTranslation()
@@ -51,11 +66,15 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const { colorScheme: scheme } = useColorScheme()
   const isDark = scheme === 'dark'
   const iconColor = isDark ? colors.inkMuted.dark : colors.inkMuted.light
+  const accentColor = isDark ? colors.accent.dark : colors.accent.light
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
 
   const titleKey = TITLE_KEY_BY_SEGMENT[activeSegment]
   const showMonth = MONTH_SCOPED_SEGMENTS.has(activeSegment)
+  const showSearch = SEARCH_SEGMENTS.has(activeSegment)
+  const showImport = IMPORT_SEGMENTS.has(activeSegment)
+  const showAdd = ADD_SEGMENTS.has(activeSegment)
 
   return (
     <View className="hidden h-[68px] flex-none flex-row items-center gap-3.5 border-b border-border-light bg-surfaceMuted-light px-7 web:desktop:flex dark:border-border-dark dark:bg-surfaceMuted-dark">
@@ -74,7 +93,7 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
             accessibilityLabel={t('dashboard.previousMonth')}
             className="h-6 w-6 items-center justify-center"
           >
-            <Ionicons name="chevron-back" size={15} color={iconColor} />
+            <Ionicons name="chevron-back" size={ICON.chip} color={iconColor} />
           </Pressable>
           <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark">
             {formatMonthLabel(periodStart)}
@@ -85,37 +104,57 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
             accessibilityLabel={t('dashboard.nextMonth')}
             className="h-6 w-6 items-center justify-center"
           >
-            <Ionicons name="chevron-forward" size={15} color={iconColor} />
+            <Ionicons name="chevron-forward" size={ICON.chip} color={iconColor} />
           </Pressable>
         </View>
       )}
 
       <View className="ms-auto flex-row items-center gap-2.5">
-        <Pressable
-          onPress={() => router.push('/transactions')}
-          accessibilityRole="button"
-          accessibilityLabel={t('transactions.title')}
-          className="w-[220px] flex-row items-center gap-2 rounded-control border border-border-light px-3 py-2.5 dark:border-border-dark"
-        >
-          <Ionicons name="search-outline" size={16} color={iconColor} />
-          <Text className="text-bodySm text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-            {t('dashboard.searchPlaceholder')}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/transactions/new')}
-          accessibilityRole="button"
-          accessibilityLabel={t('transactions.addButton')}
-          className="flex-row items-center gap-1.5 rounded-control bg-accent-light px-4 py-2.5 dark:bg-accent-dark"
-        >
-          <Ionicons name="add" size={17} color={isDark ? colors.hero.light : '#ffffff'} />
-          <Text
-            className="text-bodySm font-sansSemibold"
-            style={{ color: isDark ? colors.hero.light : '#ffffff' }}
+        {showSearch && (
+          <Pressable
+            onPress={() => router.push('/transactions')}
+            accessibilityRole="button"
+            accessibilityLabel={t('transactions.title')}
+            className="w-[220px] flex-row items-center gap-2 rounded-control border border-border-light px-3 py-2.5 dark:border-border-dark"
           >
-            {t('transactions.addButton')}
-          </Text>
-        </Pressable>
+            <Ionicons name="search-outline" size={ICON.row} color={iconColor} />
+            <Text className="text-bodySm text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+              {t('dashboard.searchPlaceholder')}
+            </Text>
+          </Pressable>
+        )}
+        {showImport && (
+          // A link, not a filled button: the mockup gives CSV import accent
+          // text beside the primary action, which keeps it available without
+          // competing with it. CSV is an escape hatch, not the way in.
+          <Pressable
+            onPress={() => router.push('/transactions/import')}
+            accessibilityRole="button"
+            accessibilityLabel={t('import.title')}
+            className="flex-row items-center gap-1.5 px-1 py-2.5"
+          >
+            <Ionicons name="cloud-upload-outline" size={ICON.row} color={accentColor} />
+            <Text className="text-bodySm font-sansSemibold text-accent-light dark:text-accent-dark">
+              {t('more.import')}
+            </Text>
+          </Pressable>
+        )}
+        {showAdd && (
+          <Pressable
+            onPress={() => router.push('/transactions/new')}
+            accessibilityRole="button"
+            accessibilityLabel={t('transactions.addButton')}
+            className="flex-row items-center gap-1.5 rounded-control bg-accent-light px-4 py-2.5 dark:bg-accent-dark"
+          >
+            <Ionicons name="add" size={ICON.row} color={isDark ? colors.hero.light : '#ffffff'} />
+            <Text
+              className="text-bodySm font-sansSemibold"
+              style={{ color: isDark ? colors.hero.light : '#ffffff' }}
+            >
+              {t('transactions.addButton')}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   )

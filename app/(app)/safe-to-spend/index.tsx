@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
@@ -116,7 +117,7 @@ export default function SafeToSpendDetail() {
             >
               {/* chevron-forward under RTL points back toward the start edge
                   — the same pairing the desktop pass had to correct. */}
-              <Ionicons name="chevron-forward" size={24} color={colors.heroInk.light} />
+              <Ionicons name="chevron-forward" size={ICON.hero} color={colors.heroInk.light} />
             </Pressable>
             <Text className="text-body font-sansSemibold text-heroInk-light">{t('safeToSpendDetail.title')}</Text>
             <View className="w-11" />
@@ -141,7 +142,7 @@ export default function SafeToSpendDetail() {
             open — the account-by-account view is its own screen. */}
         <View className="min-h-[56px] flex-row items-center gap-3 px-4 py-3.5">
           <View className="h-9 w-9 items-center justify-center rounded-row bg-surface-light dark:bg-surface-dark">
-            <Ionicons name="wallet-outline" size={18} color={isDark ? colors.ink.dark : colors.ink.light} />
+            <Ionicons name="wallet-outline" size={ICON.row} color={isDark ? colors.ink.dark : colors.ink.light} />
           </View>
           <View className="flex-1">
             <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
@@ -188,7 +189,7 @@ export default function SafeToSpendDetail() {
                 <Money agorot={group.amountAgorot} size="large" />
                 <Ionicons
                   name={isOpen ? 'chevron-up' : 'chevron-down'}
-                  size={18}
+                  size={ICON.row}
                   color={isDark ? colors.inkMuted.dark : colors.inkMuted.light}
                 />
               </Pressable>

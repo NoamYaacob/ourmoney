@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -195,7 +196,7 @@ export function MobileHome() {
           <HeroLabel>{t('home.hero.label', { horizon: t('cashFlow.horizon.month') })}</HeroLabel>
           <View className="flex-row items-center gap-1">
             <Text className="text-meta font-sansSemibold text-heroAccent-light">{t('home.hero.howWeCalculated')}</Text>
-            <Ionicons name="chevron-back" size={14} color={colors.heroAccent.light} />
+            <Ionicons name="chevron-back" size={ICON.chip} color={colors.heroAccent.light} />
           </View>
         </View>
 
@@ -256,7 +257,7 @@ export function MobileHome() {
         >
           <View className="flex-row items-start gap-3 rounded-card border border-dangerBorder-light bg-surfaceMuted-light p-4 dark:border-dangerBorder-dark dark:bg-surfaceMuted-dark">
             <View className="h-9 w-9 items-center justify-center rounded-row bg-dangerSurface-light dark:bg-dangerSurface-dark">
-              <Ionicons name="alert-circle" size={19} color={isDark ? colors.danger.dark : colors.danger.light} />
+              <Ionicons name="alert-circle" size={ICON.nav} color={isDark ? colors.danger.dark : colors.danger.light} />
             </View>
             <View className="flex-1">
               <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
@@ -323,7 +324,7 @@ export function MobileHome() {
               <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
                 {t('home.next.viewAll')}
               </Text>
-              <Ionicons name="chevron-back" size={15} color={isDark ? colors.accent.dark : colors.accent.light} />
+              <Ionicons name="chevron-back" size={ICON.chip} color={isDark ? colors.accent.dark : colors.accent.light} />
             </Pressable>
           </View>
         )}
@@ -398,7 +399,7 @@ export function MobileHome() {
           </Text>
           <Ionicons
             name={showAnalytics ? 'chevron-up' : 'chevron-down'}
-            size={18}
+            size={ICON.row}
             color={isDark ? colors.inkMuted.dark : colors.inkMuted.light}
           />
         </Pressable>
