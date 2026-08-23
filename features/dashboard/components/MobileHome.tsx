@@ -47,6 +47,7 @@ import { HeroPanel, HeroLabel, HeroNote, HeroTag } from '@/components/ui/HeroPan
 import { ListCard, ListRow } from '@/components/ui/ListCard'
 import { CardHeading } from '@/components/ui/SectionLabel'
 import { StatusChip } from '@/components/ui/StatusChip'
+import { CommitmentRow } from '@/components/ui/CommitmentRow'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -295,56 +296,21 @@ export function MobileHome() {
           <View className="mt-2">
             {upcoming.map((commitment) => {
               const urgency = commitmentUrgency(today, commitment.date)
-              const [, month, day] = commitment.date.split('-')
               const chipLabel =
                 urgency.labelKey === 'inDays'
                   ? t('home.next.inDays', { count: urgency.count })
                   : t(`home.next.${urgency.labelKey}`)
 
               return (
-                <View
-                  key={commitment.id}
-                  className="flex-row items-center gap-3 border-t border-divider-light py-3 dark:border-divider-dark"
-                >
-                  {/* Day numeral over month, then a colored rule — the
-                      design's date block. The rule repeats the chip's
-                      urgency in position rather than in another word. */}
-                  <View className="w-9 items-center">
-                    <Text
-                      className={`font-heebo text-heading ${
-                        urgency.tone === 'danger'
-                          ? 'text-danger-light dark:text-danger-dark'
-                          : 'text-ink-light dark:text-ink-dark'
-                      }`}
-                      style={{ fontVariant: ['tabular-nums'] }}
-                    >
-                      {day}
-                    </Text>
-                    <Text className="text-meta font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark">
-                      {month}
-                    </Text>
-                  </View>
-                  <View
-                    className={`w-[3px] self-stretch rounded-full ${
-                      urgency.tone === 'danger'
-                        ? 'bg-danger-light dark:bg-danger-dark'
-                        : urgency.tone === 'warning'
-                          ? 'bg-warning-light dark:bg-warning-dark'
-                          : 'bg-border-light dark:bg-border-dark'
-                    }`}
+                <View key={commitment.id} className="border-t border-divider-light dark:border-divider-dark">
+                  <CommitmentRow
+                    date={commitment.date}
+                    name={commitment.description}
+                    amountAgorot={commitment.amountAgorot}
+                    timeLabel={chipLabel}
+                    tone={urgency.tone}
+                    meta={t(`cashFlow.commitments.source.${commitment.source}`)}
                   />
-                  <View className="min-w-0 flex-1">
-                    <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {commitment.description}
-                    </Text>
-                    <View className="mt-1 flex-row items-center gap-1.5">
-                      <StatusChip label={chipLabel} tone={urgency.tone} />
-                      <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                        {t(`cashFlow.commitments.source.${commitment.source}`)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Money agorot={commitment.amountAgorot} size="row" />
                 </View>
               )
             })}

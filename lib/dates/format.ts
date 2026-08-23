@@ -17,3 +17,28 @@ export function formatDateDisplay(isoDate: string): string {
   const [, year, month, day] = match
   return `${day}.${month}.${year}`
 }
+
+// Hebrew month abbreviation for the design's commitment row, which stacks a
+// large day numeral over a short month ("28" over "אוג׳").
+//
+// A hand-written table rather than `Intl.DateTimeFormat('he-IL', { month:
+// 'short' })`: Intl returns the full month name for Hebrew in most ICU
+// builds ("אוגוסט"), which is far too wide for the 42px date block the
+// design specifies, and the result varies by platform and ICU version.
+// Twelve fixed strings are stable everywhere and match the mockup exactly.
+const MONTH_ABBREVIATIONS = [
+  'ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני',
+  'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳',
+] as const
+
+export function formatMonthAbbreviation(isoDate: string): string {
+  const match = /^\d{4}-(\d{2})-\d{2}$/.exec(isoDate)
+  if (!match) return ''
+  return MONTH_ABBREVIATIONS[Number(match[1]) - 1] ?? ''
+}
+
+// The day-of-month, unpadded, for that same block.
+export function formatDayOfMonth(isoDate: string): string {
+  const match = /^\d{4}-\d{2}-(\d{2})$/.exec(isoDate)
+  return match ? String(Number(match[1])) : ''
+}

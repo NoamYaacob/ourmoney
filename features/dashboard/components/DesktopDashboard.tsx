@@ -49,6 +49,8 @@ import { HeroPanel, HeroLabel, HeroNote, HeroTag } from '@/components/ui/HeroPan
 import { Money } from '@/components/ui/Money'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { StatusChip } from '@/components/ui/StatusChip'
+import { CommitmentRow } from '@/components/ui/CommitmentRow'
+import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { CountdownRing } from '@/components/ui/CountdownRing'
 import { DESKTOP_CARD_CLASS } from '@/constants/layout'
 
@@ -295,44 +297,37 @@ export function DesktopDashboard() {
             ) : (
               <View className="web:desktop:mt-5">
                 {topCommitments.map((item, index) => {
-                  const pastDue = isPastDue(item.date, today)
-                  const days = daysUntilDue(item.date, today)
+                  // The same urgency banding the mobile Home uses, so one
+                  // charge cannot read as urgent on one platform and routine
+                  // on the other.
+                  const urgency = commitmentUrgency(today, item.date)
+                  const timeLabel =
+                    urgency.labelKey === 'inDays'
+                      ? t('home.next.inDays', { count: urgency.count })
+                      : t(`home.next.${urgency.labelKey}`)
                   return (
-                    <Pressable
+                    <View
                       key={item.id}
-                      onPress={() =>
-                        item.source === 'obligation'
-                          ? router.push(`/obligations/${item.sourceId}`)
-                          : item.source === 'recurring'
-                            ? router.push(`/recurring/${item.sourceId}`)
-                            : item.source === 'installment'
-                              ? router.push(`/installments/${item.sourceId}`)
-                              : router.push(`/accounts/${item.sourceId}`)
-                      }
-                      accessibilityRole="button"
-                      className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:py-2.5 ${index > 0 ? 'web:desktop:border-t web:desktop:border-divider-light dark:web:desktop:border-divider-dark' : ''}`}
+                      className={index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : ''}
                     >
-                      <View className="web:desktop:w-11 web:desktop:items-center">
-                        <Text
-                          className={`font-heeboBold text-[18px] ${pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'}`}
-                          style={{ fontVariant: ['tabular-nums'] }}
-                        >
-                          {item.date.slice(8, 10)}
-                        </Text>
-                      </View>
-                      <View className="web:desktop:flex-1">
-                        <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                          {item.description}
-                        </Text>
-                        <View className="web:desktop:mt-0.5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5">
-                          <StatusChip
-                            label={pastDue ? t('obligations.pastDue') : days === 0 ? t('obligations.dueToday') : t('obligations.inDays', { count: days })}
-                            tone={pastDue ? 'danger' : 'neutral'}
-                          />
-                        </View>
-                      </View>
-                      <Money agorot={item.amountAgorot} size="row" />
-                    </Pressable>
+                      <CommitmentRow
+                        date={item.date}
+                        name={item.description}
+                        amountAgorot={item.amountAgorot}
+                        timeLabel={timeLabel}
+                        tone={urgency.tone}
+                        meta={t(`cashFlow.commitments.source.${item.source}`)}
+                        onPress={() =>
+                          item.source === 'obligation'
+                            ? router.push(`/obligations/${item.sourceId}`)
+                            : item.source === 'recurring'
+                              ? router.push(`/recurring/${item.sourceId}`)
+                              : item.source === 'installment'
+                                ? router.push(`/installments/${item.sourceId}`)
+                                : router.push(`/accounts/${item.sourceId}`)
+                        }
+                      />
+                    </View>
                   )
                 })}
               </View>
