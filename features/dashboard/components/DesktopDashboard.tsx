@@ -45,13 +45,14 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { HeroPanel, HeroLabel, HeroNote, HeroTag } from '@/components/ui/HeroPanel'
+import { HeroPanel, HeroLabel, HeroNote, HeroTag, HeroLegendRow } from '@/components/ui/HeroPanel'
 import { Money } from '@/components/ui/Money'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { StatusChip } from '@/components/ui/StatusChip'
 import { CommitmentRow } from '@/components/ui/CommitmentRow'
 import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { CountdownRing } from '@/components/ui/CountdownRing'
+import { colors } from '@/constants/colors'
 import { DESKTOP_CARD_CLASS } from '@/constants/layout'
 
 const HORIZON_ORDER: HorizonKind[] = ['week', 'month', 'days30']
@@ -152,6 +153,7 @@ export function DesktopDashboard() {
     today,
   })
   const remainingAgorotValue = totalAllocatedAgorot - totalSpentAgorot
+  const hasShortfall = safeToSpend.safeToSpendAgorot < 0
 
   return (
     <Screen
@@ -200,17 +202,30 @@ export function DesktopDashboard() {
               </View>
             ) : (
               <>
+                {/* A negative safe-to-spend is a SHORTFALL, and `Money`
+                    renders magnitudes — so printing the raw figure here made
+                    "-7,600" look identical to "7,600 available", next to a
+                    chip claiming it merely was not the bank balance. The
+                    shortfall is named instead, the same way the mobile hero
+                    already did. */}
                 <View className="mt-2">
-                  <Money agorot={safeToSpend.safeToSpendAgorot} size="hero" tone="hero" />
+                  <Money
+                    agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
+                    size="hero"
+                    tone="hero"
+                  />
                 </View>
                 <View className="web:desktop:mt-2.5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5">
-                  <HeroTag>{t('dashboard.hero.notBankBalance')}</HeroTag>
-                  {safeToSpend.safeToSpendAgorot > 0 && (
+                  <HeroTag>
+                    {hasShortfall ? t('home.hero.shortfallTag') : t('dashboard.hero.notBankBalance')}
+                  </HeroTag>
+                  {!hasShortfall && safeToSpend.safeToSpendAgorot > 0 && (
                     <HeroNote>
                       {t('dashboard.hero.perDay', { amount: formatILS(Math.round(safeToSpend.safeToSpendAgorot / 30)) })}
                     </HeroNote>
                   )}
                 </View>
+                {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
 
                 <View className="web:desktop:mt-5 web:desktop:h-9 web:desktop:flex-row web:desktop:gap-0.5 web:desktop:overflow-hidden web:desktop:rounded-control">
                   <View className="web:desktop:bg-accent-light dark:web:desktop:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
@@ -218,27 +233,27 @@ export function DesktopDashboard() {
                   <View className="web:desktop:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
                 </View>
 
+                {/* The waterfall legend, in the mockup's own order: the
+                    answer first, then each thing subtracted from the
+                    balance, then the balance itself as the closing total.
+                    Each row carries the colour of the bar segment above it —
+                    without that key the bar is just three grey blocks. */}
                 <View className="web:desktop:mt-4 web:desktop:gap-2.5">
-                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                    <HeroNote className="web:desktop:flex-1">{t('cashFlow.availableCash')}</HeroNote>
-                    <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="heroMuted" />
-                  </View>
-                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                    <HeroNote className="web:desktop:flex-1">{t('cashFlow.plannedObligations')}</HeroNote>
-                    <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
-                  </View>
-                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                    <HeroNote className="web:desktop:flex-1">{t('cashFlow.recurringCharges')}</HeroNote>
-                    <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
-                  </View>
-                  <View className="web:desktop:h-px web:desktop:bg-heroBorder-light" />
-                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                    <Text className="text-caption font-sansSemibold text-heroInk-light web:desktop:flex-1">
-                      {t('cashFlow.safeToSpend')}
-                    </Text>
+                  <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.accent.light} emphasis>
                     <Money agorot={safeToSpend.safeToSpendAgorot} size="caption" tone="hero" />
-                  </View>
+                  </HeroLegendRow>
+                  <HeroLegendRow label={t('cashFlow.plannedObligations')} swatchColor={colors.heroBorder.light}>
+                    <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
+                  </HeroLegendRow>
+                  <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.inkMuted.light}>
+                    <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
+                  </HeroLegendRow>
+                  <View className="web:desktop:h-px web:desktop:bg-heroBorder-light" />
+                  <HeroLegendRow label={t('cashFlow.availableCash')} emphasis>
+                    <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="hero" />
+                  </HeroLegendRow>
                 </View>
+
 
                 {nearestCommitmentExceedsSafeToSpend && commitments[0] && (
                   <Pressable

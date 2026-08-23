@@ -75,3 +75,42 @@ export function HeroTag({ children }: { children: ReactNode }) {
     </View>
   )
 }
+
+// One line of the waterfall legend: a colour key, a label, and its amount.
+//
+// The square is what makes the bar above it readable at all — the design
+// system calls the waterfall "הרכיב החתימה" and its whole point is showing
+// the subtraction, which only works if each legend row is tied to the
+// segment it names. 9px at radius 3, matching the mockup; a circle would
+// read as a status dot, which it is not.
+export function HeroLegendRow({
+  label,
+  swatchColor,
+  emphasis = false,
+  children,
+}: {
+  label: string
+  // Omitted for the closing total, which is a sum rather than a segment.
+  swatchColor?: string
+  emphasis?: boolean
+  children: ReactNode
+}) {
+  return (
+    <View className="flex-row items-center gap-2">
+      {swatchColor ? (
+        <View className="h-[9px] w-[9px] rounded-[3px]" style={{ backgroundColor: swatchColor }} />
+      ) : (
+        <View className="h-[9px] w-[9px]" />
+      )}
+      <Text
+        className={`flex-1 text-caption ${
+          emphasis ? 'font-sansSemibold text-heroInk-light' : 'font-sans text-heroInkMuted-light'
+        }`}
+        maxFontSizeMultiplier={1.6}
+      >
+        {label}
+      </Text>
+      {children}
+    </View>
+  )
+}

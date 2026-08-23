@@ -374,3 +374,22 @@ describe('Dashboard RTL layout', () => {
     expect(getByText(i18n.t('dashboard.noTransactions'))).toBeTruthy()
   })
 })
+
+describe('Dashboard hero — a negative safe-to-spend', () => {
+  it('names the shortfall instead of printing it as available money', async () => {
+    // `Money` renders magnitudes, so the raw figure made "-7,600" look
+    // exactly like "7,600 available" beside a chip saying only that it was
+    // not the bank balance. Regression guard for that.
+    mockUseSafeToSpend.mockReturnValue({
+      result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: -760_000, shortfallAgorot: 760_000 },
+      horizon: { start: '2026-08-01', end: '2026-08-31' },
+      isLoading: false,
+      error: null,
+    })
+
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('home.hero.shortfallTag'))).toBeTruthy()
+    expect(queryByText(i18n.t('dashboard.hero.notBankBalance'))).toBeNull()
+  })
+})
