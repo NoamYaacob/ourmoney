@@ -154,11 +154,13 @@ export default function Installments() {
           title, since mobile shows only the installments list below, never
           the billing-cycle cards. Same two-copy toggle pattern this app
           already uses for compact-vs-full empty states. */}
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:hidden">
-        {t('installments.title')}
+      {/* The phone frame titles this screen the same as its nav destination
+          does — "אשראי ותשלומים", not the narrower "רכישות בתשלומים", because
+          the billing-cycle cards below are half of what it shows. Desktop
+          gets the same title from the shell bar (DesktopTopBar). */}
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+        {t('nav.creditAndPayments')}
       </Text>
-      {/* The desktop title is the shell bar's now (DesktopTopBar); only
-          the mobile header above remains. */}
 
       {creditCardCycleCommitments.length > 0 && (
         /* Both frames lead with these. `OurMoney - Mobile.dc.html` screen 09
@@ -244,11 +246,14 @@ export default function Installments() {
         // of each month. A household reading a list of purchases needs the
         // column total before the rows, not after them.
         <View className="mb-3 mt-2">
-          <View className="flex-row items-baseline justify-between gap-3">
+          {/* Stacks on a phone. Two figures and a title do not share a
+              390px line without one of them truncating, and truncating the
+              total is worse than spending a row on it. */}
+          <View className="gap-1 web:desktop:flex-row web:desktop:items-baseline web:desktop:justify-between web:desktop:gap-3">
             <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
               {t('installments.listTitle')}
             </Text>
-            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
               {t('installments.listTotals', {
                 remaining: formatILS(totalRemainingAgorot),
                 monthly: formatILS(totalMonthlyAgorot),

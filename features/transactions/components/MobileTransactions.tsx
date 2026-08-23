@@ -236,8 +236,16 @@ export function MobileTransactions() {
                     </View>
 
                     <View className="items-end">
+                      {/* Magnitude, not the signed amount. The design's feed
+                          draws an expense as a plain figure and lets colour
+                          and the category line carry the direction — a
+                          column of minus signs on every row is noise, since
+                          almost every row is an expense. Passed explicitly
+                          rather than relying on `Money` to strip it, because
+                          `Money` is otherwise obliged to tell the truth
+                          about a negative figure. */}
                       <Money
-                        agorot={transaction.amount_agorot}
+                        agorot={Math.abs(transaction.amount_agorot)}
                         size="row"
                         tone={
                           isTransfer ? 'muted' : transaction.amount_agorot > 0 ? 'positive' : 'default'

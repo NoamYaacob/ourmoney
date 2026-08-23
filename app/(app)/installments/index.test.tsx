@@ -282,9 +282,12 @@ describe('Installments — desktop billing-cycle cards', () => {
 
   // The desktop title moved to the shell bar (components/ui/DesktopTopBar),
   // which titles itself from the route segment and is covered by that
-  // component's own tests. The screen keeps only its mobile header.
-  it('keeps its mobile header', async () => {
+  // component's own tests. The screen keeps only its mobile header, and the
+  // phone frame titles it the way its nav destination does — the
+  // billing-cycle cards are half of what this screen shows, so the narrower
+  // "רכישות בתשלומים" undersold it.
+  it('keeps its mobile header, titled as the frame titles it', async () => {
     const { getByText } = await render(<Installments />)
-    expect(getByText(i18n.t('installments.title'))).toBeTruthy()
+    expect(getByText(i18n.t('nav.creditAndPayments'))).toBeTruthy()
   })
 })

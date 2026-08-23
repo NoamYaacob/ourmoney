@@ -41,10 +41,13 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 
+// Abbreviated, as the phone frame draws them: "30 י׳ · 60 · 90". The word
+// "ימים" three times over does not fit beside the screen title in a 390px
+// header row, and the frame does not try — the unit is stated once.
 const HORIZONS = [
-  { value: '30' as const, labelKey: 'cashFlow.forecast.horizon.days30' },
-  { value: '60' as const, labelKey: 'cashFlow.forecast.horizon.days60' },
-  { value: '90' as const, labelKey: 'cashFlow.forecast.horizon.days90' },
+  { value: '30' as const, labelKey: 'cashFlow.forecast.horizon.days30Short' },
+  { value: '60' as const, labelKey: 'cashFlow.forecast.horizon.days60Short' },
+  { value: '90' as const, labelKey: 'cashFlow.forecast.horizon.days90Short' },
 ]
 
 function eventRoute(event: CashFlowForecastEvent): string {
@@ -76,9 +79,9 @@ export function MobileCashFlow() {
 
   return (
     <Screen width="wide">
-      <View className="flex-row items-center justify-between">
+      <View className="min-h-[44px] flex-row items-center justify-between gap-3">
         <Text className="text-title font-heebo text-ink-light dark:text-ink-dark">{t('tabs.cashFlow')}</Text>
-        <View className="w-[168px]">
+        <View className="w-[132px]">
           <SegmentedControl
             options={HORIZONS.map((horizon) => ({ value: horizon.value, label: t(horizon.labelKey) }))}
             value={days}
@@ -142,14 +145,19 @@ export function MobileCashFlow() {
 
           {/* The evidence. */}
           <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            <View className="flex-row justify-between">
-              <View>
+            {/* Wraps rather than shrinks. The frame fits three figures on
+                one line because its own are four digits; a household with a
+                five-digit balance gets 2 + 1 instead of three amounts
+                colliding — the design system's density rule is explicit
+                that nothing shrinks to fit, what does not fit moves. */}
+            <View className="flex-row flex-wrap gap-x-3 gap-y-3">
+              <View className="min-w-[30%] flex-1">
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.today')}
                 </Text>
                 <Money agorot={forecast.startingBalanceAgorot} size="large" />
               </View>
-              <View className="items-center">
+              <View className="min-w-[30%] flex-1 items-center">
                 <Text
                   className={`text-meta font-sansSemibold tracking-[0.06em] ${
                     forecast.lowestBalanceAgorot < 0
@@ -165,7 +173,7 @@ export function MobileCashFlow() {
                   tone={forecast.lowestBalanceAgorot < 0 ? 'danger' : 'default'}
                 />
               </View>
-              <View className="items-end">
+              <View className="min-w-[30%] flex-1 items-end">
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.atEnd')}
                 </Text>

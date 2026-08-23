@@ -52,8 +52,15 @@ export default function Alerts() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+      <Text className="text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('alerts.screenTitle')}
+      </Text>
+      {/* Both frames carry this line under the title. It is the one thing a
+          household needs to know about this screen: nothing here is a log —
+          an alert exists only while the condition behind it does, and it
+          leaves on its own when the problem is solved. */}
+      <Text className="mb-4 mt-0.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+        {t('alerts.subtitle')}
       </Text>
 
       {/* A single failed source degrades to fewer alerts, never a blank

@@ -972,7 +972,10 @@
       "horizon": {
         "days30": "30 ימים",
         "days60": "60 ימים",
-        "days90": "90 ימים"
+        "days90": "90 ימים",
+        "days30Short": "30 י׳",
+        "days60Short": "60",
+        "days90Short": "90"
       },
       "availableCashToday": "יתרה זמינה היום",
       "projectedEndingBalance": "יתרה צפויה בסוף התקופה",
