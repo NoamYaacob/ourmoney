@@ -643,6 +643,11 @@
     "totalAllocated": "סה״כ תוקצב",
     "remaining": "נותר",
     "categoriesTitle": "תקציב לפי קטגוריה",
+    "analytics": {
+      "breakdownTitle": "לאן הלך הכסף",
+      "trendTitle": "מגמה · 6 חודשים",
+      "otherCategories": "שאר הקטגוריות"
+    },
     "noCategories": "עדיין לא הוקצו קטגוריות לתקציב החודש.",
     "noCategoriesHint": "תקציב חודשי הוא סכום שמוקצה לכל קטגוריית הוצאה, כדי לעקוב כמה נותר להוציא בה. הוסיפו קטגוריה ראשונה כדי להתחיל.",
     "allocationLabel": "סכום תקציב",

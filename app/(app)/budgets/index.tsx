@@ -20,6 +20,7 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useSaveBudgetAllocations } from '@/features/budgets/hooks/useSaveBudgetAllocations'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
 import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
@@ -27,6 +28,11 @@ import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/f
 import { budgetState } from '@/features/budgets/lib/budgetState'
 import { BudgetSummaryCard } from '@/features/budgets/components/BudgetSummaryCard'
 import { BudgetCategoryRow } from '@/features/budgets/components/BudgetCategoryRow'
+import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
+import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
+import { computeTopCategories } from '@/features/analytics/lib/topCategories'
+import { CategoryDonutChart, SEGMENT_COLORS } from '@/features/analytics/components/CategoryDonutChart'
+import { MonthlyTrendChart } from '@/features/analytics/components/MonthlyTrendChart'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
@@ -43,10 +49,13 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { DESKTOP_PANEL_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
 const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
+// Desktop Claude Design pass: 6 calendar months ending at the currently
+// viewed month — matches the mockup's own "מגמה · 6 חודשים" trend card.
+const TREND_MONTHS = 6
 
 export default function Budgets() {
   const { t } = useTranslation()
@@ -282,6 +291,34 @@ export default function Budgets() {
     periodEnd,
     today,
   })
+
+  // Desktop Claude Design pass: the "לאן הלך הכסף" donut + "מגמה" 6-month
+  // trend the mockup places in the Budget screen's own right column — moved
+  // here from the pre-redesign Dashboard, which showed this same analytics
+  // window but the mockup's Home screen never does. One query, two derived
+  // views (this-month breakdown, 6-month trend) — the same
+  // filterForAnalytics boundary (excludes transfers, matches
+  // useBudgetProgress's is_shared/is_excluded convention) both already
+  // shared before this move.
+  const trendPeriodStarts = Array.from({ length: TREND_MONTHS }, (_, i) => shiftMonth(periodStart, i - (TREND_MONTHS - 1)))
+  const { transactions: analyticsTransactionsRaw, isLoading: isAnalyticsLoading } = useTransactions(householdId, {
+    periodStart: trendPeriodStarts[0],
+    periodEnd,
+  })
+  const analyticsTransactions = analyticsTransactionsRaw.map((t) => ({
+    categoryId: t.category_id,
+    amountAgorot: t.amount_agorot,
+    txnDate: t.txn_date,
+    isShared: t.is_shared,
+    isExcluded: t.is_excluded,
+    transferId: t.transfer_id,
+  }))
+  const categoryBreakdown = computeCategoryBreakdown(analyticsTransactions, periodStart)
+  const totalBreakdownAgorot = categoryBreakdown.reduce((sum, entry) => sum + entry.spentAgorot, 0)
+  const topBreakdownEntries = computeTopCategories(categoryBreakdown, 5)
+  const otherBreakdownAgorot = totalBreakdownAgorot - topBreakdownEntries.reduce((sum, entry) => sum + entry.spentAgorot, 0)
+  const monthlyTrend = computeMonthlyTrend(analyticsTransactions, trendPeriodStarts)
+  const categoryNameById = Object.fromEntries(categories.map((c) => [c.id, c.name_he]))
 
   return (
     <Screen width="wide">
@@ -543,15 +580,70 @@ export default function Budgets() {
           </View>
           </View>
 
-          <View className="web:desktop:flex-1">
-          {/* Desktop polish pass: the uncategorized-transactions column
-              gets the same bounded panel treatment as the category column
-              beside it — so it reads as an intentional secondary panel
-              instead of nearly-empty space next to a fuller primary
-              column, even when the queue itself is empty. */}
-          <View className={DESKTOP_PANEL}>
-          {/* Uncategorized transactions queue */}
-          <DesktopPanelHeader icon="receipt-outline" title={t('budgets.uncategorizedTitle')} />
+          {/* Desktop Claude Design pass: a 300px sidebar (donut + 6-month
+              trend + a compact uncategorized queue), matching the mockup's
+              own right column — replacing the equal-width uncategorized
+              panel this used to be. The donut/trend analytics moved here
+              from the pre-redesign Dashboard, which showed this exact
+              window but the approved Home mockup never does (see the
+              trendPeriodStarts comment above). Desktop-only; mobile is
+              entirely unaffected (this whole block is `web:desktop:`-only,
+              and the uncategorized queue's own mobile rendering is
+              untouched below). */}
+          <View className="web:desktop:w-[300px] web:desktop:flex-none web:desktop:gap-3.5">
+            {analyticsTransactionsRaw.length > 0 && !isAnalyticsLoading && totalBreakdownAgorot > 0 && (
+              <View className={DESKTOP_CARD_CLASS}>
+                <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.analytics.breakdownTitle')}
+                </Text>
+                <View className="web:desktop:mt-4 web:desktop:items-center">
+                  <CategoryDonutChart breakdown={topBreakdownEntries} categoryNameById={categoryNameById} size={132} />
+                </View>
+                <View className="web:desktop:mt-4 web:desktop:gap-2">
+                  {topBreakdownEntries.map((entry, index) => (
+                    <View key={entry.categoryId} className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2">
+                      <View className="web:desktop:h-2.5 web:desktop:w-2.5 web:desktop:rounded-sm" style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }} />
+                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {categoryNameById[entry.categoryId] ?? ''}
+                      </Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                        {Math.round((entry.spentAgorot / totalBreakdownAgorot) * 100)}%
+                      </Text>
+                    </View>
+                  ))}
+                  {otherBreakdownAgorot > 0 && (
+                    <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2">
+                      <View className="web:desktop:h-2.5 web:desktop:w-2.5 web:desktop:rounded-sm web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark">
+                        {t('budgets.analytics.otherCategories')}
+                      </Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                        {Math.round((otherBreakdownAgorot / totalBreakdownAgorot) * 100)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {!isAnalyticsLoading && monthlyTrend.some((point) => point.incomeAgorot > 0 || point.expenseAgorot > 0) && (
+              <View className={DESKTOP_CARD_CLASS}>
+                <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.analytics.trendTitle')}
+                </Text>
+                <View className="web:desktop:mt-4">
+                  <MonthlyTrendChart points={monthlyTrend} />
+                </View>
+              </View>
+            )}
+
+          <View className={DESKTOP_CARD_CLASS}>
+          {/* Uncategorized transactions queue — the same real feature the
+              pre-redesign equal-width column offered, condensed into a
+              sidebar card matching the mockup's own compact treatment. */}
+          <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+            {t('budgets.uncategorizedTitle')}
+          </Text>
           {uncategorizedError ? (
             <ErrorMessage message={t('budgets.errors.generic')} />
           ) : isUncategorizedLoading ? (
