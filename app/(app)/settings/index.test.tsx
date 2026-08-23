@@ -384,7 +384,7 @@ describe('Settings screen — household/profile management', () => {
   // reversed and unreversed forms — so it silently kept passing through a
   // real regression where the split reverted to plain `flex-row`. Rewritten
   // to exact whitespace-token membership.
-  it('uses flex-row-reverse (not plain flex-row) so profile/household reads on the right in RTL', async () => {
+  it('uses a plain flex-row so profile/household reads on the right under dir="rtl"', async () => {
     setHousehold('admin')
     setMembers([ADMIN_MEMBER])
     mockUseProfile.mockReturnValue({ displayName: 'Dana Cohen', avatarUrl: null, isLoading: false })
@@ -394,8 +394,8 @@ describe('Settings screen — household/profile management', () => {
     const panel = climbToPanel(getByText('משק הבית'))
     const gridWrapper = climbToRow(panel)
     const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:flex-row-reverse')
-    expect(tokens).not.toContain('web:desktop:flex-row')
+    expect(tokens).toContain('web:desktop:flex-row')
+    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
   })
 
   // Desktop polish pass (round 2): each column previously reflowed the same

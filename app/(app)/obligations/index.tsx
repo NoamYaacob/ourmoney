@@ -346,7 +346,7 @@ export default function Obligations() {
           {(validationError || createObligation.isError) && (
             <ErrorMessage message={validationError ?? t('obligations.errors.generic')} />
           )}
-          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="web:desktop:flex-row web:desktop:gap-2">
           <View className="web:desktop:flex-1">
           <Button title={t('obligations.form.submit')} onPress={handleCreate} loading={createObligation.isPending} />
           </View>

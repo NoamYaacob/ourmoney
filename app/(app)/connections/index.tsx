@@ -57,7 +57,7 @@ export default function Connections() {
         {t('connections.subtitle')}
       </Text>
 
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
         <View className="web:desktop:flex-1">
           <ListCard>
             {CONNECTION_TYPES.map((type) => (
@@ -124,13 +124,13 @@ export default function Connections() {
             onPress={() => setInfoVisible(true)}
             accessibilityRole="button"
             accessibilityLabel={`${t('connections.types.bankAccount')} — ${t('connections.notAvailableYet')}`}
-            className="web:desktop:mt-2 web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:bg-hero-light web:desktop:p-4 dark:web:desktop:bg-hero-dark"
+            className="web:desktop:mt-2 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:bg-hero-light web:desktop:p-4 dark:web:desktop:bg-hero-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-heroBorder-light">
               <Ionicons name="business-outline" size={20} color={colors.heroAccent.light} />
             </View>
             <View className="web:desktop:flex-1">
-              <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2">
+              <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2">
                 <Text className="text-body font-sansSemibold text-heroInk-light">{t('connections.types.bankAccount')}</Text>
                 <StatusChip label={t('connections.otherWays.recommended')} tone="accent" />
               </View>
@@ -142,7 +142,7 @@ export default function Connections() {
             onPress={() => setInfoVisible(true)}
             accessibilityRole="button"
             accessibilityLabel={`${t('connections.types.creditCard')} — ${t('connections.notAvailableYet')}`}
-            className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:bg-hero-light web:desktop:p-4 dark:web:desktop:bg-hero-dark"
+            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:bg-hero-light web:desktop:p-4 dark:web:desktop:bg-hero-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-heroBorder-light">
               <Ionicons name="card-outline" size={20} color={colors.heroAccent.light} />
@@ -156,7 +156,7 @@ export default function Connections() {
           <Pressable
             onPress={() => router.push('/accounts')}
             accessibilityRole="button"
-            className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark"
+            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark">
               <Ionicons name="cash-outline" size={20} color={iconColor} />
@@ -174,7 +174,7 @@ export default function Connections() {
           <Pressable
             onPress={() => router.push('/transactions/import')}
             accessibilityRole="button"
-            className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark"
+            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark"
           >
             <View className="web:desktop:h-10 web:desktop:w-10 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark">
               <Ionicons name="document-attach-outline" size={20} color={iconColor} />

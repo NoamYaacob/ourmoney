@@ -265,7 +265,7 @@ export default function RecurringDetail() {
             <ErrorMessage message={editError ?? t('recurring.errors.generic')} />
           )}
 
-          <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="web:desktop:flex-row web:desktop:gap-2">
           <View className="web:desktop:flex-1">
           <Button title={t('recurring.detail.save')} onPress={handleSave} loading={updateRecurring.isPending} />
           </View>
@@ -284,7 +284,7 @@ export default function RecurringDetail() {
         </View>
       ) : (
         <>
-          <View className="mb-3 web:desktop:flex-row-reverse web:desktop:gap-2">
+          <View className="mb-3 web:desktop:flex-row web:desktop:gap-2">
             <View className="web:desktop:flex-1">
             <Button title={t('recurring.detail.edit')} variant="secondary" onPress={() => startEditing(item)} />
             </View>

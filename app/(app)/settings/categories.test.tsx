@@ -204,14 +204,14 @@ describe('Categories settings screen', () => {
   // reversed and unreversed forms — so it silently kept passing through a
   // real regression where the split reverted to plain `flex-row`. Rewritten
   // to exact whitespace-token membership.
-  it('reverses the categories/rules desktop split so categories (primary) render on the right', async () => {
+  it('lays the categories/rules desktop split out as a plain row so categories (primary) render on the right', async () => {
     const { getByText } = await render(<Categories />)
 
     const categoriesColumn = getByText('קטגוריות מותאמות אישית').parent
     const splitContainer = categoriesColumn?.parent
     const tokens = ((splitContainer?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:flex-row-reverse')
-    expect(tokens).not.toContain('web:desktop:flex-row')
+    expect(tokens).toContain('web:desktop:flex-row')
+    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
 
     const rulesColumn = getByText('כללי סיווג').parent
     expect(rulesColumn?.parent).toBe(splitContainer)

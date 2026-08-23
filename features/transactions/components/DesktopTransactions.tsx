@@ -305,15 +305,15 @@ export function DesktopTransactions() {
       width="wide"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      <View className="mb-6 flex-row items-center justify-between web:flex-row web:desktop:flex-row-reverse">
+      <View className="mb-6 flex-row items-center justify-between web:flex-row web:desktop:flex-row">
         <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
           {t('transactions.title')}
         </Text>
-        <View className="flex-row items-center gap-4 web:desktop:flex-row-reverse web:desktop:gap-3.5">
+        <View className="flex-row items-center gap-4 web:desktop:flex-row web:desktop:gap-3.5">
           <Pressable
             onPress={() => router.push('/transactions/import')}
             accessibilityRole="button"
-            className="flex-row items-center gap-1 web:desktop:flex-row-reverse"
+            className="flex-row items-center gap-1 web:desktop:flex-row"
           >
             <Ionicons name="cloud-upload-outline" size={16} color={accentColor} />
             <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
@@ -324,7 +324,7 @@ export function DesktopTransactions() {
             onPress={() => router.push('/transactions/new')}
             accessibilityRole="button"
             accessibilityLabel={t('transactions.addButton')}
-            className="hidden web:desktop:flex web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-accent-light web:desktop:px-3.5 web:desktop:py-2.5 dark:web:desktop:bg-accent-dark"
+            className="hidden web:desktop:flex web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-accent-light web:desktop:px-3.5 web:desktop:py-2.5 dark:web:desktop:bg-accent-dark"
           >
             <Ionicons name="add" size={17} color={scheme === 'dark' ? '#141310' : '#ffffff'} />
             <Text className="text-caption font-sansSemibold text-surface-light dark:text-surface-dark">
@@ -334,7 +334,7 @@ export function DesktopTransactions() {
         </View>
       </View>
 
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-5">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
         <View className="web:desktop:flex-1">
           {/* Desktop Visual/Responsive Design pass: search + the 3 dropdown
               filters read as a mobile filter panel stacked vertically — on a
@@ -508,7 +508,7 @@ export function DesktopTransactions() {
             <Pressable
               onPress={handleUncategorizedQueuePress}
               accessibilityRole="button"
-              className="web:desktop:mb-3 web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-warning-light/40 web:desktop:bg-surfaceMuted-light web:desktop:p-3.5 dark:web:desktop:border-warning-dark/40 dark:web:desktop:bg-surfaceMuted-dark"
+              className="web:desktop:mb-3 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-warning-light/40 web:desktop:bg-surfaceMuted-light web:desktop:p-3.5 dark:web:desktop:border-warning-dark/40 dark:web:desktop:bg-surfaceMuted-dark"
             >
               <View className="web:desktop:h-8 web:desktop:w-8 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-warningTint-light dark:web:desktop:bg-warningTint-dark">
                 <Ionicons name="pricetag-outline" size={17} color={colors.warningStrong[scheme === 'dark' ? 'dark' : 'light']} />
@@ -580,7 +580,7 @@ export function DesktopTransactions() {
             </View>
           ) : (
             <View className={DESKTOP_CARD_CLASS}>
-              <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:border-b web:desktop:border-divider-light web:desktop:pb-2.5 dark:web:desktop:border-divider-dark">
+              <View className="web:desktop:flex-row web:desktop:items-center web:desktop:border-b web:desktop:border-divider-light web:desktop:pb-2.5 dark:web:desktop:border-divider-dark">
                 <Text className="web:desktop:flex-1 text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.transaction')}
                 </Text>
@@ -662,7 +662,7 @@ export function DesktopTransactions() {
                                 })
                               : undefined
                           }
-                          className={`web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:border-b web:desktop:border-divider-light web:desktop:py-2.5 dark:web:desktop:border-divider-dark ${
+                          className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:border-b web:desktop:border-divider-light web:desktop:py-2.5 dark:web:desktop:border-divider-dark ${
                             isSelectionMode && isSelected ? 'web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark' : ''
                           }`}
                         >
@@ -743,24 +743,24 @@ export function DesktopTransactions() {
                 {t('transactions.summary.title', { count: filteredTransactions.length })}
               </Text>
               <View className="web:desktop:mt-3.5 web:desktop:gap-2.5">
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <Text className="text-body text-ink-light dark:text-ink-dark">{t('transactions.summary.income')}</Text>
                   <Text className="text-body font-sansSemibold text-positive-light dark:text-positive-dark">
                     {formatILS(incomeAgorot)}
                   </Text>
                 </View>
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <Text className="text-body text-ink-light dark:text-ink-dark">{t('transactions.summary.expense')}</Text>
                   <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{formatILS(expenseAgorot)}</Text>
                 </View>
                 <View className="web:desktop:h-px web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{t('transactions.summary.net')}</Text>
                   <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
                     {formatILS(incomeAgorot - expenseAgorot)}
                   </Text>
                 </View>
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {t('transactions.summary.personalPortion')}
                   </Text>
@@ -776,7 +776,7 @@ export function DesktopTransactions() {
                 </Text>
                 <View className="web:desktop:mt-3 web:desktop:gap-2.5">
                   {activeRules.map((rule) => (
-                    <View key={rule.id} className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                    <View key={rule.id} className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                       <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
                         {t(`categories.rules.field.${rule.field}`)} {t(`categories.rules.operator.${rule.operator}`)} &quot;{rule.value}&quot;
                       </Text>

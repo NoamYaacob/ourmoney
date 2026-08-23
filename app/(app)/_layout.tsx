@@ -321,7 +321,7 @@ export default function AppLayout() {
             first-rendered child — the rail — on the physical right, which is
             the correct RTL reading position. Native (no `web:` match) is
             unaffected either way. */}
-        <View className="flex-1 web:flex-row-reverse">
+        <View className="flex-1 web:flex-row">
           {isWeb && <DesktopSideRail activeSegment={activeSegment} />}
           <View className="flex-1">
             <Tabs

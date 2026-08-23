@@ -379,7 +379,7 @@ describe('Dashboard RTL layout', () => {
     const { getByText } = await render(<Dashboard />)
 
     let node = getByText(i18n.t('dashboard.hero.label')).parent
-    while (node && !((node.props?.className as string | undefined) ?? '').split(/\s+/).includes('web:desktop:flex-row-reverse')) {
+    while (node && !((node.props?.className as string | undefined) ?? '').split(/\s+/).includes('web:desktop:flex-row')) {
       node = node.parent
     }
     expect(node).toBeTruthy()

@@ -200,12 +200,12 @@ describe('DesktopCashFlow', () => {
   // screens' identical regression tests for why the exact-token check
   // matters (a `.toContain()` substring check can't tell `flex-row` and
   // `flex-row-reverse` apart).
-  it('uses flex-row-reverse (not plain flex-row) for the header row, so the title reads on the right', async () => {
+  it('uses a plain flex-row for the header row, so the title reads on the right under dir="rtl"', async () => {
     const { getByText } = await render(<CashFlow />)
 
     const header = getByText(i18n.t('tabs.cashFlow')).parent
     const tokens = ((header?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:flex-row-reverse')
-    expect(tokens).not.toContain('web:desktop:flex-row')
+    expect(tokens).toContain('web:desktop:flex-row')
+    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
   })
 })

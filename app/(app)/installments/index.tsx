@@ -151,7 +151,7 @@ export default function Installments() {
       </Text>
 
       {creditCardCycleCommitments.length > 0 && (
-        <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:flex-row-reverse web:desktop:gap-4">
+        <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:flex-row web:desktop:gap-4">
           {creditCardCycleCommitments.map((commitment) => {
             const account = creditCardAccounts.find((a) => a.id === commitment.sourceId)
             if (!account || account.billing_cycle_day === null) return null
@@ -161,7 +161,7 @@ export default function Installments() {
             const daysLeft = Math.max(0, daysBetween(today, range.end))
             return (
               <View key={account.id} className={`web:desktop:flex-1 ${DESKTOP_CARD_CLASS}`}>
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <View className="web:desktop:flex-1">
                     <Text className="text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
                       {account.name}
@@ -334,7 +334,7 @@ export default function Installments() {
                 {(validationError || createPlan.isError) && (
                   <ErrorMessage message={validationError ?? t('installments.errors.generic')} />
                 )}
-                <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+                <View className="web:desktop:flex-row web:desktop:gap-2">
                   <View className="web:desktop:flex-1">
                     <Button title={t('installments.form.submit')} onPress={handleCreate} loading={createPlan.isPending} />
                   </View>

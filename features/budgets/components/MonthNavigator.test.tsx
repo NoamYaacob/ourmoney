@@ -1,9 +1,9 @@
 // Visual QA pass: this test originally asserted `className.toContain(
 // 'web:flex-row')` after a real-browser measurement reportedly found
 // "previous month" on the physical left on web — but that assertion is
-// satisfied by BOTH `web:flex-row` and `web:flex-row-reverse` (the former
+// satisfied by BOTH `web:flex-row` and `web:flex-row` (the former
 // is a literal substring of the latter), so it proved nothing either way.
-// A follow-up "fix" (adding `web:flex-row-reverse`) turned out to be wrong
+// A follow-up "fix" (adding `web:flex-row`) turned out to be wrong
 // in the other direction: global.css sets `direction: rtl` on `html, body,
 // #root`, and flexbox's `row` axis runs along that direction — plain
 // `flex-row` already mirrors correctly here, and `-reverse` flips it a
@@ -30,7 +30,7 @@ describe('MonthNavigator', () => {
     const row = getByLabelText('חודש קודם').parent
     const tokens = (row?.props.className as string).split(/\s+/)
     expect(tokens).toContain('flex-row')
-    expect(tokens).not.toContain('web:flex-row-reverse')
+    expect(tokens).not.toContain('web:flex-row')
     expect(tokens).not.toContain('flex-row-reverse')
   })
 })

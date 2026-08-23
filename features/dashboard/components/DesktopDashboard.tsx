@@ -161,11 +161,11 @@ export function DesktopDashboard() {
           the mockup's own 68px header bar (drawn once, reused unchanged
           across every desktop screen per the mockup's own note that "the
           sidebar [and header] is identical across all of them"). */}
-      <View className="web:desktop:mb-6 web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3.5">
+      <View className="web:desktop:mb-6 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3.5">
         <Text className="text-title font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
           {t('dashboard.title')}
         </Text>
-        <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-surface-light web:desktop:px-2.5 web:desktop:py-1.5 dark:web:desktop:bg-surface-dark">
+        <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-surface-light web:desktop:px-2.5 web:desktop:py-1.5 dark:web:desktop:bg-surface-dark">
           <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button" accessibilityLabel={t('dashboard.previousMonth')}>
             <Ionicons name="chevron-back" size={15} color={iconColor} />
           </Pressable>
@@ -174,12 +174,12 @@ export function DesktopDashboard() {
             <Ionicons name="chevron-forward" size={15} color={iconColor} />
           </Pressable>
         </View>
-        <View className="web:desktop:ms-auto web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2.5">
+        <View className="web:desktop:ms-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5">
           <Pressable
             onPress={() => router.push('/transactions')}
             accessibilityRole="button"
             accessibilityLabel={t('transactions.title')}
-            className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2 web:desktop:rounded-control web:desktop:border web:desktop:border-border-light web:desktop:px-3 web:desktop:py-2.5 dark:web:desktop:border-border-dark"
+            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:rounded-control web:desktop:border web:desktop:border-border-light web:desktop:px-3 web:desktop:py-2.5 dark:web:desktop:border-border-dark"
           >
             <Ionicons name="search-outline" size={16} color={iconColor} />
             <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.searchPlaceholder')}</Text>
@@ -188,7 +188,7 @@ export function DesktopDashboard() {
             onPress={() => router.push('/transactions/new')}
             accessibilityRole="button"
             accessibilityLabel={t('transactions.addButton')}
-            className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-accent-light web:desktop:px-3.5 web:desktop:py-2.5 dark:web:desktop:bg-accent-dark"
+            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-accent-light web:desktop:px-3.5 web:desktop:py-2.5 dark:web:desktop:bg-accent-dark"
           >
             <Ionicons name="add" size={17} color={scheme === 'dark' ? '#141310' : '#ffffff'} />
             <Text className="text-caption font-sansSemibold text-surface-light dark:text-surface-dark">
@@ -201,12 +201,12 @@ export function DesktopDashboard() {
       {/* Row 1 — פנוי באמת hero (right, mockup's DOM-first column) + מה מגיע
           (left). flex-row-reverse keeps DOM order [hero, מה מגיע] while the
           hero lands rightmost, matching the mockup exactly. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
+      <View className="web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
         <View className="web:desktop:w-[440px] web:desktop:flex-none">
           <HeroPanel className="web:desktop:h-full">
-            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <HeroLabel>{t('dashboard.hero.label')}</HeroLabel>
-              <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-1.5">
+              <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5">
                 {HORIZON_ORDER.map((value) => (
                   <Pressable key={value} onPress={() => setHorizon(value)} accessibilityRole="button">
                     <Text
@@ -236,7 +236,7 @@ export function DesktopDashboard() {
                 <View className="mt-2">
                   <Money agorot={safeToSpend.safeToSpendAgorot} size="hero" tone="hero" />
                 </View>
-                <View className="web:desktop:mt-2.5 web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2.5">
+                <View className="web:desktop:mt-2.5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5">
                   <HeroTag>{t('dashboard.hero.notBankBalance')}</HeroTag>
                   {safeToSpend.safeToSpendAgorot > 0 && (
                     <HeroNote>
@@ -245,27 +245,27 @@ export function DesktopDashboard() {
                   )}
                 </View>
 
-                <View className="web:desktop:mt-5 web:desktop:h-9 web:desktop:flex-row-reverse web:desktop:gap-0.5 web:desktop:overflow-hidden web:desktop:rounded-control">
+                <View className="web:desktop:mt-5 web:desktop:h-9 web:desktop:flex-row web:desktop:gap-0.5 web:desktop:overflow-hidden web:desktop:rounded-control">
                   <View className="web:desktop:bg-accent-light dark:web:desktop:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
                   <View className="web:desktop:bg-heroBorder-light" style={{ flexGrow: Math.max(1, safeToSpend.plannedObligationsAgorot) }} />
                   <View className="web:desktop:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
                 </View>
 
                 <View className="web:desktop:mt-4 web:desktop:gap-2.5">
-                  <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                     <HeroNote className="web:desktop:flex-1">{t('cashFlow.availableCash')}</HeroNote>
                     <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="heroMuted" />
                   </View>
-                  <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                     <HeroNote className="web:desktop:flex-1">{t('cashFlow.plannedObligations')}</HeroNote>
                     <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
                   </View>
-                  <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                     <HeroNote className="web:desktop:flex-1">{t('cashFlow.recurringCharges')}</HeroNote>
                     <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
                   </View>
                   <View className="web:desktop:h-px web:desktop:bg-heroBorder-light" />
-                  <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                  <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                     <Text className="text-caption font-sansSemibold text-heroInk-light web:desktop:flex-1">
                       {t('cashFlow.safeToSpend')}
                     </Text>
@@ -277,7 +277,7 @@ export function DesktopDashboard() {
                   <Pressable
                     onPress={() => router.push('/cash-flow')}
                     accessibilityRole="button"
-                    className="web:desktop:mt-auto web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2 web:desktop:pt-4"
+                    className="web:desktop:mt-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:pt-4"
                   >
                     <Ionicons name="alert-circle" size={17} color="#e8a79b" />
                     <HeroNote className="web:desktop:flex-1">
@@ -295,7 +295,7 @@ export function DesktopDashboard() {
 
         <View className="web:desktop:flex-1">
           <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
-            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('dashboard.commitments.title')}
               </Text>
@@ -345,7 +345,7 @@ export function DesktopDashboard() {
                               : router.push(`/accounts/${item.sourceId}`)
                       }
                       accessibilityRole="button"
-                      className={`web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:py-2.5 ${index > 0 ? 'web:desktop:border-t web:desktop:border-divider-light dark:web:desktop:border-divider-dark' : ''}`}
+                      className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:py-2.5 ${index > 0 ? 'web:desktop:border-t web:desktop:border-divider-light dark:web:desktop:border-divider-dark' : ''}`}
                     >
                       <View className="web:desktop:w-11 web:desktop:items-center">
                         <Text
@@ -359,7 +359,7 @@ export function DesktopDashboard() {
                         <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
                           {item.description}
                         </Text>
-                        <View className="web:desktop:mt-0.5 web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-1.5">
+                        <View className="web:desktop:mt-0.5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5">
                           <StatusChip
                             label={pastDue ? t('obligations.pastDue') : days === 0 ? t('obligations.dueToday') : t('obligations.inDays', { count: days })}
                             tone={pastDue ? 'danger' : 'neutral'}
@@ -374,7 +374,7 @@ export function DesktopDashboard() {
             )}
 
             {nextCardCycle && nextCardCycleDays !== null && (
-              <View className="web:desktop:mt-auto web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:border-t web:desktop:border-border-light web:desktop:pt-4 dark:web:desktop:border-border-dark">
+              <View className="web:desktop:mt-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:border-t web:desktop:border-border-light web:desktop:pt-4 dark:web:desktop:border-border-dark">
                 <CountdownRing percentElapsed={100 - Math.max(0, Math.min(100, (nextCardCycleDays / 30) * 100))} daysLeft={nextCardCycleDays} />
                 <Text className="web:desktop:flex-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                   {t('dashboard.commitments.cardCycleClosing', {
@@ -391,10 +391,10 @@ export function DesktopDashboard() {
 
       {/* Row 2 — קצב תקציב (primary, DOM-first/rightmost) · דורש טיפול ·
           תנועות אחרונות. */}
-      <View className="web:desktop:mt-5 web:desktop:flex-row-reverse web:desktop:items-stretch web:desktop:gap-5">
+      <View className="web:desktop:mt-5 web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
         <View className="web:desktop:flex-1">
           <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
-            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('dashboard.budgetPace.title')}
               </Text>
@@ -419,7 +419,7 @@ export function DesktopDashboard() {
               </View>
             ) : (
               <>
-                <View className="web:desktop:mt-3 web:desktop:flex-row-reverse web:desktop:items-baseline web:desktop:gap-2.5">
+                <View className="web:desktop:mt-3 web:desktop:flex-row web:desktop:items-baseline web:desktop:gap-2.5">
                   <Money agorot={remainingAgorotValue} size="large" tone={remainingAgorotValue < 0 ? 'danger' : 'default'} />
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {t('dashboard.budgetPace.outOf', { amount: formatILS(totalAllocatedAgorot) })}
@@ -453,8 +453,8 @@ export function DesktopDashboard() {
                     })
                     return (
                       <View key={category.categoryId}>
-                        <View className="web:desktop:flex-row-reverse web:desktop:items-baseline web:desktop:justify-between">
-                          <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2">
+                        <View className="web:desktop:flex-row web:desktop:items-baseline web:desktop:justify-between">
+                          <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2">
                             <CategoryIcon icon={category.categoryIcon} size="sm" />
                             <Text className="text-body font-sansMedium text-ink-light dark:text-ink-dark">
                               {category.categoryNameHe}
@@ -488,7 +488,7 @@ export function DesktopDashboard() {
 
         <View className="web:desktop:w-[300px] web:desktop:flex-none">
           <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
-            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('dashboard.needsAttention.title')}
               </Text>
@@ -513,7 +513,7 @@ export function DesktopDashboard() {
                     key={alert.id}
                     onPress={() => router.push(alert.actionRoute)}
                     accessibilityRole="button"
-                    className={`web:desktop:flex-row-reverse web:desktop:gap-2.5 web:desktop:rounded-row web:desktop:border-e-[3px] web:desktop:bg-surface-light web:desktop:p-3.5 dark:web:desktop:bg-surface-dark ${
+                    className={`web:desktop:flex-row web:desktop:gap-2.5 web:desktop:rounded-row web:desktop:border-e-[3px] web:desktop:bg-surface-light web:desktop:p-3.5 dark:web:desktop:bg-surface-dark ${
                       alert.severity === 'critical'
                         ? 'web:desktop:border-danger-light dark:web:desktop:border-danger-dark'
                         : alert.severity === 'warning'
@@ -543,7 +543,7 @@ export function DesktopDashboard() {
 
         <View className="web:desktop:w-[280px] web:desktop:flex-none">
           <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
-            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('dashboard.recentTitle')}
               </Text>
@@ -576,7 +576,7 @@ export function DesktopDashboard() {
                       key={txn.id}
                       onPress={() => router.push(`/transactions/${txn.id}`)}
                       accessibilityRole="button"
-                      className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2.5"
+                      className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5"
                     >
                       <CategoryIcon icon={txn.category_id ? categoryIconById[txn.category_id] : undefined} size="sm" />
                       <View className="web:desktop:flex-1">

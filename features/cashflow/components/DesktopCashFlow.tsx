@@ -86,7 +86,7 @@ export function DesktopCashFlow() {
 
   return (
     <Screen width="wide">
-      <View className="mb-6 flex-row items-center justify-between web:desktop:flex-row-reverse">
+      <View className="mb-6 flex-row items-center justify-between web:desktop:flex-row">
         <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
           {t('tabs.cashFlow')}
         </Text>
@@ -108,7 +108,7 @@ export function DesktopCashFlow() {
         <>
           {/* The answer, in one sentence. */}
           <View
-            className={`web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-4 web:desktop:rounded-hero web:desktop:border web:desktop:p-5 ${
+            className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-4 web:desktop:rounded-hero web:desktop:border web:desktop:p-5 ${
               hasShortfall
                 ? 'web:desktop:border-dangerBorder-light web:desktop:bg-surfaceMuted-light dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-surfaceMuted-dark'
                 : `web:desktop:border-border-light web:desktop:bg-surfaceMuted-light dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark`
@@ -134,7 +134,7 @@ export function DesktopCashFlow() {
 
           {/* The evidence: the three headline figures, then the chart. */}
           <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
-            <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-9">
+            <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-9">
               <View>
                 <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.today')}
@@ -180,7 +180,7 @@ export function DesktopCashFlow() {
               on a line is not actionable, "the car licence on the 4th is
               what does it" is. */}
           <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
-            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('cashFlow.mobile.eventsTitle')}
               </Text>
@@ -204,7 +204,7 @@ export function DesktopCashFlow() {
                       onPress={() => router.push(eventRoute(event) as never)}
                       accessibilityRole="button"
                       accessibilityLabel={event.title}
-                      className={`web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:py-2.5 ${
+                      className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:py-2.5 ${
                         isCause ? 'web:desktop:bg-dangerSurface-light dark:web:desktop:bg-dangerSurface-dark web:desktop:px-3' : ''
                       } ${index > 0 ? 'web:desktop:border-t web:desktop:border-divider-light dark:web:desktop:border-divider-dark' : ''}`}
                     >

@@ -61,6 +61,16 @@ jest.mock('@/features/installments/hooks/useGenerateInstallmentTransactions', ()
 // Supabase-backed alert chain into this structural test. Stubbed to an
 // empty result — the badge's own behavior is covered in
 // features/alerts, not here.
+// The desktop rail shows the household's own identity (name, member
+// count, signed-in member), so _layout now pulls the profile and member
+// hooks — both Supabase-backed, and both need stubbing in a structural
+// test that never reaches a network.
+jest.mock('@/features/auth/hooks/useProfile', () => ({
+  useProfile: () => ({ displayName: 'נועם', avatarUrl: null, isLoading: false }),
+}))
+jest.mock('@/features/household/hooks/useHouseholdMembers', () => ({
+  useHouseholdMembers: () => ({ members: [], isLoading: false, error: null }),
+}))
 jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
   useFinancialAlerts: () => ({ alerts: [], isLoading: false, hasPartialError: false }),
 }))
@@ -155,13 +165,13 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
   //
   // Visual QA + Desktop Polish pass: this test previously matched
   // `className.includes('web:flex-row')`, which is satisfied by BOTH
-  // `web:flex-row` and `web:flex-row-reverse` (the former is a literal
+  // `web:flex-row` and `web:flex-row` (the former is a literal
   // substring of the latter) — so it silently kept passing through a real
   // regression where the wrapper reverted to plain `web:flex-row` (rail
   // rendered on the wrong side again). Rewritten to tokenize each
   // className on whitespace and check for exact token membership, so it
   // can actually distinguish the two and fail if the wrong one reappears.
-  it('declares the desktop rail wrapper as flex-row-reverse, not flex-row, for correct RTL placement', async () => {
+  it('declares the desktop rail wrapper as a plain flex-row, never reversed, now that the document is dir="rtl"', async () => {
     const result = await renderRouter(
       {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -197,7 +207,7 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
 
     // Exact whitespace-token membership, not a substring match — see the
     // test's own header comment above for why a substring check can't tell
-    // `web:flex-row` and `web:flex-row-reverse` apart.
+    // `web:flex-row` and `web:flex-row` apart.
     function hasExactClassToken(node: unknown, token: string): boolean {
       if (!node || typeof node !== 'object') return false
       if (Array.isArray(node)) return node.some((n) => hasExactClassToken(n, token))
@@ -211,11 +221,13 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
     }
 
     const tree = result.toJSON()
-    expect(hasExactClassToken(tree, 'web:flex-row-reverse')).toBe(true)
-    // The regression this test exists to catch: the wrapper reverting to
-    // the bare (non-reversed) form. Asserted as a separate node, not just
-    // "not exactly one match," so this fails clearly if the wrapper is ever
-    // rendered with BOTH classes at once (which would be a different bug).
-    expect(hasExactClassToken(tree, 'web:flex-row')).toBe(false)
+    expect(hasExactClassToken(tree, 'web:flex-row')).toBe(true)
+    // The regression this test now exists to catch: `flex-row-reverse`
+    // coming back. It was the right compensation only while the web
+    // document was LTR; app/_layout.tsx now sets `dir="rtl"` on it, so a
+    // reversal on top of that is a double-reversal and puts the rail back
+    // on the wrong side. Checked as an exact whitespace token, since
+    // `flex-row` is a substring of `flex-row-reverse`.
+    expect(hasExactClassToken(tree, 'web:flex-row-reverse')).toBe(false)
   })
 })

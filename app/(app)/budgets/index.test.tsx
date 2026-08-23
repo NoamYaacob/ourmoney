@@ -471,14 +471,14 @@ describe('Budgets', () => {
   // reversed and unreversed forms — so it silently kept passing through a
   // real regression where the grid reverted to plain `flex-row`. Rewritten
   // to exact whitespace-token membership.
-  it('groups category budgets and the sidebar into the same flex-row-reverse desktop grid container', async () => {
+  it('groups category budgets and the sidebar into the same flex-row desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
     const gridWrapper = categoriesPanel?.parent?.parent
     const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:flex-row-reverse')
-    expect(tokens).not.toContain('web:desktop:flex-row')
+    expect(tokens).toContain('web:desktop:flex-row')
+    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
 
     // Desktop Claude Design pass: the uncategorized queue moved from an
     // equal-width column into a 300px sidebar card (climbToSidebarCard,

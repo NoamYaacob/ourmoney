@@ -132,7 +132,7 @@ export default function Alerts() {
                       key={alert.id}
                       onPress={() => router.push(alert.actionRoute)}
                       accessibilityRole="button"
-                      className={`web:desktop:flex-row-reverse web:desktop:gap-3 web:desktop:rounded-row web:desktop:border web:desktop:border-e-[3px] web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:bg-surfaceMuted-dark ${
+                      className={`web:desktop:flex-row web:desktop:gap-3 web:desktop:rounded-row web:desktop:border web:desktop:border-e-[3px] web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:bg-surfaceMuted-dark ${
                         alert.severity === 'critical'
                           ? 'web:desktop:border-border-light web:desktop:border-e-danger-light dark:web:desktop:border-border-dark dark:web:desktop:border-e-danger-dark'
                           : alert.severity === 'warning'

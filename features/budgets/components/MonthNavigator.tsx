@@ -34,7 +34,7 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
     // right, matching native's Yoga-driven mirroring. `flex-row-reverse`
     // would flip it a second time, right back to a visually-LTR order —
     // confirmed by the same measurement. Older comments elsewhere in this
-    // codebase recommending `web:flex-row-reverse` predate global.css's
+    // codebase recommending `web:flex-row` predate global.css's
     // `direction: rtl` (added specifically, per its own comment, "instead
     // of patching individual screens with row-reverse exceptions") and are
     // now stale; do not copy that pattern into new code without checking

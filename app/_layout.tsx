@@ -167,6 +167,44 @@ function ThemeGate({ children }: { children: ReactNode }) {
   )
 }
 
+// Sets the web document's direction before first paint.
+//
+// react-native-web's I18nManager is a no-op: `forceRTL()` returns without
+// doing anything and `getConstants().isRTL` is hard-coded `false` (see
+// node_modules/react-native-web/dist/exports/I18nManager/index.js). The
+// bootstrap below genuinely flips native layout and achieves nothing at all
+// on web, so without this the browser lays the whole app out left-to-right:
+// `flex-row` puts the first child on the LEFT, and every logical property —
+// `start`/`end`, `ms-`/`me-`, `ps-`/`pe-`, `border-s`, `text-start` —
+// silently resolves against LTR.
+//
+// The app had compensated for the row-order half of that with
+// `flex-row-reverse` at 83 call sites, which fixed the order while leaving
+// padding, margins, borders and alignment mirrored the wrong way. The design
+// system states the intended rule outright: the layout is
+// `flex-direction: row` under `dir="rtl"`, not `row-reverse`. Declaring the
+// direction once makes that true everywhere, and those compensations came
+// out in the same change that added this.
+//
+// Not done via Expo Router's `+html.tsx`: that file is only used under
+// static rendering (`web.output: "static"`), and this app ships as an SPA,
+// where Expo serves its own index.html template. Doing it here works under
+// both output modes and does not change the deployment shape.
+//
+// Runs at module scope rather than in an effect so it lands before React
+// paints anything — there is no LTR frame to flash.
+function applyWebDocumentDirection() {
+  if (Platform.OS !== 'web') return
+  if (typeof document === 'undefined') return
+
+  document.documentElement.setAttribute('dir', 'rtl')
+  // `lang` drives the browser's own font selection and hyphenation, and is
+  // what a screen reader uses to choose a Hebrew voice.
+  document.documentElement.setAttribute('lang', 'he')
+}
+
+applyWebDocumentDirection()
+
 // RTL bootstrap — see ARCHITECTURE.md § RTL Implementation.
 export default function RootLayout() {
   const [rtlReady, setRtlReady] = useState(I18nManager.isRTL)

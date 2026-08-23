@@ -253,7 +253,7 @@ export default function Settings() {
           height mismatch is still there, but distributed across several
           natural breaks instead of concentrated in one, so it reads as an
           intentional multi-panel column rather than a rendering gap. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <View className={DESKTOP_PANEL_CLASS}>
       {/* Profile */}

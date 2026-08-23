@@ -197,7 +197,7 @@ export default function InstallmentPlanDetail() {
               <ErrorMessage message={editError ?? t('installments.errors.generic')} />
             )}
 
-            <View className="web:desktop:flex-row-reverse web:desktop:gap-2">
+            <View className="web:desktop:flex-row web:desktop:gap-2">
               <View className="web:desktop:flex-1">
                 <Button title={t('installments.detail.save')} onPress={handleSave} loading={updatePlan.isPending} />
               </View>
