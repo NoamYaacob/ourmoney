@@ -120,9 +120,19 @@ export function ListRow({
 
 // The small rounded tile the design puts at the start of most rows. Kept
 // here so its size (36px) and radius stay tied to the row that hosts it.
+//
+// Visual QA pass: `neutral` was `bg-surface-light` (#f4f2ed, the page's own
+// paper background) filling a tile that only ever sits on a ListCard, whose
+// fill is `surfaceMuted` (#ffffff) — an 11-unit-per-channel difference the
+// eye reads as no fill at all. The icon glyph itself was never the contrast
+// problem (`ink` on either surface passes at 15.6:1+ per this file's own
+// audit); the tile's edge disappearing against its own card is what read as
+// "weak contrast" in the More screen QA report. `border` is this system's
+// existing token for a fill/edge meant to stay visible against a white
+// card — reused here rather than inventing a new one.
 export function RowIcon({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'warning' | 'danger' | 'accent' }) {
   const toneClass = {
-    neutral: 'bg-surface-light dark:bg-surface-dark',
+    neutral: 'bg-border-light dark:bg-border-dark',
     warning: 'bg-warningTint-light dark:bg-warningTint-dark',
     danger: 'bg-dangerSurface-light dark:bg-dangerSurface-dark',
     accent: 'bg-accentTint-light dark:bg-accentTint-dark',

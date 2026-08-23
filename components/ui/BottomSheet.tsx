@@ -14,6 +14,7 @@
 
 import type { ReactNode } from 'react'
 import { Modal as RNModal, Pressable, ScrollView, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { DIALOG_WIDTH_CLASS } from '@/constants/layout'
 
 interface BottomSheetProps {
@@ -28,6 +29,13 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ visible, title, onClose, children, actions, testID }: BottomSheetProps) {
+  // RNModal renders outside Screen.tsx's own SafeAreaView (it's a top-level
+  // overlay, native and on web), so this sheet was the one surface in the
+  // app never actually reading the device's real inset — `pb-8`/`pb-4` below
+  // were a fixed guess standing in for it. A device with a taller home
+  // indicator than that guess assumes gets a button sitting exactly where
+  // the design's own comment says it must not: under the system gesture.
+  const insets = useSafeAreaInsets()
   return (
     <RNModal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       {/* The scrim dismisses, and is a real pressable rather than a
@@ -58,7 +66,12 @@ export function BottomSheet({ visible, title, onClose, children, actions, testID
 
           <ScrollView
             className="px-5"
-            contentContainerClassName="pb-4"
+            // No actions row below to carry the inset (see the `actions`
+            // branch) — this edge IS the sheet's bottom edge, so it needs
+            // the real safe-area value, not the fixed pb-4 every other
+            // scroll body uses.
+            contentContainerStyle={actions ? undefined : { paddingBottom: Math.max(16, insets.bottom + 8) }}
+            contentContainerClassName={actions ? 'pb-4' : undefined}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -66,10 +79,15 @@ export function BottomSheet({ visible, title, onClose, children, actions, testID
           </ScrollView>
 
           {actions && (
-            // pb-8 rather than pb-4: the home indicator sits under this
-            // edge, and a button flush against it is a button the household
-            // has to fight the system gesture to press.
-            <View className="flex-row gap-2.5 border-t border-border-light px-5 pb-8 pt-3 dark:border-border-dark">
+            // The home indicator sits under this edge, and a button flush
+            // against it is a button the household has to fight the system
+            // gesture to press — insets.bottom is the device's real value,
+            // floored at 16px so a device with no home indicator (an older
+            // iPhone, most Android phones) still gets a deliberate gap.
+            <View
+              className="flex-row gap-2.5 border-t border-border-light px-5 pt-3 dark:border-border-dark"
+              style={{ paddingBottom: Math.max(16, insets.bottom + 16) }}
+            >
               {actions}
             </View>
           )}

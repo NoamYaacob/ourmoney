@@ -282,6 +282,14 @@ export function Select({
                 <FlatList
                   data={options}
                   keyExtractor={(item) => item.value}
+                  // Visual QA pass: this variant had no bottom padding and no
+                  // safe-area handling at all — the 'row' variant's own
+                  // trailing `<SafeAreaView edges={['bottom']} />` below is
+                  // what this was missing, on the one variant every
+                  // pre-existing caller (Accounts, Budgets, Recurring,
+                  // Settings, Import, edit-transaction) still uses.
+                  contentContainerStyle={{ paddingBottom: 8 }}
+                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
                   renderItem={({ item }) => (
                     <Pressable
                       onPress={() => {
@@ -290,7 +298,7 @@ export function Select({
                       }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: item.value === value }}
-                      className="flex-row items-center gap-3 border-b border-border-light py-3 dark:border-border-dark"
+                      className="flex-row items-center gap-3 py-3"
                     >
                       {item.iconName && (
                         <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
@@ -302,6 +310,7 @@ export function Select({
                     </Pressable>
                   )}
                 />
+                <SafeAreaView edges={['bottom']} />
               </View>
             )}
           </Pressable>
