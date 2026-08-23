@@ -554,6 +554,11 @@
     "installmentProgress": "שולמו {{materialized}} מתוך {{total}} תשלומים",
     "remainingAmount": "יתרה לתשלום",
     "monthlyAmount": "תשלום חודשי",
+    "cycleCards": {
+      "nextCharge": "החיוב הבא",
+      "range": "מחזור {{start}} עד {{end}}"
+    },
+    "listTitle": "עסקאות בתשלומים",
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "הרכישה לא נמצאה"
