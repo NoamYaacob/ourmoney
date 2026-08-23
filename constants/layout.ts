@@ -37,6 +37,17 @@ export const DESKTOP_BREAKPOINT_PX = 1200
 // bottom-sheet behavior is untouched (no `web:` match off-web).
 export const DIALOG_WIDTH_CLASS = 'web:max-w-[560px] web:self-center'
 
+// Desktop Claude Design pass: the white bordered panel the approved mockup
+// (`OurMoney - Desktop.dc.html`) uses everywhere at desktop width — the
+// hero's companion cards, budget/planning/accounts panels, list containers.
+// `rounded-hero` (22px), not `rounded-card` (18px, DESKTOP_PANEL_CLASS
+// below): the mockup uses one radius for every panel this size, and it's
+// the same 22px HeroPanel already uses, not the smaller one the pre-
+// redesign desktop screens picked. Desktop-only, like every other
+// `web:desktop:`-scoped token in this file — mobile is never affected.
+export const DESKTOP_CARD_CLASS =
+  'web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-6 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark'
+
 // Desktop polish pass: the bounded-panel treatment shared by Dashboard's
 // and Budgets' lower-section columns — border/radius/fill/padding only.
 // Each caller appends its own `web:desktop:min-h-[...]` (panel count and

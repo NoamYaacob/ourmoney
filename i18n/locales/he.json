@@ -780,6 +780,26 @@
   "dashboard": {
     "title": "לוח בקרה",
     "subtitle": "סקירה חודשית של המצב הפיננסי המשותף",
+    "searchPlaceholder": "חיפוש תנועה...",
+    "hero": {
+      "label": "פנוי באמת",
+      "horizonWeek": "השבוע",
+      "horizonMonth": "החודש",
+      "horizonDays30": "30 ימים",
+      "notBankBalance": "לא יתרת הבנק",
+      "perDay": "כ-{{amount}} ליום",
+      "overspendWarning": "ההתחייבות הקרובה ב-{{date}} חורגת מהסכום הפנוי.",
+      "viewCashFlow": "לתזרים המלא"
+    },
+    "budgetPace": {
+      "title": "קצב תקציב",
+      "viewAll": "כל התקציבים",
+      "outOf": "מתוך {{amount}}",
+      "projection": "בקצב הנוכחי, חריגה צפויה של {{amount}}"
+    },
+    "needsAttention": {
+      "title": "דורש טיפול"
+    },
     "spent": "הוצא",
     "ofBudget": "מתוך תקציב",
     "percentUsed": "{{percent}}% מהתקציב נוצל",
@@ -798,10 +818,13 @@
       "title": "הכנסות והוצאות החודש"
     },
     "commitments": {
-      "title": "התחייבויות עתידיות",
+      "title": "מה מגיע",
       "viewAll": "כל ההתחייבויות",
+      "viewAllShort": "הצג הכל",
       "empty": "אין התחייבויות ידועות ב-30 הימים הקרובים.",
-      "creditCardBurden": "מתוכן {{amount}} בכרטיסי אשראי"
+      "creditCardBurden": "מתוכן {{amount}} בכרטיסי אשראי",
+      "countAndTotal": "{{count}} פריטים · {{amount}} בסך הכל",
+      "cardCycleClosing": "{{name}} — המחזור נסגר ב-{{date}}, {{amount}} עד כה"
     },
     "savingsGoalsWidget": {
       "title": "יעדי חיסכון",
