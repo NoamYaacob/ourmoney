@@ -16,7 +16,11 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
 import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
 import { useCreateInstallmentPlan } from '@/features/installments/hooks/useCreateInstallmentPlan'
+import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
+import { getCurrentBillingCycleRange } from '@/features/accounts/lib/creditCardCycle'
+import { daysBetween } from '@/lib/engines/alerts/alertSeverity'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
@@ -30,7 +34,9 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
+import { Money } from '@/components/ui/Money'
+import { CountdownRing } from '@/components/ui/CountdownRing'
+import { INLINE_FORM_WIDTH_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
 
 export default function Installments() {
   const { t } = useTranslation()
@@ -42,6 +48,19 @@ export default function Installments() {
   const { plans, isLoading: isPlansLoading, error } = useInstallmentPlans(householdId)
   const { materializedCounts } = useInstallmentMaterializedCounts(householdId)
   const createPlan = useCreateInstallmentPlan(householdId)
+  // Desktop Claude Design pass: the mockup's billing-cycle cards, at the
+  // top of what it calls "אשראי ותשלומים" (Credit & Payments) — this
+  // screen's own nav destination already carries that label (see
+  // _layout.tsx's RAIL_GROUPS). Reuses useUpcomingCommitments' own
+  // credit_card_cycle entries (the exact same current-cycle-spend figure
+  // Dashboard's "מה מגיע" panel and Safe-to-Spend already reserve against)
+  // rather than a second, parallel query — only the cycle's own start/end
+  // dates (for the countdown ring) are computed fresh here, via the same
+  // pure getCurrentBillingCycleRange every other current-cycle figure in
+  // this app already goes through.
+  const { commitments } = useUpcomingCommitments(householdId)
+  const creditCardCycleCommitments = commitments.filter((c) => c.source === 'credit_card_cycle')
+  const today = localDateString()
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
 
@@ -118,9 +137,58 @@ export default function Installments() {
 
   return (
     <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+      {/* Desktop Claude Design pass: the mockup titles this screen "אשראי
+          ותשלומים" (Credit & Payments), matching its nav destination's own
+          label — mobile keeps its original, narrower "רכישות בתשלומים"
+          title, since mobile shows only the installments list below, never
+          the billing-cycle cards. Same two-copy toggle pattern this app
+          already uses for compact-vs-full empty states. */}
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('installments.title')}
       </Text>
+      <Text className="mb-6 hidden text-title font-bold text-ink-light dark:text-ink-dark web:desktop:flex web:desktop:text-[20px]">
+        {t('nav.creditAndPayments')}
+      </Text>
+
+      {creditCardCycleCommitments.length > 0 && (
+        <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:flex-row-reverse web:desktop:gap-4">
+          {creditCardCycleCommitments.map((commitment) => {
+            const account = creditCardAccounts.find((a) => a.id === commitment.sourceId)
+            if (!account || account.billing_cycle_day === null) return null
+            const range = getCurrentBillingCycleRange(account.billing_cycle_day, today)
+            const cycleLengthDays = Math.max(1, daysBetween(range.start, range.end))
+            const daysElapsed = Math.max(0, daysBetween(range.start, today))
+            const daysLeft = Math.max(0, daysBetween(today, range.end))
+            return (
+              <View key={account.id} className={`web:desktop:flex-1 ${DESKTOP_CARD_CLASS}`}>
+                <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+                  <View className="web:desktop:flex-1">
+                    <Text className="text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                      {account.name}
+                    </Text>
+                    <Text className="mt-0.5 text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
+                      {t('installments.cycleCards.nextCharge')} · {formatDateDisplay(range.end)}
+                    </Text>
+                  </View>
+                  <CountdownRing percentElapsed={Math.min(100, (daysElapsed / cycleLengthDays) * 100)} daysLeft={daysLeft} />
+                </View>
+                <View className="web:desktop:mt-3.5">
+                  <Money agorot={commitment.amountAgorot} size="display" />
+                </View>
+                <Text className="web:desktop:mt-2.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('installments.cycleCards.range', { start: formatDateDisplay(range.start), end: formatDateDisplay(range.end) })}
+                </Text>
+              </View>
+            )
+          })}
+        </View>
+      )}
+
+      {plans.length > 0 && (
+        <Text className="mb-3 hidden text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:flex web:desktop:text-[19px]">
+          {t('installments.listTitle')}
+        </Text>
+      )}
 
       {error ? (
         <ErrorMessage message={t('installments.errors.generic')} />
