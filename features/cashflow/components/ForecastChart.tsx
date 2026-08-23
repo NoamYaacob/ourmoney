@@ -135,28 +135,42 @@ export function ForecastChart({
             )}
           </Svg>
 
-          {/* The zero rule's own label, at the start edge just above the
-              line — the design puts a number on that rule so the crossing
-              means something without reading the axis. */}
-          <Text
-            className="absolute text-meta font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark"
-            style={{ start: 0, top: `${(zeroY / H) * 100}%`, transform: [{ translateY: -16 }] }}
-            maxFontSizeMultiplier={1.2}
-          >
-            {zeroLabel}
-          </Text>
+          {/* The zero rule's own label, sitting just above the line at the
+              edge the curve starts from — the design puts a number on that
+              rule so crossing it means something without reading an axis.
+              `right`, not `start`: see the note on the callout below. */}
+          <View className="absolute" style={{ right: 0, top: `${(zeroY / H) * 100}%`, transform: [{ translateY: -16 }] }}>
+            <Text
+              className="text-meta font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark"
+              maxFontSizeMultiplier={1.2}
+            >
+              {zeroLabel}
+            </Text>
+          </View>
 
-          {/* The callout is a real Text view rather than SVG <Text> so it
-              picks up the app's font and Dynamic Type. Positioned as a
+          {/* The callout is real Text rather than SVG <Text> so it picks up
+              the app's font and Dynamic Type. It is positioned as a
               percentage of the same coordinate space the dot uses, so the
-              two cannot drift apart when the chart resizes. */}
+              two cannot drift apart when the chart resizes.
+              
+              PHYSICAL `left`, deliberately, not the logical `start` this
+              codebase reaches for everywhere else. The chart is mirrored by
+              arithmetic (`W - index * stepX`) because SVG has no `dir` — so
+              `lowestX` is already a physical offset from the physical left
+              edge, and anchoring it to a direction-aware inset would mirror
+              it a second time. That is exactly what happened before this
+              pass: the marker sat at one end of the chart and its own
+              callout at the other. A `<Text>` makes it worse still, since
+              react-native-web stamps `dir="auto"` on one and a numeric
+              label resolves to LTR, so `start` silently means `left` there
+              and `right` on the view beside it. */}
           {lowest && (
             <View
               testID="forecast-chart-callout"
               className="absolute rounded-control px-2 py-1"
               style={{
                 backgroundColor: isNegative ? danger : line,
-                start: `${((W - lowestX) / W) * 100}%`,
+                left: `${(lowestX / W) * 100}%`,
                 top: Math.max(0, lowestY - TOP_PAD - 14),
                 transform: [{ translateX: -6 }],
               }}

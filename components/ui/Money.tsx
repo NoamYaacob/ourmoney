@@ -51,15 +51,26 @@ interface MoneyProps extends Omit<TextProps, 'children'> {
   size?: MoneySize
   tone?: MoneyTone
   // Renders a leading "+" for income. Off by default: an expense is the
-  // common case and prefixing every outgoing amount with a minus turns a
-  // transaction list into a wall of signs. Callers that need the minus (a
-  // cash-flow event list, where direction is the point) pass `signed`.
+  // common case and prefixing every incoming amount with a plus turns a
+  // transaction list into a wall of signs. Callers where direction is the
+  // point (a cash-flow event list) pass `signed`.
+  //
+  // It does NOT control the minus. A negative figure always renders as
+  // negative — see the formatter call below.
   signed?: boolean
 }
 
 export function Money({ agorot, size = 'row', tone = 'default', signed = false, style, ...textProps }: MoneyProps) {
-  const formatted = formatILS(Math.abs(agorot))
-  const sign = signed && agorot > 0 ? '+' : signed && agorot < 0 ? '−' : ''
+  // The value reaches the formatter as it is, sign included. This used to be
+  // `formatILS(Math.abs(agorot))`, with the minus re-added only when `signed`
+  // was set — so an unsigned negative (a cash-flow low point below zero, a
+  // balance in overdraft, an over-budget remainder) printed as if it were
+  // positive. Rendering a shortfall as cash is the worst failure this
+  // component can have, and no caller should have to opt in to a minus sign
+  // being truthful. `formatILS` carries the sign itself, so `signed` is now
+  // only about the "+".
+  const formatted = formatILS(agorot)
+  const sign = signed && agorot > 0 ? '+' : ''
 
   return (
     <Text
