@@ -83,14 +83,11 @@ describe('Accounts list', () => {
 
   it('shows an archived badge for the inactive account only — the active account renders with none', async () => {
     const { getAllByText } = await render(<Accounts />)
-    // Desktop Claude Design pass: each account now renders twice in the
-    // tree — once in the mobile flat list (`web:desktop:hidden`), once in
-    // the desktop grouped sections (`hidden web:desktop:flex`) — RNTL
-    // can't evaluate real CSS, so both legitimately exist at once (same
-    // pattern as this app's other dual mobile/desktop renderings). One
-    // archived account -> exactly 2 badges, proving the active account
-    // still gets none in either rendering.
-    expect(getAllByText('בארכיון').length).toBe(2)
+    // One rendering now, not two. The screen used to draw a flat list for
+    // the phone and grouped sections for desktop, so every account appeared
+    // twice in the tree; both design files group them identically, so the
+    // grouping is shared and each account is rendered exactly once.
+    expect(getAllByText('בארכיון').length).toBe(1)
   })
 
   // Design Phase 3 coverage: the empty state and the add-account flow
@@ -193,17 +190,14 @@ describe('Accounts list', () => {
   // illiquid (everything else) — matching the exact same
   // isEligibleCashAccount boundary Safe-to-Spend already uses for
   // "liquid." ACTIVE_ACCOUNT (type: checking) belongs in the liquid group.
-  it('groups the desktop account list by liquid/owed/illiquid, with the liquid heading before the checking account', async () => {
+  it('groups the account list by liquid/owed/illiquid on both platforms', async () => {
     const { getAllByText } = await render(<Accounts />)
 
     const liquidHeadings = getAllByText(/כסף נוזלי/)
     const accountNames = getAllByText(ACTIVE_ACCOUNT.name)
-    // One of each in the mobile flat list (no heading there) plus one in
-    // the desktop grouped section — at least one desktop-side heading must
-    // exist, and the account name must appear at least twice (mobile +
-    // desktop).
-    expect(liquidHeadings.length).toBeGreaterThanOrEqual(1)
-    expect(accountNames.length).toBeGreaterThanOrEqual(2)
+    // One heading, and the checking account under it exactly once.
+    expect(liquidHeadings).toHaveLength(1)
+    expect(accountNames).toHaveLength(1)
   })
 
   it('never shows the "owed" (credit card) heading when the household has no credit-card accounts', async () => {

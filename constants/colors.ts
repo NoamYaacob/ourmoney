@@ -145,6 +145,13 @@ export const colors = {
     light: '#e7efe9',
     dark: '#1c3129',
   },
+  // The tinted hairline on a card whose whole point is good news — the
+  // fourth alert tier ("תובנה חיובית"). Same relationship `dangerBorder` and
+  // `warningBorder` have to their own tints.
+  positiveBorder: {
+    light: '#cfe0d5',
+    dark: '#2c4a3a',
+  },
 
   // Attention, not alarm: approaching a limit, a connection going stale.
   // Carries the states that used to be shown in red for want of a token.

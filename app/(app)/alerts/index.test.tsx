@@ -88,7 +88,10 @@ describe('Alerts screen', () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [], isLoading: false, hasPartialError: false })
   })
 
-  it('groups alerts by severity under the correct Hebrew headings', async () => {
+  // Headings carry their count now ("דורש טיפול · 2"), which is what both
+  // design frames draw — a household sees how much is waiting before
+  // reading a card.
+  it('groups alerts by tier under the correct Hebrew headings, each with its count', async () => {
     mockUseFinancialAlerts.mockReturnValue({
       alerts: [FORECAST_ALERT, alert(), BUDGET_ALERT],
       isLoading: false,
@@ -97,9 +100,9 @@ describe('Alerts screen', () => {
 
     const { getByText } = await render(<Alerts />)
 
-    expect(getByText(i18n.t('alerts.groups.critical'))).toBeTruthy()
-    expect(getByText(i18n.t('alerts.groups.warning'))).toBeTruthy()
-    expect(getByText(i18n.t('alerts.groups.info'))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.groupCount', { label: i18n.t('alerts.groups.critical'), count: 1 }))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.groupCount', { label: i18n.t('alerts.groups.warning'), count: 1 }))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.groupCount', { label: i18n.t('alerts.groups.info'), count: 1 }))).toBeTruthy()
   })
 
   it('does not render a severity group heading with zero alerts in it', async () => {
@@ -107,8 +110,8 @@ describe('Alerts screen', () => {
 
     const { queryByText } = await render(<Alerts />)
 
-    expect(queryByText(i18n.t('alerts.groups.critical'))).toBeNull()
-    expect(queryByText(i18n.t('alerts.groups.info'))).toBeNull()
+    expect(queryByText(new RegExp(i18n.t('alerts.groups.critical')))).toBeNull()
+    expect(queryByText(new RegExp(i18n.t('alerts.groups.info')))).toBeNull()
   })
 
   it('renders a forecast_shortfall alert with its date and amount in the description', async () => {

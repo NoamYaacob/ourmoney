@@ -30,6 +30,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowIcon } from '@/components/ui/ListCard'
+import { Money } from '@/components/ui/Money'
 import { StatusChip } from '@/components/ui/StatusChip'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { Account, AccountType } from '@/types/app'
@@ -111,74 +112,115 @@ export default function Accounts() {
   // second liquidity rule invented for this screen.
   const availableCashAgorot = sumEligibleCashAgorot(accounts, balances)
 
-  // Desktop Claude Design pass: the mockup groups accounts into three
-  // sections by what they mean financially, not just a flat list — reusing
-  // the exact same isEligibleCashAccount check for "liquid," account.type
-  // for the other two. No new data: same `accounts`/`balances` the flat
-  // mobile list below already renders, just bucketed. Desktop-only —
-  // mobile keeps its original flat list untouched.
+  // Both design files group accounts three ways — liquid (what counts
+  // toward Safe-to-Spend), owed (credit cards, which come off the current
+  // account at the next billing date), and everything not spendable today.
+  // `OurMoney - Mobile.dc.html` screen 11 and the desktop Accounts frame use
+  // the same three headings in the same order, so the grouping is shared
+  // rather than a desktop-only arrangement over a flat phone list.
+  //
+  // Liquidity is `isEligibleCashAccount`'s own rule, not a second one
+  // invented here — the "כסף נוזלי" heading claims these accounts are what
+  // "פנוי באמת" is made of, and that claim has to stay literally true.
   const liquidAccounts = accounts.filter((a) => a.type === 'checking' || a.type === 'cash')
   const owedAccounts = accounts.filter((a) => a.type === 'credit_card')
   const illiquidAccounts = accounts.filter((a) => a.type !== 'checking' && a.type !== 'cash' && a.type !== 'credit_card')
 
-  // Shared by the mobile flat list and the desktop grouped sections below —
-  // one row implementation, two arrangements of the exact same accounts.
-  function renderAccountRow(account: Account, twoColumn: boolean) {
+  // One row for both platforms, one card per GROUP with hairlines between
+  // rows — which is what both frames draw. It had been a bordered card per
+  // account, so a household with six accounts read as six unrelated objects
+  // instead of three groups.
+  function renderAccountRow(account: Account, isLast: boolean) {
+    const isOwed = account.type === 'credit_card'
+    const balanceAgorot = balances[account.id] ?? 0
+
     return (
-      <Pressable
-        key={account.id}
-        onPress={() => router.push(`/accounts/${account.id}`)}
-        accessibilityRole="button"
-        className={twoColumn ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
-      >
-        <Card>
-          <View className="flex-row items-center gap-3">
-            <RowIcon>
-              <Ionicons name={accountIconName(account.type)} size={ICON.row} color={iconColor} />
-            </RowIcon>
-            <View className="flex-1">
-              <View className="flex-row items-center gap-2">
-                <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{account.name}</Text>
-                {!account.is_active && <StatusChip label={t('accounts.detail.archived')} />}
-              </View>
-              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+      <View key={account.id}>
+        <Pressable
+          onPress={() => router.push(`/accounts/${account.id}`)}
+          accessibilityRole="button"
+          accessibilityLabel={account.name}
+          className="min-h-[44px] flex-row items-center gap-3 py-3.5"
+        >
+          <RowIcon tone={isOwed ? 'danger' : 'neutral'}>
+            <Ionicons
+              name={accountIconName(account.type)}
+              size={ICON.row}
+              color={isOwed ? (scheme === 'dark' ? colors.dangerStrong.dark : colors.dangerStrong.light) : iconColor}
+            />
+          </RowIcon>
+          <View className="flex-1">
+            <View className="flex-row items-center gap-2">
+              <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                {account.name}
+              </Text>
+              {!account.is_active && <StatusChip label={t('accounts.detail.archived')} />}
+            </View>
+            <View className="mt-0.5 flex-row flex-wrap items-center gap-1.5">
+              <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
                 {t(`accounts.types.${account.type}`)}
               </Text>
+              {/* The design's connection pill. Every account in the product
+                  today is entered by hand — the Open Banking integration
+                  does not exist yet — so this states that rather than
+                  implying a sync that isn't happening. */}
+              <StatusChip label={t('accounts.manuallyManaged')} dot />
             </View>
-            {/* account.balance_agorot is a dead column nothing ever
-                updates — the balance shown here is computed live from
-                transactions instead (see
-                features/accounts/lib/computeAccountBalances.ts). Blank
-                while it loads rather than flashing ₪0 as if that were a
-                real computed answer. */}
-            <Text className="text-body text-inkMuted-light dark:text-inkMuted-dark">
-              {isBalancesLoading ? '' : formatILS(balances[account.id] ?? 0)}
-            </Text>
           </View>
-        </Card>
-      </Pressable>
+          {/* account.balance_agorot is a dead column nothing ever updates —
+              the balance shown here is computed live from transactions
+              instead (features/accounts/lib/computeAccountBalances.ts).
+              Blank while it loads rather than flashing ₪0 as if that were a
+              real computed answer. */}
+          {isBalancesLoading ? (
+            <View className="h-5 w-24" />
+          ) : (
+            <Money agorot={balanceAgorot} size="row" tone={isOwed ? 'danger' : 'default'} />
+          )}
+          <Ionicons name="chevron-back" size={ICON.row} color={iconColor} />
+        </Pressable>
+        {!isLast && <View className="h-px bg-divider-light dark:bg-divider-dark" />}
+      </View>
+    )
+  }
+
+  function renderGroup(group: Account[], labelKey: string, labelClass: string, cardClass: string) {
+    if (group.length === 0) return null
+    return (
+      <View className="mt-4">
+        <Text className={`mb-2 text-meta font-sansSemibold tracking-[0.06em] ${labelClass}`}>{t(labelKey)}</Text>
+        <View className={`overflow-hidden rounded-card border px-4 ${cardClass}`}>
+          {group.map((account, index) => renderAccountRow(account, index === group.length - 1))}
+        </View>
+      </View>
     )
   }
 
   return (
-    <Screen width="wide">
-      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+    <Screen width="wide" scroll>
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('accounts.title')}
       </Text>
 
       {!error && !isLoading && accounts.length > 0 && (
-        <View className="mb-6 hidden web:desktop:flex">
-          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-6 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('accounts.availableToSpend')}</Text>
-            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[36px]">
-              {isBalancesLoading ? '' : formatILS(availableCashAgorot)}
-            </Text>
-            <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-              {isBalancesLoading ? '' : t('accounts.netWorth', { amount: formatILS(totalBalanceAgorot) })}
-              {' · '}
-              {t('accounts.activeAccountCount', { count: activeAccountBalances.length })}
-            </Text>
-          </Card>
+        // The hero both frames open with: what is actually spendable, and
+        // the one sentence that stops a household reading it as "all our
+        // money". Net worth sits under it as context, never as the headline
+        // — the whole point of the grouping below is that those are
+        // different numbers.
+        <View className="rounded-card border border-border-light bg-surfaceMuted-light p-5 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <Text className="text-meta font-sansSemibold tracking-[0.06em] text-positiveStrong-light dark:text-positiveStrong-dark">
+            {t('accounts.availableToSpend')}
+          </Text>
+          {isBalancesLoading ? <View className="h-11" /> : <Money agorot={availableCashAgorot} size="display" />}
+          <Text className="mt-0.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+            {t('accounts.availableExplainer')}
+          </Text>
+          <Text className="mt-2 border-t border-divider-light pt-2 text-meta font-sans text-inkMuted-light dark:border-divider-dark dark:text-inkMuted-dark">
+            {isBalancesLoading ? '' : t('accounts.netWorth', { amount: formatILS(totalBalanceAgorot) })}
+            {' · '}
+            {t('accounts.activeAccountCount', { count: activeAccountBalances.length })}
+          </Text>
         </View>
       )}
 
@@ -189,52 +231,42 @@ export default function Accounts() {
       ) : (
         <>
           {/* No actionLabel/onAction here — the persistent "Add account"
-              button below already covers it; a second identical CTA
-              stacked directly above it was confusing, not helpful
-              (mobile-expo-reviewer finding). */}
+              button below already covers it; a second identical CTA stacked
+              directly above it was confusing, not helpful. */}
           {accounts.length === 0 && <EmptyState iconName="wallet-outline" message={t('accounts.empty')} compact />}
-          {/* Responsive/desktop pass: a 2-column card grid once there's more
-              than one account. Mobile/tablet keep this original flat list
-              (`web:desktop:hidden` — Desktop Claude Design pass added the
-              grouped desktop rendering below instead of restyling this one,
-              since mobile's own flat list is untouched by that mockup). */}
-          <View
-            className={`web:desktop:hidden ${accounts.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : ''}`}
-          >
-            {accounts.map((account) => renderAccountRow(account, accounts.length > 1))}
-          </View>
 
-          {/* Desktop Claude Design pass: the mockup's own three-way grouping
-              — liquid (what counts toward Safe-to-Spend), owed (credit
-              cards), illiquid (everything else) — each only rendered when
-              it has accounts, so a household with no credit cards simply
-              never sees an empty "owed" heading. */}
-          <View className="hidden web:desktop:flex web:desktop:gap-1">
-            {liquidAccounts.length > 0 && (
-              <View className="web:desktop:mb-1">
-                <Text className="web:desktop:mb-2 text-meta font-sansSemibold tracking-[0.08em] text-positiveStrong-light dark:text-positiveStrong-dark">
-                  {t('accounts.groups.liquid')}
-                </Text>
-                {liquidAccounts.map((account) => renderAccountRow(account, false))}
-              </View>
-            )}
-            {owedAccounts.length > 0 && (
-              <View className="web:desktop:mb-1 web:desktop:mt-2">
-                <Text className="web:desktop:mb-2 text-meta font-sansSemibold tracking-[0.08em] text-dangerStrong-light dark:text-dangerStrong-dark">
-                  {t('accounts.groups.owed')}
-                </Text>
-                {owedAccounts.map((account) => renderAccountRow(account, false))}
-              </View>
-            )}
-            {illiquidAccounts.length > 0 && (
-              <View className="web:desktop:mt-2">
-                <Text className="web:desktop:mb-2 text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('accounts.groups.illiquid')}
-                </Text>
-                {illiquidAccounts.map((account) => renderAccountRow(account, false))}
-              </View>
-            )}
-          </View>
+          {renderGroup(
+            liquidAccounts,
+            'accounts.groups.liquid',
+            'text-positiveStrong-light dark:text-positiveStrong-dark',
+            'border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark'
+          )}
+          {renderGroup(
+            owedAccounts,
+            'accounts.groups.owed',
+            'text-dangerStrong-light dark:text-dangerStrong-dark',
+            // The credit group carries a tinted border in both frames: what
+            // is owed is not the same kind of thing as what is held.
+            'border-dangerBorder-light bg-surfaceMuted-light dark:border-dangerBorder-dark dark:bg-surfaceMuted-dark'
+          )}
+          {renderGroup(
+            illiquidAccounts,
+            'accounts.groups.illiquid',
+            'text-inkMuted-light dark:text-inkMuted-dark',
+            // Recessed rather than white: not money to plan against today.
+            'border-border-light bg-surface-light dark:border-border-dark dark:bg-surface-dark'
+          )}
+
+          {accounts.length > 0 && (
+            <View className="mt-4 rounded-card border border-border-light bg-surfaceMuted-light p-5 dark:border-border-dark dark:bg-surfaceMuted-dark">
+              <Text className="text-caption font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                {t('accounts.availableExplainerTitle')}
+              </Text>
+              <Text className="mt-2 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('accounts.availableExplainerLong', { amount: formatILS(availableCashAgorot) })}
+              </Text>
+            </View>
+          )}
         </>
       )}
 

@@ -394,7 +394,11 @@
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
       "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום.",
       "currentCycleSpend": "הוצאות במחזור החיוב הנוכחי"
-    }
+    },
+    "availableExplainer": "רק עו״ש ומזומן. מזה נגזר \"פנוי באמת\".",
+    "availableExplainerLong": "עו״ש ומזומן בלבד ({{amount}}). חיסכון, השקעות וכרטיסי אשראי לא נכנסים לחשבון, כדי ש\"פנוי באמת\" לא ינפח את התמונה.",
+    "availableExplainerTitle": "מה נכנס ל\"יתרה זמינה\"",
+    "manuallyManaged": "מנוהל ידנית"
   },
   "categories": {
     "title": "קטגוריות",
@@ -1015,7 +1019,8 @@
     "groups": {
       "critical": "דורש טיפול",
       "warning": "כדאי לשים לב",
-      "info": "מידע"
+      "info": "מידע",
+      "positive": "תובנה חיובית"
     },
     "empty": "אין התראות כרגע.",
     "errors": {
@@ -1061,7 +1066,10 @@
       "negativeTitle": "היתרה הפנויה כבר שלילית",
       "description": "פנוי באמת: {{amount}}"
     },
-    "badgeCritical": "{{count}} פריטים דורשים טיפול"
+    "badgeCritical": "{{count}} פריטים דורשים טיפול",
+    "openAction": "לפתוח ←",
+    "groupCount": "{{label}} · {{count}}",
+    "subtitle": "מתעדכן לפי הנתונים. כשהבעיה נפתרת, ההתראה נעלמת."
   },
   "household": {
     "errors": {
