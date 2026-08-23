@@ -12,13 +12,14 @@
 // design has a per-screen header and a bottom tab bar instead, and this
 // component never mounts there.
 //
-// The bar's ACTIONS are per screen, exactly as the mockup draws them. Its two
-// full-shell frames differ: Home carries [title · month · search · תנועה
-// חדשה], Transactions carries [title · ייבוא מ־CSV · תנועה חדשה] with no
-// search field and no month. The remaining frames are drawn as the content
-// column alone ("המשך המסכים מוצג כעמודת התוכן בלבד"), so they specify no
-// header actions and get the title by itself; their own contextual actions
-// stay in the screen body where those frames put them.
+// The bar's ACTIONS are per screen, exactly as the mockup draws them. Its
+// three full-shell frames each differ: Home carries [title · month · search ·
+// תנועה חדשה], Transactions carries [title · ייבוא מ־CSV · תנועה חדשה] with
+// no search field and no month, and Cash Flow carries [title · 30/60/90] with
+// the horizon selector pinned to the far edge. The remaining frames are drawn
+// as the content column alone ("המשך המסכים מוצג כעמודת התוכן בלבד"), so they
+// specify no header actions and get the title by itself; their own contextual
+// controls stay in the screen body where those frames put them.
 //
 // A month stepper only appears where a month is genuinely the screen's
 // context. On Transactions — which spans whatever range its filters select —
@@ -32,14 +33,18 @@ import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { usePeriodStore } from '@/store/periodStore'
+import { useCashFlowStore, type CashFlowHorizonDays } from '@/store/cashFlowStore'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { formatMonthLabel, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 
 // Screen title per route segment, matching the mockup's own header wording.
+// Cash Flow is the one place that wording differs from its rail label: the
+// rail says "תזרים", the header band says "תזרים מזומנים".
 const TITLE_KEY_BY_SEGMENT: Record<string, string> = {
   dashboard: 'tabs.dashboard',
   transactions: 'tabs.transactions',
   budgets: 'tabs.budgets',
-  'cash-flow': 'tabs.cashFlow',
+  'cash-flow': 'nav.cashFlow',
   installments: 'nav.creditAndPayments',
   recurring: 'settings.financial.recurring',
   obligations: 'settings.financial.obligations',
@@ -57,8 +62,15 @@ const MONTH_SCOPED_SEGMENTS = new Set(['dashboard', 'budgets'])
 const SEARCH_SEGMENTS = new Set(['dashboard'])
 // ...and the CSV-import link on Transactions only.
 const IMPORT_SEGMENTS = new Set(['transactions'])
-// The primary action appears on the two frames the mockup draws in full.
+// The primary action appears on the two frames the mockup gives one.
 const ADD_SEGMENTS = new Set(['dashboard', 'transactions'])
+
+// Cash Flow's own header control: how far ahead the forecast runs.
+const HORIZONS: { value: CashFlowHorizonDays; labelKey: string }[] = [
+  { value: '30', labelKey: 'cashFlow.forecast.horizon.days30' },
+  { value: '60', labelKey: 'cashFlow.forecast.horizon.days60' },
+  { value: '90', labelKey: 'cashFlow.forecast.horizon.days90' },
+]
 
 export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const { t } = useTranslation()
@@ -69,12 +81,15 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const accentColor = isDark ? colors.accent.dark : colors.accent.light
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
+  const horizonDays = useCashFlowStore((s) => s.horizonDays)
+  const setHorizonDays = useCashFlowStore((s) => s.setHorizonDays)
 
   const titleKey = TITLE_KEY_BY_SEGMENT[activeSegment]
   const showMonth = MONTH_SCOPED_SEGMENTS.has(activeSegment)
   const showSearch = SEARCH_SEGMENTS.has(activeSegment)
   const showImport = IMPORT_SEGMENTS.has(activeSegment)
   const showAdd = ADD_SEGMENTS.has(activeSegment)
+  const showHorizon = activeSegment === 'cash-flow'
 
   return (
     <View className="hidden h-[68px] flex-none flex-row items-center gap-3.5 border-b border-border-light bg-surfaceMuted-light px-7 web:desktop:flex dark:border-border-dark dark:bg-surfaceMuted-dark">
@@ -110,6 +125,16 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
       )}
 
       <View className="ms-auto flex-row items-center gap-2.5">
+        {showHorizon && (
+          <View className="w-[240px]">
+            <SegmentedControl
+              options={HORIZONS.map((horizon) => ({ value: horizon.value, label: t(horizon.labelKey) }))}
+              value={horizonDays}
+              onChange={setHorizonDays}
+              accessibilityLabel={t('cashFlow.forecast.sectionTitle')}
+            />
+          </View>
+        )}
         {showSearch && (
           <Pressable
             onPress={() => router.push('/transactions')}

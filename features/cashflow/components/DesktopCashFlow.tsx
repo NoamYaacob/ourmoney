@@ -27,7 +27,6 @@
 // Renders only at >=1200px on web — app/(app)/cash-flow/index.tsx picks
 // between this and MobileCashFlow.
 
-import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
@@ -38,25 +37,19 @@ import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
-import { CashFlowForecastChart } from '@/features/cashflow/components/CashFlowForecastChart'
+import { ForecastChart } from '@/features/cashflow/components/ForecastChart'
 import type { CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 import { causeOfLowPoint } from '@/features/cashflow/lib/lowPointCause'
 import { formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Money } from '@/components/ui/Money'
-import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { StatusChip } from '@/components/ui/StatusChip'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { DESKTOP_CARD_CLASS } from '@/constants/layout'
-
-const HORIZONS = [
-  { value: '30' as const, labelKey: 'cashFlow.forecast.horizon.days30' },
-  { value: '60' as const, labelKey: 'cashFlow.forecast.horizon.days60' },
-  { value: '90' as const, labelKey: 'cashFlow.forecast.horizon.days90' },
-]
+import { useCashFlowStore } from '@/store/cashFlowStore'
 
 function eventRoute(event: CashFlowForecastEvent): string {
   if (event.source === 'planned_obligation') return `/obligations/${event.sourceId}`
@@ -71,7 +64,8 @@ export function DesktopCashFlow() {
   const isDark = scheme === 'dark'
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const [days, setDays] = useState<'30' | '60' | '90'>('30')
+  // Set from the shell header bar, where the mockup draws the selector.
+  const days = useCashFlowStore((s) => s.horizonDays)
   const { result: forecast, isLoading, error } = useCashFlowForecast(householdId, Number(days))
 
   if (isHouseholdLoading) {
@@ -87,20 +81,10 @@ export function DesktopCashFlow() {
 
   return (
     <Screen width="wide">
-      <View className="mb-6 flex-row items-center justify-between web:desktop:flex-row">
-        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
-          {t('tabs.cashFlow')}
-        </Text>
-        <View className="web:desktop:w-[220px]">
-          <SegmentedControl
-            options={HORIZONS.map((horizon) => ({ value: horizon.value, label: t(horizon.labelKey) }))}
-            value={days}
-            onChange={setDays}
-            accessibilityLabel={t('cashFlow.forecast.sectionTitle')}
-          />
-        </View>
-      </View>
-
+      {/* No title and no horizon selector drawn here. The mockup's Cash Flow
+          frame puts both in the 68px shell band — title at the start edge,
+          30/60/90 pinned to the end — and DesktopTopBar owns that band for
+          every desktop screen. Drawing them again titled the page twice. */}
       {error ? (
         <ErrorMessage message={t('cashFlow.forecast.errors.generic')} />
       ) : isLoading ? (
@@ -140,7 +124,7 @@ export function DesktopCashFlow() {
                 <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.today')}
                 </Text>
-                <Money agorot={forecast.startingBalanceAgorot} size="display" />
+                <Money agorot={forecast.startingBalanceAgorot} size="figure" />
               </View>
               <View>
                 <Text
@@ -152,19 +136,20 @@ export function DesktopCashFlow() {
                 >
                   {t('cashFlow.mobile.lowPoint')}
                 </Text>
-                <Money agorot={forecast.lowestBalanceAgorot} size="display" tone={forecast.lowestBalanceAgorot < 0 ? 'danger' : 'default'} />
+                <Money agorot={forecast.lowestBalanceAgorot} size="figure" tone={forecast.lowestBalanceAgorot < 0 ? 'danger' : 'default'} />
                 <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{formatDateDisplay(forecast.lowestBalanceDate)}</Text>
               </View>
               <View>
                 <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.atEnd')}
                 </Text>
-                <Money agorot={forecast.endingBalanceAgorot} size="display" tone={forecast.endingBalanceAgorot < 0 ? 'danger' : 'default'} />
+                <Money agorot={forecast.endingBalanceAgorot} size="figure" tone={forecast.endingBalanceAgorot < 0 ? 'danger' : 'default'} />
               </View>
             </View>
 
             <View className="web:desktop:mt-4">
-              <CashFlowForecastChart
+              <ForecastChart
+                variant="wide"
                 dailyPoints={forecast.dailyPoints}
                 lowestBalanceDate={forecast.lowestBalanceDate}
                 chartSummary={`${t('cashFlow.mobile.today')}: ${formatILS(forecast.startingBalanceAgorot)}. ${t('cashFlow.mobile.lowPoint')}: ${formatILS(forecast.lowestBalanceAgorot)}, ${formatDateDisplay(forecast.lowestBalanceDate)}. ${t('cashFlow.mobile.atEnd')}: ${formatILS(forecast.endingBalanceAgorot)}.`}

@@ -24,12 +24,13 @@
 import { Text, type TextProps } from 'react-native'
 import { formatILS } from '@/lib/money/format'
 
-export type MoneySize = 'hero' | 'display' | 'large' | 'row' | 'caption'
+export type MoneySize = 'hero' | 'display' | 'figure' | 'large' | 'row' | 'caption'
 export type MoneyTone = 'default' | 'positive' | 'danger' | 'muted' | 'hero' | 'heroMuted'
 
 const SIZE_CLASS: Record<MoneySize, string> = {
   hero: 'text-hero font-heebo',
   display: 'text-display font-heebo',
+  figure: 'text-figure font-heeboBold',
   large: 'text-title font-heeboBold',
   row: 'text-heading font-heeboBold',
   caption: 'text-meta font-heeboMedium',

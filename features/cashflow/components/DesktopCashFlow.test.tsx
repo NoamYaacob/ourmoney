@@ -6,8 +6,9 @@
 // MobileCashFlow.test.tsx's own coverage, plus desktop-specific behavior
 // (horizon switching, navigation, RTL).
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { fireEvent, render } from '@testing-library/react-native'
+import { act, fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
+import { useCashFlowStore } from '@/store/cashFlowStore'
 import { formatILS } from '@/lib/money/format'
 import { DesktopCashFlow as CashFlow } from './DesktopCashFlow'
 
@@ -62,6 +63,9 @@ jest.mock('@/features/cashflow/hooks/useCashFlowForecast', () => ({
 
 beforeEach(() => {
   mockPush.mockClear()
+  // The horizon is module-level store state now, so a test that changes it
+  // would otherwise leak into the next one.
+  useCashFlowStore.setState({ horizonDays: '30' })
   mockUseCashFlowForecast.mockReset()
   mockUseCashFlowForecast.mockReturnValue({ result: { ...HEALTHY }, isLoading: false, error: null })
 })
@@ -126,7 +130,7 @@ describe('DesktopCashFlow', () => {
     // at least one match (the stat row's own Money figure) is what's checked.
     expect(getAllByText(formatILS(HEALTHY.startingBalanceAgorot)).length).toBeGreaterThanOrEqual(1)
     expect(getAllByText(formatILS(HEALTHY.endingBalanceAgorot)).length).toBeGreaterThanOrEqual(1)
-    expect(getByTestId('cash-flow-forecast-chart-svg', { includeHiddenElements: true })).toBeTruthy()
+    expect(getByTestId('forecast-chart', { includeHiddenElements: true })).toBeTruthy()
   })
 
   it('keeps the forecast disclaimer — the projection is not a promise', async () => {
@@ -164,12 +168,27 @@ describe('DesktopCashFlow', () => {
     expect(mockPush).toHaveBeenCalledWith('/recurring/rec-1')
   })
 
-  it('switches the horizon and re-queries useCashFlowForecast with the new day count', async () => {
-    const { getByText } = await render(<CashFlow />)
+  it('re-queries useCashFlowForecast when the shell header changes the horizon', async () => {
+    // The 30/60/90 selector lives in DesktopTopBar now — the mockup draws it
+    // in the header band, not the screen body — so the screen reads the
+    // horizon from the store the bar writes. Setting the store directly is
+    // exactly what pressing that control does.
+    await render(<CashFlow />)
 
-    await fireEvent.press(getByText(i18n.t('cashFlow.forecast.horizon.days90')))
+    await act(async () => {
+      useCashFlowStore.getState().setHorizonDays('90')
+    })
 
     expect(mockUseCashFlowForecast).toHaveBeenLastCalledWith('household-1', 90)
+  })
+
+  it('draws no title and no horizon selector of its own', async () => {
+    // Both belong to the shell band. Rendering them here titled the desktop
+    // page twice, which is what this guards against coming back.
+    const { queryByText } = await render(<CashFlow />)
+
+    expect(queryByText(i18n.t('nav.cashFlow'))).toBeNull()
+    expect(queryByText(i18n.t('cashFlow.forecast.horizon.days90'))).toBeNull()
   })
 
   it('defaults to the 30-day horizon on first render', async () => {
@@ -194,18 +213,4 @@ describe('DesktopCashFlow', () => {
     expect(queryByText(i18n.t('cashFlow.mobile.today'))).toBeNull()
   })
 
-  // Visual QA + Desktop Polish pass convention: `web:desktop:flex-row-
-  // reverse` (not plain `flex-row`) is what keeps a primary-content-first
-  // DOM order reading right-to-left on web — see this app's other desktop
-  // screens' identical regression tests for why the exact-token check
-  // matters (a `.toContain()` substring check can't tell `flex-row` and
-  // `flex-row-reverse` apart).
-  it('uses a plain flex-row for the header row, so the title reads on the right under dir="rtl"', async () => {
-    const { getByText } = await render(<CashFlow />)
-
-    const header = getByText(i18n.t('tabs.cashFlow')).parent
-    const tokens = ((header?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:flex-row')
-    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
-  })
 })

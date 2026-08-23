@@ -10,6 +10,7 @@ import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import { DesktopTopBar } from './DesktopTopBar'
 import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
+import { useCashFlowStore } from '@/store/cashFlowStore'
 
 const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
@@ -18,6 +19,7 @@ jest.mock('expo-router', () => ({
 
 beforeEach(() => {
   mockPush.mockClear()
+  useCashFlowStore.setState({ horizonDays: '30' })
 })
 
 describe('DesktopTopBar', () => {
@@ -73,5 +75,28 @@ describe('DesktopTopBar', () => {
 
     const onDashboard = await render(<DesktopTopBar activeSegment="dashboard" />)
     expect(onDashboard.queryByText(i18n.t('more.import'))).toBeNull()
+  })
+
+  it('carries the forecast horizon on Cash Flow, and writes it where the screen reads it', async () => {
+    // The mockup's Cash Flow frame puts 30/60/90 in the header band rather
+    // than the screen body, so the control and the screen that obeys it are
+    // in different trees — the store is the join between them.
+    const { getByText } = await render(<DesktopTopBar activeSegment="cash-flow" />)
+
+    fireEvent.press(getByText(i18n.t('cashFlow.forecast.horizon.days90')))
+
+    expect(useCashFlowStore.getState().horizonDays).toBe('90')
+  })
+
+  it('titles Cash Flow the way its header does, not the way the rail does', async () => {
+    const { getByText, queryByText } = await render(<DesktopTopBar activeSegment="cash-flow" />)
+
+    expect(getByText(i18n.t('nav.cashFlow'))).toBeTruthy()
+    expect(queryByText(i18n.t('tabs.cashFlow'))).toBeNull()
+  })
+
+  it('offers the horizon selector nowhere else', async () => {
+    const { queryByText } = await render(<DesktopTopBar activeSegment="dashboard" />)
+    expect(queryByText(i18n.t('cashFlow.forecast.horizon.days30'))).toBeNull()
   })
 })

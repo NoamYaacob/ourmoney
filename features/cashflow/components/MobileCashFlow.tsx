@@ -27,7 +27,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
-import { MobileForecastChart } from '@/features/cashflow/components/MobileForecastChart'
+import { ForecastChart } from '@/features/cashflow/components/ForecastChart'
 import type { CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 import { causeOfLowPoint } from '@/features/cashflow/lib/lowPointCause'
 import { formatILS } from '@/lib/money/format'
@@ -178,7 +178,7 @@ export function MobileCashFlow() {
             </View>
 
             <View className="mt-4">
-              <MobileForecastChart
+              <ForecastChart
                 dailyPoints={forecast.dailyPoints}
                 lowestBalanceDate={forecast.lowestBalanceDate}
                 chartSummary={`${t('cashFlow.mobile.today')}: ${formatILS(forecast.startingBalanceAgorot)}. ${t('cashFlow.mobile.lowPoint')}: ${formatILS(forecast.lowestBalanceAgorot)}, ${formatDateDisplay(forecast.lowestBalanceDate)}. ${t('cashFlow.mobile.atEnd')}: ${formatILS(forecast.endingBalanceAgorot)}.`}

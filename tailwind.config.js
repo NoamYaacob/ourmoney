@@ -51,6 +51,12 @@ module.exports = {
         hero: ['44px', { lineHeight: '50px' }],
         // A large figure on a light card (budget's "נותר להוציא").
         display: ['40px', { lineHeight: '46px' }],
+        // The design system's `figure` tier (§08, "ראש כרטיס"): the figure
+        // at the head of a card that is not the screen's one hero — the
+        // three cash-flow balances, a card's headline total. Distinct from
+        // `display`, which the budget summary uses for the single figure
+        // that IS that screen's answer.
+        figure: ['30px', { lineHeight: '36px' }],
         // Screen title in the header row. Was 22/28.
         title: ['21px', { lineHeight: '26px' }],
         // Card heading ("הדבר הבא", "תקציב אוגוסט"). Was 15/20, which left
