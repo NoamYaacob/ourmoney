@@ -37,6 +37,18 @@ function climbToPanel(textNode: any) {
   return current
 }
 
+// Desktop Claude Design pass: the sidebar's own cards (donut/trend/
+// uncategorized) use DESKTOP_CARD_CLASS (marker 'web:desktop:rounded-hero'),
+// not DESKTOP_PANEL_CLASS's 'web:desktop:min-h-[300px]' climbToPanel above
+// looks for — same climbing technique, different marker class.
+function climbToSidebarCard(textNode: any) {
+  let current = textNode
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:rounded-hero')) {
+    current = current.parent
+  }
+  return current
+}
+
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
 // test verifies — same rationale as other screen tests in this repo
@@ -151,6 +163,15 @@ jest.mock('@/features/budgets/hooks/useSaveBudgetAllocations', () => ({
 jest.mock('@/features/transactions/hooks/useUpdateTransaction', () => ({
   useUpdateTransaction: () => ({ mutate: jest.fn(), isPending: false }),
 }))
+// Desktop Claude Design pass: the sidebar's donut/trend cards read from the
+// same useTransactions hook Transactions/CashFlow already mock elsewhere —
+// empty by default so every existing test below (none of which cares about
+// the analytics sidebar) renders it as a no-op (both cards gate on having
+// real spend, per DesktopCardClass' own conditionals).
+let mockAnalyticsTransactions: { category_id: string | null; amount_agorot: number; txn_date: string; is_shared: boolean; is_excluded: boolean; transfer_id: string | null }[] = []
+jest.mock('@/features/transactions/hooks/useTransactions', () => ({
+  useTransactions: () => ({ transactions: mockAnalyticsTransactions, isLoading: false, error: null }),
+}))
 
 // Fix 2's hook mock is mutable per-test so both the "genuine empty queue"
 // and "fetch failed" cases can be exercised from the same mocked module.
@@ -170,6 +191,7 @@ describe('Budgets', () => {
     mockUncategorized = []
     mockUncategorizedError = null
     mockCategoriesLoading = false
+    mockAnalyticsTransactions = []
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
@@ -449,7 +471,7 @@ describe('Budgets', () => {
   // reversed and unreversed forms — so it silently kept passing through a
   // real regression where the grid reverted to plain `flex-row`. Rewritten
   // to exact whitespace-token membership.
-  it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
+  it('groups category budgets and the sidebar into the same flex-row-reverse desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
@@ -458,19 +480,23 @@ describe('Budgets', () => {
     expect(tokens).toContain('web:desktop:flex-row-reverse')
     expect(tokens).not.toContain('web:desktop:flex-row')
 
-    const uncategorizedPanel = climbToPanel(getByText('תנועות ללא קטגוריה'))
-    expect(uncategorizedPanel?.parent?.parent).toBe(gridWrapper)
+    // Desktop Claude Design pass: the uncategorized queue moved from an
+    // equal-width column into a 300px sidebar card (climbToSidebarCard,
+    // marker 'web:desktop:rounded-hero' — DESKTOP_CARD_CLASS's own radius,
+    // distinct from DESKTOP_PANEL_CLASS's 'web:desktop:min-h-[300px]' the
+    // category column still uses) — still a child of the same grid row.
+    const uncategorizedCard = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))
+    expect(uncategorizedCard?.parent?.parent).toBe(gridWrapper)
   })
 
-  // Desktop polish pass: with the category-budgets side often fuller than
-  // the uncategorized-queue side, an unbounded "nearly empty" secondary
-  // column read as lopsided — both columns now get the same bordered panel
-  // treatment so the uncategorized side looks intentional even when empty.
-  it('gives both the category-budgets and uncategorized columns their own bounded desktop panel', async () => {
+  // Desktop polish pass: the uncategorized queue gets its own bordered
+  // sidebar card (DESKTOP_CARD_CLASS), same as the category column's own
+  // bounded panel beside it.
+  it('gives both the category-budgets column and the uncategorized sidebar card their own bordered desktop treatment', async () => {
     const { getByText } = await render(<Budgets />)
 
     expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:border')
-    expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:border')
   })
 
   // Debugging pass (real-browser regression): see dashboard/index.test.tsx's
@@ -489,16 +515,27 @@ describe('Budgets', () => {
     expect(className).not.toContain('web:desktop:bg-surface-dark')
   })
 
-  // Desktop polish pass: with `items-start` siblings that size to their own
-  // content, a short category list next to a longer uncategorized queue
-  // (or vice versa) read as an awkward sliver instead of a deliberate
-  // region — both panels now share a desktop floor height so neither ever
-  // collapses to near-nothing next to a fuller sibling.
-  it('gives both desktop panels a shared minimum height so neither collapses next to a fuller sibling', async () => {
+  // Desktop polish pass (still applies to the primary column): the category
+  // list keeps its own desktop floor height so it never collapses to a
+  // sliver. The sidebar no longer needs the same floor — it's several
+  // independently-sized cards (donut/trend/uncategorized) stacked in a
+  // column, not a single region competing for height against the category
+  // list the way the old equal-width uncategorized column did.
+  it('gives the category-budgets column a minimum desktop height', async () => {
     const { getByText } = await render(<Budgets />)
 
     expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
-    expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
+  })
+
+  // Desktop Claude Design pass: the mockup's own right column — donut +
+  // 6-month trend + the (now-compact) uncategorized queue, in a fixed-width
+  // sidebar instead of the pre-redesign equal-width column.
+  it('shows the uncategorized queue in a 300px sidebar alongside the category-budgets column', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    const sidebar = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.parent
+    const tokens = ((sidebar?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:w-[300px]')
   })
 })
 
@@ -508,6 +545,7 @@ describe('Budgets — copy previous month budget', () => {
     mockUncategorized = []
     mockUncategorizedError = null
     mockCategoriesLoading = false
+    mockAnalyticsTransactions = []
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
@@ -743,5 +781,101 @@ describe('Budgets — copy previous month budget', () => {
     await fireEvent.press(getByText(i18n.t('common.cancel')))
 
     expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
+  })
+})
+
+// Desktop Claude Design pass: the sidebar's donut ("לאן הלך הכסף") and
+// 6-month trend ("מגמה · 6 חודשים") cards, moved here from the pre-redesign
+// Dashboard (its own rebuild dropped this analytics window since the
+// approved Home mockup never showed it — see DesktopDashboard.tsx's header
+// comment).
+describe('Budgets — sidebar analytics', () => {
+  beforeEach(() => {
+    usePeriodStore.setState({ selectedPeriodStart: TARGET_PERIOD_START })
+    mockUncategorized = []
+    mockUncategorizedError = null
+    mockCategoriesLoading = false
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+  })
+
+  it('shows neither the donut nor the trend card when the household has no spend in the 6-month window', async () => {
+    mockAnalyticsTransactions = []
+
+    const { queryByText } = await render(<Budgets />)
+
+    expect(queryByText(i18n.t('budgets.analytics.breakdownTitle'))).toBeNull()
+    expect(queryByText(i18n.t('budgets.analytics.trendTitle'))).toBeNull()
+  })
+
+  it('shows the donut card with a category legend once the month has real spend', async () => {
+    mockAnalyticsTransactions = [
+      {
+        category_id: 'cat-1',
+        amount_agorot: -30000,
+        txn_date: `${TARGET_PERIOD_START}-05`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: null,
+      },
+      {
+        category_id: 'cat-2',
+        amount_agorot: -10000,
+        txn_date: `${TARGET_PERIOD_START}-06`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: null,
+      },
+    ]
+
+    const { getByText, getAllByText } = await render(<Budgets />)
+
+    expect(getByText(i18n.t('budgets.analytics.breakdownTitle'))).toBeTruthy()
+    // "מזון"/"תחבורה" also appear as the category-budgets column's own row
+    // names — at least one match each is the donut legend's own row.
+    expect(getAllByText('מזון').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('75%')).toBeTruthy()
+    expect(getAllByText('תחבורה').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('25%')).toBeTruthy()
+  })
+
+  it('shows the trend card once any of the 6 months has real income or expense', async () => {
+    mockAnalyticsTransactions = [
+      {
+        category_id: 'cat-1',
+        amount_agorot: -30000,
+        txn_date: `${TARGET_PERIOD_START}-05`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: null,
+      },
+    ]
+
+    const { getByText, getByTestId } = await render(<Budgets />)
+
+    expect(getByText(i18n.t('budgets.analytics.trendTitle'))).toBeTruthy()
+    expect(getByTestId('monthly-trend-chart-svg', { includeHiddenElements: true })).toBeTruthy()
+  })
+
+  it("excludes a transfer leg's amount from both the donut and the trend", async () => {
+    mockAnalyticsTransactions = [
+      {
+        category_id: null,
+        amount_agorot: -50000,
+        txn_date: `${TARGET_PERIOD_START}-05`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: 'transfer-1',
+      },
+    ]
+
+    const { queryByText } = await render(<Budgets />)
+
+    // A transfer leg is never categorized in this fixture and is excluded
+    // from analytics entirely (filterForAnalytics) — neither card has
+    // anything to show.
+    expect(queryByText(i18n.t('budgets.analytics.breakdownTitle'))).toBeNull()
+    expect(queryByText(i18n.t('budgets.analytics.trendTitle'))).toBeNull()
   })
 })
