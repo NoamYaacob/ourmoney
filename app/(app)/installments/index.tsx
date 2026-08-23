@@ -146,10 +146,10 @@ export default function Installments() {
                       <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                         <CategoryIcon icon={category?.icon} size="sm" />
                         <View className="flex-1">
-                          <Text className="text-base font-semibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                          <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
                             {plan.description}
                           </Text>
-                          <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                             {t('installments.installmentProgress', { materialized, total: plan.installment_count })}
                           </Text>
                         </View>
@@ -157,11 +157,11 @@ export default function Installments() {
                       <View className="items-end">
                         <Text
                           accessibilityLabel={`${t('installments.remainingAmount')} ${formatILS(remainingAgorot)}`}
-                          className="text-sm font-semibold text-ink-light dark:text-ink-dark"
+                          className="text-body font-sansSemibold text-ink-light dark:text-ink-dark"
                         >
                           {formatILS(remainingAgorot)}
                         </Text>
-                        <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                        <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                           {t('installments.monthlyAmount')}: {formatILS(plan.monthly_agorot)}
                         </Text>
                       </View>

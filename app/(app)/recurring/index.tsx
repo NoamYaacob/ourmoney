@@ -26,6 +26,8 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatusChip } from '@/components/ui/StatusChip'
+import { SectionLabel } from '@/components/ui/SectionLabel'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { RecurringFrequency } from '@/types/app'
 
@@ -114,9 +116,7 @@ export default function Recurring() {
 
       {priceIncreaseDetections.length > 0 && (
         <View className={`mb-4 ${INLINE_FORM_WIDTH_CLASS}`}>
-          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
-            {t('recurring.priceIncrease.sectionTitle')}
-          </Text>
+          <SectionLabel className="mb-2">{t('recurring.priceIncrease.sectionTitle')}</SectionLabel>
           <Card>
             {priceIncreaseDetections.map((d, index) => (
               <View key={d.identityKey}>
@@ -134,17 +134,15 @@ export default function Recurring() {
                   accessibilityRole="button"
                 >
                   <View className="flex-row items-center justify-between">
-                    <Text className="text-base text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                       {d.description}
                     </Text>
-                    <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
-                      {t('recurring.priceIncrease.badge')}
-                    </Text>
+                    <StatusChip label={t('recurring.priceIncrease.badge')} tone="danger" />
                   </View>
-                  <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {formatILS(d.previousAmountAgorot)} → {formatILS(d.currentAmountAgorot)}
                   </Text>
-                  <Text className="mt-0.5 text-xs text-danger-light dark:text-danger-dark">
+                  <Text className="mt-0.5 text-caption text-danger-light dark:text-danger-dark">
                     {t('recurring.priceIncrease.increaseLine', {
                       amount: formatILS(d.increaseAgorot),
                       percent: d.increasePercent,
@@ -193,20 +191,20 @@ export default function Recurring() {
                     : undefined
                 }
               >
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">
+                <View className="flex-row items-center justify-between gap-2">
+                  <Text className="flex-1 text-body font-sansSemibold text-ink-light dark:text-ink-dark">
                     {item.description}
                   </Text>
-                  <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="text-body text-inkMuted-light dark:text-inkMuted-dark">
                     {formatILS(item.amount_agorot)}
                   </Text>
                 </View>
-                <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                  {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {formatDateDisplay(item.next_due_date)}
-                  {!item.is_active && (
-                    <Text className="font-semibold text-ink-light dark:text-ink-dark"> · {t('recurring.inactive')}</Text>
-                  )}
-                </Text>
+                <View className="mt-1 flex-row items-center gap-1.5">
+                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                    {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {formatDateDisplay(item.next_due_date)}
+                  </Text>
+                  {!item.is_active && <StatusChip label={t('recurring.inactive')} />}
+                </View>
               </Card>
             </Pressable>
           ))}

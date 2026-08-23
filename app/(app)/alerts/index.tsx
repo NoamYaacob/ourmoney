@@ -22,6 +22,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { SectionLabel } from '@/components/ui/SectionLabel'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { FinancialAlert, FinancialAlertSeverity } from '@/types/app'
 
@@ -90,9 +91,7 @@ export default function Alerts() {
             if (groupAlerts.length === 0) return null
             return (
               <View key={group.severity} className="mb-6">
-                <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
-                  {t(group.labelKey)}
-                </Text>
+                <SectionLabel className="mb-2">{t(group.labelKey)}</SectionLabel>
                 <Card>
                   {groupAlerts.map((alert: FinancialAlert, index) => (
                     <View key={alert.id}>

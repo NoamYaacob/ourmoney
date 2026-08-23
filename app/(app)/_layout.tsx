@@ -11,6 +11,7 @@ import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
 import { useGenerateInstallmentTransactions } from '@/features/installments/hooks/useGenerateInstallmentTransactions'
+import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { colors } from '@/constants/colors'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 
@@ -230,6 +231,50 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   )
 }
 
+// "עוד" hides four destinations that can each carry something urgent, so
+// the tab needs to say when one of them does — otherwise moving alerts off
+// the bottom bar would have buried them.
+//
+// A dot, not a count. The number of alerts is not information a household
+// can act on from the tab bar (is 3 worse than 2?), and a numeric badge on
+// a permanent tab reads as a notification inbox, which the alerts section
+// deliberately is not. The dot appears only for `critical` — the tier the
+// engine reserves for "requires attention now" — so a routine info insight
+// never lights up the navigation.
+function MoreTabIcon({
+  color,
+  size,
+  focused,
+  householdId,
+}: {
+  color: ColorValue
+  size: number
+  focused: boolean
+  householdId: string | null | undefined
+}) {
+  const { t } = useTranslation()
+  const { alerts } = useFinancialAlerts(householdId)
+  const criticalCount = alerts.filter((alert) => alert.severity === 'critical').length
+  const { colorScheme: scheme } = useColorScheme()
+
+  return (
+    <View>
+      <Ionicons name={focused ? 'grid' : 'grid-outline'} color={color} size={size} />
+      {criticalCount > 0 && (
+        <View
+          // `end`, not `right` — the dot sits on the icon's trailing corner,
+          // which mirrors with the rest of the RTL layout.
+          style={[
+            styles.moreBadge,
+            { backgroundColor: scheme === 'dark' ? colors.danger.dark : colors.danger.light },
+          ]}
+          accessibilityLabel={t('alerts.badgeCritical', { count: criticalCount })}
+        />
+      )}
+    </View>
+  )
+}
+
 function TabBarLabel({ title, focused, color }: { title: string; focused: boolean; color: ColorValue }) {
   return (
     <Text
@@ -253,7 +298,11 @@ export default function AppLayout() {
   const { colorScheme: scheme } = useColorScheme()
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
-  const backgroundColor = scheme === 'dark' ? colors.surface.dark : colors.surface.light
+  // Mobile redesign: the bar is a white card edge sitting on the paper, not
+  // more paper — `surfaceMuted`, matching every other raised surface in the
+  // product. On `surface` it had no edge of its own and the content
+  // scrolled into it.
+  const backgroundColor = scheme === 'dark' ? colors.surfaceMuted.dark : colors.surfaceMuted.light
   const borderColor = scheme === 'dark' ? colors.border.dark : colors.border.light
   const { width: windowWidth } = useWindowDimensions()
   const isWeb = Platform.OS === 'web'
@@ -316,22 +365,50 @@ export default function AppLayout() {
                 name="budgets/index"
                 options={{
                   title: t('tabs.budgets'),
+                  // Mobile redesign: wallet -> pie-chart. `wallet` had come
+                  // to mean two different things in one product (this tab,
+                  // and "money available" everywhere else); this tab is
+                  // about how the month divides up, which is what the design
+                  // file's own icon says.
                   tabBarIcon: ({ color, size, focused }) => (
-                    <Ionicons name={focused ? 'wallet' : 'wallet-outline'} color={color} size={size} />
+                    <Ionicons name={focused ? 'pie-chart' : 'pie-chart-outline'} color={color} size={size} />
                   ),
                   tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.budgets')} focused={focused} color={color} />,
                 }}
               />
+              {/* Mobile redesign: תזרים was reachable only from the desktop
+                  rail. It answers the question people open the app for
+                  mid-month ("will the money last?"), so it earns a tab
+                  rather than a row inside "עוד" — the one place this IA
+                  deliberately departs from the brief's suggested five. */}
               <Tabs.Screen
-                name="settings/index"
+                name="cash-flow/index"
                 options={{
-                  title: t('tabs.settings'),
+                  title: t('tabs.cashFlow'),
                   tabBarIcon: ({ color, size, focused }) => (
-                    <Ionicons name={focused ? 'settings' : 'settings-outline'} color={color} size={size} />
+                    <Ionicons name={focused ? 'trending-up' : 'trending-up-outline'} color={color} size={size} />
                   ),
-                  tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.settings')} focused={focused} color={color} />,
+                  tabBarLabel: ({ focused, color }) => (
+                    <TabBarLabel title={t('tabs.cashFlow')} focused={focused} color={color} />
+                  ),
                 }}
               />
+              {/* Settings moved behind "עוד" with the other secondary
+                  destinations. A household opens this app to look at money,
+                  not to change preferences; a fifth of the bottom bar was
+                  the old IA's least defensible line. */}
+              <Tabs.Screen
+                name="more/index"
+                options={{
+                  title: t('tabs.more'),
+                  tabBarIcon: ({ color, size, focused }) => (
+                    <MoreTabIcon color={color} size={size} focused={focused} householdId={householdId} />
+                  ),
+                  tabBarLabel: ({ focused, color }) => <TabBarLabel title={t('tabs.more')} focused={focused} color={color} />,
+                }}
+              />
+              <Tabs.Screen name="settings/index" options={{ href: null }} />
+              <Tabs.Screen name="safe-to-spend/index" options={{ href: null }} />
               <Tabs.Screen name="transactions/new" options={{ href: null }} />
               <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
               <Tabs.Screen name="transfers/[id]" options={{ href: null }} />
@@ -342,13 +419,13 @@ export default function AppLayout() {
               <Tabs.Screen name="goals/[id]" options={{ href: null }} />
               <Tabs.Screen name="recurring/index" options={{ href: null }} />
               <Tabs.Screen name="recurring/[id]" options={{ href: null }} />
-              <Tabs.Screen name="cash-flow/index" options={{ href: null }} />
               <Tabs.Screen name="alerts/index" options={{ href: null }} />
               <Tabs.Screen name="settings/categories" options={{ href: null }} />
               <Tabs.Screen name="obligations/index" options={{ href: null }} />
               <Tabs.Screen name="obligations/[id]" options={{ href: null }} />
               <Tabs.Screen name="installments/index" options={{ href: null }} />
               <Tabs.Screen name="installments/[id]" options={{ href: null }} />
+              <Tabs.Screen name="connections/index" options={{ href: null }} />
             </Tabs>
           </View>
         </View>
@@ -376,5 +453,13 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  moreBadge: {
+    position: 'absolute',
+    top: -1,
+    end: -3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 })

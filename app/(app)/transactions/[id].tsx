@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
@@ -11,16 +14,24 @@ import { useTransaction } from '@/features/transactions/hooks/useTransaction'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 import { useExcludeTransaction } from '@/features/transactions/hooks/useExcludeTransaction'
 import { useDeleteTransaction } from '@/features/transactions/hooks/useDeleteTransaction'
-import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { agorotFromILS } from '@/lib/money/format'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
+import { accountIconName } from '@/features/accounts/lib/accountIcon'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
+import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { AmountField } from '@/features/transactions/components/AmountField'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { Chip } from '@/components/ui/Chip'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { Card } from '@/components/ui/Card'
+import { Divider } from '@/components/ui/Divider'
 import { Button } from '@/components/ui/Button'
+import { StatusChip } from '@/components/ui/StatusChip'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 export default function TransactionDetail() {
   const { t } = useTranslation()
@@ -38,6 +49,8 @@ export default function TransactionDetail() {
   const updateTransaction = useUpdateTransaction(householdId)
   const excludeTransaction = useExcludeTransaction(householdId)
   const deleteTransaction = useDeleteTransaction(householdId)
+  const { colorScheme: scheme } = useColorScheme()
+  const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
   const [amountText, setAmountText] = useState('')
   const [isIncome, setIsIncome] = useState(false)
@@ -150,112 +163,172 @@ export default function TransactionDetail() {
     : undefined
   const matchedRuleCategory = matchedRule ? categories.find((c) => c.id === matchedRule.category_id) : undefined
 
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
-  const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
+  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
+  const selectedAccount = accounts.find((a) => a.id === accountId)
+  const selectedCategory = categories.find((c) => c.id === categoryId)
 
   return (
+    // Screen 04 of the mobile design — the same field language new.tsx
+    // (screen 05) already carries: AmountField as the hero entry, a
+    // SegmentedControl for the one-of-two choices instead of a Chip pair,
+    // and Select's 'row' variant with an icon for account/category. No
+    // hook, mutation payload, or validation rule below changed from before
+    // this pass — only how the fields are presented.
     <Screen keyboardAvoiding width="form">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
         {t('transactions.detail.title')}
       </Text>
 
-      <View className="mb-4 flex-row gap-2">
-        <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
-        <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
-      </View>
+      <View className={DESKTOP_PANEL_CLASS}>
+        <View className="mb-5">
+          <SegmentedControl
+            accessibilityLabel={t('transactions.detail.title')}
+            options={[
+              { value: 'expense', label: t('transactions.form.expense'), tint: 'ink' },
+              { value: 'income', label: t('transactions.form.income'), tint: 'positive' },
+            ]}
+            value={isIncome ? 'income' : 'expense'}
+            onChange={(v) => setIsIncome(v === 'income')}
+          />
+        </View>
 
-      <Input label={t('transactions.form.amountLabel')} value={amountText} onChangeText={setAmountText} keyboardType="decimal-pad" />
-      <Input label={t('transactions.form.descriptionLabel')} value={description} onChangeText={setDescription} />
-      <Input
-        label={t('transactions.form.merchantLabel')}
-        value={merchantName}
-        onChangeText={setMerchantName}
-        placeholder={t('transactions.form.merchantPlaceholder')}
-      />
-      <Select
-        label={t('transactions.form.accountLabel')}
-        options={accountOptions}
-        value={accountId}
-        onChange={setAccountId}
-        placeholder={t('transactions.form.accountPlaceholder')}
-      />
-      <Select
-        label={t('transactions.form.categoryLabel')}
-        options={categoryOptions}
-        value={categoryId}
-        onChange={setCategoryId}
-        placeholder={t('transactions.form.categoryPlaceholder')}
-      />
+        <AmountField
+          label={t('transactions.form.amountLabel')}
+          value={amountText}
+          onChangeText={setAmountText}
+          placeholder={t('transactions.form.amountPlaceholder')}
+        />
 
-      {matchedRule && (
-        <View className="mb-4 rounded-card border border-border-light bg-surfaceMuted-light p-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Text className="text-caption font-medium text-inkMuted-light dark:text-inkMuted-dark">
-            {t('transactions.detail.categorizedByRule')}
-          </Text>
-          <View className="mt-1 flex-row flex-wrap items-baseline gap-1.5">
-            <Text className="text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-              {t('categories.rules.ifLabel')}
-            </Text>
-            <Text className="text-body text-ink-light dark:text-ink-dark">
-              {t(`categories.rules.field.${matchedRule.field}`)} {t(`categories.rules.operator.${matchedRule.operator}`)} &quot;
-              {matchedRule.value}&quot;
-              {matchedRuleCategory ? ` → ${matchedRuleCategory.icon} ${matchedRuleCategory.name_he}` : ''}
-            </Text>
+        <View className="web:desktop:flex-row web:desktop:gap-4">
+          <View className="web:desktop:flex-1">
+            <Input label={t('transactions.form.descriptionLabel')} value={description} onChangeText={setDescription} />
           </View>
-          <View className="mt-2">
-            <Button
-              title={t('transactions.detail.editRule')}
-              variant="ghost"
-              onPress={() => router.push({ pathname: '/settings/categories', params: { editRuleId: matchedRule.id } })}
+          <View className="web:desktop:flex-1">
+            <Input
+              label={t('transactions.form.merchantLabel')}
+              value={merchantName}
+              onChangeText={setMerchantName}
+              placeholder={t('transactions.form.merchantPlaceholder')}
             />
           </View>
         </View>
-      )}
 
-      <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-        {t('transactions.form.sharedLabel')}
-      </Text>
-      <View className="mb-4 flex-row gap-2">
-        <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
-        <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
-      </View>
+        <View className="mb-4 mt-2">
+          <Card>
+            <View className="web:desktop:flex-row web:desktop:items-center">
+              <View className="web:desktop:flex-1">
+                <Select
+                  variant="row"
+                  label={t('transactions.form.accountLabel')}
+                  options={accountOptions}
+                  value={accountId}
+                  onChange={setAccountId}
+                  placeholder={t('transactions.form.accountPlaceholder')}
+                  sheetTitle={t('transactions.form.accountLabel')}
+                  leadingIcon={
+                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                      <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                    </View>
+                  }
+                />
+              </View>
+              <View className="web:desktop:hidden">
+                <Divider />
+              </View>
+              <View className="hidden web:desktop:mx-4 web:desktop:flex web:desktop:h-9 web:desktop:w-px web:desktop:self-center web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+              <View className="web:desktop:flex-1">
+                <Select
+                  variant="row"
+                  label={t('transactions.form.categoryLabel')}
+                  options={categoryOptions}
+                  value={categoryId}
+                  onChange={setCategoryId}
+                  placeholder={t('transactions.form.categoryPlaceholder')}
+                  sheetTitle={t('transactions.form.categorySheetTitle')}
+                  leadingIcon={<CategoryIcon icon={selectedCategory?.icon} size="sm" />}
+                />
+              </View>
+            </View>
+          </Card>
+        </View>
 
-      {(validationError || updateTransaction.isError) && (
-        <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
-      )}
+        {matchedRule && (
+          <Card className="mb-4">
+            <View className="mb-1.5 flex-row items-center justify-between">
+              <Text className="text-caption font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark">
+                {t('transactions.detail.categorizedByRule')}
+              </Text>
+              <StatusChip label={t('categories.rules.ruleBadge')} tone="accent" />
+            </View>
+            <View className="flex-row flex-wrap items-baseline gap-1.5">
+              <Text className="text-caption font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark">
+                {t('categories.rules.ifLabel')}
+              </Text>
+              <Text className="text-body text-ink-light dark:text-ink-dark">
+                {t(`categories.rules.field.${matchedRule.field}`)} {t(`categories.rules.operator.${matchedRule.operator}`)} &quot;
+                {matchedRule.value}&quot;
+                {matchedRuleCategory ? ` → ${matchedRuleCategory.icon} ${matchedRuleCategory.name_he}` : ''}
+              </Text>
+            </View>
+            <View className="mt-2">
+              <Button
+                title={t('transactions.detail.editRule')}
+                variant="ghost"
+                onPress={() => router.push({ pathname: '/settings/categories', params: { editRuleId: matchedRule.id } })}
+              />
+            </View>
+          </Card>
+        )}
 
-      <View className="mt-2">
-        <Button title={t('transactions.detail.save')} onPress={handleSave} loading={updateTransaction.isPending} />
-      </View>
-
-      <View className="mt-3">
-        <Button
-          title={
-            transaction.is_excluded ? t('transactions.detail.include') : t('transactions.detail.exclude')
-          }
-          variant="secondary"
-          loading={excludeTransaction.isPending}
-          onPress={() =>
-            excludeTransaction.mutate({ id: transaction.id, isExcluded: !transaction.is_excluded })
-          }
-        />
-      </View>
-
-      {canDelete && (
-        <View className="mt-3">
-          <Button
-            title={t('transactions.detail.delete')}
-            variant="ghost"
-            onPress={() => setConfirmDeleteVisible(true)}
+        <Text className="mb-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+          {t('transactions.form.sharedLabel')}
+        </Text>
+        <View className="mb-4">
+          <SegmentedControl
+            accessibilityLabel={t('transactions.form.sharedLabel')}
+            options={[
+              { value: 'shared', label: t('transactions.form.shared') },
+              { value: 'personal', label: t('transactions.form.personal') },
+            ]}
+            value={isShared ? 'shared' : 'personal'}
+            onChange={(v) => setIsShared(v === 'shared')}
           />
         </View>
-      )}
 
-      {deleteTransaction.isError && <ErrorMessage message={t('transactions.detail.deleteError')} />}
+        {(validationError || updateTransaction.isError) && (
+          <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
+        )}
 
-      <Text className="mt-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-        {formatILS(transaction.amount_agorot)}
-      </Text>
+        <View className="mt-2">
+          <Button title={t('transactions.detail.save')} onPress={handleSave} loading={updateTransaction.isPending} />
+        </View>
+
+        <View className="mt-3">
+          <Button
+            title={
+              transaction.is_excluded ? t('transactions.detail.include') : t('transactions.detail.exclude')
+            }
+            variant="secondary"
+            loading={excludeTransaction.isPending}
+            onPress={() =>
+              excludeTransaction.mutate({ id: transaction.id, isExcluded: !transaction.is_excluded })
+            }
+          />
+        </View>
+
+        {canDelete && (
+          <View className="mt-3">
+            <Button
+              title={t('transactions.detail.delete')}
+              variant="ghost"
+              onPress={() => setConfirmDeleteVisible(true)}
+            />
+          </View>
+        )}
+
+        {deleteTransaction.isError && <ErrorMessage message={t('transactions.detail.deleteError')} />}
+      </View>
 
       {canDelete && (
         <Modal

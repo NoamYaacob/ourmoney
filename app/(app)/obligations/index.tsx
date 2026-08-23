@@ -35,6 +35,7 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatusChip } from '@/components/ui/StatusChip'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Obligations() {
@@ -165,27 +166,28 @@ export default function Obligations() {
                       <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                         <CategoryIcon icon={category?.icon} size="sm" />
                         <View className="flex-1">
-                          <Text className="text-base font-semibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                            {obligation.name}
-                          </Text>
-                          <Text
-                            className={`text-xs ${
-                              pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
-                            }`}
-                          >
+                          <View className="flex-row flex-wrap items-center gap-1.5">
+                            <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                              {obligation.name}
+                            </Text>
+                            {pastDue && <StatusChip label={t('obligations.pastDue')} tone="danger" />}
+                          </View>
+                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                             {formatDateDisplay(obligation.due_date)}
-                            {' · '}
-                            {pastDue
-                              ? t('obligations.pastDue')
-                              : daysUntilDue(obligation.due_date, today) === 0
-                                ? t('obligations.dueToday')
-                                : t('obligations.inDays', { count: daysUntilDue(obligation.due_date, today) })}
+                            {!pastDue && (
+                              <>
+                                {' · '}
+                                {daysUntilDue(obligation.due_date, today) === 0
+                                  ? t('obligations.dueToday')
+                                  : t('obligations.inDays', { count: daysUntilDue(obligation.due_date, today) })}
+                              </>
+                            )}
                             {' · '}
                             {obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
                           </Text>
                         </View>
                       </View>
-                      <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
                         {formatILS(obligation.amount_agorot)}
                       </Text>
                     </View>
@@ -229,19 +231,19 @@ export default function Obligations() {
                               <CategoryIcon icon={category?.icon} size="sm" />
                               <View className="flex-1">
                                 <Text
-                                  className="text-base font-semibold text-ink-light dark:text-ink-dark"
+                                  className="text-body font-sansSemibold text-ink-light dark:text-ink-dark"
                                   numberOfLines={1}
                                 >
                                   {obligation.name}
                                 </Text>
-                                <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                                   {formatDateDisplay(obligation.due_date)}
                                   {' · '}
                                   {t(`obligations.status.${obligation.status}`)}
                                 </Text>
                               </View>
                             </View>
-                            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+                            <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
                               {formatILS(obligation.amount_agorot)}
                             </Text>
                           </View>

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CONTENT_WIDTH, type ContentWidth } from '@/constants/layout'
+import { OfflineBanner } from './OfflineBanner'
 
 interface ScreenProps {
   children: ReactNode
@@ -64,6 +65,7 @@ export function Screen({
 
   return (
     <SafeAreaView className="flex-1 bg-surface-light dark:bg-surface-dark" edges={['top', 'bottom']}>
+      <OfflineBanner />
       {wrapped}
       {floatingAction && (
         <View

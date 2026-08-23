@@ -24,10 +24,11 @@ import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
 import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
 import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
-import { calculateBudgetPace } from '@/lib/engines/budgets/calculateBudgetPace'
+import { budgetState } from '@/features/budgets/lib/budgetState'
+import { BudgetSummaryCard } from '@/features/budgets/components/BudgetSummaryCard'
+import { BudgetCategoryRow } from '@/features/budgets/components/BudgetCategoryRow'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
-import { spentPercent } from '@/lib/money/arithmetic'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
@@ -38,7 +39,6 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -265,18 +265,22 @@ export default function Budgets() {
     )
   }
 
-  const overallPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot)
-  const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
   const addableCategories = categories.filter((c) => !progress.some((p) => p.categoryId === c.id))
-  // Deliberately null (not just "unused") for any period other than the
-  // one containing today — calculateBudgetPace.ts's own header explains
-  // why a past/future month has nothing meaningful to project.
-  const pace = calculateBudgetPace({
+  const periodEnd = getPeriodEnd(periodStart)
+  const today = localDateString()
+  // Mobile redesign: the month's state and each category's state now come
+  // from one classifier (features/budgets/lib/budgetState.ts), which the
+  // Home block uses too — the three surfaces used to derive it separately,
+  // so a household could be told "בקצב" on Home and "מתקרב לגבול" here
+  // about the same month. Its projection is still calculateBudgetPace's;
+  // budgetState only classifies what that engine returns, and reports no
+  // projection at all for a month too young (or too old) to extrapolate.
+  const monthState = budgetState({
     allocatedAgorot: totalAllocatedAgorot,
     spentAgorot: totalSpentAgorot,
     periodStart,
-    periodEnd: getPeriodEnd(periodStart),
-    today: localDateString(),
+    periodEnd,
+    today,
   })
 
   return (
@@ -293,75 +297,12 @@ export default function Budgets() {
         <SkeletonList rows={4} />
       ) : (
         <>
-          {/* Overview — same visual language as Dashboard's hero (Card +
-              hero figure + progress + two-stat row), but the hero figure
-              here is the planned budget itself, not "remaining": this
-              screen's job is reviewing/setting the plan, not just
-              monitoring it, so the two screens read as related, not
-              identical. */}
-          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-              {t('budgets.totalAllocated')}
-            </Text>
-            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[52px] web:desktop:leading-[58px]">
-              {formatILS(totalAllocatedAgorot)}
-            </Text>
-
-            {overallPercent !== null && (
-              <>
-                <View className="mt-4 web:desktop:mt-6">
-                  <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
-                </View>
-                <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('dashboard.percentUsed', { percent: overallPercent })}
-                </Text>
-              </>
-            )}
-
-            <View className="mt-4 web:desktop:mt-6 flex-row items-center">
-              <View className="flex-1">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-                <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
-                  {formatILS(totalSpentAgorot)}
-                </Text>
-              </View>
-              <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
-              <View className="flex-1">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.remaining')}</Text>
-                <Text
-                  className={`mt-0.5 text-heading font-semibold web:desktop:text-[19px] ${
-                    isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
-                  }`}
-                >
-                  {formatILS(totalAllocatedAgorot - totalSpentAgorot)}
-                </Text>
-              </View>
-            </View>
-
-            {/* End-of-month spending pace — deterministic linear
-                extrapolation (lib/engines/budgets/calculateBudgetPace.ts),
-                hidden entirely (not shown as a guess) whenever there isn't
-                yet enough of the month's data to extrapolate from. */}
-            {pace && (
-              <View className="mt-4 web:desktop:mt-6 border-t border-border-light pt-4 dark:border-border-dark">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('budgets.pace.label')}
-                </Text>
-                <Text
-                  className={`mt-0.5 text-heading font-semibold web:desktop:text-[19px] ${
-                    pace.isProjectedOverspend ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
-                  }`}
-                >
-                  {formatILS(pace.projectedEndOfMonthAgorot)}
-                </Text>
-                <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {pace.isProjectedOverspend
-                    ? t('budgets.pace.overBy', { amount: formatILS(pace.projectedOverspendAgorot) })
-                    : t('budgets.pace.onTrack')}
-                </Text>
-              </View>
-            )}
-          </Card>
+          <BudgetSummaryCard
+            totalAllocatedAgorot={totalAllocatedAgorot}
+            totalSpentAgorot={totalSpentAgorot}
+            state={monthState}
+            testID="budget-summary"
+          />
 
           {/* Desktop polish pass: each column below now renders as its own
               bordered panel (see below), which already reads as clearly
@@ -486,50 +427,28 @@ export default function Budgets() {
               </View>
             </>
           ) : (
-            <Card>
-              {progress.map((category, index) => {
-                const categoryOverBudget = category.remainingAgorot < 0
+            <View className="gap-2.5">
+              {progress.map((category) => {
+                const categoryState = budgetState({
+                  allocatedAgorot: category.allocatedAgorot,
+                  spentAgorot: category.spentAgorot,
+                  periodStart,
+                  periodEnd,
+                  today,
+                })
                 return (
                   <View key={category.categoryId}>
-                    {index > 0 && (
-                      <View className="my-3">
-                        <Divider />
-                      </View>
-                    )}
-                    <Pressable
+                    <BudgetCategoryRow
+                      category={category}
+                      state={categoryState}
+                      testID={`budget-category-${category.categoryId}`}
                       onPress={() => {
                         setEditingCategoryId(category.categoryId)
                         setEditingAmount(String(category.allocatedAgorot / 100))
                       }}
-                      accessibilityRole="button"
-                      className="flex-row items-start gap-3"
-                    >
-                      <CategoryIcon icon={category.categoryIcon} size="sm" />
-                      <View className="flex-1">
-                        <View className="flex-row items-center justify-between">
-                          <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                          </Text>
-                        </View>
-                        <View className="mt-1.5">
-                          <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
-                        </View>
-                        <Text
-                          className={`mt-1 text-caption ${
-                            categoryOverBudget
-                              ? 'text-danger-light dark:text-danger-dark'
-                              : 'text-positive-light dark:text-positive-dark'
-                          }`}
-                        >
-                          {categoryOverBudget
-                            ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
-                            : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
-                        </Text>
-                      </View>
-                    </Pressable>
+                    />
                     {editingCategoryId === category.categoryId && (
-                      <View className="mt-3 ps-11">
+                      <View className="mt-2 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
                         <Input
                           label={t('budgets.allocationLabel')}
                           value={editingAmount}
@@ -580,7 +499,7 @@ export default function Budgets() {
                   </View>
                 )
               })}
-            </Card>
+            </View>
           )}
 
           {editingCategoryId === null && addableCategories.length > 0 && (

@@ -14,7 +14,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
-import Transactions from './index'
+import { DesktopTransactions as Transactions } from './DesktopTransactions'
 import { formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
 

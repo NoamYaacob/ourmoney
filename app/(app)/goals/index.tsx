@@ -26,6 +26,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatusChip } from '@/components/ui/StatusChip'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Goals() {
@@ -129,20 +130,16 @@ export default function Goals() {
               >
                 <Card>
                   <View className="mb-1 flex-row items-center justify-between">
-                    <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
+                    <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
                     {isCompleted ? (
-                      <Text className="text-xs font-semibold text-accent-light dark:text-accent-dark">
-                        {t('savings.completed')}
-                      </Text>
+                      <StatusChip label={t('savings.completed')} tone="accent" />
                     ) : (
                       isBehind && (
-                        <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
-                          {t(pace?.isOverdue ? 'savings.pace.overdue' : 'savings.pace.behind')}
-                        </Text>
+                        <StatusChip label={t(pace?.isOverdue ? 'savings.pace.overdue' : 'savings.pace.behind')} tone="danger" />
                       )
                     )}
                   </View>
-                  <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="mb-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {formatILS(currentAgorot)} / {formatILS(goal.target_agorot)}
                   </Text>
                   <ProgressBar percent={percent} positiveAtLimit />

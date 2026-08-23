@@ -31,8 +31,8 @@
 // button (role: 'button' on iOS, 'tab' elsewhere — Platform.OS is 'ios' in
 // this jest-expo environment) whose label is exactly that screen's
 // `options.title`. Hidden routes in this layout carry no title, so the
-// only user-facing text this tab bar can ever produce is the 4 real tabs'
-// Hebrew titles: proving exactly those 4 render, and exactly 4 tab buttons
+// only user-facing text this tab bar can ever produce is the 5 real tabs'
+// Hebrew titles: proving exactly those 5 render, and exactly 5 tab buttons
 // exist in total, proves every other registered route stayed excluded.
 import { describe, expect, it, jest } from '@jest/globals'
 import { renderRouter } from 'expo-router/testing-library'
@@ -56,6 +56,14 @@ jest.mock('@/features/recurring/hooks/useGenerateRecurringTransactions', () => (
 jest.mock('@/features/installments/hooks/useGenerateInstallmentTransactions', () => ({
   useGenerateInstallmentTransactions: () => undefined,
 }))
+// Mobile redesign: the "עוד" tab icon asks the alerts engine whether
+// anything critical is hiding behind it, which pulls the whole
+// Supabase-backed alert chain into this structural test. Stubbed to an
+// empty result — the badge's own behavior is covered in
+// features/alerts, not here.
+jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
+  useFinancialAlerts: () => ({ alerts: [], isLoading: false, hasPartialError: false }),
+}))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
 // test verifies — same rationale as mocking any other icon/asset library
@@ -67,7 +75,7 @@ jest.mock('@expo/vector-icons', () => ({
 const STUB_SCREEN = { default: () => null }
 
 describe('app/(app)/_layout — tab bar route exclusions', () => {
-  it('shows only the 4 product tabs in the tab bar, and no button for any other registered route', async () => {
+  it('shows only the 5 product tabs in the tab bar, and no button for any other registered route', async () => {
     // @testing-library/react-native v14 made `render` async; expo-router's
     // `renderRouter` (built against the older sync API) doesn't await it
     // internally, so it hands back the in-flight render Promise rather
@@ -98,6 +106,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'transfers/[id]': STUB_SCREEN,
         'cash-flow/index': STUB_SCREEN,
         'alerts/index': STUB_SCREEN,
+        'more/index': STUB_SCREEN,
+        'safe-to-spend/index': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
@@ -105,14 +115,21 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
     expect(result.getByText(i18n.t('tabs.dashboard'))).toBeTruthy()
     expect(result.getByText(i18n.t('tabs.transactions'))).toBeTruthy()
     expect(result.getByText(i18n.t('tabs.budgets'))).toBeTruthy()
-    expect(result.getByText(i18n.t('tabs.settings'))).toBeTruthy()
+    expect(result.getByText(i18n.t('tabs.cashFlow'))).toBeTruthy()
+    expect(result.getByText(i18n.t('tabs.more'))).toBeTruthy()
+
+    // Mobile redesign: settings moved behind "עוד" and must NOT have a tab
+    // of its own any more. Asserted explicitly rather than left to the
+    // count below — a count alone would still pass if settings came back
+    // and some other tab disappeared.
+    expect(result.queryByText(i18n.t('tabs.settings'))).toBeNull()
 
     // Every stub screen renders null and the biometric overlay is not
     // shown (isLocked: false mocked above), so the only buttons that can
     // possibly render anywhere in this tree are the tab bar's own — one
     // per tab-bar-visible route. If a hidden route regressed back into
-    // visibility, its route name would render as an untitled 5th button.
-    expect(result.getAllByRole('button')).toHaveLength(4)
+    // visibility, its route name would render as an untitled 6th button.
+    expect(result.getAllByRole('button')).toHaveLength(5)
   })
 
   // Desktop polish pass regression: a real-browser visual check found the
@@ -160,6 +177,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'transfers/[id]': STUB_SCREEN,
         'cash-flow/index': STUB_SCREEN,
         'alerts/index': STUB_SCREEN,
+        'more/index': STUB_SCREEN,
+        'safe-to-spend/index': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
