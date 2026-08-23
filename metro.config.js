@@ -28,19 +28,4 @@ const config = getSentryExpoConfig(__dirname)
 config.resolver.blockList = [...config.resolver.blockList, /\.(test|spec)\.[jt]sx?$/]
 
 
-// TEMPORARY visual-QA hook (not committed): when QA_FIXTURES=1, resolve the
-// Supabase client to a local fixture module so authenticated screens can be
-// rendered in a browser for design comparison. Off by default.
-if (process.env.QA_FIXTURES === '1') {
-  const path = require('path')
-  const original = config.resolver.resolveRequest
-  config.resolver.resolveRequest = (context, moduleName, platform) => {
-    const resolved = (original ?? context.resolveRequest)(context, moduleName, platform)
-    if (resolved && typeof resolved.filePath === 'string' && /lib[\\/]supabase[\\/]client\.ts$/.test(resolved.filePath)) {
-      return { type: 'sourceFile', filePath: path.join(__dirname, '.qa/fixtureClient.ts') }
-    }
-    return resolved
-  }
-}
-
 module.exports = withNativeWind(config, { input: './global.css' })
