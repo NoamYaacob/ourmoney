@@ -36,8 +36,15 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           The input keeps a min-width so a short or empty value still has a
           stable tap target, and right-aligns inside it so the digits stay
           flush against the symbol however many are typed — extra width grows
-          away from it rather than around it. */}
-      <View className="flex-row items-center gap-1">
+          away from it rather than around it.
+
+          It also needs a max-width and `shrink`. A browser sizes a text
+          input from its `size` attribute — about twenty characters — so at
+          52px the field measured 626px inside a 390px screen and pushed
+          itself and the ₪ clean off both edges. Nothing about that is
+          visible until you measure it: the row reported no overflow because
+          it was centred, so it hung off each side equally. */}
+      <View className="w-full flex-row items-center justify-center gap-1">
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -45,12 +52,12 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           placeholderTextColor={placeholderColor}
           keyboardType="decimal-pad"
           accessibilityLabel={label}
-          className="min-w-[90px] font-heebo text-heroXl text-ink-light dark:text-ink-dark"
-          // The size is also set inline. react-native-web renders this as a
-          // real <input>, and a browser's own input font-size wins over an
-          // inherited one often enough that the field quietly rendered at
-          // roughly half the tier it declared.
-          style={{ textAlign: 'right', fontSize: 52, lineHeight: 58 }}
+          className="min-w-[90px] max-w-[240px] shrink font-heebo text-heroXl text-ink-light dark:text-ink-dark"
+          // The class alone cannot size an <input> on web — see the
+          // `input[data-hero-amount]` rule in global.css for why, and for the
+          // measurement behind it. Native takes the size from the class.
+          {...({ dataSet: { heroAmount: '' } } as object)}
+          style={{ textAlign: 'right' }}
           maxFontSizeMultiplier={1.2}
         />
         <Text

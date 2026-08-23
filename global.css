@@ -44,6 +44,31 @@ button {
   font: inherit;
 }
 
+/* The one field whose size is part of the design rather than the platform's.
+   `OurMoney - Mobile.dc.html` screen 05 draws the amount being typed at the
+   design system's `figure-xl` — 52/58 — and it is the only thing on that
+   screen.
+
+   It needs a rule of its own, and `!important`, because nothing else reaches
+   an <input>'s size on web. Measured in a real browser rather than reasoned
+   about: the field declared 52px through its class and computed 16; setting
+   `element.style.fontSize` directly still computed 16; only `!important`
+   took effect. Something in the react-native-web / Tailwind-preflight stack
+   is setting it with that weight, so matching it is the only thing that
+   works — this is the one place in the app that uses `!important`, and the
+   measurement above is why.
+
+   `line-height` needs no such help, which is the tell: it lands from this
+   very rule. Only the size is being held down.
+
+   Deliberately scoped to this one field rather than lifting the restriction
+   for every input: the rest of the form's fields are body-sized on purpose,
+   and a blanket change would move all of them at once. */
+input[data-hero-amount] {
+  font-size: 52px !important;
+  line-height: 58px;
+}
+
 input,
 textarea,
 select {
