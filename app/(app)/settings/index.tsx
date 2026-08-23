@@ -270,7 +270,10 @@ export default function Settings() {
             autoFocus
           />
           {updateProfile.isError && <ErrorMessage message={t('settings.profile.errors.generic')} />}
-          <View className="flex-row-reverse gap-2">
+          {/* Visual QA pass: was flex-row-reverse — see components/ui/
+              Modal.tsx's identical fix. Plain flex-row keeps Save (first
+              child) on the right under global.css's direction: rtl. */}
+          <View className="flex-row gap-2">
             <Button
               title={t('settings.profile.save')}
               onPress={handleSaveProfileName}
@@ -325,7 +328,9 @@ export default function Settings() {
                   autoFocus
                 />
                 {updateHousehold.isError && <ErrorMessage message={t('settings.household.renameErrors.generic')} />}
-                <View className="flex-row-reverse gap-2">
+                {/* Visual QA pass: was flex-row-reverse — see components/ui/
+                    Modal.tsx's identical fix. */}
+                <View className="flex-row gap-2">
                   <Button
                     title={t('settings.household.save')}
                     onPress={handleSaveHouseholdName}

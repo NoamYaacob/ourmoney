@@ -108,7 +108,12 @@ export function CopyPreviousMonthBudgetModal({
             </Text>
           )}
 
-          <View className="mt-4 flex-row-reverse gap-2">
+          {/* Visual QA pass: was flex-row-reverse — see components/ui/
+              Modal.tsx's identical fix for why that put Cancel on the
+              right and Confirm on the left. Plain flex-row keeps Confirm
+              (first child) on the right, matching global.css's direction:
+              rtl mirroring. */}
+          <View className="mt-4 flex-row gap-2">
             {!nothingToCopy && (
               <Button
                 title={t('budgets.copyPrevious.confirm')}

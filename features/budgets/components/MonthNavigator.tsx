@@ -26,7 +26,20 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
   const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
 
   return (
-    <View className="mb-5 flex-row items-center justify-between web:flex-row">
+    // Visual QA pass: verified directly (a throwaway route + real-browser
+    // measurement), not assumed — global.css sets `direction: rtl` on
+    // `html, body, #root`, and CSS flexbox's `row` axis runs along that
+    // direction, so plain `flex-row` already places this component's
+    // first-rendered child (the previous-month button) on the physical
+    // right, matching native's Yoga-driven mirroring. `flex-row-reverse`
+    // would flip it a second time, right back to a visually-LTR order —
+    // confirmed by the same measurement. Older comments elsewhere in this
+    // codebase recommending `web:flex-row-reverse` predate global.css's
+    // `direction: rtl` (added specifically, per its own comment, "instead
+    // of patching individual screens with row-reverse exceptions") and are
+    // now stale; do not copy that pattern into new code without checking
+    // global.css first.
+    <View className="mb-5 flex-row items-center justify-between">
       <Pressable
         onPress={() => onChange(shiftMonth(periodStart, -1))}
         accessibilityRole="button"
