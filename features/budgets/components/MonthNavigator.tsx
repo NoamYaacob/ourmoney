@@ -1,10 +1,15 @@
-// Design Phase 2: extracted from Dashboard's Phase 1 inline month-nav row so
-// Budgets can adopt the identical component in a later phase instead of
-// re-implementing it (Phase 1 had Dashboard and Budgets each drawing their
-// own month row in a different style). Behavior is unchanged from Phase 1 —
-// only the chevrons now carry a persistent background instead of an
-// active-only one, since "barely visible until pressed" isn't enough to
-// read as tappable at a glance.
+// The month being viewed, as a compact pill.
+//
+// `OurMoney - Mobile.dc.html` screen 07 draws this beside the screen title
+// inside one 44px header row — a bordered pill holding [‹ אוגוסט ›] — not as
+// a full-width bar of its own with the two chevrons pushed to opposite edges
+// of the screen. The wide version put 300px of empty space between a control
+// and its own label, and cost a whole row of vertical space above the card
+// that actually answers the question.
+//
+// The chevrons keep their 44px touch targets via hitSlop: the pill is 34px
+// tall (the design system's "secondary control in a row" height), and a
+// visually smaller control is still a full-size target.
 import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -40,17 +45,17 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
     // of patching individual screens with row-reverse exceptions") and are
     // now stale; do not copy that pattern into new code without checking
     // global.css first.
-    <View className="mb-5 flex-row items-center justify-between">
+    <View className="h-[34px] flex-row items-center gap-1 self-start rounded-control border border-border-light bg-surfaceMuted-light px-2 dark:border-border-dark dark:bg-surfaceMuted-dark">
       <Pressable
         onPress={() => onChange(shiftMonth(periodStart, -1))}
         accessibilityRole="button"
         accessibilityLabel={t('dashboard.previousMonth')}
         hitSlop={HIT_SLOP}
-        className="h-10 w-10 items-center justify-center rounded-full bg-surfaceMuted-light active:opacity-70 dark:bg-surfaceMuted-dark"
+        className="h-[34px] w-6 items-center justify-center active:opacity-70"
       >
-        <Ionicons name={flip('chevron-back', 'chevron-forward')} size={ICON.nav} color={iconColor} />
+        <Ionicons name={flip('chevron-back', 'chevron-forward')} size={ICON.chip} color={iconColor} />
       </Pressable>
-      <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">
+      <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark">
         {formatMonthLabel(periodStart)}
       </Text>
       <Pressable
@@ -58,9 +63,9 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
         accessibilityRole="button"
         accessibilityLabel={t('dashboard.nextMonth')}
         hitSlop={HIT_SLOP}
-        className="h-10 w-10 items-center justify-center rounded-full bg-surfaceMuted-light active:opacity-70 dark:bg-surfaceMuted-dark"
+        className="h-[34px] w-6 items-center justify-center active:opacity-70"
       >
-        <Ionicons name={flip('chevron-forward', 'chevron-back')} size={ICON.nav} color={iconColor} />
+        <Ionicons name={flip('chevron-forward', 'chevron-back')} size={ICON.chip} color={iconColor} />
       </Pressable>
     </View>
   )

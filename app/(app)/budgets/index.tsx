@@ -329,14 +329,11 @@ export default function Budgets() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
-        {t('budgets.title')}
-      </Text>
-
-      {/* Desktop draws the month stepper in the shell header band, where the
-          mockup puts it — this one is the phone's, and would be a second
-          identical control beside it on a wide screen. */}
-      <View className="web:desktop:hidden">
+      {/* Title and month on one 44px row, as the phone frame draws them.
+          Desktop draws both in the shell header band instead, so the whole
+          row is hidden there rather than duplicating the controls. */}
+      <View className="mb-3 min-h-[44px] flex-row items-center justify-between gap-3 web:desktop:hidden">
+        <Text className="text-title font-heebo text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
         <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
       </View>
 
