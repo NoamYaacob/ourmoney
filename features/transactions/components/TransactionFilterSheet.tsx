@@ -12,7 +12,7 @@
 // therefore discards, which is why the draft resets from `value` each time
 // the sheet opens.
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Text, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { BottomSheet } from '@/components/ui/BottomSheet'
@@ -53,10 +53,15 @@ export function TransactionFilterSheet({
   const [draft, setDraft] = useState<TransactionFilterState>(value)
 
   // Re-seed whenever the sheet opens, so a dismissed edit is discarded
-  // rather than lingering into the next open.
-  useEffect(() => {
+  // rather than lingering into the next open. Adjusted during rendering —
+  // React's documented pattern for resetting state on a prop transition —
+  // rather than a useEffect, matching transactions/[id].tsx's prefill and
+  // settings/categories.tsx's deep-link-edit guard elsewhere in this app.
+  const [wasVisible, setWasVisible] = useState(visible)
+  if (visible !== wasVisible) {
+    setWasVisible(visible)
     if (visible) setDraft(value)
-  }, [visible, value])
+  }
 
   function update(partial: Partial<TransactionFilterState>) {
     setDraft((current) => ({ ...current, ...partial }))
