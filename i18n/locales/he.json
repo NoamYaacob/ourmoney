@@ -409,6 +409,7 @@
     "title": "חיובים קבועים",
     "empty": "עדיין אין חיובים קבועים.",
     "addButton": "הוספת חיוב קבוע",
+    "summarySubtitle": "{{count}} פעילים · {{amount}} לחודש",
     "nextDue": "תאריך הבא:",
     "inactive": "מושהה",
     "priceIncrease": {
@@ -496,6 +497,7 @@
     "title": "התחייבויות עתידיות",
     "empty": "עדיין אין התחייבויות מתוכננות.",
     "addButton": "הוספת התחייבות",
+    "summarySubtitle": "{{count}} צפויות · {{amount}}",
     "pastDue": "באיחור",
     "dueToday": "היום",
     "inDays": "בעוד {{count}} ימים",

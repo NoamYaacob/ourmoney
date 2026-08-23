@@ -28,6 +28,8 @@ import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusChip } from '@/components/ui/StatusChip'
 import { SectionLabel } from '@/components/ui/SectionLabel'
+import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
+import { Money } from '@/components/ui/Money'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { RecurringFrequency } from '@/types/app'
 
@@ -107,6 +109,8 @@ export default function Recurring() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
+  const activeExpenseTemplates = recurringTransactions.filter((item) => item.is_active && item.amount_agorot < 0)
+  const activeMonthlyTotalAgorot = activeExpenseTemplates.reduce((sum, item) => sum + Math.abs(item.amount_agorot), 0)
 
   return (
     <Screen keyboardAvoiding width="wide">
@@ -164,6 +168,31 @@ export default function Recurring() {
           {/* No actionLabel/onAction — the persistent "Add recurring"
               button below already covers it (mobile-expo-reviewer finding,
               same as accounts/index.tsx and goals/index.tsx). */}
+          {/* Desktop Claude Design pass: the mockup's dark summary card,
+              scoped to this screen's own domain — see obligations/index.tsx's
+              identical card for why each of Obligations/Recurring gets its
+              own screen-scoped total rather than one shared cross-domain
+              "monthly commitment" figure. Sums only active expense
+              templates (income templates and paused ones don't belong in
+              "what this household is committed to paying monthly"); the
+              literal stored per-charge amount is used as-is, so a
+              bi-monthly/quarterly template is not normalized to a true
+              monthly-equivalent — a simplification worth a comment, not a
+              second engine. */}
+          {activeExpenseTemplates.length > 0 && (
+            <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:w-[340px]">
+              <HeroPanel>
+                <HeroLabel>{t('recurring.title')}</HeroLabel>
+                <View className="web:desktop:mt-1.5">
+                  <Money agorot={activeMonthlyTotalAgorot} size="display" tone="hero" />
+                </View>
+                <Text className="web:desktop:mt-1 text-caption font-sans text-heroInkMuted-light">
+                  {t('recurring.summarySubtitle', { count: activeExpenseTemplates.length, amount: formatILS(activeMonthlyTotalAgorot) })}
+                </Text>
+              </HeroPanel>
+            </View>
+          )}
+
           {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
           {/* Responsive/desktop pass: a 2-column card grid once there's more
               than one recurring item, desktop only — same calc()-free

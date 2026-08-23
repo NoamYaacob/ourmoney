@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
-import '@/i18n'
+import i18n from '@/i18n'
 import Obligations from './index'
+import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -221,5 +222,15 @@ describe('Obligations list', () => {
     expect(mockCreateMutate).toHaveBeenCalledTimes(1)
     const [variables] = mockCreateMutate.mock.calls[0] as [{ isShared: boolean }]
     expect(variables.isShared).toBe(false)
+  })
+
+  // Desktop Claude Design pass: the dark summary card sums only the
+  // upcoming obligations already listed below it (135000 + 180000 agorot),
+  // excluding the completed one — the same set filterUpcomingObligations
+  // already produces, not a second count.
+  it('shows a summary card totaling the upcoming obligations, excluding completed ones', async () => {
+    const { getByText } = await render(<Obligations />)
+
+    expect(getByText(i18n.t('obligations.summarySubtitle', { count: 2, amount: formatILS(315000) }))).toBeTruthy()
   })
 })

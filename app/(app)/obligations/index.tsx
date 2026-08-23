@@ -36,6 +36,8 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusChip } from '@/components/ui/StatusChip'
+import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
+import { Money } from '@/components/ui/Money'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Obligations() {
@@ -116,6 +118,7 @@ export default function Obligations() {
   )
   const upcomingById = new Map(obligations.map((o) => [o.id, o]))
   const today = localDateString()
+  const upcomingTotalAgorot = upcoming.reduce((sum, item) => sum + (upcomingById.get(item.id)?.amount_agorot ?? 0), 0)
 
   const history = obligations
     .filter((o) => o.status !== 'upcoming')
@@ -137,6 +140,30 @@ export default function Obligations() {
         <SkeletonList rows={3} />
       ) : (
         <>
+          {/* Desktop Claude Design pass: the mockup's dark summary card,
+              stating what's already committed before any decision is made
+              this month — desktop only. The figure is a plain sum of the
+              upcoming obligations already loaded below (no new query, no
+              cross-domain total): Recurring gets the identical treatment
+              for its own domain (see recurring/index.tsx), each screen
+              scoped to data it already owns rather than one shared
+              cross-domain "monthly commitment" figure, which would need
+              new queries on every one of these three routes for a single
+              decorative card. */}
+          {upcoming.length > 0 && (
+            <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:w-[340px]">
+              <HeroPanel>
+                <HeroLabel>{t('obligations.title')}</HeroLabel>
+                <View className="web:desktop:mt-1.5">
+                  <Money agorot={upcomingTotalAgorot} size="display" tone="hero" />
+                </View>
+                <Text className="web:desktop:mt-1 text-caption font-sans text-heroInkMuted-light">
+                  {t('obligations.summarySubtitle', { count: upcoming.length, amount: formatILS(upcomingTotalAgorot) })}
+                </Text>
+              </HeroPanel>
+            </View>
+          )}
+
           {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} />}
           {/* Responsive/desktop pass: same 2-column card grid as
               accounts/recurring/goals once there's more than one obligation,
