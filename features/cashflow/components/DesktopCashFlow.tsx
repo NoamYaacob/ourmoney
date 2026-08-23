@@ -1,74 +1,77 @@
-// The desktop cash-flow screen, extracted verbatim from
-// app/(app)/cash-flow/index.tsx when Mobile got its own composition. Not
-// restyled and not rearranged: this layout is the approved desktop design.
+// Desktop Claude Design pass. Rebuilt to match the approved
+// `OurMoney - Desktop.dc.html` Cash Flow screen: a one-sentence headline
+// answer, a stats+chart evidence card, and the upcoming-events list that
+// backs the headline's claim — the same "answer first, then evidence"
+// composition MobileCashFlow.tsx already ships (Screen 06 of the mobile
+// design), restyled for desktop's wider canvas instead of a second,
+// divergent information architecture.
 //
-// It renders only at >=1200px on web — app/(app)/cash-flow/index.tsx picks
+// The previous desktop composition additionally rendered a Safe-to-Spend
+// breakdown (with its own week/month/30-day horizon toggle) and a unified
+// "next 30 days" commitments list — content no mockup screen for Cash Flow
+// ever specified, and which Dashboard's own hero (aggregate breakdown) and
+// "מה מגיע" panel (itemized commitments) already cover. Dropped here, not
+// duplicated, mirroring the same screen split mobile already made; the
+// useSafeToSpend/useUpcomingCommitments hooks themselves are untouched and
+// still load-bearing on Dashboard.
+//
+// One thing from the mockup is deliberately absent, matching mobile's own
+// documented reasoning: its dark "מה יחזיר אותנו לירוק" panel, which
+// proposes ranked ways to close a projected shortfall. No engine computes
+// that, and CLAUDE.md is explicit that engines compute while nothing
+// invents financial advice — hard-coding plausible-looking suggestions
+// would be exactly the kind of fabricated figure that rule exists to
+// prevent. Left out here for the same reason MobileCashFlow.tsx leaves it
+// out, not a partial implementation of the mockup.
+//
+// Renders only at >=1200px on web — app/(app)/cash-flow/index.tsx picks
 // between this and MobileCashFlow.
-
-// Reached from the Dashboard Safe-to-Spend card, not a tab — same posture
-// as accounts/recurring/goals/obligations. Renders the same result the card
-// already summarizes, with the horizon switchable here and an itemized
-// breakdown; no separate editing UI — each item opens its own existing
-// detail screen (obligations/[id] or recurring/[id]).
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { useColorScheme } from 'nativewind'
+import { Ionicons } from '@expo/vector-icons'
+import { colors } from '@/constants/colors'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
-import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
 import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
-import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
 import { CashFlowForecastChart } from '@/features/cashflow/components/CashFlowForecastChart'
-import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import type { CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
+import { causeOfLowPoint } from '@/features/cashflow/lib/lowPointCause'
 import { formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
-import { Card } from '@/components/ui/Card'
-import { Divider } from '@/components/ui/Divider'
+import { Money } from '@/components/ui/Money'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { StatusChip } from '@/components/ui/StatusChip'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { DESKTOP_CARD_CLASS } from '@/constants/layout'
 
-const HORIZON_OPTIONS: { value: HorizonKind; labelKey: string }[] = [
-  { value: 'week', labelKey: 'cashFlow.horizon.week' },
-  { value: 'month', labelKey: 'cashFlow.horizon.month' },
-  { value: 'days30', labelKey: 'cashFlow.horizon.days30' },
+const HORIZONS = [
+  { value: '30' as const, labelKey: 'cashFlow.forecast.horizon.days30' },
+  { value: '60' as const, labelKey: 'cashFlow.forecast.horizon.days60' },
+  { value: '90' as const, labelKey: 'cashFlow.forecast.horizon.days90' },
 ]
 
-const FORECAST_HORIZON_OPTIONS: { value: '30' | '60' | '90'; labelKey: string }[] = [
-  { value: '30', labelKey: 'cashFlow.forecast.horizon.days30' },
-  { value: '60', labelKey: 'cashFlow.forecast.horizon.days60' },
-  { value: '90', labelKey: 'cashFlow.forecast.horizon.days90' },
-]
-
-function forecastEventSourceLabel(event: CashFlowForecastEvent, t: (key: string) => string): string {
-  if (event.source === 'planned_obligation') return t('cashFlow.forecast.source.planned_obligation')
-  return event.direction === 'inflow' ? t('cashFlow.forecast.source.recurringIncome') : t('cashFlow.forecast.source.recurring')
+function eventRoute(event: CashFlowForecastEvent): string {
+  if (event.source === 'planned_obligation') return `/obligations/${event.sourceId}`
+  if (event.source === 'installment_plan') return `/installments/${event.sourceId}`
+  return `/recurring/${event.sourceId}`
 }
 
 export function DesktopCashFlow() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const isDark = scheme === 'dark'
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const [horizonKind, setHorizonKind] = useState<HorizonKind>('month')
-  const { result, isLoading, error } = useSafeToSpend(householdId, horizonKind)
-  const [forecastDays, setForecastDays] = useState<'30' | '60' | '90'>('30')
-  const {
-    result: forecast,
-    isLoading: isForecastLoading,
-    error: forecastError,
-  } = useCashFlowForecast(householdId, Number(forecastDays))
-  const {
-    commitments,
-    isLoading: isCommitmentsLoading,
-    hasPartialError: hasCommitmentsPartialError,
-  } = useUpcomingCommitments(householdId)
+  const [days, setDays] = useState<'30' | '60' | '90'>('30')
+  const { result: forecast, isLoading, error } = useCashFlowForecast(householdId, Number(days))
 
   if (isHouseholdLoading) {
     return (
@@ -78,264 +81,190 @@ export function DesktopCashFlow() {
     )
   }
 
-  const segmentedOptions = HORIZON_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))
-  const isShortfall = result.safeToSpendAgorot < 0
+  const hasShortfall = forecast.firstShortfallDate !== null
+  const cause = causeOfLowPoint(forecast.events, forecast.lowestBalanceDate)
 
   return (
     <Screen width="wide">
-      <View className="mb-7">
-        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
-          {t('cashFlow.title')}
+      <View className="mb-6 flex-row items-center justify-between web:desktop:flex-row-reverse">
+        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
+          {t('tabs.cashFlow')}
         </Text>
-        <Text className="mt-1 hidden text-caption text-inkMuted-light dark:text-inkMuted-dark web:desktop:flex">
-          {t('cashFlow.subtitle')}
-        </Text>
-      </View>
-
-      {/* Visual QA + Desktop Polish pass: the safe-to-spend and forecast
-          columns now match every other two-region desktop split in this app
-          (Dashboard/Budgets/Settings/Categories) — `web:desktop:flex-row-
-          reverse` (see _layout.tsx's DesktopSideRail comment for why
-          `-reverse` is needed on web) keeps DOM/source order [safe-to-
-          spend, forecast] while visually placing safe-to-spend (primary) on
-          the right. Mobile/tablet stay stacked in the original order. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
-        <View className={`web:desktop:flex-1 ${DESKTOP_PANEL_CLASS}`}>
-          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
-            {t('cashFlow.safeToSpendSectionTitle')}
-          </Text>
+        <View className="web:desktop:w-[220px]">
           <SegmentedControl
-            options={segmentedOptions}
-            value={horizonKind}
-            onChange={setHorizonKind}
-            accessibilityLabel={t('cashFlow.safeToSpendSectionTitle')}
-          />
-
-          <View className="mt-4">
-            {error ? (
-              <ErrorMessage message={t('cashFlow.errors.generic')} />
-            ) : isLoading ? (
-              <LoadingSpinner />
-            ) : (
-              <>
-                <Card>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.availableCash')}</Text>
-                    <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(result.availableCashAgorot)}</Text>
-                  </View>
-                  <View className="mt-2 flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.plannedObligations')}</Text>
-                    <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(-result.plannedObligationsAgorot)}</Text>
-                  </View>
-                  <View className="mt-2 flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.recurringCharges')}</Text>
-                    <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(-result.recurringAgorot)}</Text>
-                  </View>
-                  <View className="mt-2 flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.reserved')}</Text>
-                    <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(-result.reservedAgorot)}</Text>
-                  </View>
-                  <View className="my-3"><Divider /></View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{t('cashFlow.safeToSpend')}</Text>
-                    <Text className={`text-heading font-bold ${isShortfall ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'}`}>
-                      {formatILS(result.safeToSpendAgorot)}
-                    </Text>
-                  </View>
-                  {isShortfall && (
-                    <Text className="mt-2 text-caption text-danger-light dark:text-danger-dark">
-                      {t('cashFlow.shortfall', { amount: formatILS(result.shortfallAgorot) })}
-                    </Text>
-                  )}
-                  {result.safeToSpendAgorot === 0 && (
-                    <Text className="mt-2 text-caption text-danger-light dark:text-danger-dark">{t('cashFlow.zero')}</Text>
-                  )}
-                </Card>
-
-                <Text className="mb-2 mt-6 text-sm font-semibold text-ink-light dark:text-ink-dark">{t('cashFlow.itemsTitle')}</Text>
-                {result.items.length === 0 ? (
-                  <EmptyState icon="📅" message={t('cashFlow.empty')} compact />
-                ) : (
-                  <Card>
-                    {result.items.map((item, index) => (
-                      <View key={`${item.sourceType}-${item.sourceId}-${item.date}`}>
-                        {index > 0 && <View className="my-3"><Divider /></View>}
-                        <Pressable
-                          onPress={() => item.sourceType === 'obligation' ? router.push(`/obligations/${item.sourceId}`) : router.push(`/recurring/${item.sourceId}`)}
-                          accessibilityRole="button"
-                        >
-                          <View className="flex-row items-center justify-between">
-                            <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>{item.description}</Text>
-                            <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(item.amountAgorot)}</Text>
-                          </View>
-                          <View className="mt-0.5 flex-row items-center justify-between">
-                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{formatDateDisplay(item.date)}</Text>
-                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{t(`cashFlow.source.${item.sourceType}`)}</Text>
-                          </View>
-                        </Pressable>
-                      </View>
-                    ))}
-                  </Card>
-                )}
-              </>
-            )}
-          </View>
-        </View>
-
-        <View className={`mt-8 web:desktop:mt-0 web:desktop:flex-1 ${DESKTOP_PANEL_CLASS}`}>
-          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">{t('cashFlow.forecast.sectionTitle')}</Text>
-          <SegmentedControl
-            options={FORECAST_HORIZON_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
-            value={forecastDays}
-            onChange={setForecastDays}
+            options={HORIZONS.map((horizon) => ({ value: horizon.value, label: t(horizon.labelKey) }))}
+            value={days}
+            onChange={setDays}
             accessibilityLabel={t('cashFlow.forecast.sectionTitle')}
           />
-
-          <View className="mt-4">
-            {forecastError ? (
-              <ErrorMessage message={t('cashFlow.forecast.errors.generic')} />
-            ) : isForecastLoading ? (
-              <LoadingSpinner />
-            ) : (
-              <>
-                <Card>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.forecast.availableCashToday')}</Text>
-                    <Text className="text-body text-ink-light dark:text-ink-dark">{formatILS(forecast.startingBalanceAgorot)}</Text>
-                  </View>
-                  <View className="mt-2 flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.forecast.projectedEndingBalance')}</Text>
-                    <Text className={`text-body font-semibold ${forecast.endingBalanceAgorot < 0 ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'}`}>
-                      {formatILS(forecast.endingBalanceAgorot)}
-                    </Text>
-                  </View>
-                  <View className="mt-2 flex-row items-center justify-between">
-                    <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.forecast.lowestBalance')}</Text>
-                    <Text className={`text-body font-semibold ${forecast.lowestBalanceAgorot < 0 ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'}`}>
-                      {formatILS(forecast.lowestBalanceAgorot)} · {forecast.lowestBalanceDate}
-                    </Text>
-                  </View>
-                  <View className="mt-4">
-                    <CashFlowForecastChart
-                      dailyPoints={forecast.dailyPoints}
-                      lowestBalanceDate={forecast.lowestBalanceDate}
-                      chartSummary={`${t('cashFlow.forecast.availableCashToday')}: ${formatILS(forecast.startingBalanceAgorot)}. ${t('cashFlow.forecast.projectedEndingBalance')}: ${formatILS(forecast.endingBalanceAgorot)}. ${t('cashFlow.forecast.lowestBalance')}: ${formatILS(forecast.lowestBalanceAgorot)}.`}
-                    />
-                  </View>
-                  {forecast.firstShortfallDate ? (
-                    <View className="mt-4 rounded-control bg-danger-light/10 p-3 dark:bg-danger-dark/10">
-                      <Text className="text-body font-semibold text-danger-light dark:text-danger-dark">{t('cashFlow.forecast.shortfallWarningTitle')}</Text>
-                      <Text className="mt-1 text-caption text-danger-light dark:text-danger-dark">{t('cashFlow.forecast.shortfallWarningBody', { date: forecast.firstShortfallDate })}</Text>
-                      <Text className="mt-1 text-caption font-semibold text-danger-light dark:text-danger-dark">{t('cashFlow.forecast.shortfallAmount', { amount: formatILS(-forecast.lowestBalanceAgorot) })}</Text>
-                    </View>
-                  ) : (
-                    <Text className="mt-4 text-caption text-positive-light dark:text-positive-dark">{t('cashFlow.forecast.noShortfall')}</Text>
-                  )}
-                </Card>
-
-                <Text className="mb-2 mt-6 text-sm font-semibold text-ink-light dark:text-ink-dark">{t('cashFlow.forecast.upcomingEventsTitle')}</Text>
-                {forecast.events.length === 0 ? (
-                  <EmptyState icon="📈" message={t('cashFlow.forecast.empty')} compact />
-                ) : (
-                  <Card>
-                    {forecast.events.map((event, index) => (
-                      <View key={event.id}>
-                        {index > 0 && <View className="my-3"><Divider /></View>}
-                        <Pressable
-                          onPress={() => event.source === 'planned_obligation' ? router.push(`/obligations/${event.sourceId}`) : router.push(`/recurring/${event.sourceId}`)}
-                          accessibilityRole="button"
-                        >
-                          <View className="flex-row items-center justify-between">
-                            <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>{event.title}</Text>
-                            <Text className={`text-body font-medium ${event.direction === 'inflow' ? 'text-positive-light dark:text-positive-dark' : 'text-ink-light dark:text-ink-dark'}`}>
-                              {event.direction === 'inflow' ? '+' : ''}{formatILS(event.direction === 'inflow' ? event.amountAgorot : -event.amountAgorot)}
-                            </Text>
-                          </View>
-                          <View className="mt-0.5 flex-row items-center justify-between">
-                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{formatDateDisplay(event.date)}{event.pastDue ? ` · ${t('cashFlow.forecast.pastDue')}` : ''}</Text>
-                            <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">{forecastEventSourceLabel(event, t)}</Text>
-                          </View>
-                        </Pressable>
-                      </View>
-                    ))}
-                  </Card>
-                )}
-                <Text className="mt-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">{t('cashFlow.forecast.disclaimer')}</Text>
-              </>
-            )}
-          </View>
         </View>
       </View>
 
-      {/* Unified "next 30 days" commitments summary — deliberately a FIXED
-          30-day window, independent of the safe-to-spend horizon selector
-          above (that selector answers "what can we spend," this section
-          answers "what's already committed," which doesn't change when the
-          user switches horizons). Combines the same canonical sources the
-          items list above already uses (obligations/recurring) plus
-          installments and each credit card's current open cycle — see
-          lib/engines/commitments/buildUpcomingCommitments.ts for the full
-          double-count-guard reasoning. */}
-      <View className="mt-8">
-        <Text className="mb-1 text-sm font-semibold text-ink-light dark:text-ink-dark">
-          {t('cashFlow.commitments.sectionTitle')}
-        </Text>
-        <Text className="mb-3 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-          {t('cashFlow.commitments.subtitle')}
-        </Text>
-        {hasCommitmentsPartialError && (
-          <View className="mb-3">
-            <ErrorMessage message={t('cashFlow.commitments.errors.partial')} />
+      {error ? (
+        <ErrorMessage message={t('cashFlow.forecast.errors.generic')} />
+      ) : isLoading ? (
+        <SkeletonList rows={4} />
+      ) : (
+        <>
+          {/* The answer, in one sentence. */}
+          <View
+            className={`web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-4 web:desktop:rounded-hero web:desktop:border web:desktop:p-5 ${
+              hasShortfall
+                ? 'web:desktop:border-dangerBorder-light web:desktop:bg-surfaceMuted-light dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-surfaceMuted-dark'
+                : `web:desktop:border-border-light web:desktop:bg-surfaceMuted-light dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark`
+            }`}
+          >
+            <Ionicons
+              name={hasShortfall ? 'alert-circle' : 'checkmark-circle'}
+              size={24}
+              color={hasShortfall ? (isDark ? colors.danger.dark : colors.danger.light) : isDark ? colors.positive.dark : colors.positive.light}
+            />
+            <Text className="web:desktop:flex-1 text-body font-sans text-ink-light dark:text-ink-dark web:desktop:text-[17px]">
+              {hasShortfall
+                ? t('cashFlow.mobile.answerShortfall', {
+                    date: formatDateDisplay(forecast.firstShortfallDate as string),
+                    amount: formatILS(Math.abs(forecast.lowestBalanceAgorot)),
+                  })
+                : t('cashFlow.mobile.answerOk', {
+                    amount: formatILS(forecast.lowestBalanceAgorot),
+                    date: formatDateDisplay(forecast.lowestBalanceDate),
+                  })}
+            </Text>
           </View>
-        )}
-        {isCommitmentsLoading ? (
-          <LoadingSpinner />
-        ) : commitments.length === 0 ? (
-          <EmptyState icon="🗓️" message={t('cashFlow.commitments.empty')} compact />
-        ) : (
-          <Card>
-            {commitments.map((item, index) => (
-              <View key={item.id}>
-                {index > 0 && <View className="my-3"><Divider /></View>}
-                <Pressable
-                  onPress={() =>
-                    item.source === 'obligation'
-                      ? router.push(`/obligations/${item.sourceId}`)
-                      : item.source === 'recurring'
-                        ? router.push(`/recurring/${item.sourceId}`)
-                        : item.source === 'installment'
-                          ? router.push(`/installments/${item.sourceId}`)
-                          : router.push(`/accounts/${item.sourceId}`)
-                  }
-                  accessibilityRole="button"
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {item.description}
-                    </Text>
-                    <Text className="text-body font-medium text-ink-light dark:text-ink-dark">
-                      {formatILS(item.amountAgorot)}
-                    </Text>
-                  </View>
-                  <View className="mt-0.5 flex-row items-center justify-between">
-                    <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                      {formatDateDisplay(item.date)} · {t(`cashFlow.commitments.source.${item.source}`)}
-                    </Text>
-                    {item.sharedAgorot > 0 && item.personalAgorot > 0 && (
-                      <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                        {t('cashFlow.commitments.sharedPersonalSplit', {
-                          shared: formatILS(item.sharedAgorot),
-                          personal: formatILS(item.personalAgorot),
-                        })}
-                      </Text>
-                    )}
-                  </View>
-                </Pressable>
+
+          {/* The evidence: the three headline figures, then the chart. */}
+          <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
+            <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-9">
+              <View>
+                <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('cashFlow.mobile.today')}
+                </Text>
+                <Money agorot={forecast.startingBalanceAgorot} size="display" />
               </View>
-            ))}
-          </Card>
-        )}
-      </View>
+              <View>
+                <Text
+                  className={`text-meta font-sansSemibold tracking-[0.08em] ${
+                    forecast.lowestBalanceAgorot < 0
+                      ? 'text-dangerStrong-light dark:text-dangerStrong-dark'
+                      : 'text-inkMuted-light dark:text-inkMuted-dark'
+                  }`}
+                >
+                  {t('cashFlow.mobile.lowPoint')}
+                </Text>
+                <Money agorot={forecast.lowestBalanceAgorot} size="display" tone={forecast.lowestBalanceAgorot < 0 ? 'danger' : 'default'} />
+                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{formatDateDisplay(forecast.lowestBalanceDate)}</Text>
+              </View>
+              <View>
+                <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('cashFlow.mobile.atEnd')}
+                </Text>
+                <Money agorot={forecast.endingBalanceAgorot} size="display" tone={forecast.endingBalanceAgorot < 0 ? 'danger' : 'default'} />
+              </View>
+            </View>
+
+            <View className="web:desktop:mt-4">
+              <CashFlowForecastChart
+                dailyPoints={forecast.dailyPoints}
+                lowestBalanceDate={forecast.lowestBalanceDate}
+                chartSummary={`${t('cashFlow.mobile.today')}: ${formatILS(forecast.startingBalanceAgorot)}. ${t('cashFlow.mobile.lowPoint')}: ${formatILS(forecast.lowestBalanceAgorot)}, ${formatDateDisplay(forecast.lowestBalanceDate)}. ${t('cashFlow.mobile.atEnd')}: ${formatILS(forecast.endingBalanceAgorot)}.`}
+              />
+            </View>
+
+            <Text className="web:desktop:mt-3 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('cashFlow.forecast.disclaimer')}
+            </Text>
+          </View>
+
+          {/* The events that back the headline sentence — the cause of the
+              low point is tagged inline, the same link mobile makes: a dip
+              on a line is not actionable, "the car licence on the 4th is
+              what does it" is. */}
+          <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
+            <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:justify-between">
+              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
+                {t('cashFlow.mobile.eventsTitle')}
+              </Text>
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('cashFlow.mobile.eventsCount', { count: forecast.events.length })}
+              </Text>
+            </View>
+
+            {forecast.events.length === 0 ? (
+              <Text className="web:desktop:mt-3 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('cashFlow.mobile.eventsEmpty')}
+              </Text>
+            ) : (
+              <View className="web:desktop:mt-3">
+                {forecast.events.map((event, index) => {
+                  const isCause = cause?.id === event.id
+                  const isInflow = event.direction === 'inflow'
+                  return (
+                    <Pressable
+                      key={event.id}
+                      onPress={() => router.push(eventRoute(event) as never)}
+                      accessibilityRole="button"
+                      accessibilityLabel={event.title}
+                      className={`web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:py-2.5 ${
+                        isCause ? 'web:desktop:bg-dangerSurface-light dark:web:desktop:bg-dangerSurface-dark web:desktop:px-3' : ''
+                      } ${index > 0 ? 'web:desktop:border-t web:desktop:border-divider-light dark:web:desktop:border-divider-dark' : ''}`}
+                    >
+                      <Text
+                        className={`web:desktop:w-[52px] font-heeboBold text-caption ${
+                          isInflow
+                            ? 'text-positiveStrong-light dark:text-positiveStrong-dark'
+                            : isCause
+                              ? 'text-dangerStrong-light dark:text-dangerStrong-dark'
+                              : 'text-inkMuted-light dark:text-inkMuted-dark'
+                        }`}
+                        style={{ fontVariant: ['tabular-nums'] }}
+                      >
+                        {formatDateDisplay(event.date).slice(0, 5)}
+                      </Text>
+                      <View className="web:desktop:flex-1">
+                        <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                          {event.title}
+                        </Text>
+                        {isCause ? (
+                          <View className="web:desktop:mt-1">
+                            <StatusChip label={hasShortfall ? t('cashFlow.mobile.causeTag') : t('cashFlow.mobile.causeTagLow')} tone="danger" />
+                          </View>
+                        ) : (
+                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                            {event.pastDue
+                              ? t('cashFlow.forecast.pastDue')
+                              : t(
+                                  `cashFlow.commitments.source.${event.source === 'planned_obligation' ? 'obligation' : event.source === 'installment_plan' ? 'installment' : 'recurring'}`
+                                )}
+                          </Text>
+                        )}
+                      </View>
+                      <Money agorot={isInflow ? event.amountAgorot : -event.amountAgorot} size="row" tone={isInflow ? 'positive' : 'default'} signed />
+                    </Pressable>
+                  )
+                })}
+              </View>
+            )}
+          </View>
+
+          {hasShortfall ? (
+            <View className="web:desktop:mt-4 web:desktop:rounded-hero web:desktop:border web:desktop:border-dangerBorder-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-surfaceMuted-dark">
+              <Text className="text-body font-sansSemibold text-danger-light dark:text-danger-dark">
+                {t('cashFlow.forecast.shortfallWarningTitle')}
+              </Text>
+              <Text className="web:desktop:mt-1 text-caption text-danger-light dark:text-danger-dark">
+                {t('cashFlow.forecast.shortfallWarningBody', { date: forecast.firstShortfallDate })}
+              </Text>
+              <Text className="web:desktop:mt-1 text-caption font-sansSemibold text-danger-light dark:text-danger-dark">
+                {t('cashFlow.forecast.shortfallAmount', { amount: formatILS(-forecast.lowestBalanceAgorot) })}
+              </Text>
+            </View>
+          ) : (
+            <Text className="web:desktop:mt-3 text-caption text-positive-light dark:text-positive-dark">
+              {t('cashFlow.forecast.noShortfall')}
+            </Text>
+          )}
+        </>
+      )}
     </Screen>
   )
 }
