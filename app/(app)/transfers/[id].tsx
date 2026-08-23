@@ -125,7 +125,7 @@ export default function TransferDetail() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen keyboardAvoiding width="form">
       <View className="mb-6 flex-row items-center gap-2">
         <Ionicons name="swap-horizontal" size={22} color={mutedColor} />
         <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark">{t('transfers.detail.title')}</Text>

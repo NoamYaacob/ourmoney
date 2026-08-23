@@ -6,8 +6,9 @@
 // test coverage for this screen.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { render } from '@testing-library/react-native'
-import '@/i18n'
+import i18n from '@/i18n'
 import Recurring from './index'
+import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -93,13 +94,15 @@ describe('Recurring list', () => {
       node = node.parent
     }
     const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
   })
 
   // UX-completeness audit P2 fix: a paused (is_active: false) card rendered
   // with the exact same styling as an active one, indistinguishable at a
-  // glance beyond the small "· מושהית" text suffix.
-  it('gives a paused template a visually muted card and a bold inactive suffix, leaving an active one untouched', async () => {
+  // glance beyond a status badge. Mobile redesign: the plain "· מושהה" text
+  // suffix became a StatusChip, matching every other status readout in the
+  // app (never color alone — see StatusChip.tsx's own header comment).
+  it('gives a paused template a visually muted card and an inactive status chip, leaving an active one untouched', async () => {
     mockUseRecurringTransactions.mockReturnValue({
       recurringTransactions: [{ ...RECURRING[0], id: 'rec-1', is_active: false }, RECURRING[1]],
       isLoading: false,
@@ -108,7 +111,7 @@ describe('Recurring list', () => {
 
     const { getByText } = await render(<Recurring />)
 
-    expect(getByText('· מושהית').props.className).toContain('font-semibold')
+    expect(getByText('מושהה')).toBeTruthy()
 
     let pausedCard = getByText('שכירות').parent
     while (pausedCard && !(pausedCard.props.className as string | undefined)?.includes('opacity-60')) {
@@ -149,5 +152,34 @@ describe('Recurring list', () => {
 
     expect(queryByText('עליות מחיר שזוהו')).toBeNull()
     expect(queryByText('המחיר עלה')).toBeNull()
+  })
+
+  // Desktop Claude Design pass: the dark summary card sums only active
+  // expense templates (350000 + 12000 agorot) — a paused or income template
+  // must not count toward "what this household is committed to paying."
+  it('shows a summary card totaling active expense templates only', async () => {
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+
+    const { getByText } = await render(<Recurring />)
+
+    expect(getByText(i18n.t('recurring.summarySubtitle', { count: 2, amount: formatILS(362000) }))).toBeTruthy()
+  })
+
+  it('hides the summary card entirely when nothing qualifies (a paused template and an income template)', async () => {
+    mockUseRecurringTransactions.mockReturnValue({
+      recurringTransactions: [
+        { ...RECURRING[0], id: 'rec-paused', is_active: false },
+        { ...RECURRING[1], id: 'rec-income', amount_agorot: 500000 },
+      ],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getAllByText } = await render(<Recurring />)
+
+    // "חיובים קבועים" renders once (the page's own title) — twice would
+    // mean the summary card's HeroLabel rendered despite having nothing
+    // to show.
+    expect(getAllByText(i18n.t('recurring.title')).length).toBe(1)
   })
 })

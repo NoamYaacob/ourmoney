@@ -44,7 +44,20 @@ const mockSetStatusMutate = jest.fn(
   }
 )
 jest.mock('@/features/obligations/hooks/useSetPlannedObligationStatus', () => ({
-  useSetPlannedObligationStatus: () => ({ mutate: mockSetStatusMutate, isPending: false }),
+  useSetPlannedObligationStatus: () => ({ mutate: mockSetStatusMutate, isPending: false, isError: false }),
+}))
+
+const mockCompleteWithTransactionMutate = jest.fn(
+  (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
+    callbacks?.onSuccess?.()
+  }
+)
+jest.mock('@/features/obligations/hooks/useCompletePlannedObligationWithTransaction', () => ({
+  useCompletePlannedObligationWithTransaction: () => ({
+    mutate: mockCompleteWithTransactionMutate,
+    isPending: false,
+    isError: false,
+  }),
 }))
 
 const mockDeleteMutate = jest.fn(
@@ -83,6 +96,7 @@ describe('Obligation detail', () => {
     mockObligations = [UPCOMING_OBLIGATION]
     mockUpdateMutate.mockClear()
     mockSetStatusMutate.mockClear()
+    mockCompleteWithTransactionMutate.mockClear()
     mockDeleteMutate.mockClear()
     mockRefetch.mockClear()
     mockBack.mockClear()
@@ -108,19 +122,53 @@ describe('Obligation detail', () => {
     expect(variables.expectedVersion).toBe(1)
   })
 
-  it('marks the obligation as paid via the narrow status RPC, sending the currently-rendered version, after confirming (UX-completeness audit fix: this was previously a single un-confirmed tap)', async () => {
-    const { getByText, getAllByText } = await render(<ObligationDetail />)
+  it('marks the obligation as paid via the narrow status RPC, sending the currently-rendered version, after confirming and declining to create a transaction (UX-completeness audit fix: this was previously a single un-confirmed tap)', async () => {
+    const { getByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('סימון כשולם'))
     expect(mockSetStatusMutate).not.toHaveBeenCalled()
-    const confirmButtons = getAllByText('סימון כשולם')
-    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
+    await fireEvent.press(getByText('לא, סימון בלבד'))
+    await fireEvent.press(getByText('אישור סימון כשולם'))
 
     expect(mockSetStatusMutate).toHaveBeenCalledWith(
       { id: 'ob-1', expectedVersion: 1, status: 'completed' },
       expect.anything()
     )
     expect(mockUpdateMutate).not.toHaveBeenCalled()
+    expect(mockCompleteWithTransactionMutate).not.toHaveBeenCalled()
+  })
+
+  it('marks the obligation as paid AND creates a linked transaction (comprehensive upgrade pass §10) when the toggle is left on and an account is chosen — the obligation\'s own category/amount/is_shared are sent, never re-entered', async () => {
+    const { getByText, getByLabelText } = await render(<ObligationDetail />)
+
+    await fireEvent.press(getByText('סימון כשולם'))
+    await fireEvent.press(getByLabelText('חשבון'))
+    await fireEvent.press(getByText('עו״ש'))
+    await fireEvent.press(getByText('אישור סימון כשולם'))
+
+    expect(mockCompleteWithTransactionMutate).toHaveBeenCalledWith(
+      {
+        id: 'ob-1',
+        expectedVersion: 1,
+        accountId: 'acc-1',
+        categoryId: null,
+        amountAgorot: 180000,
+        isShared: true,
+      },
+      expect.anything()
+    )
+    expect(mockSetStatusMutate).not.toHaveBeenCalled()
+  })
+
+  it('shows a validation error and calls neither RPC when confirming mark-paid with the transaction toggle on but no account chosen', async () => {
+    const { getByText } = await render(<ObligationDetail />)
+
+    await fireEvent.press(getByText('סימון כשולם'))
+    await fireEvent.press(getByText('אישור סימון כשולם'))
+
+    expect(getByText('יש לבחור חשבון ליצירת התנועה')).toBeTruthy()
+    expect(mockCompleteWithTransactionMutate).not.toHaveBeenCalled()
+    expect(mockSetStatusMutate).not.toHaveBeenCalled()
   })
 
   it('cancels the obligation via the narrow status RPC, sending the currently-rendered version, after confirming (UX-completeness audit fix)', async () => {
@@ -196,11 +244,11 @@ describe('Obligation detail', () => {
     mockSetStatusMutate.mockImplementationOnce((_variables, callbacks) => {
       callbacks?.onError?.(new ConcurrencyError('not_found'))
     })
-    const { getByText, getAllByText } = await render(<ObligationDetail />)
+    const { getByText } = await render(<ObligationDetail />)
 
     await fireEvent.press(getByText('סימון כשולם'))
-    const confirmButtons = getAllByText('סימון כשולם')
-    await fireEvent.press(confirmButtons[confirmButtons.length - 1]!)
+    await fireEvent.press(getByText('לא, סימון בלבד'))
+    await fireEvent.press(getByText('אישור סימון כשולם'))
 
     await waitFor(() => expect(getByText('הפריט הזה נמחק או שאינו זמין יותר.')).toBeTruthy())
   })

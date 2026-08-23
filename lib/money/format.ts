@@ -12,7 +12,18 @@ const ILS_FORMATTER = new Intl.NumberFormat('he-IL', {
 })
 
 export function formatILS(agorot: number): string {
-  return ILS_FORMATTER.format(agorot / 100)
+  // Comprehensive upgrade pass: a caller that negates a sum which happens to
+  // be exactly 0 (e.g. `-safeToSpend.plannedObligationsAgorot` when a
+  // household has no upcoming obligations) produces JS's `-0`, not `0` —
+  // `-0 === 0` but `Intl.NumberFormat` still renders it with a sign,
+  // producing a spurious "-₪0.00". Normalized here, centrally, rather than
+  // requiring every call site to remember the `-x || 0` guard
+  // lib/money/arithmetic.ts's spentAgorotFromExpenses already applies
+  // locally — every renderer of a monetary figure goes through this one
+  // function (CLAUDE.md § Money), so fixing it here fixes every call site,
+  // present and future.
+  const normalizedAgorot = agorot === 0 ? 0 : agorot
+  return ILS_FORMATTER.format(normalizedAgorot / 100)
 }
 
 const MAX_ILS = 10_000_000

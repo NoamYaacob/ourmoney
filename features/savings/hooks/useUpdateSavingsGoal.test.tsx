@@ -23,6 +23,7 @@ const INPUT = {
   targetDate: null,
   icon: null,
   color: null,
+  progressSource: 'manual' as const,
 }
 
 describe('useUpdateSavingsGoal', () => {
@@ -49,6 +50,7 @@ describe('useUpdateSavingsGoal', () => {
       p_target_date: null,
       p_icon: null,
       p_color: null,
+      p_progress_source: 'manual',
     })
   })
 

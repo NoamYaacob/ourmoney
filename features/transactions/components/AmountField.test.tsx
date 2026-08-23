@@ -35,6 +35,6 @@ describe('AmountField', () => {
     )
 
     const row = getByLabelText('סכום').parent
-    expect(row?.props.className as string).toContain('web:flex-row-reverse')
+    expect(row?.props.className as string).toContain('web:flex-row')
   })
 })

@@ -113,7 +113,21 @@ export function Select({
     const top = fitsBelow
       ? anchor.y + anchor.height + 4
       : Math.max(POPOVER_MARGIN, anchor.y - POPOVER_MAX_HEIGHT - 4)
-    const left = Math.min(Math.max(anchor.x, POPOVER_MARGIN), windowWidth - popoverWidth - POPOVER_MARGIN)
+    // Visual QA pass: when the popover is wider than its trigger (every
+    // compact filter Select — POPOVER_MIN_WIDTH is 260px, well past a
+    // ~110-150px filter chip), left-anchoring at `anchor.x` let the extra
+    // width spill to the trigger's right, reading as unrelated to the field
+    // that opened it. This app never sets `dir="rtl"` on the DOM (see
+    // _layout.tsx's DesktopSideRail comment), so alignment is plain
+    // physical pixel math — a Hebrew-reading user's natural expectation is
+    // still that the menu hugs the trigger's right (start) edge, matching
+    // how every reversed two-region split in this app anchors its primary
+    // content there. Right-align when the popover would otherwise overhang
+    // to the right of a narrower trigger; a same-or-wider trigger (the
+    // common case — most Selects fill their container) keeps left-anchoring
+    // unchanged, since right-aligning there would just spill the other way.
+    const preferredLeft = popoverWidth > anchor.width ? anchor.x + anchor.width - popoverWidth : anchor.x
+    const left = Math.min(Math.max(preferredLeft, POPOVER_MARGIN), windowWidth - popoverWidth - POPOVER_MARGIN)
     return { position: 'absolute' as const, top, left, width: popoverWidth }
   }
 

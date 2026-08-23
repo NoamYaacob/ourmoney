@@ -38,24 +38,55 @@ module.exports = {
       // size+line-height pair for, rather than picking a raw size ad hoc
       // per screen). fontWeight is applied separately via font-semibold/
       // font-bold, matching the rest of this codebase's existing convention.
+      // Mobile redesign: the design's own scale, top to bottom. Every size
+      // the mockups use is one of these — a screen that needs something
+      // else is a screen that has drifted. 12px (`meta`) is the documented
+      // floor; the design's density rule is "no shrinking text to fit more
+      // in", so anything that does not fit moves to a detail screen or a
+      // sheet instead of getting smaller.
       fontSize: {
-        // Design Phase 2: bumped from 34/40 — the one figure this renders
-        // (Dashboard's "remaining this month") needed to visually dominate
-        // the screen, and this token has exactly one call site (the
-        // Dashboard hero), so raising it here doesn't ripple anywhere else.
-        display: ['40px', { lineHeight: '46px' }], // one hero figure per screen (e.g. remaining budget)
-        title: ['22px', { lineHeight: '28px' }], // screen title
-        heading: ['15px', { lineHeight: '20px' }], // section header, paired with font-semibold
-        body: ['15px', { lineHeight: '22px' }], // default reading text
-        caption: ['13px', { lineHeight: '18px' }], // secondary/meta text
+        // The one dark-panel figure that answers the screen's question —
+        // פנוי באמת on Home, the amount being typed on the entry sheet.
+        // Never more than one per screen.
+        hero: ['44px', { lineHeight: '50px' }],
+        // A large figure on a light card (budget's "נותר להוציא").
+        display: ['40px', { lineHeight: '46px' }],
+        // Screen title in the header row. Was 22/28.
+        title: ['21px', { lineHeight: '26px' }],
+        // Card heading ("הדבר הבא", "תקציב אוגוסט"). Was 15/20, which left
+        // it indistinguishable from body — the mockups set it apart.
+        heading: ['16px', { lineHeight: '21px' }],
+        // A list row's primary line (merchant, category, commitment name).
+        body: ['15px', { lineHeight: '22px' }],
+        // Explanatory prose inside a card.
+        bodySm: ['14px', { lineHeight: '21px' }],
+        // Secondary line under a row's title.
+        caption: ['13px', { lineHeight: '19px' }],
+        // Chips, date labels, axis ticks. The floor — nothing smaller.
+        meta: ['12px', { lineHeight: '17px' }],
       },
-      // Two named radii, additive to Tailwind's default scale — `control`
-      // for pressable/input-sized elements, `card` for larger surfaces. Not
-      // a full new scale: the app doesn't need more than these two roles
-      // plus the default `full` (pills/avatars/FAB) it already uses.
+      // Mobile redesign: the design system's five radii, one per role,
+      // replacing the previous two. `control` shrank 14 -> 10 (it sits on
+      // buttons/inputs/segmented controls, which read tighter in the
+      // mockups than the old value allowed) and `card` 20 -> 18; `row` and
+      // `hero` are new. `full` (pills, avatars, FAB) is Tailwind's own.
       borderRadius: {
-        control: '14px',
-        card: '20px',
+        control: '10px', // button, input, segmented control
+        row: '14px', // a pressable row or tile inside a card
+        card: '18px', // the card itself
+        hero: '22px', // the dark financial panel
+      },
+      fontFamily: {
+        // Heebo carries figures and headings, Assistant carries text. Both
+        // are loaded in app/_layout.tsx; the `system-ui` fallbacks are what
+        // renders during the load and on web before the webfont lands.
+        heebo: ['Heebo_800ExtraBold', 'system-ui', 'sans-serif'],
+        heeboBold: ['Heebo_700Bold', 'system-ui', 'sans-serif'],
+        heeboMedium: ['Heebo_500Medium', 'system-ui', 'sans-serif'],
+        sans: ['Assistant_400Regular', 'system-ui', 'sans-serif'],
+        sansMedium: ['Assistant_500Medium', 'system-ui', 'sans-serif'],
+        sansSemibold: ['Assistant_600SemiBold', 'system-ui', 'sans-serif'],
+        sansBold: ['Assistant_700Bold', 'system-ui', 'sans-serif'],
       },
     },
   },

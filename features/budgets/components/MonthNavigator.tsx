@@ -26,7 +26,7 @@ export function MonthNavigator({ periodStart, onChange }: MonthNavigatorProps) {
   const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
 
   return (
-    <View className="mb-5 flex-row items-center justify-between web:flex-row-reverse">
+    <View className="mb-5 flex-row items-center justify-between web:flex-row">
       <Pressable
         onPress={() => onChange(shiftMonth(periodStart, -1))}
         accessibilityRole="button"

@@ -1,5 +1,5 @@
 // Supabase-aware composition layer only — same shape as useSafeToSpend.ts,
-// reusing the exact same four hooks (same TanStack Query keys, so calling
+// reusing the exact same six hooks (same TanStack Query keys, so calling
 // both this hook and useSafeToSpend on one screen never issues a duplicate
 // network request — they share the same cache entries). All computation
 // happens in lib/engines/cashflow/calculateCashFlowForecast.ts.
@@ -8,6 +8,8 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
+import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
+import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
 import { sumEligibleCashAgorot } from '@/lib/engines/cashflow/eligibleCashAccounts'
 import { getDayRangeHorizon, type DayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
 import { calculateCashFlowForecast, type CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
@@ -31,6 +33,13 @@ export function useCashFlowForecast(
     isLoading: isRecurringLoading,
     error: recurringError,
   } = useRecurringTransactions(householdId)
+  const { plans: installmentPlans, isLoading: isInstallmentPlansLoading, error: installmentPlansError } =
+    useInstallmentPlans(householdId)
+  const {
+    materializedCounts,
+    isLoading: isMaterializedCountsLoading,
+    error: materializedCountsError,
+  } = useInstallmentMaterializedCounts(householdId)
 
   const horizon = getDayRangeHorizon(horizonDays)
   const startingBalanceAgorot = sumEligibleCashAgorot(accounts, balances)
@@ -59,12 +68,29 @@ export function useCashFlowForecast(
       categoryId: r.category_id,
       accountId: r.account_id,
     })),
+    installmentPlans: installmentPlans.map((p) => ({
+      id: p.id,
+      description: p.description,
+      totalAgorot: p.total_agorot,
+      installmentCount: p.installment_count,
+      monthlyAgorot: p.monthly_agorot,
+      firstChargeDate: p.first_charge_date,
+      materializedCount: materializedCounts[p.id] ?? 0,
+      categoryId: p.category_id,
+      accountId: p.account_id,
+    })),
   })
 
   return {
     result,
     horizon,
-    isLoading: isAccountsLoading || isBalancesLoading || isObligationsLoading || isRecurringLoading,
-    error: accountsError ?? balancesError ?? obligationsError ?? recurringError,
+    isLoading:
+      isAccountsLoading ||
+      isBalancesLoading ||
+      isObligationsLoading ||
+      isRecurringLoading ||
+      isInstallmentPlansLoading ||
+      isMaterializedCountsLoading,
+    error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
   }
 }

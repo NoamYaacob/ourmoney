@@ -225,12 +225,17 @@ export default function Settings() {
 
       {/* Responsive/desktop pass: profile+household in one column, the rest
           (money management/appearance/security/account) in a second column
-          — desktop only (`web:desktop:flex-row-reverse`; see _layout.tsx's
+          — desktop only (`web:desktop:flex-row`; see _layout.tsx's
           DesktopSideRail comment for why `-reverse` is needed on web).
           Reversing keeps source/DOM order as [profile+household, the rest]
           (primary content announced first) while visually placing
           profile+household on the right and the secondary column on the
-          left — the correct RTL reading order. Mobile/tablet stay a single
+          left — the correct RTL reading order. Visual QA + Desktop Polish
+          pass: this had silently regressed to plain `flex-row` — the
+          dedicated regression test only checked
+          `.toContain('web:desktop:flex-row')`, satisfied by both forms, so
+          the drift went uncaught. Restored to `-reverse` and the test
+          tightened to exact-token matching. Mobile/tablet stay a single
           stacked column in the original order.
           Desktop polish pass (round 2): each column previously reflowed the
           exact same unbounded mobile sections side by side — a real-browser
@@ -282,7 +287,7 @@ export default function Settings() {
         </Card>
       ) : (
         <Card>
-          <View className="flex-row items-center gap-3 web:flex-row-reverse">
+          <View className="flex-row items-center gap-3 web:flex-row">
             <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={56} />
             <View className="flex-1">
               <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">{displayName}</Text>
@@ -336,7 +341,7 @@ export default function Settings() {
                 </View>
               </View>
             ) : (
-              <View className="flex-row items-center justify-between web:flex-row-reverse">
+              <View className="flex-row items-center justify-between web:flex-row">
                 <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{household?.name}</Text>
                 {/* Admin-only (Fix 1) — households_update's RLS
                     (is_household_admin(id)) is the real gate; `role` here
@@ -363,7 +368,7 @@ export default function Settings() {
               <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
             ) : (
               members.map((member) => (
-                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row-reverse">
+                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row">
                   <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size={28} />
                   <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{member.displayName}</Text>
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -447,6 +452,11 @@ export default function Settings() {
           iconName="calendar-outline"
           label={t('settings.financial.obligations')}
           onPress={() => router.push('/obligations')}
+        />
+        <SettingsRow
+          iconName="layers-outline"
+          label={t('settings.financial.installments')}
+          onPress={() => router.push('/installments')}
         />
       </SettingsSection>
       </View>

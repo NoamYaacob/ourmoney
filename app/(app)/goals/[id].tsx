@@ -5,11 +5,15 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useUpdateSavingsGoal } from '@/features/savings/hooks/useUpdateSavingsGoal'
 import { useUpdateSavingsGoalProgress } from '@/features/savings/hooks/useUpdateSavingsGoalProgress'
 import { useDeleteSavingsGoal } from '@/features/savings/hooks/useDeleteSavingsGoal'
-import { goalProgressPercent } from '@/features/savings/lib/goalProgress'
+import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
+import { calculateSavingsPace } from '@/lib/engines/savings/calculateSavingsPace'
+import { formatDateDisplay } from '@/lib/dates/format'
+import type { SavingsGoalProgressSource } from '@/types/app'
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
@@ -24,6 +28,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
 import { ConflictModal } from '@/components/ui/ConflictModal'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 type ConflictSource = 'edit' | 'progress' | 'delete'
 
@@ -34,6 +39,7 @@ export default function GoalDetail() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { balances } = useAccountBalances(householdId)
   const { goals, isLoading: isGoalsLoading, refetch } = useSavingsGoals(householdId)
   const updateGoal = useUpdateSavingsGoal(householdId)
   const updateProgress = useUpdateSavingsGoalProgress(householdId)
@@ -42,6 +48,7 @@ export default function GoalDetail() {
   const [nameText, setNameText] = useState('')
   const [targetText, setTargetText] = useState('')
   const [accountId, setAccountId] = useState<string | null>(null)
+  const [progressSource, setProgressSource] = useState<SavingsGoalProgressSource>('manual')
   const [hasTargetDate, setHasTargetDate] = useState(false)
   const [targetDateText, setTargetDateText] = useState(localDateString())
   const [editValidationError, setEditValidationError] = useState<string | null>(null)
@@ -72,6 +79,7 @@ export default function GoalDetail() {
     setNameText(goal.name)
     setTargetText(String(goal.target_agorot / 100))
     setAccountId(goal.account_id)
+    setProgressSource(goal.progress_source)
     setHasTargetDate(goal.target_date !== null)
     setTargetDateText(goal.target_date ?? localDateString())
     setEditingVersion(goal.version)
@@ -115,8 +123,23 @@ export default function GoalDetail() {
     )
   }
 
-  const percent = goalProgressPercent(goal.current_agorot, goal.target_agorot)
+  const resolvedCurrentAgorot = resolveGoalCurrentAgorot(goal, balances)
+  const resolvedIsCompleted = resolveGoalIsCompleted(goal, balances)
+  const percent = goalProgressPercent(resolvedCurrentAgorot, goal.target_agorot)
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
+  // Single source of truth for "is there anything left to project": the
+  // pace calculation's own remainingAgorot, not the separate
+  // resolveGoalIsCompleted signal — that reads is_completed, a stored
+  // column a manual goal's DB trigger derives from current_agorot, which
+  // is one more hop than comparing the two live numbers already in hand
+  // here and could in principle drift a render behind them.
+  const pace = calculateSavingsPace({
+    currentAgorot: resolvedCurrentAgorot,
+    targetAgorot: goal.target_agorot,
+    targetDate: goal.target_date,
+    today: localDateString(),
+  })
+  const showPace = pace !== null && pace.remainingAgorot > 0
 
   function handleSaveEdit() {
     if (!householdId || !goal || updateGoal.isPending || editingVersion === null) return
@@ -142,6 +165,7 @@ export default function GoalDetail() {
         targetDate: hasTargetDate ? targetDateText : null,
         icon: goal.icon,
         color: goal.color,
+        progressSource,
       },
       {
         // qa-adversarial-reviewer finding: a successful save never advanced
@@ -158,6 +182,10 @@ export default function GoalDetail() {
             setConflict({ kind: 'conflict', source: 'edit' })
           } else if (isNotFoundError(error)) {
             setConflict({ kind: 'not_found', source: 'edit' })
+          } else if (error instanceof Error && error.message === 'account_already_linked') {
+            setEditValidationError(t('savings.errors.accountAlreadyLinked'))
+          } else if (error instanceof Error && error.message === 'linked_account_requires_account') {
+            setEditValidationError(t('savings.errors.linkedAccountRequiresAccount'))
           } else {
             setEditValidationError(t('savings.errors.generic'))
           }
@@ -238,15 +266,36 @@ export default function GoalDetail() {
   }
 
   return (
-    <Screen keyboardAvoiding>
-      <Input label={t('savings.form.nameLabel')} value={nameText} onChangeText={setNameText} placeholder={t('savings.form.namePlaceholder')} />
-      <Input
-        label={t('savings.form.targetLabel')}
-        value={targetText}
-        onChangeText={setTargetText}
-        placeholder={t('transactions.form.amountPlaceholder')}
-        keyboardType="decimal-pad"
-      />
+    <Screen keyboardAvoiding width="form">
+      {/* Visual QA + Desktop Polish pass: this screen had no header at
+          all — the goal's own name only ever appeared inside its own
+          editable Input, matching neither the pattern every other detail
+          screen (recurring/obligations/transactions) already uses nor
+          giving a desktop reader any sense of "what am I looking at" above
+          the fold. */}
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[26px]">
+        {goal.name}
+      </Text>
+
+      {/* Visual QA + Desktop Polish pass: bounded desktop panel (same token
+          as every other screen) plus paired field rows — this screen had
+          zero responsive treatment before this pass. Mobile/tablet
+          untouched. */}
+      <View className={DESKTOP_PANEL_CLASS}>
+      <View className="web:desktop:flex-row web:desktop:gap-4">
+        <View className="web:desktop:flex-1">
+          <Input label={t('savings.form.nameLabel')} value={nameText} onChangeText={setNameText} placeholder={t('savings.form.namePlaceholder')} />
+        </View>
+        <View className="web:desktop:flex-1">
+          <Input
+            label={t('savings.form.targetLabel')}
+            value={targetText}
+            onChangeText={setTargetText}
+            placeholder={t('transactions.form.amountPlaceholder')}
+            keyboardType="decimal-pad"
+          />
+        </View>
+      </View>
       <Select
         label={t('savings.form.accountLabel')}
         options={accountOptions}
@@ -254,6 +303,19 @@ export default function GoalDetail() {
         onChange={setAccountId}
         placeholder={t('transactions.form.accountPlaceholder')}
       />
+      <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('savings.form.progressSourceLabel')}</Text>
+      <View className="mb-4 flex-row gap-2">
+        <Chip
+          label={t('savings.form.progressSourceManual')}
+          selected={progressSource === 'manual'}
+          onPress={() => setProgressSource('manual')}
+        />
+        <Chip
+          label={t('savings.form.progressSourceLinked')}
+          selected={progressSource === 'linked_account'}
+          onPress={() => setProgressSource('linked_account')}
+        />
+      </View>
       <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('savings.form.targetDateLabel')}</Text>
       <View className="mb-4 flex-row gap-2">
         <Chip label={t('savings.form.hasTargetDate')} selected={hasTargetDate} onPress={() => setHasTargetDate(true)} />
@@ -266,36 +328,93 @@ export default function GoalDetail() {
         <ErrorMessage message={editValidationError ?? t('savings.errors.generic')} />
       )}
       <Button title={t('savings.detail.save')} onPress={handleSaveEdit} loading={updateGoal.isPending} />
+      </View>
 
-      <Text className="mb-2 mt-6 text-lg text-inkMuted-light dark:text-inkMuted-dark">
-        {formatILS(goal.current_agorot)} / {formatILS(goal.target_agorot)}
+      <View className={`mt-4 ${DESKTOP_PANEL_CLASS}`}>
+      <Text className="mb-2 text-lg text-inkMuted-light dark:text-inkMuted-dark">
+        {formatILS(resolvedCurrentAgorot)} / {formatILS(goal.target_agorot)}
       </Text>
       <View className="mb-6">
         <ProgressBar percent={percent} positiveAtLimit />
       </View>
-      {goal.is_completed && (
+      {resolvedIsCompleted && (
         <Text className="mb-6 text-base font-semibold text-accent-light dark:text-accent-dark">
           {t('savings.completed')}
         </Text>
       )}
 
-      <Input
-        label={t('savings.detail.updateProgressLabel')}
-        value={progressText}
-        onChangeText={setProgressText}
-        placeholder={t('transactions.form.amountPlaceholder')}
-        keyboardType="decimal-pad"
-      />
-      {(validationError || updateProgress.isError) && (
-        <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
+      {/* Required-monthly-saving projection toward the target date —
+          lib/engines/savings/calculateSavingsPace.ts. Hidden entirely
+          (never a guess) when the goal has no target date at all, or once
+          it's already complete. */}
+      {showPace && pace && (
+        <View className="mb-6 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+          <View className="flex-row items-center justify-between web:flex-row">
+            <View>
+              <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('savings.pace.requiredMonthlyLabel')}
+              </Text>
+              <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
+                {formatILS(pace.requiredMonthlyAgorot)}
+              </Text>
+            </View>
+            <View
+              className={`rounded-full px-2.5 py-1 ${
+                pace.isOnTrack
+                  ? 'bg-positive-light/15 dark:bg-positive-dark/15'
+                  : 'bg-danger-light/15 dark:bg-danger-dark/15'
+              }`}
+            >
+              <Text
+                className={`text-caption font-medium ${
+                  pace.isOnTrack ? 'text-positive-light dark:text-positive-dark' : 'text-danger-light dark:text-danger-dark'
+                }`}
+              >
+                {t(pace.isOverdue ? 'savings.pace.overdue' : pace.isOnTrack ? 'savings.pace.onTrack' : 'savings.pace.behind')}
+              </Text>
+            </View>
+          </View>
+          <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+            {t('savings.pace.remainingByDate', {
+              amount: formatILS(pace.remainingAgorot),
+              date: goal.target_date ? formatDateDisplay(goal.target_date) : '',
+            })}
+          </Text>
+        </View>
       )}
-      <Button
-        title={t('savings.detail.updateProgressSubmit')}
-        onPress={handleUpdateProgress}
-        loading={updateProgress.isPending}
-      />
 
-      <View className="mt-6">
+      {goal.progress_source === 'linked_account' ? (
+        <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
+          {t('savings.detail.linkedProgressNote')}
+        </Text>
+      ) : (
+        <>
+          <View className="web:desktop:flex-row web:desktop:items-end web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('savings.detail.updateProgressLabel')}
+                value={progressText}
+                onChangeText={setProgressText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View className="web:desktop:w-[160px]">
+              <Button
+                title={t('savings.detail.updateProgressSubmit')}
+                onPress={handleUpdateProgress}
+                loading={updateProgress.isPending}
+              />
+            </View>
+          </View>
+          {(validationError || updateProgress.isError) && (
+            <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
+          )}
+        </>
+      )}
+      </View>
+
+      <View className="mt-4">
         <Button
           title={t('savings.detail.delete')}
           variant="ghost"

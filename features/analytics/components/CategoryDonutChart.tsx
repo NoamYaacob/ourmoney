@@ -25,7 +25,7 @@ interface CategoryDonutChartProps {
 // hue rather than by switching palettes entirely — reads as one considered
 // idea across `positive`/`accent` and this chart, not an unrelated rainbow
 // dropped on top of it.
-const SEGMENT_COLORS = ['#0f6b5c', '#237a4e', '#4a90a4', '#c98a3b', '#8a6fa8', '#b3432e', '#5b8c6e', '#3d6b8a']
+export const SEGMENT_COLORS = ['#0f6b5c', '#237a4e', '#4a90a4', '#c98a3b', '#8a6fa8', '#b3432e', '#5b8c6e', '#3d6b8a']
 
 export function CategoryDonutChart({ breakdown, categoryNameById = {}, size = 140 }: CategoryDonutChartProps) {
   const { t } = useTranslation()

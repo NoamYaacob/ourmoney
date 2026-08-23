@@ -22,6 +22,8 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { SectionLabel } from '@/components/ui/SectionLabel'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { FinancialAlert, FinancialAlertSeverity } from '@/types/app'
 
 const SEVERITY_GROUPS: { severity: FinancialAlertSeverity; labelKey: string }[] = [
@@ -48,7 +50,9 @@ export default function Alerts() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('alerts.screenTitle')}</Text>
+      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('alerts.screenTitle')}
+      </Text>
 
       {/* A single failed source degrades to fewer alerts, never a blank
           screen (useFinancialAlerts.ts's own partial-availability design)
@@ -59,21 +63,42 @@ export default function Alerts() {
         </View>
       )}
 
-      <View className="web:desktop:max-w-[600px]">
+      <View className={INLINE_FORM_WIDTH_CLASS}>
         {isLoading ? (
           <SkeletonList rows={3} />
         ) : alerts.length === 0 ? (
-          <EmptyState icon="✅" message={t('alerts.empty')} />
+          // Visual QA + Desktop Polish pass: a small icon + one line was the
+          // entire desktop page below the title — the same "reads as
+          // broken/empty" problem Budgets/Transactions' true-empty states
+          // already solved with a bounded, padded card. Mobile/tablet keep
+          // the exact original (non-compact) EmptyState, unchanged; desktop
+          // additionally wraps its own copy in a roomier bordered card.
+          // architecture-reviewer finding: an earlier version of this fix
+          // switched the mobile copy to `compact`, which would have shrunk
+          // mobile's existing empty state — not requested, and not what the
+          // comment claimed.
+          <>
+            <View className="web:desktop:hidden">
+              <EmptyState icon="✅" message={t('alerts.empty')} />
+            </View>
+            <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+              <EmptyState icon="✅" message={t('alerts.empty')} />
+            </View>
+          </>
         ) : (
           SEVERITY_GROUPS.map((group) => {
             const groupAlerts = alerts.filter((alert) => alert.severity === group.severity)
             if (groupAlerts.length === 0) return null
             return (
               <View key={group.severity} className="mb-6">
-                <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
-                  {t(group.labelKey)}
-                </Text>
-                <Card>
+                <SectionLabel className="mb-2">{t(group.labelKey)}</SectionLabel>
+                {/* Mobile/tablet: one shared Card with Divider-separated
+                    rows (unchanged). Desktop Claude Design pass: the
+                    mockup's own treatment instead — each alert is its own
+                    card with a severity-colored border-start stripe, the
+                    same visual language Dashboard's "דורש טיפול" panel
+                    already uses for the identical alert data. */}
+                <Card className="web:desktop:hidden">
                   {groupAlerts.map((alert: FinancialAlert, index) => (
                     <View key={alert.id}>
                       {index > 0 && (
@@ -101,6 +126,34 @@ export default function Alerts() {
                     </View>
                   ))}
                 </Card>
+                <View className="hidden web:desktop:flex web:desktop:gap-2.5">
+                  {groupAlerts.map((alert: FinancialAlert) => (
+                    <Pressable
+                      key={alert.id}
+                      onPress={() => router.push(alert.actionRoute)}
+                      accessibilityRole="button"
+                      className={`web:desktop:flex-row-reverse web:desktop:gap-3 web:desktop:rounded-row web:desktop:border web:desktop:border-e-[3px] web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:bg-surfaceMuted-dark ${
+                        alert.severity === 'critical'
+                          ? 'web:desktop:border-border-light web:desktop:border-e-danger-light dark:web:desktop:border-border-dark dark:web:desktop:border-e-danger-dark'
+                          : alert.severity === 'warning'
+                            ? 'web:desktop:border-border-light web:desktop:border-e-warning-light dark:web:desktop:border-border-dark dark:web:desktop:border-e-warning-dark'
+                            : 'web:desktop:border-border-light dark:web:desktop:border-border-dark'
+                      }`}
+                    >
+                      <Ionicons
+                        name={severityIconName(alert.severity)}
+                        size={20}
+                        color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                      />
+                      <View className="web:desktop:flex-1">
+                        <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{alert.title}</Text>
+                        <Text className="web:desktop:mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                          {alert.description}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             )
           })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals'
 import { calculateSafeToSpend, type PlannedObligationForecastInput, type SafeToSpendInput } from './calculateSafeToSpend'
 import type { RecurringForecastTemplate } from './forecastRecurringOccurrences'
+import type { InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
 
 function obligation(overrides: Partial<PlannedObligationForecastInput> = {}): PlannedObligationForecastInput {
   return {
@@ -30,11 +31,27 @@ function recurring(overrides: Partial<RecurringForecastTemplate> = {}): Recurrin
   }
 }
 
+function installmentPlan(overrides: Partial<InstallmentPlanForecastTemplate> = {}): InstallmentPlanForecastTemplate {
+  return {
+    id: 'plan-1',
+    description: 'מקרר חדש',
+    totalAgorot: 300000,
+    installmentCount: 3,
+    monthlyAgorot: 100000,
+    firstChargeDate: '2026-09-10',
+    materializedCount: 0,
+    categoryId: null,
+    accountId: null,
+    ...overrides,
+  }
+}
+
 function baseInput(overrides: Partial<SafeToSpendInput> = {}): SafeToSpendInput {
   return {
     availableCashAgorot: 830000,
     obligations: [],
     recurringTemplates: [],
+    installmentPlans: [],
     horizonEnd: '2026-09-30',
     ...overrides,
   }
@@ -47,11 +64,54 @@ describe('calculateSafeToSpend', () => {
       availableCashAgorot: 500000,
       plannedObligationsAgorot: 0,
       recurringAgorot: 0,
+      installmentsAgorot: 0,
       reservedAgorot: 0,
       safeToSpendAgorot: 500000,
       shortfallAgorot: 0,
       items: [],
     })
+  })
+
+  it('subtracts a not-yet-materialized instalment occurrence within the horizon', () => {
+    const result = calculateSafeToSpend(
+      baseInput({ availableCashAgorot: 500000, installmentPlans: [installmentPlan()] })
+    )
+    expect(result.installmentsAgorot).toBe(100000)
+    expect(result.reservedAgorot).toBe(100000)
+    expect(result.safeToSpendAgorot).toBe(400000)
+    expect(result.items).toEqual([
+      { sourceType: 'installment', sourceId: 'plan-1', description: 'מקרר חדש', amountAgorot: 100000, date: '2026-09-10', categoryId: null, accountId: null },
+    ])
+  })
+
+  it('combines obligations, recurring, and instalments into one reserved total', () => {
+    const result = calculateSafeToSpend(
+      baseInput({
+        availableCashAgorot: 830000,
+        obligations: [obligation()],
+        recurringTemplates: [recurring()],
+        installmentPlans: [installmentPlan()],
+      })
+    )
+    expect(result.plannedObligationsAgorot).toBe(47500)
+    expect(result.recurringAgorot).toBe(15000)
+    expect(result.installmentsAgorot).toBe(100000)
+    expect(result.reservedAgorot).toBe(162500)
+    expect(result.safeToSpendAgorot).toBe(667500)
+    expect(result.items).toHaveLength(3)
+  })
+
+  it('does not double count an already-materialized instalment (resumes from materializedCount + 1)', () => {
+    const result = calculateSafeToSpend(
+      baseInput({ installmentPlans: [installmentPlan({ materializedCount: 1, firstChargeDate: '2026-08-10' })] })
+    )
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0]?.date).toBe('2026-09-10')
+  })
+
+  it('excludes an instalment plan fully materialized already (nothing left to forecast)', () => {
+    const result = calculateSafeToSpend(baseInput({ installmentPlans: [installmentPlan({ materializedCount: 3 })] }))
+    expect(result.items).toEqual([])
   })
 
   it('subtracts a single upcoming obligation', () => {
@@ -200,6 +260,7 @@ describe('calculateSafeToSpend', () => {
       result.availableCashAgorot,
       result.plannedObligationsAgorot,
       result.recurringAgorot,
+      result.installmentsAgorot,
       result.reservedAgorot,
       result.safeToSpendAgorot,
       result.shortfallAgorot,

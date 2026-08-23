@@ -11,6 +11,8 @@ const ACCOUNT_TYPE_ICON: Record<AccountType, IoniconName> = {
   credit_card: 'card-outline',
   cash: 'cash-outline',
   investment: 'trending-up-outline',
+  loan: 'trending-down-outline',
+  mortgage: 'home-outline',
   other: 'ellipsis-horizontal-circle-outline',
 }
 

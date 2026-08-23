@@ -9,6 +9,8 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
+import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
+import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
 import { sumEligibleCashAgorot } from '@/lib/engines/cashflow/eligibleCashAccounts'
 import { getHorizonRange, type HorizonKind, type HorizonRange } from '@/lib/engines/cashflow/horizonRange'
 import { calculateSafeToSpend, type SafeToSpendResult } from '@/lib/engines/cashflow/calculateSafeToSpend'
@@ -32,6 +34,13 @@ export function useSafeToSpend(
     isLoading: isRecurringLoading,
     error: recurringError,
   } = useRecurringTransactions(householdId)
+  const { plans: installmentPlans, isLoading: isInstallmentPlansLoading, error: installmentPlansError } =
+    useInstallmentPlans(householdId)
+  const {
+    materializedCounts,
+    isLoading: isMaterializedCountsLoading,
+    error: materializedCountsError,
+  } = useInstallmentMaterializedCounts(householdId)
 
   const horizon = getHorizonRange(horizonKind)
   const availableCashAgorot = sumEligibleCashAgorot(accounts, balances)
@@ -58,13 +67,30 @@ export function useSafeToSpend(
       categoryId: r.category_id,
       accountId: r.account_id,
     })),
+    installmentPlans: installmentPlans.map((p) => ({
+      id: p.id,
+      description: p.description,
+      totalAgorot: p.total_agorot,
+      installmentCount: p.installment_count,
+      monthlyAgorot: p.monthly_agorot,
+      firstChargeDate: p.first_charge_date,
+      materializedCount: materializedCounts[p.id] ?? 0,
+      categoryId: p.category_id,
+      accountId: p.account_id,
+    })),
     horizonEnd: horizon.end,
   })
 
   return {
     result,
     horizon,
-    isLoading: isAccountsLoading || isBalancesLoading || isObligationsLoading || isRecurringLoading,
-    error: accountsError ?? balancesError ?? obligationsError ?? recurringError,
+    isLoading:
+      isAccountsLoading ||
+      isBalancesLoading ||
+      isObligationsLoading ||
+      isRecurringLoading ||
+      isInstallmentPlansLoading ||
+      isMaterializedCountsLoading,
+    error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
   }
 }

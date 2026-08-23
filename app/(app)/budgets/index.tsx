@@ -20,13 +20,21 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useSaveBudgetAllocations } from '@/features/budgets/hooks/useSaveBudgetAllocations'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
 import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
-import { shiftMonth, formatMonthLabel } from '@/features/budgets/lib/budgetPeriod'
+import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { budgetState } from '@/features/budgets/lib/budgetState'
+import { BudgetSummaryCard } from '@/features/budgets/components/BudgetSummaryCard'
+import { BudgetCategoryRow } from '@/features/budgets/components/BudgetCategoryRow'
+import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
+import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
+import { computeTopCategories } from '@/features/analytics/lib/topCategories'
+import { CategoryDonutChart, SEGMENT_COLORS } from '@/features/analytics/components/CategoryDonutChart'
+import { MonthlyTrendChart } from '@/features/analytics/components/MonthlyTrendChart'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
-import { spentPercent } from '@/lib/money/arithmetic'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
@@ -37,15 +45,17 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { DESKTOP_PANEL_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
 const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
+// Desktop Claude Design pass: 6 calendar months ending at the currently
+// viewed month — matches the mockup's own "מגמה · 6 חודשים" trend card.
+const TREND_MONTHS = 6
 
 export default function Budgets() {
   const { t } = useTranslation()
@@ -264,9 +274,51 @@ export default function Budgets() {
     )
   }
 
-  const overallPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot)
-  const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
   const addableCategories = categories.filter((c) => !progress.some((p) => p.categoryId === c.id))
+  const periodEnd = getPeriodEnd(periodStart)
+  const today = localDateString()
+  // Mobile redesign: the month's state and each category's state now come
+  // from one classifier (features/budgets/lib/budgetState.ts), which the
+  // Home block uses too — the three surfaces used to derive it separately,
+  // so a household could be told "בקצב" on Home and "מתקרב לגבול" here
+  // about the same month. Its projection is still calculateBudgetPace's;
+  // budgetState only classifies what that engine returns, and reports no
+  // projection at all for a month too young (or too old) to extrapolate.
+  const monthState = budgetState({
+    allocatedAgorot: totalAllocatedAgorot,
+    spentAgorot: totalSpentAgorot,
+    periodStart,
+    periodEnd,
+    today,
+  })
+
+  // Desktop Claude Design pass: the "לאן הלך הכסף" donut + "מגמה" 6-month
+  // trend the mockup places in the Budget screen's own right column — moved
+  // here from the pre-redesign Dashboard, which showed this same analytics
+  // window but the mockup's Home screen never does. One query, two derived
+  // views (this-month breakdown, 6-month trend) — the same
+  // filterForAnalytics boundary (excludes transfers, matches
+  // useBudgetProgress's is_shared/is_excluded convention) both already
+  // shared before this move.
+  const trendPeriodStarts = Array.from({ length: TREND_MONTHS }, (_, i) => shiftMonth(periodStart, i - (TREND_MONTHS - 1)))
+  const { transactions: analyticsTransactionsRaw, isLoading: isAnalyticsLoading } = useTransactions(householdId, {
+    periodStart: trendPeriodStarts[0],
+    periodEnd,
+  })
+  const analyticsTransactions = analyticsTransactionsRaw.map((t) => ({
+    categoryId: t.category_id,
+    amountAgorot: t.amount_agorot,
+    txnDate: t.txn_date,
+    isShared: t.is_shared,
+    isExcluded: t.is_excluded,
+    transferId: t.transfer_id,
+  }))
+  const categoryBreakdown = computeCategoryBreakdown(analyticsTransactions, periodStart)
+  const totalBreakdownAgorot = categoryBreakdown.reduce((sum, entry) => sum + entry.spentAgorot, 0)
+  const topBreakdownEntries = computeTopCategories(categoryBreakdown, 5)
+  const otherBreakdownAgorot = totalBreakdownAgorot - topBreakdownEntries.reduce((sum, entry) => sum + entry.spentAgorot, 0)
+  const monthlyTrend = computeMonthlyTrend(analyticsTransactions, trendPeriodStarts)
+  const categoryNameById = Object.fromEntries(categories.map((c) => [c.id, c.name_he]))
 
   return (
     <Screen width="wide">
@@ -282,51 +334,12 @@ export default function Budgets() {
         <SkeletonList rows={4} />
       ) : (
         <>
-          {/* Overview — same visual language as Dashboard's hero (Card +
-              hero figure + progress + two-stat row), but the hero figure
-              here is the planned budget itself, not "remaining": this
-              screen's job is reviewing/setting the plan, not just
-              monitoring it, so the two screens read as related, not
-              identical. */}
-          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-              {t('budgets.totalAllocated')}
-            </Text>
-            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[52px] web:desktop:leading-[58px]">
-              {formatILS(totalAllocatedAgorot)}
-            </Text>
-
-            {overallPercent !== null && (
-              <>
-                <View className="mt-4 web:desktop:mt-6">
-                  <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
-                </View>
-                <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('dashboard.percentUsed', { percent: overallPercent })}
-                </Text>
-              </>
-            )}
-
-            <View className="mt-4 web:desktop:mt-6 flex-row items-center">
-              <View className="flex-1">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-                <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
-                  {formatILS(totalSpentAgorot)}
-                </Text>
-              </View>
-              <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
-              <View className="flex-1">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.remaining')}</Text>
-                <Text
-                  className={`mt-0.5 text-heading font-semibold web:desktop:text-[19px] ${
-                    isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
-                  }`}
-                >
-                  {formatILS(totalAllocatedAgorot - totalSpentAgorot)}
-                </Text>
-              </View>
-            </View>
-          </Card>
+          <BudgetSummaryCard
+            totalAllocatedAgorot={totalAllocatedAgorot}
+            totalSpentAgorot={totalSpentAgorot}
+            state={monthState}
+            testID="budget-summary"
+          />
 
           {/* Desktop polish pass: each column below now renders as its own
               bordered panel (see below), which already reads as clearly
@@ -342,8 +355,13 @@ export default function Budgets() {
               Reversing keeps source/DOM order as [categories,
               uncategorized] while visually placing categories (primary) on
               the right and uncategorized (secondary) on the left — the
-              correct RTL reading order. Mobile/tablet stay stacked in the
-              original order (plain View column default). */}
+              correct RTL reading order. Visual QA + Desktop Polish pass:
+              this had silently regressed to plain `flex-row` — the
+              dedicated regression test only checked
+              `.toContain('web:desktop:flex-row')`, satisfied by both forms,
+              so the drift went uncaught. Restored to `-reverse` and the
+              test tightened to exact-token matching. Mobile/tablet stay
+              stacked in the original order (plain View column default). */}
           <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
           <View className="web:desktop:flex-1">
           {/* Desktop polish pass: the category-budgets column (list + the
@@ -446,50 +464,28 @@ export default function Budgets() {
               </View>
             </>
           ) : (
-            <Card>
-              {progress.map((category, index) => {
-                const categoryOverBudget = category.remainingAgorot < 0
+            <View className="gap-2.5">
+              {progress.map((category) => {
+                const categoryState = budgetState({
+                  allocatedAgorot: category.allocatedAgorot,
+                  spentAgorot: category.spentAgorot,
+                  periodStart,
+                  periodEnd,
+                  today,
+                })
                 return (
                   <View key={category.categoryId}>
-                    {index > 0 && (
-                      <View className="my-3">
-                        <Divider />
-                      </View>
-                    )}
-                    <Pressable
+                    <BudgetCategoryRow
+                      category={category}
+                      state={categoryState}
+                      testID={`budget-category-${category.categoryId}`}
                       onPress={() => {
                         setEditingCategoryId(category.categoryId)
                         setEditingAmount(String(category.allocatedAgorot / 100))
                       }}
-                      accessibilityRole="button"
-                      className="flex-row items-start gap-3"
-                    >
-                      <CategoryIcon icon={category.categoryIcon} size="sm" />
-                      <View className="flex-1">
-                        <View className="flex-row items-center justify-between">
-                          <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                          </Text>
-                        </View>
-                        <View className="mt-1.5">
-                          <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
-                        </View>
-                        <Text
-                          className={`mt-1 text-caption ${
-                            categoryOverBudget
-                              ? 'text-danger-light dark:text-danger-dark'
-                              : 'text-positive-light dark:text-positive-dark'
-                          }`}
-                        >
-                          {categoryOverBudget
-                            ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
-                            : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
-                        </Text>
-                      </View>
-                    </Pressable>
+                    />
                     {editingCategoryId === category.categoryId && (
-                      <View className="mt-3 ps-11">
+                      <View className="mt-2 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
                         <Input
                           label={t('budgets.allocationLabel')}
                           value={editingAmount}
@@ -497,7 +493,7 @@ export default function Budgets() {
                           keyboardType="decimal-pad"
                         />
                         {saveError && <ErrorMessage message={saveError} />}
-                        <View className="flex-row gap-2 web:flex-row-reverse">
+                        <View className="flex-row gap-2 web:flex-row">
                           <View className="flex-1">
                             <Button
                               title={t('budgets.saveAllocation')}
@@ -540,7 +536,7 @@ export default function Budgets() {
                   </View>
                 )
               })}
-            </Card>
+            </View>
           )}
 
           {editingCategoryId === null && addableCategories.length > 0 && (
@@ -584,15 +580,70 @@ export default function Budgets() {
           </View>
           </View>
 
-          <View className="web:desktop:flex-1">
-          {/* Desktop polish pass: the uncategorized-transactions column
-              gets the same bounded panel treatment as the category column
-              beside it — so it reads as an intentional secondary panel
-              instead of nearly-empty space next to a fuller primary
-              column, even when the queue itself is empty. */}
-          <View className={DESKTOP_PANEL}>
-          {/* Uncategorized transactions queue */}
-          <DesktopPanelHeader icon="receipt-outline" title={t('budgets.uncategorizedTitle')} />
+          {/* Desktop Claude Design pass: a 300px sidebar (donut + 6-month
+              trend + a compact uncategorized queue), matching the mockup's
+              own right column — replacing the equal-width uncategorized
+              panel this used to be. The donut/trend analytics moved here
+              from the pre-redesign Dashboard, which showed this exact
+              window but the approved Home mockup never does (see the
+              trendPeriodStarts comment above). Desktop-only; mobile is
+              entirely unaffected (this whole block is `web:desktop:`-only,
+              and the uncategorized queue's own mobile rendering is
+              untouched below). */}
+          <View className="web:desktop:w-[300px] web:desktop:flex-none web:desktop:gap-3.5">
+            {analyticsTransactionsRaw.length > 0 && !isAnalyticsLoading && totalBreakdownAgorot > 0 && (
+              <View className={DESKTOP_CARD_CLASS}>
+                <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.analytics.breakdownTitle')}
+                </Text>
+                <View className="web:desktop:mt-4 web:desktop:items-center">
+                  <CategoryDonutChart breakdown={topBreakdownEntries} categoryNameById={categoryNameById} size={132} />
+                </View>
+                <View className="web:desktop:mt-4 web:desktop:gap-2">
+                  {topBreakdownEntries.map((entry, index) => (
+                    <View key={entry.categoryId} className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2">
+                      <View className="web:desktop:h-2.5 web:desktop:w-2.5 web:desktop:rounded-sm" style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }} />
+                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {categoryNameById[entry.categoryId] ?? ''}
+                      </Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                        {Math.round((entry.spentAgorot / totalBreakdownAgorot) * 100)}%
+                      </Text>
+                    </View>
+                  ))}
+                  {otherBreakdownAgorot > 0 && (
+                    <View className="web:desktop:flex-row-reverse web:desktop:items-center web:desktop:gap-2">
+                      <View className="web:desktop:h-2.5 web:desktop:w-2.5 web:desktop:rounded-sm web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
+                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark">
+                        {t('budgets.analytics.otherCategories')}
+                      </Text>
+                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                        {Math.round((otherBreakdownAgorot / totalBreakdownAgorot) * 100)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {!isAnalyticsLoading && monthlyTrend.some((point) => point.incomeAgorot > 0 || point.expenseAgorot > 0) && (
+              <View className={DESKTOP_CARD_CLASS}>
+                <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.analytics.trendTitle')}
+                </Text>
+                <View className="web:desktop:mt-4">
+                  <MonthlyTrendChart points={monthlyTrend} />
+                </View>
+              </View>
+            )}
+
+          <View className={DESKTOP_CARD_CLASS}>
+          {/* Uncategorized transactions queue — the same real feature the
+              pre-redesign equal-width column offered, condensed into a
+              sidebar card matching the mockup's own compact treatment. */}
+          <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+            {t('budgets.uncategorizedTitle')}
+          </Text>
           {uncategorizedError ? (
             <ErrorMessage message={t('budgets.errors.generic')} />
           ) : isUncategorizedLoading ? (
@@ -615,7 +666,7 @@ export default function Budgets() {
                       <Divider />
                     </View>
                   )}
-                  <View className="flex-row items-center justify-between web:flex-row-reverse">
+                  <View className="flex-row items-center justify-between web:flex-row">
                     <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                       {txn.description}
                     </Text>
@@ -644,7 +695,7 @@ export default function Budgets() {
                           />
                         }
                       />
-                      <View className="mt-2 flex-row gap-2 web:flex-row-reverse">
+                      <View className="mt-2 flex-row gap-2 web:flex-row">
                         <View className="flex-1">
                           <Button
                             title={t('budgets.assignCategorySubmit')}

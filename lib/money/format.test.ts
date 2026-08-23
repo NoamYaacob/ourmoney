@@ -28,6 +28,20 @@ describe('formatILS', () => {
     expect(result).not.toContain('-')
   })
 
+  // Comprehensive upgrade pass: a caller negating a sum that happens to be
+  // exactly 0 (e.g. `-safeToSpend.plannedObligationsAgorot` with zero
+  // upcoming obligations — dashboard/index.tsx and cash-flow/index.tsx both
+  // do this) produces JS's `-0`, not `0`. `-0 === 0` is true, but
+  // `Intl.NumberFormat` still renders a sign, producing a spurious
+  // "-₪0.00" a household with nothing owed would see every time. This is
+  // the exact regression this test guards against — `formatILS` must
+  // normalize it, not every call site.
+  it('never renders a negative sign for negative zero (-0)', () => {
+    const result = formatILS(-0)
+    expect(result).toContain('0.00')
+    expect(result).not.toContain('-')
+  })
+
   it('always renders two decimal places', () => {
     expect(formatILS(100)).toContain('1.00')
   })
