@@ -6,6 +6,7 @@ import { useHouseholdStore } from '@/store/householdStore'
 import { useCreateInvitation } from '@/features/household/hooks/useCreateInvitation'
 import { buildInviteShareMessage } from '@/features/household/lib/inviteLink'
 import { Screen } from '@/components/ui/Screen'
+import { AuthHeader } from '@/components/ui/AuthHeader'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 
@@ -42,10 +43,8 @@ export default function InvitePartner() {
 
   return (
     <Screen center>
-      <Text className="mb-2 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-        {t('onboarding.invitePartner.title')}
-      </Text>
-      <Text className="mb-8 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
+      <AuthHeader title={t('onboarding.invitePartner.title')} />
+      <Text className="-mt-4 mb-8 text-center text-body font-sans text-inkMuted-light dark:text-inkMuted-dark">
         {t('onboarding.invitePartner.description')}
       </Text>
 

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useForgotPassword } from '@/features/auth/hooks/useForgotPassword'
 import { mapAuthError } from '@/features/auth/lib/mapAuthError'
 import { Screen } from '@/components/ui/Screen'
+import { AuthHeader } from '@/components/ui/AuthHeader'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -24,13 +25,11 @@ export default function ForgotPassword() {
   if (forgotPassword.isSuccess) {
     return (
       <Screen center>
-        <Text className="mb-2 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-          {t('auth.forgotPassword.successTitle')}
-        </Text>
-        <Text className="mb-6 text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
+        <AuthHeader title={t('auth.forgotPassword.successTitle')} />
+        <Text className="-mt-4 mb-6 text-center text-body font-sans text-inkMuted-light dark:text-inkMuted-dark">
           {t('auth.forgotPassword.successBody')}
         </Text>
-        <Link href="/sign-in" className="text-sm font-semibold text-accent-light dark:text-accent-dark">
+        <Link href="/sign-in" className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
           {t('auth.forgotPassword.backToSignIn')}
         </Link>
       </Screen>
@@ -39,9 +38,7 @@ export default function ForgotPassword() {
 
   return (
     <Screen center keyboardAvoiding>
-      <Text className="mb-8 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-        {t('auth.forgotPassword.title')}
-      </Text>
+      <AuthHeader title={t('auth.forgotPassword.title')} />
 
       <Input
         label={t('auth.forgotPassword.emailLabel')}
@@ -65,7 +62,7 @@ export default function ForgotPassword() {
 
       <Link
         href="/sign-in"
-        className="mt-6 text-center text-sm font-semibold text-accent-light dark:text-accent-dark"
+        className="mt-6 text-center text-caption font-sansSemibold text-accent-light dark:text-accent-dark"
       >
         {t('auth.forgotPassword.backToSignIn')}
       </Link>

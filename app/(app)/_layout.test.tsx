@@ -108,6 +108,16 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'alerts/index': STUB_SCREEN,
         'more/index': STUB_SCREEN,
         'safe-to-spend/index': STUB_SCREEN,
+        // Visual QA pass: connections/index and connections/preview shipped
+        // without a matching fixture entry here, so this test's route tree
+        // never contained them — it could not have failed no matter which
+        // way the real _layout.tsx registered (or forgot to register) them.
+        // That's exactly how connections/preview shipped unregistered and
+        // leaked into the tab bar as an untitled 6th button in production.
+        // Both now included so the getAllByRole('button') count below is a
+        // real assertion about every route this layout actually declares.
+        'connections/index': STUB_SCREEN,
+        'connections/preview': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )
@@ -179,6 +189,8 @@ describe('app/(app)/_layout — tab bar route exclusions', () => {
         'alerts/index': STUB_SCREEN,
         'more/index': STUB_SCREEN,
         'safe-to-spend/index': STUB_SCREEN,
+        'connections/index': STUB_SCREEN,
+        'connections/preview': STUB_SCREEN,
       },
       { initialUrl: '/dashboard' }
     )

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useSignUp } from '@/features/auth/hooks/useSignUp'
 import { mapAuthError } from '@/features/auth/lib/mapAuthError'
 import { Screen } from '@/components/ui/Screen'
+import { AuthHeader } from '@/components/ui/AuthHeader'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -50,10 +51,8 @@ export default function SignUp() {
   if (signUp.isSuccess) {
     return (
       <Screen center>
-        <Text className="mb-2 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-          {t('auth.signUp.successTitle')}
-        </Text>
-        <Text className="text-center text-base text-inkMuted-light dark:text-inkMuted-dark">
+        <AuthHeader title={t('auth.signUp.successTitle')} />
+        <Text className="-mt-4 text-center text-body font-sans text-inkMuted-light dark:text-inkMuted-dark">
           {t('auth.signUp.successBody')}
         </Text>
       </Screen>
@@ -62,9 +61,7 @@ export default function SignUp() {
 
   return (
     <Screen center keyboardAvoiding>
-      <Text className="mb-8 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-        {t('auth.signUp.title')}
-      </Text>
+      <AuthHeader title={t('auth.signUp.title')} />
 
       <Input
         label={t('auth.signUp.displayNameLabel')}
@@ -115,8 +112,8 @@ export default function SignUp() {
       <Button title={t('auth.signUp.submit')} onPress={handleSubmit} loading={signUp.isPending} />
 
       <View className="mt-6 flex-row justify-center gap-1">
-        <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('auth.signUp.signInPrompt')}</Text>
-        <Link href="/sign-in" className="text-sm font-semibold text-accent-light dark:text-accent-dark">
+        <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">{t('auth.signUp.signInPrompt')}</Text>
+        <Link href="/sign-in" className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
           {t('auth.signUp.signInLink')}
         </Link>
       </View>

@@ -419,6 +419,7 @@ export default function AppLayout() {
               <Tabs.Screen name="installments/index" options={{ href: null }} />
               <Tabs.Screen name="installments/[id]" options={{ href: null }} />
               <Tabs.Screen name="connections/index" options={{ href: null }} />
+              <Tabs.Screen name="connections/preview" options={{ href: null }} />
             </Tabs>
           </View>
         </View>

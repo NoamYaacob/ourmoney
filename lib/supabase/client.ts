@@ -49,10 +49,23 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 // is explicitly told to stop. Foreground restarts it; background stops it —
 // otherwise the refresh timer either drifts while suspended or keeps firing
 // needlessly while nothing can observe it.
-AppState.addEventListener('change', (state) => {
-  if (state === 'active') {
-    void supabase.auth.startAutoRefresh()
-  } else {
-    void supabase.auth.stopAutoRefresh()
-  }
-})
+//
+// Native only — same guard as lib/queryClient.ts's own AppState wiring, and
+// for the same reason: react-native-web's AppState polyfill fires 'background'
+// on mere tab-hide (app-switching, screen lock), which stops the refresh
+// timer, and 'active' fires startAutoRefresh() without awaiting it. TanStack
+// Query's refetchOnWindowFocus fires the very same instant and can beat that
+// unawaited refresh to the network, sending queries with an expired JWT —
+// real 401s surfacing as "משהו השתבש" on the real-data preview, never seen in
+// a desktop tab that never backgrounds. The web SDK already runs its own
+// refresh timer without this help; native genuinely needs it because nothing
+// else drives token refresh while the OS suspends the JS engine.
+if (Platform.OS !== 'web') {
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      void supabase.auth.startAutoRefresh()
+    } else {
+      void supabase.auth.stopAutoRefresh()
+    }
+  })
+}

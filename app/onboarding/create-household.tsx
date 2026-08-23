@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Text } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { useRouter } from 'expo-router'
 import { useCreateHousehold } from '@/features/household/hooks/useCreateHousehold'
 import { mapCreateHouseholdError } from '@/features/household/lib/mapHouseholdError'
 import { Screen } from '@/components/ui/Screen'
+import { AuthHeader } from '@/components/ui/AuthHeader'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
@@ -33,9 +33,7 @@ export default function CreateHousehold() {
 
   return (
     <Screen center keyboardAvoiding>
-      <Text className="mb-8 text-center text-2xl font-bold text-ink-light dark:text-ink-dark">
-        {t('onboarding.createHousehold.title')}
-      </Text>
+      <AuthHeader title={t('onboarding.createHousehold.title')} />
 
       <Input
         label={t('onboarding.createHousehold.nameLabel')}
