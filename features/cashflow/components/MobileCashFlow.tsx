@@ -145,19 +145,22 @@ export function MobileCashFlow() {
 
           {/* The evidence. */}
           <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            {/* Wraps rather than shrinks. The frame fits three figures on
-                one line because its own are four digits; a household with a
-                five-digit balance gets 2 + 1 instead of three amounts
-                colliding — the design system's density rule is explicit
-                that nothing shrinks to fit, what does not fit moves. */}
-            <View className="flex-row flex-wrap gap-x-3 gap-y-3">
-              <View className="min-w-[30%] flex-1">
+            {/* Wraps rather than shrinks or truncates. The frame fits three
+                figures on one line because its own are four digits; a
+                household with a five-digit balance and agorot gets 2 + 1.
+                Each column takes its natural width — constraining them to
+                equal thirds is what turned a collision into a truncated
+                amount, and a truncated amount is worse than either. The
+                design system's density rule is explicit: nothing shrinks to
+                fit, what does not fit moves. */}
+            <View className="flex-row flex-wrap justify-between gap-x-4 gap-y-3">
+              <View>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.today')}
                 </Text>
                 <Money agorot={forecast.startingBalanceAgorot} size="large" />
               </View>
-              <View className="min-w-[30%] flex-1 items-center">
+              <View className="items-center">
                 <Text
                   className={`text-meta font-sansSemibold tracking-[0.06em] ${
                     forecast.lowestBalanceAgorot < 0
@@ -173,7 +176,7 @@ export function MobileCashFlow() {
                   tone={forecast.lowestBalanceAgorot < 0 ? 'danger' : 'default'}
                 />
               </View>
-              <View className="min-w-[30%] flex-1 items-end">
+              <View className="items-end">
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('cashFlow.mobile.atEnd')}
                 </Text>

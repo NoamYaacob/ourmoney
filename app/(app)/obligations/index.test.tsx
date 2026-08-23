@@ -130,18 +130,19 @@ describe('Obligations list', () => {
     expect(queryByText('התחייבות ששולמה')).toBeNull()
   })
 
-  // UX-completeness audit P2 fix: obligations was the one list among
-  // accounts/recurring/goals/obligations that never got the shared
-  // 2-column desktop grid treatment.
-  it('reverses the desktop 2-column obligations grid so the first (nearest-due) item renders on the right', async () => {
-    const { getByText } = await render(<Obligations />)
+  // The 2-column desktop grid is gone. Both design files draw upcoming
+  // obligations as one column of hairline-separated rows inside a single
+  // card — the design system's own "מה מגיע" shape (§07), shared with the
+  // dashboard — not as a grid of cards. A row that is one of a pair reads as
+  // an object; a row in a dated column reads as a date, which is the whole
+  // point of a list you scan for what is next.
+  it('draws upcoming obligations as one dated list, in the shared commitment shape', async () => {
+    const { getByTestId, getByText } = await render(<Obligations />)
 
-    let node = getByText('ארנונה').parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
+    // The day numeral and its month abbreviation are the row's opening —
+    // the shape a plain card-with-a-category-tile did not have.
+    expect(getByTestId('obligation-ob-1')).toBeTruthy()
+    expect(getByText('ארנונה')).toBeTruthy()
   })
 
   it('shows an empty state when there are no upcoming obligations', async () => {

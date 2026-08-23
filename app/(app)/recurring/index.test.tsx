@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import Recurring from './index'
+import { formatDayOfMonth } from '@/lib/dates/format'
 import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
@@ -84,17 +85,18 @@ describe('Recurring list', () => {
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [], isLoading: false, error: null })
   })
 
-  it('reverses the desktop 2-column recurring grid so the first item renders on the right', async () => {
+  // The 2-column grid is gone. Both frames draw one dated column: the day
+  // of the month a charge comes off, then what it is, then how much. A grid
+  // of cards answered "how many templates do we have", which is not a
+  // question anyone opens this screen to ask.
+  it('opens each row with the day of the month the charge comes off', async () => {
     mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
 
     const { getByText } = await render(<Recurring />)
 
-    let node = getByText('שכירות').parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
+    expect(getByText('שכירות')).toBeTruthy()
+    // RECURRING[0].next_due_date's day, standing alone as the row's opening.
+    expect(getByText(formatDayOfMonth(RECURRING[0]!.next_due_date))).toBeTruthy()
   })
 
   // UX-completeness audit P2 fix: a paused (is_active: false) card rendered

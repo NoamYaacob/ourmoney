@@ -18,12 +18,14 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useCreatePlannedObligation } from '@/features/obligations/hooks/useCreatePlannedObligation'
-import { daysUntilDue, filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { filterUpcomingObligations } from '@/features/obligations/lib/upcomingObligations'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { CommitmentRow } from '@/components/ui/CommitmentRow'
+import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
@@ -35,7 +37,6 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { StatusChip } from '@/components/ui/StatusChip'
 import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
 import { Money } from '@/components/ui/Money'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
@@ -171,55 +172,42 @@ export default function Obligations() {
               flex-wrap` container is a calc()-free way to get two even
               columns in Yoga/RN's flexbox. Mobile/tablet keep the original
               single-column list untouched. */}
-          <View
-            className={
-              upcoming.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined
-            }
-          >
-            {upcoming.map((item) => {
+          {/* One card, hairline-separated rows, in the design system's own
+              "מה מגיע" shape — the same CommitmentRow the dashboard uses. The
+              obligations list had grown its own row (a category tile, the
+              date as prose, the amount as plain text), which is exactly the
+              drift §07 exists to prevent: the same commitment looked like
+              two different things depending on which screen you opened.
+
+              The urgency comes from commitmentUrgency, so a row here and an
+              alert about the same charge can never disagree about how close
+              it is. */}
+          <View className="overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light px-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            {upcoming.map((item, index) => {
               const obligation = upcomingById.get(item.id)
               if (!obligation) return null
-              const category = obligation.category_id ? categories.find((c) => c.id === obligation.category_id) : undefined
-              const pastDue = isPastDue(obligation.due_date, today)
+              const urgency = commitmentUrgency(today, obligation.due_date)
+              const chipLabel =
+                urgency.labelKey === 'inDays'
+                  ? t('home.next.inDays', { count: urgency.count })
+                  : t(`home.next.${urgency.labelKey}`)
+
               return (
-                <Pressable
+                <View
                   key={obligation.id}
-                  onPress={() => router.push(`/obligations/${obligation.id}`)}
-                  accessibilityRole="button"
-                  className={upcoming.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
+                  className={index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : undefined}
                 >
-                  <Card>
-                    <View className="flex-row items-center justify-between web:flex-row">
-                      <View className="flex-1 flex-row items-center gap-3 web:flex-row">
-                        <CategoryIcon icon={category?.icon} size="sm" />
-                        <View className="flex-1">
-                          <View className="flex-row flex-wrap items-center gap-1.5">
-                            <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                              {obligation.name}
-                            </Text>
-                            {pastDue && <StatusChip label={t('obligations.pastDue')} tone="danger" />}
-                          </View>
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {formatDateDisplay(obligation.due_date)}
-                            {!pastDue && (
-                              <>
-                                {' · '}
-                                {daysUntilDue(obligation.due_date, today) === 0
-                                  ? t('obligations.dueToday')
-                                  : t('obligations.inDays', { count: daysUntilDue(obligation.due_date, today) })}
-                              </>
-                            )}
-                            {' · '}
-                            {obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
-                        {formatILS(obligation.amount_agorot)}
-                      </Text>
-                    </View>
-                  </Card>
-                </Pressable>
+                  <CommitmentRow
+                    testID={`obligation-${obligation.id}`}
+                    date={obligation.due_date}
+                    name={obligation.name}
+                    amountAgorot={obligation.amount_agorot}
+                    timeLabel={chipLabel}
+                    tone={urgency.tone}
+                    meta={obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
+                    onPress={() => router.push(`/obligations/${obligation.id}`)}
+                  />
+                </View>
               )
             })}
           </View>

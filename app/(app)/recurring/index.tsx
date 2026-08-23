@@ -13,7 +13,7 @@ import { useCreateRecurringTransaction } from '@/features/recurring/hooks/useCre
 import { usePriceIncreaseDetections } from '@/features/recurring/hooks/usePriceIncreaseDetections'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
-import { formatDateDisplay } from '@/lib/dates/format'
+import { formatDateDisplay, formatDayOfMonth } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
@@ -194,50 +194,49 @@ export default function Recurring() {
           )}
 
           {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
-          {/* Responsive/desktop pass: a 2-column card grid once there's more
-              than one recurring item, desktop only — same calc()-free
-              pattern as accounts/index.tsx. */}
-          <View
-            className={
-              recurringTransactions.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined
-            }
-          >
-          {recurringTransactions.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => router.push(`/recurring/${item.id}`)}
-              accessibilityRole="button"
-              className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
-            >
-              {/* Paused items are dimmed and get a bolded status word instead
-                  of blending into the muted caption — the inline "· מושהה"
-                  suffix alone was too easy to miss when scanning the list
-                  (UX-completeness audit finding). */}
-              <Card
-                className={
-                  !item.is_active
-                    ? 'rounded-card border border-border-light bg-surfaceMuted-light p-3 opacity-60 dark:border-border-dark dark:bg-surfaceMuted-dark'
-                    : undefined
-                }
-              >
-                <View className="flex-row items-center justify-between gap-2">
-                  <Text className="flex-1 text-body font-sansSemibold text-ink-light dark:text-ink-dark">
-                    {item.description}
+          {/* One card, hairline rows, opening with the day of the month —
+              which is what both frames draw and what the list is actually
+              for: a household scanning "what comes off, and on which day".
+              A 2-column grid of cards answered "how many templates do we
+              have", a question nobody opens this screen to ask.
+
+              The amount is a magnitude, like every other recurring charge in
+              the design; the direction is the screen, not the sign. */}
+          {recurringTransactions.length > 0 && (
+            <View className="overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light px-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+              {recurringTransactions.map((item, index) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => router.push(`/recurring/${item.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.description}
+                  className={`min-h-[44px] flex-row items-center gap-3.5 py-3 ${
+                    index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : ''
+                  } ${item.is_active ? '' : 'opacity-60'}`}
+                >
+                  <Text
+                    className="w-9 font-heeboBold text-caption text-inkMuted-light dark:text-inkMuted-dark"
+                    style={{ fontVariant: ['tabular-nums'] }}
+                  >
+                    {formatDayOfMonth(item.next_due_date)}
                   </Text>
-                  <Text className="text-body text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(item.amount_agorot)}
-                  </Text>
-                </View>
-                <View className="mt-1 flex-row items-center gap-1.5">
-                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {formatDateDisplay(item.next_due_date)}
-                  </Text>
-                  {!item.is_active && <StatusChip label={t('recurring.inactive')} />}
-                </View>
-              </Card>
-            </Pressable>
-          ))}
-          </View>
+                  <View className="flex-1">
+                    <View className="flex-row flex-wrap items-center gap-1.5">
+                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {item.description}
+                      </Text>
+                      {!item.is_active && <StatusChip label={t('recurring.inactive')} />}
+                    </View>
+                    <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                      {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')}{' '}
+                      {formatDateDisplay(item.next_due_date)}
+                    </Text>
+                  </View>
+                  <Money agorot={Math.abs(item.amount_agorot)} size="row" />
+                </Pressable>
+              ))}
+            </View>
+          )}
         </>
       )}
 
