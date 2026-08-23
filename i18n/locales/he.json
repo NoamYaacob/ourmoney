@@ -15,7 +15,8 @@
     "appName": "OurMoney",
     "comingSoon": "בקרוב",
     "cancel": "ביטול",
-    "loading": "טוען..."
+    "loading": "טוען...",
+    "offline": "אין חיבור לאינטרנט"
   },
   "theme": {
     "light": "מצב בהיר",
@@ -124,7 +125,6 @@
   "connections": {
     "title": "חיבור בנקים וכרטיסים",
     "subtitle": "תצוגה מקדימה של יכולת עתידית. עדיין אין חיבור אמיתי לשום בנק או כרטיס.",
-    "comingSoon": "בקרוב",
     "notAvailableYet": "עדיין לא זמין",
     "types": {
       "bankAccount": "חשבון בנק",

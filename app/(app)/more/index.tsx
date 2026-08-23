@@ -146,7 +146,7 @@ export default function More() {
               <Ionicons name="link-outline" size={18} color={iconColor} />
             </RowIcon>
           }
-          badges={<StatusChip label={t('connections.comingSoon')} />}
+          badges={<StatusChip label={t('common.comingSoon')} />}
           onPress={() => router.push('/connections')}
         />
       </ListCard>

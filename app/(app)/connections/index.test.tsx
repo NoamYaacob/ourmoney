@@ -20,7 +20,7 @@ describe('Connections', () => {
   it('lists every connection type as permanently locked, never as connectable', async () => {
     const { getAllByText } = await render(<Connections />)
 
-    expect(getAllByText(i18n.t('connections.comingSoon'))).toHaveLength(2)
+    expect(getAllByText(i18n.t('common.comingSoon'))).toHaveLength(2)
     expect(getAllByText(i18n.t('connections.notAvailableYet'))).toHaveLength(2)
   })
 

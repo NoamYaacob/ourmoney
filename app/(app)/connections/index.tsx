@@ -61,7 +61,7 @@ export default function Connections() {
                 <Ionicons name={type.icon} size={18} color={iconColor} />
               </RowIcon>
             }
-            badges={<StatusChip label={t('connections.comingSoon')} />}
+            badges={<StatusChip label={t('common.comingSoon')} />}
             onPress={() => setInfoVisible(true)}
           />
         ))}
