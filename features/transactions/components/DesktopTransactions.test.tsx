@@ -41,7 +41,34 @@ jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [{ id: 'acct-1', name: 'עו״ש' }] }),
 }))
 jest.mock('@/features/categories/hooks/useCategories', () => ({
-  useCategories: () => ({ categories: [{ id: 'cat-1', name_he: 'מזון', icon: '🍔' }] }),
+  // cat-2 exists only so the default rule's target category ("בידור") never
+  // collides with "מזון", the category the bulk-categorization tests below
+  // pick by text — two categories named identically would make getByText
+  // ambiguous the moment the sidebar's rules panel renders alongside it.
+  useCategories: () => ({
+    categories: [
+      { id: 'cat-1', name_he: 'מזון', icon: '🍔' },
+      { id: 'cat-2', name_he: 'בידור', icon: '🎭' },
+    ],
+  }),
+}))
+// One active rule and one installment plan by default — the fixtures the
+// rule-provenance / installment-progress / sidebar-rules tests below build
+// their transaction rows against (matched_rule_id: 'rule-1',
+// installment_plan_id: 'plan-1'). Tests that don't care about either simply
+// never reference those ids on their fixtures, so these defaults are inert
+// for them.
+const DEFAULT_RULES = [
+  { id: 'rule-1', category_id: 'cat-2', field: 'merchant_name', operator: 'contains', value: 'קפה', is_active: true, sort_order: 0 },
+]
+const mockUseCategoryRules = jest.fn(() => ({ rules: DEFAULT_RULES }))
+jest.mock('@/features/categories/hooks/useCategoryRules', () => ({
+  useCategoryRules: () => mockUseCategoryRules(),
+}))
+const DEFAULT_INSTALLMENT_PLANS = [{ id: 'plan-1', total_agorot: 718800, monthly_agorot: 59900, installment_count: 12 }]
+const mockUseInstallmentPlans = jest.fn(() => ({ plans: DEFAULT_INSTALLMENT_PLANS }))
+jest.mock('@/features/installments/hooks/useInstallmentPlans', () => ({
+  useInstallmentPlans: () => mockUseInstallmentPlans(),
 }))
 
 const mockUseTransactions = jest.fn()
@@ -76,10 +103,10 @@ describe('Transactions list', () => {
     mockBulkIsPending = false
   })
 
-  it('shows the empty message and exactly one add-transaction CTA (the floating action, not a duplicate button)', async () => {
+  it('shows the empty message, and the header add-transaction button navigates to /transactions/new', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
-    const { getAllByText, getByLabelText, queryAllByText } = await render(<Transactions />)
+    const { getAllByText, getAllByLabelText, getAllByRole } = await render(<Transactions />)
 
     // Desktop polish pass (round 2): the empty state now renders twice —
     // a compact mobile version and a full-size desktop version, toggled by
@@ -87,12 +114,15 @@ describe('Transactions list', () => {
     // evaluate as real CSS — so both copies of the message legitimately
     // exist in the tree at once.
     expect(getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.').length).toBe(2)
-    // Phase 3.1: the empty state's own actionLabel button was removed — the
-    // screen's floatingAction FAB is the one "add transaction" CTA now, so
-    // its accessible label is the only place this text should appear (no
-    // visible "הוספת תנועה" Text/Button left in the empty-state itself).
-    expect(getByLabelText('הוספת תנועה')).toBeTruthy()
-    expect(queryAllByText('הוספת תנועה')).toHaveLength(0)
+    // Desktop Claude Design pass: the mockup's header carries a real, always-
+    // visible "add transaction" button — the screen's floatingAction FAB
+    // (`web:desktop:hidden`) is a second, inert instance of the same label
+    // still present in the tree, not the only CTA anymore.
+    expect(getAllByLabelText('הוספת תנועה').length).toBe(2)
+    // The header button is the first in document order (the FAB renders
+    // last, as Screen's floatingAction) — the visible, real CTA.
+    await fireEvent.press(getAllByRole('button', { name: 'הוספת תנועה' })[0]!)
+    expect(mockPush).toHaveBeenCalledWith('/transactions/new')
   })
 
   // Desktop polish pass (round 2): a real-browser visual check at a
@@ -164,12 +194,16 @@ describe('Transactions list', () => {
       error: null,
     })
 
-    const { getByText } = await render(<Transactions />)
+    const { getByText, getAllByText } = await render(<Transactions />)
 
     expect(getByText('משכורת')).toBeTruthy()
-    const amount = getByText(formatILS(500000))
-    expect(amount.props.className).toContain('text-positive-light')
-    expect(amount.props.className).toContain('dark:text-positive-dark')
+    // The sidebar's own "income" figure legitimately echoes the same
+    // formatted amount when there's a single income transaction (the
+    // sidebar's "net" row does too, but is deliberately neutral-colored
+    // regardless of sign) — asserting at least one match carries the
+    // positive color is what proves the row itself is positive-colored.
+    const amounts = getAllByText(formatILS(500000))
+    expect(amounts.some((amount) => (amount.props.className as string).includes('text-positive-light'))).toBe(true)
   })
 
   // Desktop/RTL polish pass (real-browser regression): the title+CSV-import
@@ -186,19 +220,19 @@ describe('Transactions list', () => {
     expect(header?.props.className as string).toContain('web:flex-row')
   })
 
-  // Desktop polish pass: a simple 3-column row list (icon, description,
-  // amount) stretched to the `wide` (1150px desktop) content cap read as
-  // absurdly wide rows — narrowed to `medium` (flat 800px), matching the
-  // "simple list screens ~760-1000px" desktop guideline.
-  it('caps the desktop content width at the medium (800px) token, not the wide (1150px) one', async () => {
+  // Desktop Claude Design pass: the mockup pairs the transaction feed with a
+  // 300px sidebar (this view's summary + active rules) — the flat, single-
+  // column `medium` (800px) cap the pre-redesign screen used has no room for
+  // that second column, so the screen now uses the same `wide` (1150px)
+  // token every other desktop screen with a sidebar uses (Dashboard, etc.).
+  it('uses the wide (1150px) desktop content cap, giving room for the sidebar column', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
 
     const { getByText } = await render(<Transactions />)
 
     const contentColumn = getByText('תנועות').parent?.parent
     const className = contentColumn?.props.className as string
-    expect(className).toContain('web:tablet:max-w-[800px]')
-    expect(className).not.toContain('web:desktop:max-w-[1150px]')
+    expect(className).toContain('web:desktop:max-w-[1150px]')
   })
 
   // Desktop Visual/Responsive Design pass (section C): search + the 3
@@ -257,11 +291,18 @@ describe('Transactions list', () => {
       error: null,
     })
 
-    const { getByText } = await render(<Transactions />)
+    const { getAllByText } = await render(<Transactions />)
 
-    const amount = getByText(formatILS(-5000))
-    expect(amount.props.className).toContain('text-ink-light')
-    expect(amount.props.className).not.toContain('positive')
+    // With zero income, the sidebar's own "net" figure formats identically
+    // to this single expense row's amount — both are expected to be the
+    // same non-positive ink color, so every match is checked rather than
+    // picking one.
+    const amounts = getAllByText(formatILS(-5000))
+    expect(amounts.length).toBeGreaterThanOrEqual(1)
+    for (const amount of amounts) {
+      expect(amount.props.className).toContain('text-ink-light')
+      expect(amount.props.className).not.toContain('positive')
+    }
   })
 
   // Migration 008 (ADR-035).
@@ -787,6 +828,96 @@ describe('Transactions list', () => {
 
       const { queryByText } = await render(<Transactions />)
       expect(queryByText('בחירה')).toBeNull()
+    })
+  })
+
+  // Desktop Claude Design pass: new sidebar (month summary + active rules)
+  // and row-provenance sub-lines (rule/installment), matching the approved
+  // mockup's Transactions screen.
+  describe('sidebar and row provenance', () => {
+    const TXN_1 = { id: 't1', category_id: null, description: 'קניות בסופר', merchant_name: null, amount_agorot: -5000, txn_date: '2026-08-02', is_shared: true, is_excluded: false, transfer_id: null }
+    const TXN_2 = { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false, transfer_id: null }
+
+    it('shows the uncategorized-transactions queue banner, and pressing it filters to uncategorized and enters selection mode', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+
+      expect(getByText('2 תנועות מחכות לסיווג')).toBeTruthy()
+      await fireEvent.press(getByText('לסווג עכשיו'))
+
+      expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'uncategorized' }))
+      expect(getByText('0 נבחרו')).toBeTruthy() // selection mode entered
+    })
+
+    it('does not show the queue banner once every transaction is categorized', async () => {
+      mockUseTransactions.mockReturnValue({
+        transactions: [{ ...TXN_1, category_id: 'cat-1' }],
+        isLoading: false,
+        error: null,
+      })
+
+      const { queryByText } = await render(<Transactions />)
+
+      expect(queryByText('לסווג עכשיו')).toBeNull()
+    })
+
+    it('shows the sidebar income/expense/net summary for the currently listed transactions', async () => {
+      mockUseTransactions.mockReturnValue({
+        transactions: [
+          { ...TXN_1, amount_agorot: -5000 },
+          { id: 't3', category_id: 'cat-1', description: 'משכורת', amount_agorot: 20000, txn_date: '2026-08-01', is_shared: true, is_excluded: false, transfer_id: null },
+        ],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText, getAllByText } = await render(<Transactions />)
+
+      expect(getByText('החודש · 2 תנועות')).toBeTruthy()
+      // The lone income row's own amount happens to equal the sidebar's
+      // income total exactly (there's only one income transaction) — both
+      // legitimately render the same formatted string.
+      expect(getAllByText(formatILS(20000)).length).toBeGreaterThanOrEqual(1)
+      expect(getByText(formatILS(5000))).toBeTruthy() // expense (positive magnitude)
+      expect(getByText(formatILS(15000))).toBeTruthy() // net
+    })
+
+    it('shows a rule-provenance sub-line for a row auto-categorized by an active rule', async () => {
+      mockUseTransactions.mockReturnValue({
+        transactions: [{ ...TXN_1, matched_rule_id: 'rule-1' }],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText } = await render(<Transactions />)
+
+      expect(getByText('סווג אוטומטית לפי הכלל “קפה”')).toBeTruthy()
+    })
+
+    it('shows an installment-progress sub-line with the remaining amount for a materialized installment row', async () => {
+      mockUseTransactions.mockReturnValue({
+        transactions: [{ ...TXN_1, description: 'מחסני רהיטים', amount_agorot: -59900, installment_plan_id: 'plan-1', installment_index: 5 }],
+        isLoading: false,
+        error: null,
+      })
+
+      const { getByText } = await render(<Transactions />)
+
+      // total 718800, monthly 59900, index 5 -> remaining 718800 - 5*59900 = 419300
+      expect(getByText(`תשלום 5 מתוך 12 · נותרו ${formatILS(419300)}`)).toBeTruthy()
+    })
+
+    it('shows the active categorization rules in the sidebar, linking to the rules management screen', async () => {
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+
+      const { getByText } = await render(<Transactions />)
+
+      expect(getByText('כללי סיווג פעילים')).toBeTruthy()
+      expect(getByText('בית עסק מכיל "קפה"')).toBeTruthy()
+
+      await fireEvent.press(getByText('ניהול הכללים ←'))
+      expect(mockPush).toHaveBeenCalledWith('/settings/categories')
     })
   })
 })
