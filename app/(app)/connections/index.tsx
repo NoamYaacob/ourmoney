@@ -63,6 +63,13 @@ export default function Connections() {
             }
             badges={<StatusChip label={t('common.comingSoon')} />}
             onPress={() => setInfoVisible(true)}
+            // ListCard's own default accessibilityLabel is just `title` —
+            // fine for a row that navigates, but every row on this screen
+            // is a permanent dead-end (mobile-expo-reviewer finding): a
+            // screen-reader user needs "not available yet" in the
+            // announced name itself, not only in a separate Text node they
+            // may not reach before deciding whether to tap.
+            accessibilityLabel={`${t(`connections.types.${type.key}`)} — ${t('connections.notAvailableYet')}`}
           />
         ))}
       </ListCard>

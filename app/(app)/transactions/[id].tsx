@@ -193,7 +193,12 @@ export default function TransactionDetail() {
           />
         </View>
 
-        <AmountField label={t('transactions.form.amountLabel')} value={amountText} onChangeText={setAmountText} placeholder="0" />
+        <AmountField
+          label={t('transactions.form.amountLabel')}
+          value={amountText}
+          onChangeText={setAmountText}
+          placeholder={t('transactions.form.amountPlaceholder')}
+        />
 
         <View className="web:desktop:flex-row web:desktop:gap-4">
           <View className="web:desktop:flex-1">

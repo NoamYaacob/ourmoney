@@ -52,15 +52,26 @@ export function TransactionFilterSheet({
   const { t } = useTranslation()
   const [draft, setDraft] = useState<TransactionFilterState>(value)
 
-  // Re-seed whenever the sheet opens, so a dismissed edit is discarded
-  // rather than lingering into the next open. Adjusted during rendering —
-  // React's documented pattern for resetting state on a prop transition —
-  // rather than a useEffect, matching transactions/[id].tsx's prefill and
+  // Re-seed whenever the sheet is open and EITHER it just opened (so a
+  // dismissed edit from the previous open is discarded, even if `value`
+  // itself didn't change) OR `value` has moved on from what draft was last
+  // seeded from (matching the useEffect this replaced, deps `[visible,
+  // value]`, which re-fired on either). Adjusted during rendering — React's
+  // documented pattern for resetting state on a prop change — rather than a
+  // useEffect, matching transactions/[id].tsx's prefill and
   // settings/categories.tsx's deep-link-edit guard elsewhere in this app.
+  // `value` is reference-stable from the caller's own useState (only a real
+  // setFilters call changes it, and that always closes the sheet in the
+  // same action — see MobileTransactions.tsx), so the `!==` here never
+  // false-triggers on an unrelated re-render.
   const [wasVisible, setWasVisible] = useState(visible)
+  const [seededFrom, setSeededFrom] = useState(value)
+  if (visible && (!wasVisible || value !== seededFrom)) {
+    setSeededFrom(value)
+    setDraft(value)
+  }
   if (visible !== wasVisible) {
     setWasVisible(visible)
-    if (visible) setDraft(value)
   }
 
   function update(partial: Partial<TransactionFilterState>) {
