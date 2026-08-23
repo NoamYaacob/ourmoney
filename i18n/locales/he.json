@@ -737,7 +737,9 @@
       "spentOf": "הוצא {{spent}} מתוך {{total}}",
       "paceMarker": "הקו הכהה מסמן איפה אמורים להיות היום",
       "projectionOver": "בקצב הזה התקציב ייגמר לפני סוף החודש. חריגה צפויה של {{amount}}",
-      "projectionOk": "בקצב הזה תעמדו בתקציב"
+      "projectionOk": "בקצב הזה תעמדו בתקציב",
+      "spentLabel": "הוצא",
+      "allocatedLabel": "מתוך תקציב"
     },
     "category": {
       "spentOf": "{{spent}} מתוך {{total}}",

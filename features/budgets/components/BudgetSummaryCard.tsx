@@ -9,6 +9,13 @@
 // The pace marker on the bar gets a one-line legend. A dark tick inside a
 // progress bar means nothing on first sight, and the sentence is cheaper
 // than leaving the household to work it out.
+//
+// Two heads, one card. The phone frame (mobile screen 07) stacks: label,
+// one figure, bar, then "הוצא X / מתוך Y" split across a line. The desktop
+// frame has room to put all three figures side by side at 36/42 — נותר
+// להוציא, הוצא, מתוך תקציב — with the projection lifted out of the foot and
+// set beside them as a bordered note. Below the head the two are the same
+// card, so only the head branches.
 
 import { Text, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
@@ -18,10 +25,13 @@ import { StatusChip } from '@/components/ui/StatusChip'
 import { BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE, type BudgetStateResult } from '@/features/budgets/lib/budgetState'
 import { formatILS } from '@/lib/money/format'
 
+export type BudgetSummaryVariant = 'stacked' | 'row'
+
 interface BudgetSummaryCardProps {
   totalAllocatedAgorot: number
   totalSpentAgorot: number
   state: BudgetStateResult
+  variant?: BudgetSummaryVariant
   testID?: string
 }
 
@@ -29,11 +39,79 @@ export function BudgetSummaryCard({
   totalAllocatedAgorot,
   totalSpentAgorot,
   state,
+  variant = 'stacked',
   testID,
 }: BudgetSummaryCardProps) {
   const { t } = useTranslation()
   const remainingAgorot = totalAllocatedAgorot - totalSpentAgorot
   const tone = BUDGET_STATE_TONE[state.state]
+  const isRow = variant === 'row'
+
+  if (isRow) {
+    return (
+      <View
+        testID={testID}
+        className="rounded-card border border-border-light bg-surfaceMuted-light p-6 dark:border-border-dark dark:bg-surfaceMuted-dark"
+      >
+        <View className="flex-row items-start gap-9 border-b border-border-light pb-5 dark:border-border-dark">
+          <View>
+            <StatLabel>{t('budgets.summary.remainingLabel')}</StatLabel>
+            <Money agorot={remainingAgorot} size="display" tone={remainingAgorot < 0 ? 'danger' : 'default'} />
+          </View>
+          <View>
+            <StatLabel>{t('budgets.summary.spentLabel')}</StatLabel>
+            <Money agorot={totalSpentAgorot} size="display" tone="muted" />
+          </View>
+          <View>
+            <StatLabel>{t('budgets.summary.allocatedLabel')}</StatLabel>
+            <Money agorot={totalAllocatedAgorot} size="display" tone="muted" />
+          </View>
+
+          {state.hasProjection && (
+            // A bordered note, not a red banner: being ahead of pace is an
+            // observation the household can act on, not an error state.
+            <View
+              className={`ms-auto max-w-[250px] self-center rounded-e-row border-s-[3px] p-3 ${
+                state.projectedOverspendAgorot > 0
+                  ? 'border-s-warning-light bg-warningSurface-light dark:border-s-warning-dark dark:bg-warningSurface-dark'
+                  : 'border-s-border-light bg-surface-light dark:border-s-border-dark dark:bg-surface-dark'
+              }`}
+            >
+              <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {state.projectedOverspendAgorot > 0
+                  ? t('budgets.summary.projectionOver', { amount: formatILS(state.projectedOverspendAgorot) })
+                  : t('budgets.summary.projectionOk')}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* The bar's own legend, spelled out: the design frame explains each
+            fill and the pace tick rather than leaving color to do it. */}
+        <View className="mt-4 flex-row flex-wrap items-center gap-4">
+          <StatusChip label={t(BUDGET_STATE_LABEL_KEY[state.state])} tone={tone} dot />
+          {state.pacePercent !== null && (
+            <View className="flex-row items-center gap-1.5">
+              <View className="h-3 w-0.5 bg-ink-light dark:bg-ink-dark" />
+              <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('budgets.summary.paceMarker')}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View className="mt-3">
+          <BudgetBar
+            percent={state.percentSpent ?? 0}
+            pacePercent={state.pacePercent}
+            state={state.state}
+            height={10}
+            accessibilityLabel={t(BUDGET_STATE_LABEL_KEY[state.state])}
+          />
+        </View>
+      </View>
+    )
+  }
 
   return (
     <View
@@ -86,5 +164,14 @@ export function BudgetSummaryCard({
         </View>
       )}
     </View>
+  )
+}
+
+// The 12px tracked caption above every figure in the design's stat rows.
+function StatLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
+      {children}
+    </Text>
   )
 }

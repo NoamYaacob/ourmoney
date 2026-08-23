@@ -10,7 +10,7 @@
 // behavior below is unchanged from Phase 1 — this is presentation only.
 
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -50,7 +50,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
-import { DESKTOP_PANEL_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { DESKTOP_BREAKPOINT_PX, DESKTOP_PANEL_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
 const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
@@ -60,6 +60,12 @@ const TREND_MONTHS = 6
 
 export default function Budgets() {
   const { t } = useTranslation()
+  // The two design files draw the category list differently enough that a
+  // utility override cannot express it — desktop pulls the ratio onto the
+  // name line and drops the card chrome. Same route split the dashboard,
+  // transactions and cash-flow screens already make.
+  const { width } = useWindowDimensions()
+  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
   const { user } = useAuth()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
@@ -327,7 +333,12 @@ export default function Budgets() {
         {t('budgets.title')}
       </Text>
 
-      <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
+      {/* Desktop draws the month stepper in the shell header band, where the
+          mockup puts it — this one is the phone's, and would be a second
+          identical control beside it on a wide screen. */}
+      <View className="web:desktop:hidden">
+        <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
+      </View>
 
       {error ? (
         <ErrorMessage message={t('budgets.errors.generic')} />
@@ -339,6 +350,7 @@ export default function Budgets() {
             totalAllocatedAgorot={totalAllocatedAgorot}
             totalSpentAgorot={totalSpentAgorot}
             state={monthState}
+            variant={isDesktopWeb ? 'row' : 'stacked'}
             testID="budget-summary"
           />
 
@@ -479,6 +491,7 @@ export default function Budgets() {
                     <BudgetCategoryRow
                       category={category}
                       state={categoryState}
+                      variant={isDesktopWeb ? 'plain' : 'card'}
                       testID={`budget-category-${category.categoryId}`}
                       onPress={() => {
                         setEditingCategoryId(category.categoryId)

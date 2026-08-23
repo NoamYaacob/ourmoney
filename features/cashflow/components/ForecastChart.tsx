@@ -50,6 +50,9 @@ const GEOMETRY: Record<ForecastChartVariant, { w: number; h: number; ticks: numb
 // Head-room above the curve so the callout has somewhere to sit without
 // overlapping the line at its own peak.
 const TOP_PAD = 20
+// How far above the marker the callout floats, in viewBox units — roughly
+// its own two-line height plus the marker's halo.
+const CALLOUT_CLEARANCE = 44
 
 function shortDate(isoDate: string): string {
   const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(isoDate)
@@ -170,9 +173,17 @@ export function ForecastChart({
               className="absolute rounded-control px-2 py-1"
               style={{
                 backgroundColor: isNegative ? danger : line,
-                left: `${(lowestX / W) * 100}%`,
-                top: Math.max(0, lowestY - TOP_PAD - 14),
-                transform: [{ translateX: -6 }],
+                // Anchored by whichever edge keeps the box on the canvas: a
+                // low point at the very start or the very end of the horizon
+                // is common (today, or the far edge of the forecast), and a
+                // callout half off the card is unreadable.
+                ...(lowestX > W / 2
+                  ? { right: `${((W - lowestX) / W) * 100}%` }
+                  : { left: `${(lowestX / W) * 100}%` }),
+                // Percentages both ways: the SVG scales to its container, so
+                // a pixel `top` computed in viewBox units would drift from
+                // the marker it labels at any width but one.
+                top: `${(Math.max(0, lowestY - CALLOUT_CLEARANCE) / H) * 100}%`,
               }}
             >
               <Text

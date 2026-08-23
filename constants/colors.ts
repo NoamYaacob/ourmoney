@@ -164,6 +164,14 @@ export const colors = {
     light: '#f0e3cc',
     dark: '#443722',
   },
+  // A whole card's fill when the card itself is the observation — lighter
+  // than `warningTint`, which fills chips. The design system uses this exact
+  // value for both the budget pace note and its "תובנה, לא שגיאה" pattern,
+  // the same relationship `dangerSurface` has to `dangerTint` below.
+  warningSurface: {
+    light: '#fdf9f2',
+    dark: '#26200f',
+  },
 
   // Genuinely actionable: over budget, projected shortfall.
   danger: {

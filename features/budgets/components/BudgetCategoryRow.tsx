@@ -1,5 +1,16 @@
 // One category's budget, as the design draws it: status before numbers.
 //
+// Two compositions, because the two design files draw two. `card` is
+// `OurMoney - Mobile.dc.html` screen 07: a bordered card per category, with
+// the ratio and the projection split across the row's foot, and a chevron
+// into the category's own screen. `plain` is the desktop Budget frame: no
+// card chrome at all, the ratio pulled up onto the name line at the end
+// edge, the projection as a full-width line beneath, and no chevron —
+// desktop opens the allocation editor inline instead of navigating.
+// Everything else — the status dot, the emoji tile, the state chip, the
+// pace-marked bar — is shared, which is what the design system's own note
+// on this row ("זהה מבנית") asks for.
+//
 // The row opens with a status dot and closes the header with a state chip,
 // so a household scanning the list registers "which of these is in trouble"
 // before reading a single figure. That ordering is the design's stated
@@ -19,21 +30,25 @@ import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { StatusChip, StatusDot } from '@/components/ui/StatusChip'
 import { BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE, type BudgetStateResult } from '@/features/budgets/lib/budgetState'
-import { formatILS } from '@/lib/money/format'
+import { formatILS, formatRatioILS } from '@/lib/money/format'
 import type { BudgetCategoryProgress } from '@/types/app'
+
+export type BudgetCategoryRowVariant = 'card' | 'plain'
 
 interface BudgetCategoryRowProps {
   category: BudgetCategoryProgress
   state: BudgetStateResult
   onPress: () => void
+  variant?: BudgetCategoryRowVariant
   testID?: string
 }
 
-export function BudgetCategoryRow({ category, state, onPress, testID }: BudgetCategoryRowProps) {
+export function BudgetCategoryRow({ category, state, onPress, variant = 'card', testID }: BudgetCategoryRowProps) {
   const { t } = useTranslation()
   const { colorScheme: scheme } = useColorScheme()
   const tone = BUDGET_STATE_TONE[state.state]
   const isOver = category.remainingAgorot < 0
+  const isPlain = variant === 'plain'
 
   // What the row says on its trailing line. An overrun states the overrun;
   // a category on course to overrun states the projection, which is the
@@ -56,20 +71,42 @@ export function BudgetCategoryRow({ category, state, onPress, testID }: BudgetCa
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${category.categoryNameHe}, ${t(BUDGET_STATE_LABEL_KEY[state.state])}`}
-      className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark"
+      className={
+        isPlain
+          ? ''
+          : 'rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark'
+      }
     >
-      <View className="flex-row items-center gap-2.5">
+      <View className="flex-row items-baseline gap-2.5">
         <StatusDot tone={tone} />
         <CategoryIcon icon={category.categoryIcon} size="sm" />
-        <Text className="flex-1 text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+        <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
           {category.categoryNameHe}
         </Text>
         <StatusChip label={t(BUDGET_STATE_LABEL_KEY[state.state])} tone={tone} />
-        <Ionicons
-          name="chevron-back"
-          size={ICON.row}
-          color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
-        />
+        {isPlain ? (
+          // The ratio rides the name line at the end edge — bare numbers
+          // with a slash, the design system's `ratio` style (§08). The
+          // currency is on the total alone; repeating ₪ twice in one
+          // fraction is noise.
+          <Text
+            className={`ms-auto text-caption font-sans ${
+              isOver ? 'font-sansSemibold text-dangerStrong-light dark:text-dangerStrong-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
+            }`}
+            style={{ fontVariant: ['tabular-nums'] }}
+          >
+            {formatRatioILS(category.spentAgorot, category.allocatedAgorot)}
+          </Text>
+        ) : (
+          <>
+            <View className="flex-1" />
+            <Ionicons
+              name="chevron-back"
+              size={ICON.row}
+              color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
+            />
+          </>
+        )}
       </View>
 
       <View className="mt-2.5">
@@ -77,24 +114,31 @@ export function BudgetCategoryRow({ category, state, onPress, testID }: BudgetCa
           percent={state.percentSpent ?? 0}
           pacePercent={state.pacePercent}
           state={state.state}
+          height={isPlain ? 10 : 8}
           accessibilityLabel={`${category.categoryNameHe}, ${t(BUDGET_STATE_LABEL_KEY[state.state])}`}
         />
       </View>
 
-      <View className="mt-2 flex-row items-baseline justify-between gap-3">
-        <Text
-          className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark"
-          style={{ fontVariant: ['tabular-nums'] }}
-        >
-          {t('budgets.category.spentOf', {
-            spent: formatILS(category.spentAgorot),
-            total: formatILS(category.allocatedAgorot),
-          })}
-        </Text>
-        <Text className={`text-meta font-sans ${trailingClass}`} style={{ fontVariant: ['tabular-nums'] }}>
+      {isPlain ? (
+        <Text className={`mt-1.5 text-meta font-sans ${trailingClass}`} style={{ fontVariant: ['tabular-nums'] }}>
           {trailingText}
         </Text>
-      </View>
+      ) : (
+        <View className="mt-2 flex-row items-baseline justify-between gap-3">
+          <Text
+            className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark"
+            style={{ fontVariant: ['tabular-nums'] }}
+          >
+            {t('budgets.category.spentOf', {
+              spent: formatILS(category.spentAgorot),
+              total: formatILS(category.allocatedAgorot),
+            })}
+          </Text>
+          <Text className={`text-meta font-sans ${trailingClass}`} style={{ fontVariant: ['tabular-nums'] }}>
+            {trailingText}
+          </Text>
+        </View>
+      )}
     </Pressable>
   )
 }
