@@ -32,6 +32,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
+import { useRTL } from '@/hooks/useRTL'
 import { usePeriodStore } from '@/store/periodStore'
 import { useCashFlowStore, type CashFlowHorizonDays } from '@/store/cashFlowStore'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
@@ -76,6 +77,7 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const { t } = useTranslation()
   const router = useRouter()
   const { colorScheme: scheme } = useColorScheme()
+  const { flip } = useRTL()
   const isDark = scheme === 'dark'
   const iconColor = isDark ? colors.inkMuted.dark : colors.inkMuted.light
   const accentColor = isDark ? colors.accent.dark : colors.accent.light
@@ -99,16 +101,19 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
 
       {showMonth && (
         <View className="ms-2.5 flex-row items-center gap-1.5 rounded-control bg-surface-light px-2.5 py-1.5 dark:bg-surface-dark">
-          {/* chevron-back steps BACK in time. Under `dir="rtl"` the glyph
-              itself points toward the start (right) edge, which reads as
-              "earlier" — the same pairing the mockup's own stepper uses. */}
+          {/* Through `flip`, like MonthNavigator, so both steppers pick the
+              same glyph by the same rule. @expo/vector-icons does not mirror
+              its glyphs — a chevron named "forward" draws a right-pointing
+              chevron in any direction — so under RTL "earlier" is the one
+              pointing at the start edge, which is the RIGHT. Hardcoding
+              `chevron-back` here had the arrows inverted. */}
           <Pressable
             onPress={() => setPeriodStart(shiftMonth(periodStart, -1))}
             accessibilityRole="button"
             accessibilityLabel={t('dashboard.previousMonth')}
             className="h-6 w-6 items-center justify-center"
           >
-            <Ionicons name="chevron-back" size={ICON.chip} color={iconColor} />
+            <Ionicons name={flip('chevron-back', 'chevron-forward')} size={ICON.chip} color={iconColor} />
           </Pressable>
           <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark">
             {formatMonthLabel(periodStart)}
@@ -119,7 +124,7 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
             accessibilityLabel={t('dashboard.nextMonth')}
             className="h-6 w-6 items-center justify-center"
           >
-            <Ionicons name="chevron-forward" size={ICON.chip} color={iconColor} />
+            <Ionicons name={flip('chevron-forward', 'chevron-back')} size={ICON.chip} color={iconColor} />
           </Pressable>
         </View>
       )}

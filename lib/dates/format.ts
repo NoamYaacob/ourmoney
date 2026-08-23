@@ -37,8 +37,14 @@ export function formatMonthAbbreviation(isoDate: string): string {
   return MONTH_ABBREVIATIONS[Number(match[1]) - 1] ?? ''
 }
 
-// The day-of-month, unpadded, for that same block.
+// The day-of-month for that same block, zero-padded — "04", not "4".
+//
+// Padded on purpose: the date block is a fixed-width column of tabular
+// figures down a list, and an unpadded single digit sits visibly off-centre
+// beside two-digit neighbours. Every date block in both design files is
+// padded ("04.09", "28"), and the ISO string already carries the padding, so
+// this is a slice rather than a format.
 export function formatDayOfMonth(isoDate: string): string {
   const match = /^\d{4}-\d{2}-(\d{2})$/.exec(isoDate)
-  return match ? String(Number(match[1])) : ''
+  return match ? (match[1] as string) : ''
 }

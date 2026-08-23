@@ -21,7 +21,10 @@ describe('CommitmentRow', () => {
       <CommitmentRow date="2026-09-04" name="טסט ואגרת רכב" amountAgorot={118_000} timeLabel="גורם לחוסר" tone="warning" />
     )
 
-    expect(getByText('4')).toBeTruthy()
+    // Padded: the date block is a fixed-width column of tabular figures,
+    // and an unpadded single digit sits visibly off-centre beside two-digit
+    // neighbours. Both design files pad it.
+    expect(getByText('04')).toBeTruthy()
     expect(getByText('ספט׳')).toBeTruthy()
   })
 
