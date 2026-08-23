@@ -96,12 +96,15 @@ describe('Installments list', () => {
     })
   })
 
-  it('lists plans with remaining balance and installment progress', async () => {
-    const { getByText } = await render(<Installments />)
+  it('lists plans with what is left to pay and how many instalments remain', async () => {
+    const { getAllByLabelText, getByText } = await render(<Installments />)
 
     expect(getByText('ספה חדשה')).toBeTruthy()
-    expect(getByText('שולמו 1 מתוך 3 תשלומים')).toBeTruthy()
-    // remaining = 300000 - 100000*1 = 200000 agorot = ₪2,000.00
+    // The row and its pill track both announce the count — the track is a
+    // picture, so the number has to be said in words somewhere.
+    expect(getAllByLabelText(/שולמו 1 מתוך 3 תשלומים/).length).toBeGreaterThanOrEqual(1)
+    // remaining = 300000 - 100000*1 = 200000 agorot = ₪2,000.00, in the
+    // list head's own total.
     expect(getByText(/2,000/)).toBeTruthy()
   })
 
@@ -262,7 +265,10 @@ describe('Installments — desktop billing-cycle cards', () => {
     const range = getCurrentBillingCycleRange(10, localDateString())
     expect(getAllByText('ויזה כאל').length).toBeGreaterThanOrEqual(1)
     expect(getByText(`${i18n.t('installments.cycleCards.nextCharge')} · ${formatDateDisplay(range.end)}`)).toBeTruthy()
-    expect(getByText(formatILS(841260))).toBeTruthy()
+    // Twice now: the cycle total, and the "regular spend" legend line
+    // beneath the split bar — this card has no instalment charges in it, so
+    // the whole cycle is regular spending and the two figures agree.
+    expect(getAllByText(formatILS(841260)).length).toBeGreaterThanOrEqual(1)
     expect(
       getByText(i18n.t('installments.cycleCards.range', { start: formatDateDisplay(range.start), end: formatDateDisplay(range.end) }))
     ).toBeTruthy()

@@ -30,7 +30,11 @@
 // matching the generator's own computation — never re-derived by a second,
 // potentially-divergent formula.
 
-function addMonthClamped(isoDate: string, months: number): string {
+// Exported so a screen can name the date of a specific instalment (the next
+// one due, the last one of the plan) without re-deriving month arithmetic
+// that has to stay identical to the generator's SQL. One implementation of
+// `first_charge_date + n months`, and this is it.
+export function addMonthClamped(isoDate: string, months: number): string {
   const [year, month, day] = isoDate.split('-').map(Number) as [number, number, number]
   const totalMonths = month - 1 + months
   const targetYear = year + Math.floor(totalMonths / 12)

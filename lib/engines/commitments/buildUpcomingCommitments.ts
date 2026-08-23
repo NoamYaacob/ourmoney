@@ -64,6 +64,11 @@ export interface UpcomingCommitment {
   // Always a positive magnitude — this is a list of upcoming/outstanding
   // claims on the household's cash, never a signed transaction amount.
   amountAgorot: number
+  // Credit-card cycles only: how much of `amountAgorot` is instalment
+  // charges rather than ordinary spending — the question the Credit &
+  // Payments screen exists to answer. Undefined on every other source,
+  // where the distinction does not exist.
+  installmentAgorot?: number
   // sharedAgorot + personalAgorot === amountAgorot, always.
   sharedAgorot: number
   personalAgorot: number

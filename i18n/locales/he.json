@@ -600,7 +600,10 @@
     "monthlyAmount": "תשלום חודשי",
     "cycleCards": {
       "nextCharge": "החיוב הבא",
-      "range": "מחזור {{start}} עד {{end}}"
+      "range": "מחזור {{start}} עד {{end}}",
+      "regularSpend": "עסקאות רגילות",
+      "installmentSpend": "תשלומים",
+      "chargedFrom": "מחזור {{start}} עד {{end}} · חיוב מ{{account}}"
     },
     "listTitle": "עסקאות בתשלומים",
     "errors": {
@@ -634,7 +637,15 @@
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת רכישה בתשלומים",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. תשלומים שכבר נוצרו כתנועות בפועל יישארו ברשימת התנועות."
-    }
+    },
+    "perMonth": "בחודש",
+    "remainingLabel": "נותר",
+    "remainingCount": "נותרו {{count}} תשלומים · עד {{date}}",
+    "scheduleLine": "תשלום {{index}} מתוך {{total}} · הבא ב־{{next}} · אחרון ב־{{last}}",
+    "finishedLine": "כל {{total}} התשלומים שולמו · הסתיים ב־{{last}}",
+    "listTotals": "נותר לשלם סה״כ {{remaining}} · {{monthly}} לחודש",
+    "listExplainer": "{{monthly}} בחודש כבר יורדים מ\"פנוי באמת\" עד התשלום האחרון.",
+    "purchasedOn": "נרכש {{date}}"
   },
   "import": {
     "title": "ייבוא מקובץ CSV",

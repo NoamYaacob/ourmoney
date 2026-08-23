@@ -6,8 +6,7 @@
 // (useGenerateInstallmentTransactions in app/(app)/_layout.tsx).
 
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { Platform, Text, View, useWindowDimensions } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -20,10 +19,10 @@ import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCom
 import { getCurrentBillingCycleRange } from '@/features/accounts/lib/creditCardCycle'
 import { daysBetween } from '@/lib/engines/alerts/alertSeverity'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { sumAgorot } from '@/lib/money/arithmetic'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
-import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -36,11 +35,11 @@ import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Money } from '@/components/ui/Money'
 import { CountdownRing } from '@/components/ui/CountdownRing'
-import { INLINE_FORM_WIDTH_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { DESKTOP_BREAKPOINT_PX, INLINE_FORM_WIDTH_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { InstallmentPlanRow } from '@/features/installments/components/InstallmentPlanRow'
 
 export default function Installments() {
   const { t } = useTranslation()
-  const router = useRouter()
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
@@ -59,6 +58,9 @@ export default function Installments() {
   // pure getCurrentBillingCycleRange every other current-cycle figure in
   // this app already goes through.
   const { commitments } = useUpcomingCommitments(householdId)
+  // Same route split the other redesigned screens make.
+  const { width } = useWindowDimensions()
+  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
   const creditCardCycleCommitments = commitments.filter((c) => c.source === 'credit_card_cycle')
   const today = localDateString()
 
@@ -132,6 +134,15 @@ export default function Installments() {
     )
   }
 
+  // What the whole set of plans still costs. Every open plan reserves its
+  // monthly figure out of "פנוי באמת" until its last charge, so the column
+  // total is a fact about this month, not just a sum of history.
+  const openPlans = plans.filter((plan) => (materializedCounts[plan.id] ?? 0) < plan.installment_count)
+  const totalRemainingAgorot = sumAgorot(
+    openPlans.map((plan) => plan.total_agorot - plan.monthly_agorot * (materializedCounts[plan.id] ?? 0))
+  )
+  const totalMonthlyAgorot = sumAgorot(openPlans.map((plan) => plan.monthly_agorot))
+
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const accountOptions = creditCardAccounts.map((a) => ({ value: a.id, label: a.name }))
 
@@ -150,7 +161,11 @@ export default function Installments() {
           the mobile header above remains. */}
 
       {creditCardCycleCommitments.length > 0 && (
-        <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:flex-row web:desktop:gap-4">
+        /* Both frames lead with these. `OurMoney - Mobile.dc.html` screen 09
+           stacks one card per credit card; the desktop frame sets them side
+           by side. They had been desktop-only, which left the phone opening
+           a screen called "אשראי ותשלומים" with no אשראי on it. */
+        <View className="mb-5 gap-3 web:desktop:flex-row web:desktop:gap-4">
           {creditCardCycleCommitments.map((commitment) => {
             const account = creditCardAccounts.find((a) => a.id === commitment.sourceId)
             if (!account || account.billing_cycle_day === null) return null
@@ -158,23 +173,63 @@ export default function Installments() {
             const cycleLengthDays = Math.max(1, daysBetween(range.start, range.end))
             const daysElapsed = Math.max(0, daysBetween(range.start, today))
             const daysLeft = Math.max(0, daysBetween(today, range.end))
+            const installmentAgorot = commitment.installmentAgorot ?? 0
             return (
               <View key={account.id} className={`web:desktop:flex-1 ${DESKTOP_CARD_CLASS}`}>
-                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                  <View className="web:desktop:flex-1">
+                <View className="flex-row items-center justify-between gap-3">
+                  <View className="flex-1">
                     <Text className="text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
                       {account.name}
                     </Text>
-                    <Text className="mt-0.5 text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
+                    <Text className="mt-0.5 text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]" numberOfLines={1}>
                       {t('installments.cycleCards.nextCharge')} · {formatDateDisplay(range.end)}
                     </Text>
                   </View>
                   <CountdownRing percentElapsed={Math.min(100, (daysElapsed / cycleLengthDays) * 100)} daysLeft={daysLeft} />
                 </View>
-                <View className="web:desktop:mt-3.5">
+                <View className="mt-3.5">
                   <Money agorot={commitment.amountAgorot} size="display" />
                 </View>
-                <Text className="web:desktop:mt-2.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+
+                {/* What this statement is MADE of. The frame's own subtitle
+                    for this screen is "כמה יירד ומתי, ומה מזה תשלומים", and
+                    a household looking at a card bill wants to know how much
+                    of it is a decision they already made months ago. The two
+                    segments are the same total split, never a second sum. */}
+                <View className="mt-3.5 h-2.5 flex-row gap-0.5 overflow-hidden rounded-full">
+                  <View
+                    className="bg-inkMuted-light dark:bg-inkMuted-dark"
+                    style={{ flexGrow: Math.max(0, commitment.amountAgorot - installmentAgorot), flexBasis: 0 }}
+                  />
+                  {installmentAgorot > 0 && (
+                    <View className="bg-accent-light dark:bg-accent-dark" style={{ flexGrow: installmentAgorot, flexBasis: 0 }} />
+                  )}
+                </View>
+
+                <View className="mt-3 gap-2">
+                  <View className="flex-row items-center gap-2">
+                    <View className="h-2.5 w-2.5 rounded-[3px] bg-inkMuted-light dark:bg-inkMuted-dark" />
+                    <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('installments.cycleCards.regularSpend')}
+                    </Text>
+                    <View className="ms-auto">
+                      <Money agorot={commitment.amountAgorot - installmentAgorot} size="caption" tone="muted" />
+                    </View>
+                  </View>
+                  {installmentAgorot > 0 && (
+                    <View className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-[3px] bg-accent-light dark:bg-accent-dark" />
+                      <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                        {t('installments.cycleCards.installmentSpend')}
+                      </Text>
+                      <View className="ms-auto">
+                        <Money agorot={installmentAgorot} size="caption" tone="muted" />
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                <Text className="mt-3 border-t border-divider-light pt-3 text-caption font-sans text-inkMuted-light dark:border-divider-dark dark:text-inkMuted-dark">
                   {t('installments.cycleCards.range', { start: formatDateDisplay(range.start), end: formatDateDisplay(range.end) })}
                 </Text>
               </View>
@@ -184,9 +239,26 @@ export default function Installments() {
       )}
 
       {plans.length > 0 && (
-        <Text className="mb-3 hidden text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:flex web:desktop:text-[19px]">
-          {t('installments.listTitle')}
-        </Text>
+        // The list's own head, as both frames draw it: the title, then what
+        // the whole set costs — the total still owed and what it takes out
+        // of each month. A household reading a list of purchases needs the
+        // column total before the rows, not after them.
+        <View className="mb-3 mt-2">
+          <View className="flex-row items-baseline justify-between gap-3">
+            <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
+              {t('installments.listTitle')}
+            </Text>
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+              {t('installments.listTotals', {
+                remaining: formatILS(totalRemainingAgorot),
+                monthly: formatILS(totalMonthlyAgorot),
+              })}
+            </Text>
+          </View>
+          <Text className="mt-1 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+            {t('installments.listExplainer', { monthly: formatILS(totalMonthlyAgorot) })}
+          </Text>
+        </View>
       )}
 
       {error ? (
@@ -196,47 +268,20 @@ export default function Installments() {
       ) : (
         <>
           {plans.length === 0 && <EmptyState iconName="card-outline" message={t('installments.empty')} />}
-          <View className={plans.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
-            {plans.map((plan) => {
-              const category = plan.category_id ? categories.find((c) => c.id === plan.category_id) : undefined
-              const materialized = materializedCounts[plan.id] ?? 0
-              const remainingAgorot = plan.total_agorot - plan.monthly_agorot * materialized
-              return (
-                <Pressable
-                  key={plan.id}
-                  onPress={() => router.push(`/installments/${plan.id}`)}
-                  accessibilityRole="button"
-                  className={plans.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
-                >
-                  <Card>
-                    <View className="flex-row items-center justify-between web:flex-row">
-                      <View className="flex-1 flex-row items-center gap-3 web:flex-row">
-                        <CategoryIcon icon={category?.icon} size="sm" />
-                        <View className="flex-1">
-                          <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                            {plan.description}
-                          </Text>
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {t('installments.installmentProgress', { materialized, total: plan.installment_count })}
-                          </Text>
-                        </View>
-                      </View>
-                      <View className="items-end">
-                        <Text
-                          accessibilityLabel={`${t('installments.remainingAmount')} ${formatILS(remainingAgorot)}`}
-                          className="text-body font-sansSemibold text-ink-light dark:text-ink-dark"
-                        >
-                          {formatILS(remainingAgorot)}
-                        </Text>
-                        <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                          {t('installments.monthlyAmount')}: {formatILS(plan.monthly_agorot)}
-                        </Text>
-                      </View>
-                    </View>
-                  </Card>
-                </Pressable>
-              )
-            })}
+          {/* The phone stacks cards; desktop lays each plan across one line
+              with its own figure columns. Both carry the same pill track —
+              a plan is a countable number of payments, not a percentage. */}
+          <View className={isDesktopWeb ? undefined : 'gap-2.5'}>
+            {plans.map((plan) => (
+              <InstallmentPlanRow
+                key={plan.id}
+                plan={plan}
+                paidCount={materializedCounts[plan.id] ?? 0}
+                categoryIcon={plan.category_id ? categories.find((c) => c.id === plan.category_id)?.icon : undefined}
+                accountName={accounts.find((a) => a.id === plan.account_id)?.name}
+                variant={isDesktopWeb ? 'row' : 'card'}
+              />
+            ))}
           </View>
         </>
       )}
