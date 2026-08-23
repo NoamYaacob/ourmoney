@@ -249,6 +249,30 @@
       "editRule": "עריכת הכלל"
     },
     "transferLabel": "העברה",
+    "installmentProgress": "תשלום {{index}} מתוך {{count}} · נותרו {{amount}}",
+    "queue": {
+      "title": "{{count}} תנועות מחכות לסיווג",
+      "subtitle": "{{amount}} שלא נספרים בתקציב. סיווג אחד יכול להפוך לכלל אוטומטי.",
+      "button": "לסווג עכשיו"
+    },
+    "summary": {
+      "title": "החודש · {{count}} תנועות",
+      "income": "הכנסות",
+      "expense": "הוצאות",
+      "net": "נטו",
+      "personalPortion": "מתוכן אישיות"
+    },
+    "rulesPanel": {
+      "title": "כללי סיווג פעילים",
+      "manageLink": "ניהול הכללים ←"
+    },
+    "columns": {
+      "transaction": "תנועה",
+      "category": "קטגוריה",
+      "account": "חשבון",
+      "attribution": "שיוך",
+      "amount": "סכום"
+    },
     "mobile": {
       "today": "היום",
       "yesterday": "אתמול",
