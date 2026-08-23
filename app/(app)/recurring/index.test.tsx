@@ -6,8 +6,9 @@
 // test coverage for this screen.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { render } from '@testing-library/react-native'
-import '@/i18n'
+import i18n from '@/i18n'
 import Recurring from './index'
+import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -151,5 +152,34 @@ describe('Recurring list', () => {
 
     expect(queryByText('עליות מחיר שזוהו')).toBeNull()
     expect(queryByText('המחיר עלה')).toBeNull()
+  })
+
+  // Desktop Claude Design pass: the dark summary card sums only active
+  // expense templates (350000 + 12000 agorot) — a paused or income template
+  // must not count toward "what this household is committed to paying."
+  it('shows a summary card totaling active expense templates only', async () => {
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+
+    const { getByText } = await render(<Recurring />)
+
+    expect(getByText(i18n.t('recurring.summarySubtitle', { count: 2, amount: formatILS(362000) }))).toBeTruthy()
+  })
+
+  it('hides the summary card entirely when nothing qualifies (a paused template and an income template)', async () => {
+    mockUseRecurringTransactions.mockReturnValue({
+      recurringTransactions: [
+        { ...RECURRING[0], id: 'rec-paused', is_active: false },
+        { ...RECURRING[1], id: 'rec-income', amount_agorot: 500000 },
+      ],
+      isLoading: false,
+      error: null,
+    })
+
+    const { getAllByText } = await render(<Recurring />)
+
+    // "חיובים קבועים" renders once (the page's own title) — twice would
+    // mean the summary card's HeroLabel rendered despite having nothing
+    // to show.
+    expect(getAllByText(i18n.t('recurring.title')).length).toBe(1)
   })
 })
