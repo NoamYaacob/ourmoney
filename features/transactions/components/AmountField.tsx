@@ -26,23 +26,18 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
     // vertical space before the grouped fields below it. Mobile untouched.
     <View className="mb-6 items-center border-b border-border-light pb-5 web:desktop:mb-4 web:desktop:pb-3 dark:border-border-dark">
       <Text className="mb-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">{label}</Text>
-      {/* Native Yoga auto-mirrors flex-row under the forced-RTL flag
-          (app/_layout.tsx), so "₪" (first JSX child) already lands on the
-          visual right there. NativeWind's web-compiled CSS does not consult
-          that flag (no dir="rtl" on the web document), so web needs an
-          explicit web:flex-row to get the same result — DOM order
-          (and screen-reader order) is unchanged, only the web visual
-          position flips. Matches formatILS's own Intl('he-IL') currency
-          formatting (symbol before the amount).
-          Phase 3.1: the TextInput keeps a min-width so short/empty values
-          still have a comfortable, stable tap target, but its text is
-          right-aligned (not centered) within that box — center-aligning a
-          short value inside a wide fixed box left visible dead air between
-          "₪" and the first digit. Right-aligning pins the digits flush
-          against the symbol regardless of how many are typed, with any
-          extra width growing away from it (left) instead of around it. */}
-      <View className="flex-row items-center gap-1 web:flex-row">
-        <Text className="text-display font-bold text-ink-light dark:text-ink-dark">₪</Text>
+      {/* The ₪ comes after the digits in source, which under RTL puts it on
+          the physical left — where `formatILS` puts it in every other figure
+          in the app, and where the design's own entry screen draws it. It
+          had been first, so the one amount a household actually types was
+          the one amount laid out differently from all the ones it reads
+          back.
+
+          The input keeps a min-width so a short or empty value still has a
+          stable tap target, and right-aligns inside it so the digits stay
+          flush against the symbol however many are typed — extra width grows
+          away from it rather than around it. */}
+      <View className="flex-row items-center gap-1">
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -50,9 +45,20 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           placeholderTextColor={placeholderColor}
           keyboardType="decimal-pad"
           accessibilityLabel={label}
-          className="min-w-[90px] text-display font-bold text-ink-light dark:text-ink-dark"
-          style={{ textAlign: 'right' }}
+          className="min-w-[90px] font-heebo text-heroXl text-ink-light dark:text-ink-dark"
+          // The size is also set inline. react-native-web renders this as a
+          // real <input>, and a browser's own input font-size wins over an
+          // inherited one often enough that the field quietly rendered at
+          // roughly half the tier it declared.
+          style={{ textAlign: 'right', fontSize: 52, lineHeight: 58 }}
+          maxFontSizeMultiplier={1.2}
         />
+        <Text
+          className="font-heebo text-heroXl text-ink-light dark:text-ink-dark"
+          maxFontSizeMultiplier={1.2}
+        >
+          ₪
+        </Text>
       </View>
     </View>
   )

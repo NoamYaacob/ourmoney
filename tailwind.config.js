@@ -45,9 +45,14 @@ module.exports = {
       // in", so anything that does not fit moves to a detail screen or a
       // sheet instead of getting smaller.
       fontSize: {
+        // The design system's `figure-xl` (§03): the amount being typed on
+        // the entry screen, which is the one thing that screen is for and
+        // the only figure on it. Larger than `hero` deliberately — a number
+        // being composed keystroke by keystroke has to be readable at a
+        // glance while a thumb covers half the screen.
+        heroXl: ['52px', { lineHeight: '58px' }],
         // The one dark-panel figure that answers the screen's question —
-        // פנוי באמת on Home, the amount being typed on the entry sheet.
-        // Never more than one per screen.
+        // פנוי באמת on Home. Never more than one per screen.
         hero: ['44px', { lineHeight: '50px' }],
         // A large figure on a light card (budget's "נותר להוציא").
         display: ['40px', { lineHeight: '46px' }],

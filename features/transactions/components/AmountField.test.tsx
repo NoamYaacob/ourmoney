@@ -29,12 +29,20 @@ describe('AmountField', () => {
   // web-compiled CSS does not — a real headless-browser measurement found
   // "₪" rendering left of the digits on web without this class. Guards the
   // actual fix (the web-scoped reversed row), not just "some row exists".
-  it('reverses the ₪-and-input row on web so the symbol stays visually first (right side)', async () => {
-    const { getByLabelText } = await render(
-      <AmountField label="סכום" value="" onChangeText={jest.fn()} placeholder="0.00" />
+  it('puts the ₪ where every other figure in the app puts it', async () => {
+    // Source order decides this, not a class: the symbol comes after the
+    // digits, so under RTL it lands on the physical left — the same side
+    // `formatILS` puts it on in every amount a household reads back. It had
+    // been first, which made the one amount they type the odd one out.
+    const { getByLabelText, getByText } = await render(
+      <AmountField label="סכום" value="412.80" onChangeText={() => {}} placeholder="0.00" />
     )
 
     const row = getByLabelText('סכום').parent
-    expect(row?.props.className as string).toContain('web:flex-row')
+    const children = row?.children ?? []
+    expect(children).toHaveLength(2)
+    expect(getByText('₪')).toBeTruthy()
+    // The input is the first child; the symbol trails it.
+    expect((children[0] as { props?: { accessibilityLabel?: string } })?.props?.accessibilityLabel).toBe('סכום')
   })
 })
