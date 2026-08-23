@@ -1,9 +1,11 @@
 // Locks in the product decision behind this screen (see its own header
 // comment): every connection type stays permanently disabled, tapping one
 // only ever opens an explanatory sheet, and there is no state anywhere in
-// this screen that renders as "connected." This is a screen with no hook
-// and no navigation of its own, so the coverage here is deliberately just
-// "the copy and structure never drift toward simulating a working flow."
+// this screen that renders as "connected." The coverage here is
+// deliberately just "the copy and structure never drift toward simulating
+// a working flow" — including the link to preview.tsx's own static,
+// clearly-labeled mockup of screens 17-18, which must never be reachable
+// from tapping an actual connection type.
 import { describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
@@ -68,6 +70,18 @@ describe('Connections', () => {
 
     await fireEvent.press(getByText(i18n.t('connections.otherWays.importCsv')))
     expect(mockPush).toHaveBeenCalledWith('/transactions/import')
+    expect(queryByText(i18n.t('connections.info.body'))).toBeNull()
+  })
+
+  // Screens 17-18: reachable only via this explicitly-labeled link, never
+  // as a side effect of tapping a real connection type (those two rows are
+  // asserted above to stay on the locked info sheet).
+  it('navigates to the clearly-labeled preview screen, not the locked info sheet', async () => {
+    const { getByText, queryByText } = await render(<Connections />)
+
+    await fireEvent.press(getByText(i18n.t('connections.preview.entryLink')))
+
+    expect(mockPush).toHaveBeenCalledWith('/connections/preview')
     expect(queryByText(i18n.t('connections.info.body'))).toBeNull()
   })
 })

@@ -149,6 +149,26 @@
       "manualAccountSubtitle": "כסף שלא יושב במוסד מחובר",
       "importCsv": "ייבוא מקובץ",
       "importCsvSubtitle": "היסטוריה, או מוסד בלי חיבור"
+    },
+    "preview": {
+      "entryLink": "תצוגה מקדימה: איך ייראה חיבור פעיל",
+      "title": "תצוגה מקדימה",
+      "bannerTitle": "לא אמיתי — תצוגה מקדימה בלבד",
+      "bannerBody": "המסך הזה מדגים איך ייראה חשבון מחובר, כשהיכולת תושק. שום חיבור אמיתי לא קיים, ולא בוצעה ואף לא תבוצע כאן שום פעולה.",
+      "connectedSectionTitle": "כך ייראה חשבון מחובר",
+      "exampleBankName": "בנק לדוגמה",
+      "exampleAccountSubtitle": "עו״ש לדוגמה · מחובר",
+      "exampleUpdatedNote": "לדוגמה: עודכן לפני 4 דקות",
+      "connectedBadge": "מחובר",
+      "statesSectionTitle": "כך ייראו הודעות סטטוס",
+      "states": {
+        "successTitle": "בנק לדוגמה מחובר",
+        "successBody": "312 תנועות לדוגמה נכנסו. מעכשיו זה יתעדכן לבד.",
+        "failedTitle": "החיבור לא הושלם",
+        "failedBody": "שום דבר לא נשמר. אפשר לנסות שוב.",
+        "expiredTitle": "ההרשאה פגה",
+        "expiredBody": "הבנק מבקש התחברות מחדש. הנתונים הקיימים נשמרו."
+      }
     }
   },
   "transactions": {

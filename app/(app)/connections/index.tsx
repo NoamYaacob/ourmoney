@@ -7,16 +7,21 @@
 // an aggregator trial — until [that] has confirmed." That gate has not
 // cleared. The household decision that followed: build this screen, but as
 // a permanently-locked informational surface, never a working (even if
-// fake) connection flow — every row stays disabled, no row's tap ever
-// simulates "connecting," and there is no "connected account" state
-// anywhere in this screen or its sheet. That also means screens 17-18 (a
-// connected-account detail screen, a disconnect/error state) are
-// deliberately NOT built — there is nothing to show once connected, since
-// nothing here ever connects.
+// fake) connection flow — every row stays disabled, and no row's tap ever
+// simulates "connecting."
+//
+// Screens 17-18 (a connected-account detail screen, a disconnect/error
+// state) were originally left out entirely for the same reason — nothing to
+// show once connected, since nothing here ever connects. Revisited by
+// explicit product decision: preview.tsx now renders them as a static,
+// clearly-labeled "this is only a preview" mockup, reached solely via the
+// link below — never as the result of tapping a connection type, and never
+// carrying any real institution's name or any real data.
 //
 // No hook, no Supabase call, no new table, no network call, no dependency.
-// Every string below only ever says "not yet" — never a step number, a
-// progress state, or copy that could read as a connection in progress.
+// Every string on this screen (not preview.tsx) only ever says "not yet" —
+// never a step number, a progress state, or copy that could read as a
+// connection in progress.
 
 import { Pressable, Text, View } from 'react-native'
 import { useState } from 'react'
@@ -77,6 +82,23 @@ export default function Connections() {
               />
             ))}
           </ListCard>
+
+          {/* Screens 17-18 of the mobile design: a static, obviously-
+              fictional preview of what a connected account and its status
+              messages will look like once the Open Banking gate clears —
+              see preview.tsx's own header comment. A plain secondary link,
+              not a peer of the locked rows above it: this never simulates
+              tapping into a real connection, it says up front that it's a
+              preview. */}
+          <Pressable
+            onPress={() => router.push('/connections/preview')}
+            accessibilityRole="button"
+            className="mt-4 self-start"
+          >
+            <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+              {t('connections.preview.entryLink')}
+            </Text>
+          </Pressable>
         </View>
 
         {/* Desktop Claude Design pass: the mockup's own "הוספת מקור פיננסי"
