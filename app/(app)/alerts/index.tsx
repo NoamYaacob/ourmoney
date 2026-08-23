@@ -92,7 +92,13 @@ export default function Alerts() {
             return (
               <View key={group.severity} className="mb-6">
                 <SectionLabel className="mb-2">{t(group.labelKey)}</SectionLabel>
-                <Card>
+                {/* Mobile/tablet: one shared Card with Divider-separated
+                    rows (unchanged). Desktop Claude Design pass: the
+                    mockup's own treatment instead — each alert is its own
+                    card with a severity-colored border-start stripe, the
+                    same visual language Dashboard's "דורש טיפול" panel
+                    already uses for the identical alert data. */}
+                <Card className="web:desktop:hidden">
                   {groupAlerts.map((alert: FinancialAlert, index) => (
                     <View key={alert.id}>
                       {index > 0 && (
@@ -120,6 +126,34 @@ export default function Alerts() {
                     </View>
                   ))}
                 </Card>
+                <View className="hidden web:desktop:flex web:desktop:gap-2.5">
+                  {groupAlerts.map((alert: FinancialAlert) => (
+                    <Pressable
+                      key={alert.id}
+                      onPress={() => router.push(alert.actionRoute)}
+                      accessibilityRole="button"
+                      className={`web:desktop:flex-row-reverse web:desktop:gap-3 web:desktop:rounded-row web:desktop:border web:desktop:border-e-[3px] web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:bg-surfaceMuted-dark ${
+                        alert.severity === 'critical'
+                          ? 'web:desktop:border-border-light web:desktop:border-e-danger-light dark:web:desktop:border-border-dark dark:web:desktop:border-e-danger-dark'
+                          : alert.severity === 'warning'
+                            ? 'web:desktop:border-border-light web:desktop:border-e-warning-light dark:web:desktop:border-border-dark dark:web:desktop:border-e-warning-dark'
+                            : 'web:desktop:border-border-light dark:web:desktop:border-border-dark'
+                      }`}
+                    >
+                      <Ionicons
+                        name={severityIconName(alert.severity)}
+                        size={20}
+                        color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                      />
+                      <View className="web:desktop:flex-1">
+                        <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{alert.title}</Text>
+                        <Text className="web:desktop:mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                          {alert.description}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             )
           })

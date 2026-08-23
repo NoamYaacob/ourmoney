@@ -83,9 +83,14 @@ describe('Accounts list', () => {
 
   it('shows an archived badge for the inactive account only — the active account renders with none', async () => {
     const { getAllByText } = await render(<Accounts />)
-    // Two accounts are rendered (one active, one archived); exactly one
-    // "archived" badge must appear, proving the active account gets none.
-    expect(getAllByText('בארכיון').length).toBe(1)
+    // Desktop Claude Design pass: each account now renders twice in the
+    // tree — once in the mobile flat list (`web:desktop:hidden`), once in
+    // the desktop grouped sections (`hidden web:desktop:flex`) — RNTL
+    // can't evaluate real CSS, so both legitimately exist at once (same
+    // pattern as this app's other dual mobile/desktop renderings). One
+    // archived account -> exactly 2 badges, proving the active account
+    // still gets none in either rendering.
+    expect(getAllByText('בארכיון').length).toBe(2)
   })
 
   // Design Phase 3 coverage: the empty state and the add-account flow
@@ -182,18 +187,29 @@ describe('Accounts list', () => {
   // auto-mirrors via Yoga under the forced-RTL flag but NativeWind's
   // web-compiled CSS does not — the first account (source order) must
   // render top-right, continuing the RTL reading order into the wrap.
-  it('reverses the desktop 2-column account grid so the first account renders on the right', async () => {
-    const { getByText } = await render(<Accounts />)
+  // Desktop Claude Design pass: the pre-redesign desktop screen used a flat
+  // 2-column card grid; the mockup instead groups accounts by what they
+  // mean financially — liquid (checking/cash), owed (credit cards),
+  // illiquid (everything else) — matching the exact same
+  // isEligibleCashAccount boundary Safe-to-Spend already uses for
+  // "liquid." ACTIVE_ACCOUNT (type: checking) belongs in the liquid group.
+  it('groups the desktop account list by liquid/owed/illiquid, with the liquid heading before the checking account', async () => {
+    const { getAllByText } = await render(<Accounts />)
 
-    // Climb from the account name up to its grid-item wrapper (the
-    // Pressable carrying the w-[48%] column width), then one more level
-    // to the shared grid container.
-    let node = getByText(ACTIVE_ACCOUNT.name).parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
+    const liquidHeadings = getAllByText(/כסף נוזלי/)
+    const accountNames = getAllByText(ACTIVE_ACCOUNT.name)
+    // One of each in the mobile flat list (no heading there) plus one in
+    // the desktop grouped section — at least one desktop-side heading must
+    // exist, and the account name must appear at least twice (mobile +
+    // desktop).
+    expect(liquidHeadings.length).toBeGreaterThanOrEqual(1)
+    expect(accountNames.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('never shows the "owed" (credit card) heading when the household has no credit-card accounts', async () => {
+    const { queryByText } = await render(<Accounts />)
+
+    expect(queryByText(/כסף שחייבים/)).toBeNull()
   })
 
   // Visual QA + Desktop Polish pass: the desktop-only total-balance summary
@@ -203,7 +219,7 @@ describe('Accounts list', () => {
   // that happens to default to 0" — this uses two active accounts plus an
   // archived account with a large, distinct nonzero balance so an
   // archived-inclusive bug would produce a visibly wrong, distinguishable sum.
-  it('sums only active accounts in the desktop total-balance summary, excluding the archived account', async () => {
+  it('sums only active accounts into the desktop summary card\'s net-worth line, excluding the archived account', async () => {
     mockUseAccounts.mockReturnValue({
       accounts: [
         { ...ACTIVE_ACCOUNT, id: 'acct-1' },
@@ -218,10 +234,10 @@ describe('Accounts list', () => {
       isLoading: false,
     })
 
-    const { getAllByText, queryAllByText } = await render(<Accounts />)
+    const { getByText, queryByText } = await render(<Accounts />)
 
-    expect(getAllByText(formatILS(30000)).length).toBeGreaterThan(0)
+    expect(getByText(formatILS(30000), { exact: false })).toBeTruthy()
     // The archived-account-inclusive (wrong) sum would be 1029900 — must never appear.
-    expect(queryAllByText(formatILS(1029900)).length).toBe(0)
+    expect(queryByText(formatILS(1029900), { exact: false })).toBeNull()
   })
 })

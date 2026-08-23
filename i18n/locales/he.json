@@ -320,6 +320,13 @@
     "addButton": "הוספת חשבון",
     "totalBalance": "סך כל היתרות",
     "activeAccountCount": "{{count}} חשבונות פעילים",
+    "availableToSpend": "זמין להוצאה",
+    "netWorth": "שווי נטו {{amount}}",
+    "groups": {
+      "liquid": "כסף נוזלי · זה מה שנכנס ל\"פנוי באמת\"",
+      "owed": "כסף שחייבים · יורד מהעו״ש בחיוב הבא",
+      "illiquid": "לא זמין מיד · חיסכון והשקעות"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "החשבון לא נמצא"
