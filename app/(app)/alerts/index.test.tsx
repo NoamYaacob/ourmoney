@@ -114,20 +114,23 @@ describe('Alerts screen', () => {
   it('renders a forecast_shortfall alert with its date and amount in the description', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [FORECAST_ALERT], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText('צפוי חוסר בכיסוי')).toBeTruthy()
-    expect(getByText(/2026-08-18/)).toBeTruthy()
-    expect(getByText(/124/)).toBeTruthy()
+    // Desktop Claude Design pass: each alert now renders twice (mobile
+    // Card grouping + desktop bordered-card grouping) — see index.tsx's
+    // own comment on why both legitimately exist in the tree at once.
+    expect(getAllByText('צפוי חוסר בכיסוי').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/2026-08-18/).length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/124/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders an upcoming_obligation alert', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText('ארנונה בעוד 3 ימים')).toBeTruthy()
-    expect(getByText(/475/)).toBeTruthy()
+    expect(getAllByText('ארנונה בעוד 3 ימים').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/475/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders a recurring_price_increase alert with the exact before/after amounts', async () => {
@@ -137,18 +140,18 @@ describe('Alerts screen', () => {
       hasPartialError: false,
     })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText('המחיר עלה')).toBeTruthy()
-    expect(getByText(/99.*119/)).toBeTruthy()
+    expect(getAllByText('המחיר עלה').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/99.*119/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders a budget_risk alert with the category name and percent', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [BUDGET_ALERT], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText(/מכולת.*85%/)).toBeTruthy()
+    expect(getAllByText(/מכולת.*85%/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('navigates to the alert-specific actionRoute when a row is tapped', async () => {
@@ -158,9 +161,9 @@ describe('Alerts screen', () => {
       hasPartialError: false,
     })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    await fireEvent.press(getByText('המחיר עלה'))
+    await fireEvent.press(getAllByText('המחיר עלה')[0]!)
 
     expect(mockPush).toHaveBeenCalledWith('/recurring/rec-1')
   })
@@ -168,10 +171,10 @@ describe('Alerts screen', () => {
   it('shows a non-blocking note when a source partially failed, while still showing the alerts that succeeded', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: true })
 
-    const { getByText } = await render(<Alerts />)
+    const { getByText, getAllByText } = await render(<Alerts />)
 
     expect(getByText(i18n.t('alerts.errors.partial'))).toBeTruthy()
-    expect(getByText('ארנונה בעוד 3 ימים')).toBeTruthy()
+    expect(getAllByText('ארנונה בעוד 3 ימים').length).toBeGreaterThanOrEqual(1)
   })
 
   // Visual QA + Desktop Polish pass: the empty state now renders twice
