@@ -7,13 +7,16 @@ import type { ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBiometricGuard } from '@/features/auth/hooks/useBiometricGuard'
 import { useAuth } from '@/features/auth/hooks/useAuth'
+import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
+import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMembers'
 import { useTransactionsRealtimeSync } from '@/features/transactions/hooks/useTransactionsRealtimeSync'
 import { useGenerateRecurringTransactions } from '@/features/recurring/hooks/useGenerateRecurringTransactions'
 import { useGenerateInstallmentTransactions } from '@/features/installments/hooks/useGenerateInstallmentTransactions'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { colors } from '@/constants/colors'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
+import { Avatar } from '@/components/ui/Avatar'
 
 type RailHref =
   | '/dashboard'
@@ -42,6 +45,17 @@ interface RailGroup {
   destinations: RailDestination[]
 }
 
+// Desktop Claude Design pass: regrouped to match the approved mockup
+// (`OurMoney - Desktop.dc.html`) exactly — one flat "everyday" list (בית ·
+// תנועות · תקציב), one "תכנון" group in the mockup's own order (תזרים ·
+// אשראי ותשלומים · חיובים קבועים · התחייבויות · יעדי חיסכון), one "משק בית"
+// group (חשבונות · הגדרות). Two things this drops on purpose:
+//   - The old separate "Insights" group/label — the mockup has no such
+//     grouping; cash-flow belongs with the other planning destinations.
+//   - Alerts as a sidebar destination — the approved design never puts it
+//     in primary nav. It surfaces from the dashboard's own "דורש טיפול"
+//     panel and from the Accounts screen instead; the route/screen itself
+//     is unchanged, only its rail entry is gone.
 const RAIL_GROUPS: RailGroup[] = [
   {
     key: 'everyday',
@@ -58,15 +72,9 @@ const RAIL_GROUPS: RailGroup[] = [
       { segment: 'budgets', href: '/budgets', labelKey: 'tabs.budgets', icon: 'wallet-outline', iconActive: 'wallet' },
     ],
   },
-  // Visual QA + Desktop Polish pass: split from one 5-item "Planning &
-  // Insights" group into two smaller, more legibly-labeled groups — a
-  // real-browser screenshot review found the single group's label read as
-  // generic and didn't clearly signal that recurring charges/goals/
-  // obligations (the household's ongoing financial commitments) were in
-  // there alongside cash-flow/alerts (analytical, not commitment, screens).
   {
-    key: 'insights',
-    labelKey: 'nav.groups.insights',
+    key: 'planning',
+    labelKey: 'nav.groups.planning',
     destinations: [
       {
         segment: 'cash-flow',
@@ -75,13 +83,13 @@ const RAIL_GROUPS: RailGroup[] = [
         icon: 'trending-up-outline',
         iconActive: 'trending-up',
       },
-      { segment: 'alerts', href: '/alerts', labelKey: 'nav.alerts', icon: 'notifications-outline', iconActive: 'notifications' },
-    ],
-  },
-  {
-    key: 'obligations',
-    labelKey: 'nav.groups.obligations',
-    destinations: [
+      {
+        segment: 'installments',
+        href: '/installments',
+        labelKey: 'nav.creditAndPayments',
+        icon: 'card-outline',
+        iconActive: 'card',
+      },
       {
         segment: 'recurring',
         href: '/recurring',
@@ -89,7 +97,6 @@ const RAIL_GROUPS: RailGroup[] = [
         icon: 'repeat-outline',
         iconActive: 'repeat',
       },
-      { segment: 'goals', href: '/goals', labelKey: 'settings.financial.goals', icon: 'flag-outline', iconActive: 'flag' },
       {
         segment: 'obligations',
         href: '/obligations',
@@ -97,25 +104,19 @@ const RAIL_GROUPS: RailGroup[] = [
         icon: 'calendar-outline',
         iconActive: 'calendar',
       },
-      {
-        segment: 'installments',
-        href: '/installments',
-        labelKey: 'settings.financial.installments',
-        icon: 'layers-outline',
-        iconActive: 'layers',
-      },
+      { segment: 'goals', href: '/goals', labelKey: 'settings.financial.goals', icon: 'flag-outline', iconActive: 'flag' },
     ],
   },
   {
-    key: 'management',
-    labelKey: 'nav.groups.management',
+    key: 'household',
+    labelKey: 'nav.groups.household',
     destinations: [
       {
         segment: 'accounts',
         href: '/accounts',
         labelKey: 'settings.financial.accounts',
-        icon: 'card-outline',
-        iconActive: 'card',
+        icon: 'wallet-outline',
+        iconActive: 'wallet',
       },
       { segment: 'settings', href: '/settings', labelKey: 'tabs.settings', icon: 'settings-outline', iconActive: 'settings' },
     ],
@@ -127,99 +128,73 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
   const router = useRouter()
   const { colorScheme: scheme } = useColorScheme()
   const activeColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
-  const inactiveColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
+  const mutedIconColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
-  // Visual QA + Desktop Polish pass: labels were hardcoded Hebrew literals
-  // (CLAUDE.md: "No hardcoded Hebrew text in components... i18n keys are
-  // English, camelCase"). `key` is a stable React key independent of the
-  // translated label — the same separation RAIL_GROUPS above already uses
-  // (`segment`/`labelKey`), so a future wording change can't also disturb
-  // list-item identity.
-  const quickActions = [
-    {
-      key: 'newTransaction',
-      labelKey: 'nav.quickActions.newTransaction',
-      icon: 'add-circle-outline' as const,
-      onPress: () => router.push('/transactions/new'),
-    },
-    {
-      key: 'importCsv',
-      labelKey: 'nav.quickActions.importCsv',
-      icon: 'cloud-upload-outline' as const,
-      onPress: () => router.push('/transactions/import'),
-    },
-    {
-      key: 'manageAccounts',
-      labelKey: 'nav.quickActions.manageAccounts',
-      icon: 'card-outline' as const,
-      onPress: () => router.push('/accounts'),
-    },
-  ]
+  // Desktop Claude Design pass: the rail now carries the same household/user
+  // identity the mockup's sidebar does (household name + member count up
+  // top, the signed-in member's own name/role at the bottom) — the old rail
+  // had neither, just a static "OurMoney" wordmark. Read-only display; no
+  // new mutation, and the same hooks the mobile "עוד" screen already uses
+  // for this exact data.
+  const { user } = useAuth()
+  const { displayName } = useProfile(user?.id)
+  const { householdId, household, role } = useHousehold(user?.id)
+  const { members } = useHouseholdMembers(householdId)
 
   return (
-    // Visual QA + Desktop Polish pass: narrowed from 252px and the
-    // translucent `/70` fill dropped — a semi-transparent surfaceMuted over
-    // the page's own surface tone was what made the rail read as a heavy
-    // gray slab rather than a crisp panel; a flat, fully-opaque fill plus a
-    // softer border tint reads lighter despite being the exact same token.
-    // Row/section spacing also tightened slightly (py-6->py-5, mb-4->mb-3)
-    // to reduce the rail's overall visual weight without losing group
-    // separation.
-    <View className="sticky top-0 hidden h-screen w-[228px] shrink-0 border-s border-border-light/70 bg-surfaceMuted-light px-3.5 py-5 web:desktop:flex dark:border-border-dark/70 dark:bg-surfaceMuted-dark">
-      <View className="mb-5 px-2.5">
-        <Text className="text-lg font-bold text-ink-light dark:text-ink-dark">OurMoney</Text>
-        <Text className="mt-0.5 text-xs text-inkMuted-light dark:text-inkMuted-dark">{t('nav.tagline')}</Text>
-      </View>
-
-      <View className="mb-4 rounded-card border border-border-light/70 bg-surface-light p-2 dark:border-border-dark/70 dark:bg-surface-dark">
-        <Text className="mb-1 px-2 pt-1 text-xs font-semibold text-inkMuted-light dark:text-inkMuted-dark">
-          {t('nav.quickActions.title')}
-        </Text>
-        {quickActions.map((action) => (
-          <Pressable
-            key={action.key}
-            onPress={action.onPress}
-            accessibilityRole="button"
-            className="flex-row items-center gap-2 rounded-control px-2 py-2 web:hover:bg-surfaceMuted-light dark:web:hover:bg-surfaceMuted-dark"
-          >
-            <Ionicons name={action.icon} size={18} color={activeColor} />
-            <Text className="text-sm font-medium text-ink-light dark:text-ink-dark">{t(action.labelKey)}</Text>
-          </Pressable>
-        ))}
+    // Desktop Claude Design pass: 228 -> 248px and the border moved from a
+    // translucent tint to the flat `border-border-light` token, matching
+    // the approved mockup's sidebar exactly (width:248px;border-inline-end:
+    // 1px solid #E4E1D9 — the same hex constants/colors.ts's `border` token
+    // already resolves to). Stays on the physical right under RTL — this
+    // is the DOM-first child of the `flex-row-reverse` wrapper in
+    // AppLayout below, unchanged from before this pass.
+    <View className="sticky top-0 hidden h-screen w-[248px] shrink-0 border-s border-border-light bg-surfaceMuted-light px-3.5 py-5.5 web:desktop:flex dark:border-border-dark dark:bg-surfaceMuted-dark">
+      <View className="mb-5 flex-row items-center gap-2.5 px-1.5">
+        <View className="h-8 w-8 items-center justify-center rounded-control bg-ink-light dark:bg-ink-dark">
+          <View className="h-2.5 w-2.5 rounded-[3px] bg-accent-light dark:bg-accent-dark" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-body font-heeboBold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+            {household?.name ?? t('nav.tagline')}
+          </Text>
+          {household && (
+            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('nav.householdSubtitle', { count: members.length })}
+            </Text>
+          )}
+        </View>
       </View>
 
       {RAIL_GROUPS.map((group) => (
         <View key={group.key} className="mb-3">
           {group.labelKey && (
-            <Text className="mb-1 px-2.5 text-caption font-semibold text-inkMuted-light dark:text-inkMuted-dark">
+            <Text className="mb-1.5 mt-5 px-3 text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark">
               {t(group.labelKey)}
             </Text>
           )}
           {group.destinations.map((dest) => {
             const focused = dest.segment === activeSegment
-            const color = focused ? activeColor : inactiveColor
+            const color = focused ? activeColor : mutedIconColor
             return (
               <Pressable
                 key={dest.segment}
                 onPress={() => router.push(dest.href)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: focused }}
-                // Visual QA + Desktop Polish pass: the selected fill was
-                // raised from a barely-visible /10 accent tint to /14, and a
-                // thin `border-s-2` accent-colored bar was added on the
-                // selected row's leading (start) edge — the same "active
-                // rail" affordance convention as tab bars/side navs
-                // elsewhere, giving the current destination a clear, stable
-                // anchor point instead of relying on a faint background
-                // tint and bold text alone.
-                className={`mb-0.5 flex-row items-center gap-3 rounded-control border-s-2 px-2.5 py-2.5 ${
-                  focused
-                    ? 'border-accent-light bg-accent-light/[0.14] dark:border-accent-dark dark:bg-accent-dark/[0.14]'
-                    : 'border-transparent web:hover:bg-surface-light dark:web:hover:bg-surface-dark'
+                // Desktop Claude Design pass: the selected row is now a
+                // flat tint fill (bg-surface, no accent tint or leading
+                // bar) matching the mockup's own selected-row treatment —
+                // it marks the active destination with weight (font-600)
+                // and an accent-colored icon, not a colored background.
+                className={`mb-0.5 min-h-[40px] flex-row items-center gap-2.5 rounded-control px-3 py-2.5 ${
+                  focused ? 'bg-surface-light dark:bg-surface-dark' : 'web:hover:bg-surface-light dark:web:hover:bg-surface-dark'
                 }`}
               >
-                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={20} />
-                <Text className={focused ? 'text-body font-semibold' : 'text-body font-normal'} style={{ color }}>
+                <Ionicons name={focused ? dest.iconActive : dest.icon} color={color} size={19} />
+                <Text
+                  className={focused ? 'text-body font-sansSemibold text-ink-light dark:text-ink-dark' : 'text-body font-sansMedium text-inkMuted-light dark:text-inkMuted-dark'}
+                >
                   {t(dest.labelKey)}
                 </Text>
               </Pressable>
@@ -227,6 +202,24 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
           })}
         </View>
       ))}
+
+      <Pressable
+        onPress={() => router.push('/settings')}
+        accessibilityRole="button"
+        accessibilityLabel={t('tabs.settings')}
+        className="mt-auto flex-row items-center gap-2.5 border-t border-border-light pt-3.5 dark:border-border-dark"
+      >
+        <Avatar displayName={displayName ?? ''} size={32} />
+        <View className="flex-1">
+          <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text className="text-meta text-inkMuted-light dark:text-inkMuted-dark">
+            {role === 'admin' ? t('settings.household.roleAdmin') : t('settings.household.roleMember')}
+          </Text>
+        </View>
+        <Ionicons name="ellipsis-horizontal" size={17} color={mutedIconColor} />
+      </Pressable>
     </View>
   )
 }

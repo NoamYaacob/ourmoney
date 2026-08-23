@@ -32,12 +32,16 @@
   },
   "nav": {
     "tagline": "הכסף של הבית, במקום אחד",
+    "householdSubtitle": "{{count}} חברים · משק בית",
     "groups": {
       "insights": "תובנות",
       "obligations": "תכנון וחובות",
-      "management": "ניהול"
+      "management": "ניהול",
+      "planning": "תכנון",
+      "household": "משק בית"
     },
     "cashFlow": "תזרים מזומנים",
+    "creditAndPayments": "אשראי ותשלומים",
     "alerts": "התראות",
     "quickActions": {
       "title": "פעולות מהירות",
