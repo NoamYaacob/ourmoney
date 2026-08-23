@@ -97,30 +97,8 @@ afterEach(() => {
 
 const CURRENT_MONTH_LABEL = formatMonthLabel(getCurrentMonthPeriodStart())
 
-describe('Dashboard header', () => {
-  it('shows the screen title and the current month label', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    expect(getByText(i18n.t('dashboard.title'))).toBeTruthy()
-    expect(getByText(CURRENT_MONTH_LABEL)).toBeTruthy()
-  })
-
-  it('navigates to /transactions when the search affordance is pressed', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    await fireEvent.press(getByText(i18n.t('dashboard.searchPlaceholder')))
-
-    expect(mockPush).toHaveBeenCalledWith('/transactions')
-  })
-
-  it('navigates to /transactions/new when "תנועה חדשה" is pressed', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    await fireEvent.press(getByText(i18n.t('transactions.addButton')))
-
-    expect(mockPush).toHaveBeenCalledWith('/transactions/new')
-  })
-})
+// The header's own tests moved to components/ui/DesktopTopBar.test.tsx
+// when it became the shell band the mockup draws on every desktop screen.
 
 describe('Dashboard פנוי באמת hero', () => {
   it('renders the headline figure, the horizon pills, and the breakdown rows', async () => {
@@ -390,7 +368,8 @@ describe('Dashboard RTL layout', () => {
 
     const { getByText } = await render(<Dashboard />)
 
-    expect(getByText(CURRENT_MONTH_LABEL)).toBeTruthy()
+    // The month label left with the header — it is the shell's
+    // DesktopTopBar now — so this asserts on content the screen still owns.
     expect(getByText(i18n.t('dashboard.hero.label'))).toBeTruthy()
     expect(getByText(i18n.t('dashboard.noTransactions'))).toBeTruthy()
   })

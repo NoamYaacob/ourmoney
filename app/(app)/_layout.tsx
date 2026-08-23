@@ -17,6 +17,7 @@ import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { colors } from '@/constants/colors'
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 import { Avatar } from '@/components/ui/Avatar'
+import { DesktopTopBar } from '@/components/ui/DesktopTopBar'
 
 type RailHref =
   | '/dashboard'
@@ -310,20 +311,21 @@ export default function AppLayout() {
         importantForAccessibility={isLocked ? 'no-hide-descendants' : 'auto'}
         accessibilityElementsHidden={isLocked}
       >
-        {/* RTL regression fix: plain `flex-row` does not auto-mirror on web
-            the way native Yoga does under I18nManager.forceRTL(true) — no
-            `dir="rtl"` is ever set on the web document (see app/_layout.tsx's
-            RTL bootstrap comment), so `web:flex-row` renders left-to-right
-            regardless of the app's forced-RTL state, placing the sidebar on
-            the wrong (left) side for this Hebrew app. `flex-row-reverse`
-            keeps DOM/source order [rail, content] (so a screen reader still
-            reaches navigation first) while visually placing the
-            first-rendered child — the rail — on the physical right, which is
-            the correct RTL reading position. Native (no `web:` match) is
-            unaffected either way. */}
+        {/* DOM order is [rail, content], and a plain `flex-row` under the
+            document's own `dir="rtl"` (set in app/_layout.tsx) puts the
+            first-rendered child on the physical right — the correct RTL
+            position for the rail, and the order a screen reader should meet
+            it in. Deliberately NOT `flex-row-reverse`: that was the
+            compensation for the web document being LTR, and on top of a real
+            `dir="rtl"` it reverses a second time. Native is unaffected. */}
         <View className="flex-1 web:flex-row">
           {isWeb && <DesktopSideRail activeSegment={activeSegment} />}
           <View className="flex-1">
+            {/* The mockup's 68px header band, identical on every desktop
+                screen — see components/ui/DesktopTopBar.tsx. Rendered here,
+                above the routed screen, so no individual screen draws its
+                own (and so screens that previously had none now get it). */}
+            {isWeb && <DesktopTopBar activeSegment={activeSegment} />}
             <Tabs
               screenOptions={{
                 headerShown: false,

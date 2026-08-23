@@ -156,47 +156,12 @@ export function DesktopDashboard() {
       width="wide"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      {/* Header row: screen title + compact month pill + a search affordance
-          into Transactions + the primary "New Transaction" action — matches
-          the mockup's own 68px header bar (drawn once, reused unchanged
-          across every desktop screen per the mockup's own note that "the
-          sidebar [and header] is identical across all of them"). */}
-      <View className="web:desktop:mb-6 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3.5">
-        <Text className="text-title font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[20px]">
-          {t('dashboard.title')}
-        </Text>
-        <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-surface-light web:desktop:px-2.5 web:desktop:py-1.5 dark:web:desktop:bg-surface-dark">
-          <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, -1))} accessibilityRole="button" accessibilityLabel={t('dashboard.previousMonth')}>
-            <Ionicons name="chevron-back" size={15} color={iconColor} />
-          </Pressable>
-          <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark">{formatMonthLabel(periodStart)}</Text>
-          <Pressable onPress={() => setPeriodStart(shiftMonth(periodStart, 1))} accessibilityRole="button" accessibilityLabel={t('dashboard.nextMonth')}>
-            <Ionicons name="chevron-forward" size={15} color={iconColor} />
-          </Pressable>
-        </View>
-        <View className="web:desktop:ms-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5">
-          <Pressable
-            onPress={() => router.push('/transactions')}
-            accessibilityRole="button"
-            accessibilityLabel={t('transactions.title')}
-            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:rounded-control web:desktop:border web:desktop:border-border-light web:desktop:px-3 web:desktop:py-2.5 dark:web:desktop:border-border-dark"
-          >
-            <Ionicons name="search-outline" size={16} color={iconColor} />
-            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.searchPlaceholder')}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/transactions/new')}
-            accessibilityRole="button"
-            accessibilityLabel={t('transactions.addButton')}
-            className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5 web:desktop:rounded-control web:desktop:bg-accent-light web:desktop:px-3.5 web:desktop:py-2.5 dark:web:desktop:bg-accent-dark"
-          >
-            <Ionicons name="add" size={17} color={scheme === 'dark' ? '#141310' : '#ffffff'} />
-            <Text className="text-caption font-sansSemibold text-surface-light dark:text-surface-dark">
-              {t('transactions.addButton')}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+      {/* The screen title, month stepper, search field and primary action
+          that used to sit here are now the shell's DesktopTopBar
+          (components/ui/DesktopTopBar.tsx). The mockup draws them as a 68px
+          white band above the content column, identical on every desktop
+          screen — not as a row inside one screen's body, which is why no
+          other desktop screen used to have them at all. */}
 
       {/* Row 1 — פנוי באמת hero (right, mockup's DOM-first column) + מה מגיע
           (left). flex-row-reverse keeps DOM order [hero, מה מגיע] while the
