@@ -29,6 +29,15 @@ export function useAccounts(householdId: string | null | undefined) {
     accounts: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // True once this query has ever resolved with data, independent of
+    // `error` — TanStack Query keeps `query.data` at its last successful
+    // value through a failed background refetch (only `status`/`error`
+    // flip), so this is the only reliable way for a caller to tell "never
+    // loaded, nothing to show" apart from "loaded before, this refetch just
+    // failed, what we have is still good." See docs/KNOWN_ISSUES.md-adjacent
+    // fix for the Home/Cash Flow "successful data → blank/error" bug this
+    // exists to prevent.
+    hasData: query.data !== undefined,
     // Exposed so a failed fetch has a real retry path — see
     // usePlannedObligations.ts's identical export for the reasoning.
     refetch: query.refetch,

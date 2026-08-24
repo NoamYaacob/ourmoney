@@ -53,6 +53,10 @@ export function useTransactions(householdId: string | null | undefined, filters:
     transactions: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
     refetch: query.refetch,
   }
 }

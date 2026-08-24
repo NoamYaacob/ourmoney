@@ -43,6 +43,10 @@ export function useAccountBalances(householdId: string | null | undefined) {
     balances: query.data ?? {},
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // See useAccounts.ts's identical field for why this exists: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
     refetch: query.refetch,
   }
 }

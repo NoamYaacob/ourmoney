@@ -29,7 +29,7 @@ export function useCreditCardCycleSpend(accountId: string | null | undefined, bi
   })
 
   if (billingCycleDay === null) {
-    return { spendAgorot: null, range: null, isLoading: false, error: null }
+    return { spendAgorot: null, range: null, isLoading: false, error: null, hasData: false }
   }
 
   const range = getCurrentBillingCycleRange(billingCycleDay, localDateString())
@@ -40,5 +40,9 @@ export function useCreditCardCycleSpend(accountId: string | null | undefined, bi
     range,
     isLoading: !!accountId && query.isPending,
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
   }
 }

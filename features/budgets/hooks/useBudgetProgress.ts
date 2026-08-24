@@ -101,6 +101,10 @@ export function useBudgetProgress(householdId: string | null | undefined, period
     totalSpentAgorot: query.data?.totalSpentAgorot ?? 0,
     isLoading: !!householdId && !!periodStart && query.isPending,
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
     // Exposed for app/(app)/budgets/index.tsx's save flow — see its own
     // comment for why refetching immediately before constructing a
     // save_budget_allocations() payload matters (qa-adversarial-reviewer

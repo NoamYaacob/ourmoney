@@ -20,6 +20,16 @@ export interface UseSafeToSpendResult {
   horizon: HorizonRange
   isLoading: boolean
   error: Error | null
+  // True only once EVERY one of the six composed sources has resolved with
+  // data at least once. `result` is always a fully-computed value (it maps
+  // over each source's own `data ?? []`/`{}` default), so it can never be
+  // used by itself to tell "genuinely nothing has loaded yet" apart from
+  // "everything loaded, `result` just happens to be all zeros" — this flag
+  // is that signal. Once true it stays true through any later background
+  // refetch failure (see useAccounts.ts's `hasData` for why), so a caller
+  // can keep showing `result` and treat `error` as a non-blocking, "could
+  // not refresh" signal instead of discarding good data.
+  hasData: boolean
   // Re-runs every one of the six composed queries. This is the Home hero's
   // own data source — the exact screen the intermittent "משהו השתבש" error
   // was reported on — so a household that still hits a genuine failure
@@ -33,35 +43,46 @@ export function useSafeToSpend(
   householdId: string | null | undefined,
   horizonKind: HorizonKind
 ): UseSafeToSpendResult {
-  const { accounts, isLoading: isAccountsLoading, error: accountsError, refetch: refetchAccounts } = useAccounts(householdId)
+  const {
+    accounts,
+    isLoading: isAccountsLoading,
+    error: accountsError,
+    hasData: hasAccountsData,
+    refetch: refetchAccounts,
+  } = useAccounts(householdId)
   const {
     balances,
     isLoading: isBalancesLoading,
     error: balancesError,
+    hasData: hasBalancesData,
     refetch: refetchBalances,
   } = useAccountBalances(householdId)
   const {
     obligations,
     isLoading: isObligationsLoading,
     error: obligationsError,
+    hasData: hasObligationsData,
     refetch: refetchObligations,
   } = usePlannedObligations(householdId)
   const {
     recurringTransactions,
     isLoading: isRecurringLoading,
     error: recurringError,
+    hasData: hasRecurringData,
     refetch: refetchRecurring,
   } = useRecurringTransactions(householdId)
   const {
     plans: installmentPlans,
     isLoading: isInstallmentPlansLoading,
     error: installmentPlansError,
+    hasData: hasInstallmentPlansData,
     refetch: refetchInstallmentPlans,
   } = useInstallmentPlans(householdId)
   const {
     materializedCounts,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
+    hasData: hasMaterializedCountsData,
     refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
@@ -115,6 +136,13 @@ export function useSafeToSpend(
       isInstallmentPlansLoading ||
       isMaterializedCountsLoading,
     error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+    hasData:
+      hasAccountsData &&
+      hasBalancesData &&
+      hasObligationsData &&
+      hasRecurringData &&
+      hasInstallmentPlansData &&
+      hasMaterializedCountsData,
     refetch: () => {
       void refetchAccounts()
       void refetchBalances()

@@ -29,6 +29,10 @@ export function usePlannedObligations(householdId: string | null | undefined) {
     obligations: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
     // Exposed for the detail screen's conflict-recovery flow — a failed
     // compare-and-swap means the mutation never invalidated this query, so
     // "load latest version" needs an explicit refetch, not a cache read

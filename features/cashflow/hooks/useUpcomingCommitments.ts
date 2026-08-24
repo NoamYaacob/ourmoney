@@ -63,9 +63,12 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
   const commitments = buildUpcomingCommitments({
     today,
     horizonEnd: horizon.end,
-    obligations: obligations.error
-      ? []
-      : obligations.obligations.map((o) => ({
+    // Keyed on `hasData` (has this source ever loaded, regardless of a
+    // later background-refetch failure), not `error` — see the
+    // installmentPlans comment below for why the previous `error`-keyed
+    // form discarded good cached data on every transient failure.
+    obligations: obligations.hasData
+      ? obligations.obligations.map((o) => ({
           id: o.id,
           name: o.name,
           amountAgorot: o.amount_agorot,
@@ -74,10 +77,10 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
           categoryId: o.category_id,
           accountId: o.account_id,
           isShared: o.is_shared,
-        })),
-    recurringTemplates: recurring.error
-      ? []
-      : recurring.recurringTransactions.map((r) => ({
+        }))
+      : [],
+    recurringTemplates: recurring.hasData
+      ? recurring.recurringTransactions.map((r) => ({
           id: r.id,
           description: r.description,
           amountAgorot: r.amount_agorot,
@@ -88,17 +91,27 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
           categoryId: r.category_id,
           accountId: r.account_id,
           isShared: r.is_shared,
-        })),
-    // Gated on materializedCounts.error too, not just installmentPlans.error:
-    // useInstallmentMaterializedCounts.ts degrades to an empty {} object on
-    // its own query failure (never throws), so without this guard every
-    // plan's materializedCount would silently read as 0 on that one query's
-    // failure alone — re-forecasting already-materialized, already-posted
-    // instalments as still-upcoming (qa-adversarial-reviewer finding: a
-    // real double-count, not just a display gap).
-    installmentPlans: installmentPlans.error || materializedCounts.error
-      ? []
-      : installmentPlans.plans.map((p) => ({
+        }))
+      : [],
+    // Gated on materializedCounts.hasData too, not just
+    // installmentPlans.hasData: useInstallmentMaterializedCounts.ts
+    // degrades to an empty {} object whenever it has never successfully
+    // loaded (never throws), so without this guard every plan's
+    // materializedCount would silently read as 0 the first time that query
+    // has never succeeded — re-forecasting already-materialized,
+    // already-posted instalments as still-upcoming (qa-adversarial-reviewer
+    // finding: a real double-count, not just a display gap). Keyed on
+    // `hasData` rather than `error` (previously `installmentPlans.error ||
+    // materializedCounts.error`): a background refetch failure on an
+    // already-loaded query still has its last-known-good data sitting in
+    // `installmentPlans.plans`/`materializedCounts.materializedCounts` —
+    // discarding it on every transient failure is exactly the bug that
+    // made the "מה מגיע" card go from showing real commitments to
+    // completely empty on a later render (see useAccounts.ts's `hasData`
+    // for why `.error` alone can't tell "never loaded" apart from "loaded
+    // before, this refetch just failed").
+    installmentPlans: installmentPlans.hasData && materializedCounts.hasData
+      ? installmentPlans.plans.map((p) => ({
           id: p.id,
           description: p.description,
           totalAgorot: p.total_agorot,
@@ -109,11 +122,14 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
           categoryId: p.category_id,
           accountId: p.account_id,
           isShared: p.is_shared,
-        })),
+        }))
+      : [],
+    // Keyed on `hasData`, same reasoning as the sources above — a
+    // background failure of the lean credit-card-transactions query
+    // (declared below) should not blank cards that already loaded once.
     creditCardAccounts:
-      accounts.error || creditCardTransactions.error
-        ? []
-        : accounts.accounts
+      accounts.hasData && creditCardTransactions.data !== undefined
+        ? accounts.accounts
             .filter((a) => a.type === 'credit_card' && a.billing_cycle_day !== null)
             .map((account) => ({
               accountId: account.id,
@@ -128,7 +144,8 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
                   is_excluded: t.is_excluded,
                   isShared: t.is_shared,
                 })),
-            })),
+            }))
+        : [],
   })
 
   return {

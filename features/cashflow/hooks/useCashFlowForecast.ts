@@ -19,6 +19,13 @@ export interface UseCashFlowForecastResult {
   horizon: DayRangeHorizon
   isLoading: boolean
   error: Error | null
+  // See useSafeToSpend.ts's identical field for the full rationale: `result`
+  // is always fully computed from each source's own defaulted data, so it
+  // can never distinguish "nothing has loaded yet" from "loaded, and
+  // happens to be all zeros." True only once every one of the six composed
+  // sources has resolved with data at least once; stays true through a
+  // later background refetch failure.
+  hasData: boolean
   refetch: () => void
 }
 
@@ -26,35 +33,46 @@ export function useCashFlowForecast(
   householdId: string | null | undefined,
   horizonDays: number
 ): UseCashFlowForecastResult {
-  const { accounts, isLoading: isAccountsLoading, error: accountsError, refetch: refetchAccounts } = useAccounts(householdId)
+  const {
+    accounts,
+    isLoading: isAccountsLoading,
+    error: accountsError,
+    hasData: hasAccountsData,
+    refetch: refetchAccounts,
+  } = useAccounts(householdId)
   const {
     balances,
     isLoading: isBalancesLoading,
     error: balancesError,
+    hasData: hasBalancesData,
     refetch: refetchBalances,
   } = useAccountBalances(householdId)
   const {
     obligations,
     isLoading: isObligationsLoading,
     error: obligationsError,
+    hasData: hasObligationsData,
     refetch: refetchObligations,
   } = usePlannedObligations(householdId)
   const {
     recurringTransactions,
     isLoading: isRecurringLoading,
     error: recurringError,
+    hasData: hasRecurringData,
     refetch: refetchRecurring,
   } = useRecurringTransactions(householdId)
   const {
     plans: installmentPlans,
     isLoading: isInstallmentPlansLoading,
     error: installmentPlansError,
+    hasData: hasInstallmentPlansData,
     refetch: refetchInstallmentPlans,
   } = useInstallmentPlans(householdId)
   const {
     materializedCounts,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
+    hasData: hasMaterializedCountsData,
     refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
@@ -109,6 +127,13 @@ export function useCashFlowForecast(
       isInstallmentPlansLoading ||
       isMaterializedCountsLoading,
     error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+    hasData:
+      hasAccountsData &&
+      hasBalancesData &&
+      hasObligationsData &&
+      hasRecurringData &&
+      hasInstallmentPlansData &&
+      hasMaterializedCountsData,
     refetch: () => {
       void refetchAccounts()
       void refetchBalances()

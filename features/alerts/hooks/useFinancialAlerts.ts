@@ -106,12 +106,21 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
     (a) => a.type === 'credit_card' && a.billing_cycle_day !== null
   )
 
+  // Every branch below is keyed on `hasData` (has this source ever resolved
+  // with data, regardless of a later background-refetch failure), not
+  // `error`. TanStack Query keeps a query's `data` at its last successful
+  // value through a failed background refetch — only `status`/`error`
+  // flip — so gating on `error` alone discarded perfectly good, already-
+  // loaded data on every transient failure and silently dropped whole
+  // categories of alerts that should still have fired (see
+  // features/accounts/hooks/useAccounts.ts's `hasData` field for the full
+  // reasoning, and useUpcomingCommitments.ts for the same fix applied to
+  // the Home "מה מגיע" card).
   const alerts = buildFinancialAlerts({
     today,
-    forecast: forecast.error ? null : forecast.result,
-    obligations: obligations.error
-      ? []
-      : obligations.obligations.map((o) => ({
+    forecast: forecast.hasData ? forecast.result : null,
+    obligations: obligations.hasData
+      ? obligations.obligations.map((o) => ({
           id: o.id,
           name: o.name,
           amountAgorot: o.amount_agorot,
@@ -119,13 +128,13 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
           status: o.status,
           categoryId: o.category_id,
           accountId: o.account_id,
-        })),
-    priceIncreaseDetections: priceIncrease.error ? [] : priceIncrease.detections,
-    budgetCategories: budget.error ? [] : budget.categories,
+        }))
+      : [],
+    priceIncreaseDetections: priceIncrease.hasData ? priceIncrease.detections : [],
+    budgetCategories: budget.hasData ? budget.categories : [],
     creditCardCycles:
-      accounts.error || recentTransactions.error
-        ? []
-        : creditCardAccounts.map((account) => ({
+      accounts.hasData && recentTransactions.hasData
+        ? creditCardAccounts.map((account) => ({
             accountId: account.id,
             accountName: account.name,
             billingCycleDay: account.billing_cycle_day as number,
@@ -137,34 +146,35 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
                 transfer_id: t.transfer_id,
                 is_excluded: t.is_excluded,
               })),
-          })),
+          }))
+        : [],
     categorySpend:
-      recentTransactions.error || categories.error
-        ? null
-        : {
+      recentTransactions.hasData && categories.hasData
+        ? {
             currentMonth: breakdownToObservations(currentMonthStart),
             historicalMonths: historicalMonthStarts.map((start) => breakdownToObservations(start)),
-          },
-    // Gated on savingsGoals.error only — NOT accountBalances.error too.
+          }
+        : null,
+    // Gated on savingsGoals.hasData only — NOT accountBalances.hasData too.
     // resolveGoalCurrentAgorot only reads accountBalances for a
     // 'linked_account' goal (a 'manual' goal returns its own current_agorot
-    // untouched); coupling the whole list to accountBalances.error would
+    // untouched); coupling the whole list to accountBalances.hasData would
     // silently drop savings_goal_behind/excess_cash_available alerts for
     // every manual goal too on a transient balances-query failure
     // (qa-adversarial-reviewer finding). accountBalances.balances already
     // degrades to {} on its own error (useAccountBalances.ts), so a
     // linked-account goal still resolves — just to 0 rather than crashing —
     // exactly the same partial-degradation every other source here accepts.
-    savingsGoals: savingsGoals.error
-      ? []
-      : savingsGoals.goals.map((goal) => ({
+    savingsGoals: savingsGoals.hasData
+      ? savingsGoals.goals.map((goal) => ({
           id: goal.id,
           name: goal.name,
           currentAgorot: resolveGoalCurrentAgorot(goal, accountBalances.balances),
           targetAgorot: goal.target_agorot,
           targetDate: goal.target_date,
-        })),
-    safeToSpendAgorot: safeToSpend.error ? null : safeToSpend.result.safeToSpendAgorot,
+        }))
+      : [],
+    safeToSpendAgorot: safeToSpend.hasData ? safeToSpend.result.safeToSpendAgorot : null,
   })
 
   return {
