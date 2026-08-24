@@ -19,26 +19,43 @@ export interface UseCashFlowForecastResult {
   horizon: DayRangeHorizon
   isLoading: boolean
   error: Error | null
+  refetch: () => void
 }
 
 export function useCashFlowForecast(
   householdId: string | null | undefined,
   horizonDays: number
 ): UseCashFlowForecastResult {
-  const { accounts, isLoading: isAccountsLoading, error: accountsError } = useAccounts(householdId)
-  const { balances, isLoading: isBalancesLoading, error: balancesError } = useAccountBalances(householdId)
-  const { obligations, isLoading: isObligationsLoading, error: obligationsError } = usePlannedObligations(householdId)
+  const { accounts, isLoading: isAccountsLoading, error: accountsError, refetch: refetchAccounts } = useAccounts(householdId)
+  const {
+    balances,
+    isLoading: isBalancesLoading,
+    error: balancesError,
+    refetch: refetchBalances,
+  } = useAccountBalances(householdId)
+  const {
+    obligations,
+    isLoading: isObligationsLoading,
+    error: obligationsError,
+    refetch: refetchObligations,
+  } = usePlannedObligations(householdId)
   const {
     recurringTransactions,
     isLoading: isRecurringLoading,
     error: recurringError,
+    refetch: refetchRecurring,
   } = useRecurringTransactions(householdId)
-  const { plans: installmentPlans, isLoading: isInstallmentPlansLoading, error: installmentPlansError } =
-    useInstallmentPlans(householdId)
+  const {
+    plans: installmentPlans,
+    isLoading: isInstallmentPlansLoading,
+    error: installmentPlansError,
+    refetch: refetchInstallmentPlans,
+  } = useInstallmentPlans(householdId)
   const {
     materializedCounts,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
+    refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
   const horizon = getDayRangeHorizon(horizonDays)
@@ -92,5 +109,13 @@ export function useCashFlowForecast(
       isInstallmentPlansLoading ||
       isMaterializedCountsLoading,
     error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+    refetch: () => {
+      void refetchAccounts()
+      void refetchBalances()
+      void refetchObligations()
+      void refetchRecurring()
+      void refetchInstallmentPlans()
+      void refetchMaterializedCounts()
+    },
   }
 }

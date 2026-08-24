@@ -72,7 +72,7 @@ export default function RecurringDetail() {
   // transactions/[id].tsx's identical guard).
   if (isHouseholdLoading || isAccountsLoading || isCategoriesLoading || isRecurringLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -80,7 +80,7 @@ export default function RecurringDetail() {
 
   if (!item) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('recurring.errors.notFound')} />
       </Screen>
     )
@@ -178,7 +178,7 @@ export default function RecurringDetail() {
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       {/* architecture-reviewer finding: this base size was briefly swapped
           to `text-title` (22px), unconditionally shrinking the existing
           mobile header from 24px — kept as `text-2xl` (the original

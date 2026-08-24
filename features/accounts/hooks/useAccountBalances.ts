@@ -43,5 +43,6 @@ export function useAccountBalances(householdId: string | null | undefined) {
     balances: query.data ?? {},
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    refetch: query.refetch,
   }
 }

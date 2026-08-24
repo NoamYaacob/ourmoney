@@ -88,7 +88,7 @@ export default function ObligationDetail() {
   // recurring/[id].tsx's identical guard).
   if (isHouseholdLoading || isAccountsLoading || isCategoriesLoading || isObligationsLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -96,7 +96,7 @@ export default function ObligationDetail() {
 
   if (!obligation) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('obligations.errors.notFound')} />
       </Screen>
     )
@@ -257,7 +257,7 @@ export default function ObligationDetail() {
   const account = obligation.account_id ? accounts.find((a) => a.id === obligation.account_id) : undefined
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       {/* architecture-reviewer finding: this base size was briefly swapped
           to `text-title` (22px), unconditionally shrinking the existing
           mobile header from 24px — kept as `text-2xl` (the original

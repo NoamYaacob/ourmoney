@@ -100,7 +100,7 @@ export default function TransactionDetail() {
   // resolving (mobile-expo-reviewer finding).
   if (isLoading || isHouseholdLoading || transaction?.transfer_id) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -108,7 +108,7 @@ export default function TransactionDetail() {
 
   if (!transaction) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('transactions.errors.notFound')} />
       </Screen>
     )
@@ -177,7 +177,7 @@ export default function TransactionDetail() {
     // and Select's 'row' variant with an icon for account/category. No
     // hook, mutation payload, or validation rule below changed from before
     // this pass — only how the fields are presented.
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
         {t('transactions.detail.title')}
       </Text>

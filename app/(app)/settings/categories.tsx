@@ -13,7 +13,7 @@
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -49,6 +49,7 @@ const OPERATOR_OPTIONS: CategoryRuleOperator[] = ['contains', 'equals', 'starts_
 
 export default function Categories() {
   const { t } = useTranslation()
+  const router = useRouter()
   const { editRuleId } = useLocalSearchParams<{ editRuleId?: string }>()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
@@ -110,7 +111,7 @@ export default function Categories() {
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
 
   return (
-    <Screen width="wide">
+    <Screen onBack={() => router.back()} width="wide">
       <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">{t('categories.title')}</Text>
 
       {/* Responsive/desktop pass: categories in one column, rules in a

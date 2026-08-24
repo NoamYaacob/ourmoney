@@ -25,7 +25,8 @@
 // context. On Transactions — which spans whatever range its filters select —
 // or on Accounts, it would claim a scope the screen does not have.
 
-import { Pressable, Text, View } from 'react-native'
+import { useState } from 'react'
+import { Pressable, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
@@ -81,6 +82,19 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const isDark = scheme === 'dark'
   const iconColor = isDark ? colors.inkMuted.dark : colors.inkMuted.light
   const accentColor = isDark ? colors.accent.dark : colors.accent.light
+  const placeholderColor = isDark ? colors.inkMuted.dark : colors.inkMuted.light
+  // A real query, not a shortcut to an empty Transactions screen: typing
+  // here and submitting hands the exact same `q` route param Transactions'
+  // own search field writes (features/transactions/lib/transactionFilters.ts),
+  // so it lands on that screen already filtered by what was typed here,
+  // using the identical live substring match against description/merchant/
+  // category that field already has — this box used to just navigate to
+  // Transactions untouched, which looked like search but wasn't one.
+  const [searchQuery, setSearchQuery] = useState('')
+  function submitSearch() {
+    const trimmed = searchQuery.trim()
+    router.push(trimmed ? { pathname: '/transactions', params: { q: trimmed } } : '/transactions')
+  }
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
   const horizonDays = useCashFlowStore((s) => s.horizonDays)
@@ -141,17 +155,31 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
           </View>
         )}
         {showSearch && (
-          <Pressable
-            onPress={() => router.push('/transactions')}
-            accessibilityRole="button"
-            accessibilityLabel={t('transactions.title')}
-            className="w-[220px] flex-row items-center gap-2 rounded-control border border-border-light px-3 py-2.5 dark:border-border-dark"
-          >
-            <Ionicons name="search-outline" size={ICON.row} color={iconColor} />
-            <Text className="text-bodySm text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-              {t('dashboard.searchPlaceholder')}
-            </Text>
-          </Pressable>
+          <View className="w-[220px] flex-row items-center gap-2 rounded-control border border-border-light px-3 py-2.5 dark:border-border-dark">
+            <Pressable onPress={submitSearch} accessibilityRole="button" accessibilityLabel={t('dashboard.searchAction')}>
+              <Ionicons name="search-outline" size={ICON.row} color={iconColor} />
+            </Pressable>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={submitSearch}
+              returnKeyType="search"
+              placeholder={t('dashboard.searchPlaceholder')}
+              placeholderTextColor={placeholderColor}
+              accessibilityLabel={t('dashboard.searchPlaceholder')}
+              textAlign={flip('left', 'right')}
+              className="flex-1 text-bodySm text-ink-light dark:text-ink-dark"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => setSearchQuery('')}
+                accessibilityRole="button"
+                accessibilityLabel={t('dashboard.searchClear')}
+              >
+                <Ionicons name="close-circle" size={ICON.chip} color={iconColor} />
+              </Pressable>
+            )}
+          </View>
         )}
         {showImport && (
           // A link, not a filled button: the mockup gives CSV import accent

@@ -29,5 +29,8 @@ export function useAccounts(householdId: string | null | undefined) {
     accounts: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // Exposed so a failed fetch has a real retry path — see
+    // usePlannedObligations.ts's identical export for the reasoning.
+    refetch: query.refetch,
   }
 }

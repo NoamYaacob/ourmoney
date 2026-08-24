@@ -59,7 +59,7 @@ export default function InstallmentPlanDetail() {
 
   if (isHouseholdLoading || isAccountsLoading || isCategoriesLoading || isPlansLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -67,7 +67,7 @@ export default function InstallmentPlanDetail() {
 
   if (!plan) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('installments.errors.notFound')} />
       </Screen>
     )
@@ -137,7 +137,7 @@ export default function InstallmentPlanDetail() {
   const remainingAgorot = plan.total_agorot - plan.monthly_agorot * materialized
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark web:desktop:text-[26px]">
         {plan.description}
       </Text>

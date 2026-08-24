@@ -151,7 +151,7 @@ export function DesktopTransactions() {
   // (value-based hashing), not reference-based, so a fresh-but-equal
   // filters object on every render does not trigger a refetch.
   const serverFilters = buildTransactionQueryFilters(filterState)
-  const { transactions, isLoading, error } = useTransactions(householdId, serverFilters)
+  const { transactions, isLoading, error, refetch } = useTransactions(householdId, serverFilters)
   // Fail-safe display: householdId is briefly null while useHousehold
   // itself is still resolving, during which useTransactions' own isLoading
   // is false (enabled: !!householdId) — without folding in
@@ -507,7 +507,7 @@ export function DesktopTransactions() {
           )}
 
           {error ? (
-            <ErrorMessage message={t('transactions.errors.generic')} />
+            <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
           ) : isPageLoading ? (
             <SkeletonList rows={5} />
           ) : showTrueEmpty ? (

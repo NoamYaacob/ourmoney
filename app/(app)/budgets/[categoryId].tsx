@@ -58,7 +58,7 @@ export default function BudgetCategoryDetail() {
 
   if (isHouseholdLoading || isLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -67,7 +67,7 @@ export default function BudgetCategoryDetail() {
   const category = categories.find((c) => c.categoryId === categoryId)
   if (error || !category) {
     return (
-      <Screen>
+      <Screen onBack={() => router.back()}>
         <ErrorMessage message={error ? t('budgets.errors.generic') : t('budgets.category.notFound')} />
       </Screen>
     )
@@ -92,7 +92,7 @@ export default function BudgetCategoryDetail() {
       : 0
 
   return (
-    <Screen scroll width="form">
+    <Screen onBack={() => router.back()} scroll width="form">
       <View className="mb-3 min-h-[44px] flex-row items-center justify-between gap-3">
         <Text className="text-title font-heebo text-ink-light dark:text-ink-dark" numberOfLines={1}>
           {category.categoryNameHe}

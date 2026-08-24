@@ -13,9 +13,16 @@
 //      It is a job to finish, not an error to feel bad about.
 //   4. Search is behind a toggle rather than always occupying a field.
 //
-// Bulk selection is kept exactly as the desktop screen has it. The design
-// file has no bulk mode, but it is real functionality and dropping it on
-// mobile would be a regression rather than a simplification.
+// Bulk category selection — desktop's "בחירה מרובה" (features/transactions/
+// components/DesktopTransactions.tsx) — is NOT implemented here. An earlier
+// version of this comment claimed it was "kept exactly as the desktop
+// screen has it," which was never true: there is no selection-mode state,
+// no per-row select control, and no call to
+// useBulkUpdateTransactionCategory anywhere in this file. The "לסווג" strip
+// below only filters the list to the uncategorised set; assigning a
+// category still means opening each transaction individually. That's a
+// real product gap, not a design choice — tracked, not hidden behind a
+// comment that said otherwise.
 
 import { useMemo, useState } from 'react'
 import { FlatList, Pressable, Text, View } from 'react-native'
@@ -109,7 +116,7 @@ export function MobileTransactions() {
   const [isSearchOpen, setSearchOpen] = useState(false)
 
   const queryFilters = buildTransactionQueryFilters(filters)
-  const { transactions, isLoading, error } = useTransactions(householdId, queryFilters)
+  const { transactions, isLoading, error, refetch } = useTransactions(householdId, queryFilters)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
   const { uncategorized } = useUncategorizedTransactions(householdId)
@@ -388,7 +395,7 @@ export function MobileTransactions() {
       )}
 
       {error ? (
-        <ErrorMessage message={t('transactions.errors.generic')} />
+        <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
       ) : isLoading ? (
         <SkeletonList rows={6} />
       ) : hasNoTransactionsAtAll ? (

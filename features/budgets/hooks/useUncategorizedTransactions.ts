@@ -38,5 +38,6 @@ export function useUncategorizedTransactions(householdId: string | null | undefi
     // render the same "all categorized" success state as a real empty
     // queue (see app/(app)/budgets/index.tsx's uncategorizedError branch).
     error: query.error,
+    refetch: query.refetch,
   }
 }

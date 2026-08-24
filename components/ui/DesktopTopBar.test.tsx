@@ -43,12 +43,42 @@ describe('DesktopTopBar', () => {
     expect(queryByLabelText(i18n.t('dashboard.previousMonth'))).toBeNull()
   })
 
-  it('navigates to /transactions when the search affordance is pressed', async () => {
-    const { getByText } = await render(<DesktopTopBar activeSegment="dashboard" />)
+  it('is a real text field, not a disguised navigation button — typing and submitting carries the query to Transactions', async () => {
+    // Regression: this used to be a Pressable with static placeholder text
+    // that navigated to /transactions untouched on press, no matter what
+    // (if anything) a household typed — it looked like search but had no
+    // query state at all. It now hands off to Transactions' own real
+    // search field via the exact same `q` route param that field itself
+    // writes (features/transactions/lib/transactionFilters.ts).
+    const { getByPlaceholderText } = await render(<DesktopTopBar activeSegment="dashboard" />)
 
-    fireEvent.press(getByText(i18n.t('dashboard.searchPlaceholder')))
+    const field = getByPlaceholderText(i18n.t('dashboard.searchPlaceholder'))
+    await fireEvent.changeText(field, 'שופרסל')
+    await fireEvent(field, 'submitEditing')
+
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/transactions', params: { q: 'שופרסל' } })
+  })
+
+  it('navigates to plain /transactions when submitted empty', async () => {
+    const { getByPlaceholderText } = await render(<DesktopTopBar activeSegment="dashboard" />)
+
+    await fireEvent(getByPlaceholderText(i18n.t('dashboard.searchPlaceholder')), 'submitEditing')
 
     expect(mockPush).toHaveBeenCalledWith('/transactions')
+  })
+
+  it('clears a typed query via the clear button', async () => {
+    const { getByPlaceholderText, getByLabelText, queryByLabelText } = await render(
+      <DesktopTopBar activeSegment="dashboard" />
+    )
+
+    const field = getByPlaceholderText(i18n.t('dashboard.searchPlaceholder'))
+    expect(queryByLabelText(i18n.t('dashboard.searchClear'))).toBeNull()
+
+    await fireEvent.changeText(field, 'שופרסל')
+    await fireEvent.press(getByLabelText(i18n.t('dashboard.searchClear')))
+
+    expect(field.props.value).toBe('')
   })
 
   it('navigates to /transactions/new when the primary action is pressed', async () => {
@@ -63,15 +93,15 @@ describe('DesktopTopBar', () => {
     // Only the two frames the mockup draws in full carry header actions.
     // Everything else gets the title alone and keeps its own controls in
     // the screen body, which is where those frames put them.
-    const { queryByText } = await render(<DesktopTopBar activeSegment="accounts" />)
+    const { queryByText, queryByPlaceholderText } = await render(<DesktopTopBar activeSegment="accounts" />)
     expect(queryByText(i18n.t('transactions.addButton'))).toBeNull()
-    expect(queryByText(i18n.t('dashboard.searchPlaceholder'))).toBeNull()
+    expect(queryByPlaceholderText(i18n.t('dashboard.searchPlaceholder'))).toBeNull()
   })
 
   it('offers CSV import on Transactions, and only there', async () => {
     const onTransactions = await render(<DesktopTopBar activeSegment="transactions" />)
     expect(onTransactions.getByText(i18n.t('more.import'))).toBeTruthy()
-    expect(onTransactions.queryByText(i18n.t('dashboard.searchPlaceholder'))).toBeNull()
+    expect(onTransactions.queryByPlaceholderText(i18n.t('dashboard.searchPlaceholder'))).toBeNull()
 
     const onDashboard = await render(<DesktopTopBar activeSegment="dashboard" />)
     expect(onDashboard.queryByText(i18n.t('more.import'))).toBeNull()

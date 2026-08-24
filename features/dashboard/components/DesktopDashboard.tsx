@@ -80,8 +80,14 @@ export function DesktopDashboard() {
     totalSpentAgorot,
     isLoading: isProgressLoading,
     error: progressError,
+    refetch: refetchProgress,
   } = useBudgetProgress(householdId, periodStart)
-  const { transactions, isLoading: isTransactionsLoading, error: transactionsError } = useTransactions(householdId, {
+  const {
+    transactions,
+    isLoading: isTransactionsLoading,
+    error: transactionsError,
+    refetch: refetchTransactions,
+  } = useTransactions(householdId, {
     periodStart,
   })
   const { categories: allCategories } = useCategories(householdId)
@@ -103,6 +109,7 @@ export function DesktopDashboard() {
     result: safeToSpend,
     isLoading: isSafeToSpendLoading,
     error: safeToSpendError,
+    refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, horizon)
 
   const { alerts, isLoading: isAlertsLoading } = useFinancialAlerts(householdId)
@@ -196,7 +203,7 @@ export function DesktopDashboard() {
 
             {safeToSpendError ? (
               <View className="mt-2">
-                <ErrorMessage message={t('cashFlow.errors.generic')} />
+                <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
               </View>
             ) : isSafeToSpendLoading ? (
               <View className="mt-2">
@@ -392,7 +399,7 @@ export function DesktopDashboard() {
 
             {progressError ? (
               <View className="mt-3">
-                <ErrorMessage message={t('dashboard.errors.generic')} />
+                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
               </View>
             ) : isProgressLoading ? (
               <View className="mt-3">
@@ -542,7 +549,7 @@ export function DesktopDashboard() {
             </View>
             {transactionsError ? (
               <View className="web:desktop:mt-3.5">
-                <ErrorMessage message={t('dashboard.errors.generic')} />
+                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
               </View>
             ) : isTransactionsLoading ? (
               <View className="web:desktop:mt-3.5">

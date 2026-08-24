@@ -73,6 +73,7 @@ export function MobileHome() {
     horizon,
     isLoading: isSafeToSpendLoading,
     error: safeToSpendError,
+    refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, 'month')
   const { commitments, isLoading: isCommitmentsLoading } = useUpcomingCommitments(householdId)
   const { alerts } = useFinancialAlerts(householdId)
@@ -85,6 +86,7 @@ export function MobileHome() {
     totalSpentAgorot,
     isLoading: isBudgetLoading,
     error: budgetError,
+    refetch: refetchBudget,
   } = useBudgetProgress(householdId, periodStart)
 
   // The six-month trend, the category donut and the top-categories list are
@@ -202,7 +204,7 @@ export function MobileHome() {
 
         {safeToSpendError ? (
           <View className="mt-2">
-            <ErrorMessage message={t('cashFlow.errors.generic')} />
+            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
           </View>
         ) : isSafeToSpendLoading ? (
           <View className="mt-2">
@@ -334,7 +336,7 @@ export function MobileHome() {
       <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button" className="mt-3">
         <View className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
           {budgetError ? (
-            <ErrorMessage message={t('dashboard.errors.generic')} />
+            <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchBudget} />
           ) : isBudgetLoading ? (
             <SkeletonList rows={2} />
           ) : totalAllocatedAgorot === 0 ? (

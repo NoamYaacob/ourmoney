@@ -103,7 +103,7 @@ export default function AccountDetail() {
   // below instead of showing a spinner (mobile-expo-reviewer finding).
   if (isHouseholdLoading || isAccountsLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -111,7 +111,7 @@ export default function AccountDetail() {
 
   if (!account) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('accounts.errors.notFound')} />
       </Screen>
     )
@@ -138,7 +138,7 @@ export default function AccountDetail() {
   }
 
   return (
-    <Screen keyboardAvoiding scroll width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding scroll width="form">
       {/* The dark balance header the design opens this screen with
           ("כותרת כהה עם היתרה, אחר כך פעילות"). It had been a title and a
           muted line of text — a screen whose whole subject is one account

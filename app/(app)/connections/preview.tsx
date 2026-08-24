@@ -14,6 +14,7 @@
 // already applies.
 
 import { Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -26,11 +27,12 @@ import { StatusChip } from '@/components/ui/StatusChip'
 
 export default function ConnectionsPreview() {
   const { t } = useTranslation()
+  const router = useRouter()
   const { colorScheme: scheme } = useColorScheme()
   const iconColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
 
   return (
-    <Screen>
+    <Screen onBack={() => router.back()}>
       <Text className="mb-4 text-title font-bold text-ink-light dark:text-ink-dark">{t('connections.preview.title')}</Text>
 
       {/* The one thing every element on this screen must never let the

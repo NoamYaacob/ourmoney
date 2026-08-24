@@ -20,26 +20,49 @@ export interface UseSafeToSpendResult {
   horizon: HorizonRange
   isLoading: boolean
   error: Error | null
+  // Re-runs every one of the six composed queries. This is the Home hero's
+  // own data source — the exact screen the intermittent "משהו השתבש" error
+  // was reported on — so a household that still hits a genuine failure
+  // (not the focus-refetch race lib/queryClient.ts now guards against; a
+  // real network/server error) has a way to ask again without navigating
+  // away and back.
+  refetch: () => void
 }
 
 export function useSafeToSpend(
   householdId: string | null | undefined,
   horizonKind: HorizonKind
 ): UseSafeToSpendResult {
-  const { accounts, isLoading: isAccountsLoading, error: accountsError } = useAccounts(householdId)
-  const { balances, isLoading: isBalancesLoading, error: balancesError } = useAccountBalances(householdId)
-  const { obligations, isLoading: isObligationsLoading, error: obligationsError } = usePlannedObligations(householdId)
+  const { accounts, isLoading: isAccountsLoading, error: accountsError, refetch: refetchAccounts } = useAccounts(householdId)
+  const {
+    balances,
+    isLoading: isBalancesLoading,
+    error: balancesError,
+    refetch: refetchBalances,
+  } = useAccountBalances(householdId)
+  const {
+    obligations,
+    isLoading: isObligationsLoading,
+    error: obligationsError,
+    refetch: refetchObligations,
+  } = usePlannedObligations(householdId)
   const {
     recurringTransactions,
     isLoading: isRecurringLoading,
     error: recurringError,
+    refetch: refetchRecurring,
   } = useRecurringTransactions(householdId)
-  const { plans: installmentPlans, isLoading: isInstallmentPlansLoading, error: installmentPlansError } =
-    useInstallmentPlans(householdId)
+  const {
+    plans: installmentPlans,
+    isLoading: isInstallmentPlansLoading,
+    error: installmentPlansError,
+    refetch: refetchInstallmentPlans,
+  } = useInstallmentPlans(householdId)
   const {
     materializedCounts,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
+    refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
   const horizon = getHorizonRange(horizonKind)
@@ -92,5 +115,13 @@ export function useSafeToSpend(
       isInstallmentPlansLoading ||
       isMaterializedCountsLoading,
     error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+    refetch: () => {
+      void refetchAccounts()
+      void refetchBalances()
+      void refetchObligations()
+      void refetchRecurring()
+      void refetchInstallmentPlans()
+      void refetchMaterializedCounts()
+    },
   }
 }

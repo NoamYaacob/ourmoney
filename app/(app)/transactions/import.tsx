@@ -248,7 +248,7 @@ export default function TransactionsImport() {
   const currentStepIndex = STEPS.indexOf(step)
 
   return (
-    <Screen width="form">
+    <Screen onBack={() => router.back()} width="form">
       <Text className="mb-2 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
         {t('import.title')}
       </Text>

@@ -168,7 +168,7 @@ export default function NewTransaction() {
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
         {t('transactions.form.title')}
       </Text>

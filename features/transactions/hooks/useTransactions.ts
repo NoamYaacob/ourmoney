@@ -53,6 +53,7 @@ export function useTransactions(householdId: string | null | undefined, filters:
     transactions: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    refetch: query.refetch,
   }
 }
 

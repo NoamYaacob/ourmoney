@@ -64,7 +64,7 @@ export function MobileCashFlow() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const [days, setDays] = useState<'30' | '60' | '90'>('30')
-  const { result: forecast, isLoading, error } = useCashFlowForecast(householdId, Number(days))
+  const { result: forecast, isLoading, error, refetch } = useCashFlowForecast(householdId, Number(days))
 
   if (isHouseholdLoading) {
     return (
@@ -93,7 +93,7 @@ export function MobileCashFlow() {
 
       {error ? (
         <View className="mt-4">
-          <ErrorMessage message={t('cashFlow.forecast.errors.generic')} />
+          <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
         </View>
       ) : isLoading ? (
         <View className="mt-4">

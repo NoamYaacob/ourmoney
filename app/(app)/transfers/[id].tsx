@@ -71,7 +71,7 @@ export default function TransferDetail() {
 
   if (isLoading || isHouseholdLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -79,7 +79,7 @@ export default function TransferDetail() {
 
   if (!transfer) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('transfers.errors.notFound')} />
       </Screen>
     )
@@ -126,7 +126,7 @@ export default function TransferDetail() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       <View className="mb-6 flex-row items-center gap-2">
         <Ionicons name="swap-horizontal" size={ICON.hero} color={mutedColor} />
         <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark">{t('transfers.detail.title')}</Text>

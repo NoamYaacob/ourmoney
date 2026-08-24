@@ -94,6 +94,7 @@ export default function Budgets() {
     uncategorized,
     isLoading: isUncategorizedLoading,
     error: uncategorizedError,
+    refetch: refetchUncategorized,
   } = useUncategorizedTransactions(householdId)
   const updateTransaction = useUpdateTransaction(householdId)
 
@@ -351,7 +352,7 @@ export default function Budgets() {
       </View>
 
       {error ? (
-        <ErrorMessage message={t('budgets.errors.generic')} />
+        <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchProgress} />
       ) : isLoading ? (
         <SkeletonList rows={4} />
       ) : (
@@ -735,7 +736,7 @@ export default function Budgets() {
             {t('budgets.uncategorizedTitle')}
           </Text>
           {uncategorizedError ? (
-            <ErrorMessage message={t('budgets.errors.generic')} />
+            <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
           ) : isUncategorizedLoading ? (
             <SkeletonList rows={3} />
           ) : uncategorized.length === 0 ? (

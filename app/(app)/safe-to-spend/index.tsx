@@ -58,7 +58,7 @@ export default function SafeToSpendDetail() {
 
   if (isHouseholdLoading || isLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -66,7 +66,7 @@ export default function SafeToSpendDetail() {
 
   if (error) {
     return (
-      <Screen>
+      <Screen onBack={() => router.back()}>
         <ErrorMessage message={t('cashFlow.errors.generic')} />
       </Screen>
     )
@@ -105,7 +105,7 @@ export default function SafeToSpendDetail() {
   const groups = allGroups.filter((group) => group.amountAgorot > 0)
 
   return (
-    <Screen scroll width="wide">
+    <Screen onBack={() => router.back()} scroll width="wide">
       <View className="-mx-6 -mt-6">
         <HeroPanel className="rounded-none rounded-b-hero px-6 pb-6 pt-3">
           <View className="h-11 flex-row items-center justify-between">

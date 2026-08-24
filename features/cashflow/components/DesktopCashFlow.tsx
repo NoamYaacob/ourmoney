@@ -66,7 +66,7 @@ export function DesktopCashFlow() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   // Set from the shell header bar, where the mockup draws the selector.
   const days = useCashFlowStore((s) => s.horizonDays)
-  const { result: forecast, isLoading, error } = useCashFlowForecast(householdId, Number(days))
+  const { result: forecast, isLoading, error, refetch } = useCashFlowForecast(householdId, Number(days))
 
   if (isHouseholdLoading) {
     return (
@@ -86,7 +86,7 @@ export function DesktopCashFlow() {
           30/60/90 pinned to the end — and DesktopTopBar owns that band for
           every desktop screen. Drawing them again titled the page twice. */}
       {error ? (
-        <ErrorMessage message={t('cashFlow.forecast.errors.generic')} />
+        <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
       ) : isLoading ? (
         <SkeletonList rows={4} />
       ) : (

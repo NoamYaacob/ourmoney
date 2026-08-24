@@ -109,7 +109,7 @@ export default function GoalDetail() {
 
   if (isHouseholdLoading || isAccountsLoading || isGoalsLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -117,7 +117,7 @@ export default function GoalDetail() {
 
   if (!goal) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('savings.errors.notFound')} />
       </Screen>
     )
@@ -266,7 +266,7 @@ export default function GoalDetail() {
   }
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       {/* Visual QA + Desktop Polish pass: this screen had no header at
           all — the goal's own name only ever appeared inside its own
           editable Input, matching neither the pattern every other detail

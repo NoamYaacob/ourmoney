@@ -44,7 +44,7 @@ export default function Installments() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { plans, isLoading: isPlansLoading, error } = useInstallmentPlans(householdId)
+  const { plans, isLoading: isPlansLoading, error, refetch: refetchPlans } = useInstallmentPlans(householdId)
   const { materializedCounts } = useInstallmentMaterializedCounts(householdId)
   const createPlan = useCreateInstallmentPlan(householdId)
   // Desktop Claude Design pass: the mockup's billing-cycle cards, at the
@@ -281,7 +281,7 @@ export default function Installments() {
       )}
 
       {error ? (
-        <ErrorMessage message={t('installments.errors.generic')} />
+        <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
       ) : isLoading || isPlansLoading ? (
         <SkeletonList rows={3} />
       ) : (

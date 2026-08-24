@@ -31,5 +31,6 @@ export function useInstallmentMaterializedCounts(householdId: string | null | un
     materializedCounts: query.data ?? {},
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    refetch: query.refetch,
   }
 }
