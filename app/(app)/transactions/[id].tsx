@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
@@ -201,6 +202,15 @@ export default function TransactionDetail() {
           placeholder={t('transactions.form.amountPlaceholder')}
         />
 
+        {/* What and when. The frame puts "שופרסל דיל · יום חמישי,
+            21.08.2026" directly under the figure, and this screen was not
+            showing the transaction's date anywhere at all — a detail screen
+            for a dated thing that never said which day it was. */}
+        <Text className="-mt-4 mb-5 text-center text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+          {transaction.merchant_name ? `${transaction.merchant_name} · ` : ''}
+          {formatDateDisplay(transaction.txn_date)}
+        </Text>
+
         <View className="web:desktop:flex-row web:desktop:gap-4">
           <View className="web:desktop:flex-1">
             <Input label={t('transactions.form.descriptionLabel')} value={description} onChangeText={setDescription} />
@@ -301,10 +311,6 @@ export default function TransactionDetail() {
           <ErrorMessage message={validationError ?? t('transactions.form.errors.generic')} />
         )}
 
-        <View className="mt-2">
-          <Button title={t('transactions.detail.save')} onPress={handleSave} loading={updateTransaction.isPending} />
-        </View>
-
         <View className="mt-3">
           <Button
             title={
@@ -318,15 +324,30 @@ export default function TransactionDetail() {
           />
         </View>
 
-        {canDelete && (
-          <View className="mt-3">
-            <Button
-              title={t('transactions.detail.delete')}
-              variant="ghost"
-              onPress={() => setConfirmDeleteVisible(true)}
-            />
+        {/* Save and delete on one row, as the frame draws them: the primary
+            action takes the width, deletion is a 52px icon beside it. They
+            had been two full-width buttons stacked with the exclude toggle
+            between them, which gave deleting a transaction the same visual
+            weight as saving one. */}
+        <View className="mt-3 flex-row items-stretch gap-2.5">
+          <View className="flex-1">
+            <Button title={t('transactions.detail.save')} onPress={handleSave} loading={updateTransaction.isPending} />
           </View>
-        )}
+          {canDelete && (
+            <Pressable
+              onPress={() => setConfirmDeleteVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('transactions.detail.delete')}
+              className="h-[52px] w-[52px] items-center justify-center rounded-control border border-border-light bg-surfaceMuted-light active:opacity-70 dark:border-border-dark dark:bg-surfaceMuted-dark"
+            >
+              <Ionicons
+                name="trash-outline"
+                size={ICON.nav}
+                color={scheme === 'dark' ? colors.dangerStrong.dark : colors.dangerStrong.light}
+              />
+            </Pressable>
+          )}
+        </View>
 
         {deleteTransaction.isError && <ErrorMessage message={t('transactions.detail.deleteError')} />}
       </View>

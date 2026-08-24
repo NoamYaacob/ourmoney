@@ -782,7 +782,14 @@
       "spentOf": "{{spent}} מתוך {{total}}",
       "remaining": "נותרו {{amount}}",
       "exceeded": "חריגה {{amount}}",
-      "projectedOver": "צפי לחריגה {{amount}}"
+      "projectedOver": "צפי לחריגה {{amount}}",
+      "remainingInCategory": "נותר בקטגוריה",
+      "detailTransactions": "התנועות בקטגוריה החודש",
+      "detailEmpty": "אין תנועות בקטגוריה הזאת החודש",
+      "detailEmptyHint": "תנועה שתסווג לכאן תופיע ברשימה.",
+      "countAndAverage": "{{count}} תנועות החודש, בממוצע {{average}}",
+      "editAllocation": "עריכת סכום התקציב",
+      "notFound": "הקטגוריה לא נמצאה בתקציב החודש"
     },
     "outsideBudgetTitle": "לא בתקציב · חיובים קבועים",
     "outsideBudgetNote": "החיובים האלה יורדים בכל חודש, אבל אין להם קטגוריה בתקציב הזה — ולכן הם לא נספרים בקצב שלמעלה."

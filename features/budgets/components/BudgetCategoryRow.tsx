@@ -30,6 +30,7 @@ import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { StatusChip, StatusDot } from '@/components/ui/StatusChip'
 import { BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE, type BudgetStateResult } from '@/features/budgets/lib/budgetState'
+import { HIT_SLOP } from '@/constants/accessibility'
 import { formatILS, formatRatioILS } from '@/lib/money/format'
 import type { BudgetCategoryProgress } from '@/types/app'
 
@@ -39,11 +40,23 @@ interface BudgetCategoryRowProps {
   category: BudgetCategoryProgress
   state: BudgetStateResult
   onPress: () => void
+  /** Opens the category's own screen. Its chevron becomes the target; the
+      row itself keeps whatever `onPress` does. Omitted where no such screen
+      exists (the desktop frame edits inline and has no category screen), and
+      the chevron is then not drawn at all. */
+  onOpenDetail?: () => void
   variant?: BudgetCategoryRowVariant
   testID?: string
 }
 
-export function BudgetCategoryRow({ category, state, onPress, variant = 'card', testID }: BudgetCategoryRowProps) {
+export function BudgetCategoryRow({
+  category,
+  state,
+  onPress,
+  onOpenDetail,
+  variant = 'card',
+  testID,
+}: BudgetCategoryRowProps) {
   const { t } = useTranslation()
   const { colorScheme: scheme } = useColorScheme()
   const tone = BUDGET_STATE_TONE[state.state]
@@ -100,11 +113,21 @@ export function BudgetCategoryRow({ category, state, onPress, variant = 'card', 
         ) : (
           <>
             <View className="flex-1" />
-            <Ionicons
-              name="chevron-back"
-              size={ICON.row}
-              color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
-            />
+            {onOpenDetail && (
+              <Pressable
+                onPress={onOpenDetail}
+                accessibilityRole="button"
+                accessibilityLabel={`${category.categoryNameHe}, ${t('budgets.category.detailTransactions')}`}
+                hitSlop={HIT_SLOP}
+                className="h-6 w-6 items-center justify-center"
+              >
+                <Ionicons
+                  name="chevron-back"
+                  size={ICON.row}
+                  color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
+                />
+              </Pressable>
+            )}
           </>
         )}
       </View>

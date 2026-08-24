@@ -407,6 +407,7 @@ export default function AppLayout() {
               <Tabs.Screen name="safe-to-spend/index" options={{ href: null }} />
               <Tabs.Screen name="transactions/new" options={{ href: null }} />
               <Tabs.Screen name="transactions/[id]" options={{ href: null }} />
+              <Tabs.Screen name="budgets/[categoryId]" options={{ href: null }} />
               <Tabs.Screen name="transfers/[id]" options={{ href: null }} />
               <Tabs.Screen name="transactions/import" options={{ href: null }} />
               <Tabs.Screen name="accounts/index" options={{ href: null }} />

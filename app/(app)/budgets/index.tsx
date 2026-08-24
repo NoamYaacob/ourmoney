@@ -11,6 +11,7 @@
 
 import { useState } from 'react'
 import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -62,6 +63,7 @@ const TREND_MONTHS = 6
 
 export default function Budgets() {
   const { t } = useTranslation()
+  const router = useRouter()
   // The two design files draw the category list differently enough that a
   // utility override cannot express it — desktop pulls the ratio onto the
   // name line and drops the card chrome. Same route split the dashboard,
@@ -508,6 +510,17 @@ export default function Budgets() {
                         setEditingCategoryId(category.categoryId)
                         setEditingAmount(String(category.allocatedAgorot / 100))
                       }}
+                      // The phone's chevron opens the category's own screen —
+                      // "מהתקציב לתנועות של אותה קטגוריה". The row itself
+                      // still opens the amount editor, which is the only
+                      // place an allocation can be set: the save is a
+                      // true-replace RPC over every allocation at once, so
+                      // moving it to a single-category screen would mean a
+                      // second copy of that flow. The desktop frame has no
+                      // per-category screen and gets no chevron.
+                      onOpenDetail={
+                        isDesktopWeb ? undefined : () => router.push(`/budgets/${category.categoryId}`)
+                      }
                     />
                     {editingCategoryId === category.categoryId && (
                       <View className="mt-2 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">

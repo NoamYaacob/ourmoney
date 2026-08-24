@@ -99,4 +99,29 @@ describe('BudgetCategoryRow', () => {
 
     expect(onPress).toHaveBeenCalled()
   })
+
+  it('opens the category screen from the chevron, and the amount editor from the row', async () => {
+    // Two targets, because the row does two different things and the frame
+    // draws both: tapping it sets the amount, tapping the chevron opens
+    // "מהתקציב לתנועות של אותה קטגוריה".
+    const onPress = jest.fn()
+    const onOpenDetail = jest.fn()
+    const { getAllByRole } = await render(
+      <BudgetCategoryRow category={CATEGORY} state={HEALTHY} onPress={onPress} onOpenDetail={onOpenDetail} />
+    )
+
+    const buttons = getAllByRole('button')
+    fireEvent.press(buttons[buttons.length - 1]!)
+
+    expect(onOpenDetail).toHaveBeenCalled()
+    expect(onPress).not.toHaveBeenCalled()
+  })
+
+  it('draws no chevron where there is no category screen to open', async () => {
+    const { getAllByRole } = await render(
+      <BudgetCategoryRow category={CATEGORY} state={HEALTHY} onPress={() => {}} />
+    )
+    // The row itself, and nothing else pressable.
+    expect(getAllByRole('button')).toHaveLength(1)
+  })
 })

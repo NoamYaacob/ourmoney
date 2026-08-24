@@ -113,16 +113,18 @@ describe('TransactionDetail', () => {
     expect(mockRouterReplace).not.toHaveBeenCalled()
   })
 
-  it('shows the delete button and confirm modal for an admin', async () => {
+  // Delete is an icon beside Save now, as the frame draws it — a labelled
+  // target rather than a third full-width button competing with saving.
+  it('shows the delete control and confirm modal for an admin', async () => {
     mockRole = 'admin'
-    const { getByText } = await render(<TransactionDetail />)
-    expect(getByText('מחיקה')).toBeTruthy()
+    const { getByLabelText } = await render(<TransactionDetail />)
+    expect(getByLabelText('מחיקה')).toBeTruthy()
   })
 
-  it('hides the delete button entirely for a non-admin member, since the delete would always fail server-side', async () => {
+  it('hides the delete control entirely for a non-admin member, since the delete would always fail server-side', async () => {
     mockRole = 'member'
-    const { queryByText } = await render(<TransactionDetail />)
-    expect(queryByText('מחיקה')).toBeNull()
+    const { queryByLabelText } = await render(<TransactionDetail />)
+    expect(queryByLabelText('מחיקה')).toBeNull()
   })
 
   it('shows a delete error message when the delete mutation fails', async () => {
