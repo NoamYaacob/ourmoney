@@ -5,6 +5,7 @@ import '../features/budgets/lib/budgetThresholdSubscriber'
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native'
+import { enableScreens } from 'react-native-screens'
 import * as Updates from 'expo-updates'
 import { useFonts } from 'expo-font'
 import {
@@ -204,6 +205,41 @@ function applyWebDocumentDirection() {
 }
 
 applyWebDocumentDirection()
+
+// Fixes a real, previously-documented bug (docs/KNOWN_ISSUES.md's
+// "Inactive tab screens stay mounted and interactive on web" — found via
+// Playwright driving the app with real mouse clicks: after Home →
+// Transactions, `document.querySelectorAll` found two live copies of the
+// same row's text in the DOM at once, both `pointer-events: auto`).
+//
+// Root cause, traced to source: expo-router's vendored bottom-tabs view
+// (node_modules/expo-router/build/react-navigation/bottom-tabs/views/
+// ScreenFallback.js) only renders a tab's scene through react-native-
+// screens' own `Screen` component — the one that actually removes an
+// inactive scene from layout/hit-testing — when `Screens.screensEnabled()`
+// is true. Nothing in this app ever called `enableScreens()`, and
+// react-native-screens' own default (core.ts: `ENABLE_SCREENS =
+// isNativePlatformSupported`) is `false` on web, so every inactive tab fell
+// back to a plain `View` that BottomTabView.js only pushes behind the
+// active tab with `zIndex: -1` — visually hidden, but never removed from
+// hit-testing, and its queries/effects never stop running either.
+//
+// react-native-screens 4.26 (the version this app has installed) ships a
+// real web implementation (components/Screen.web.tsx): once `enabled` is
+// true, an inactive screen (`activityState === 0`, which
+// BottomTabView.js's own `detachInactiveScreens` already defaults to `true`
+// on web — see that file — independently of this call) renders with
+// `hidden={true}` and `style={{ display: 'none' }}`, which removes it from
+// layout, paint, AND hit-testing entirely on web — strictly stronger than a
+// `pointerEvents="none"` patch, and unlike one, requires no changes to any
+// vendored file. `enableScreens()` itself does nothing risky on native
+// (core.ts already defaults `ENABLE_SCREENS` to `true` there via
+// `isNativePlatformSupported`, so this call is a no-op re-affirmation on
+// iOS/Android) — it only changes behavior on web, which is exactly the
+// platform the bug was on. Called at module scope, before any screen ever
+// mounts, for the same "must land before first paint" reason
+// applyWebDocumentDirection() above does.
+enableScreens()
 
 // RTL bootstrap — see ARCHITECTURE.md § RTL Implementation.
 export default function RootLayout() {

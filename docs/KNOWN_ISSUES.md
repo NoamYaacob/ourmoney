@@ -1,10 +1,61 @@
 # Known issues
 
-Found and root-caused, not fixed — each needs a decision or a change with a
-blast radius bigger than this pass's scope. Documented per the standing
+Found and root-caused. One item below (inactive tab screens on web) was
+fixed in a later pass once a safe, non-node_modules-patching fix was found
+— kept here with its resolution recorded rather than deleted, so the
+investigation trail survives. The rest are documented per the standing
 rule: don't fake a fix, don't leave a finding unrecorded either.
 
-## Inactive tab screens stay mounted and interactive on web
+## RESOLVED — Inactive tab screens stay mounted and interactive on web
+
+**Fix:** `app/_layout.tsx` now calls `enableScreens()` (from
+`react-native-screens`, already a direct dependency — nothing new
+installed) once at module scope, before any screen mounts. Root cause,
+symptom, and investigation notes below are kept as originally written; only
+this line changed.
+
+Why this is safe and complete, not a partial mitigation:
+`react-native-screens@4.26` (the version already installed) ships a real
+web implementation (`components/Screen.web.tsx`). Once
+`Screens.screensEnabled()` is true, `expo-router`'s vendored `MaybeScreen`
+(quoted below) renders every tab scene through `Screens.Screen` instead of
+a bare `View`, and `BottomTabView.js`'s own `detachInactiveScreens` already
+defaults to `true` on web independently of this change — so an inactive
+scene (`activityState === 0`) renders with `hidden={true}` and
+`style={{ display: 'none' }}`, which removes it from layout, paint, AND
+hit-testing entirely. This is strictly stronger than the narrower
+`pointerEvents="none"` mitigation this doc originally floated (which would
+still have left the inactive scene occupying layout space), and needed no
+change to any vendored file. `enableScreens()` is a no-op re-affirmation on
+native (`core.ts` already defaults `ENABLE_SCREENS` to `true` there), so
+this only changes behavior on web — exactly the platform the bug was on.
+
+**Verified, not assumed:** built a `DESIGN_QA=1` static web export and drove
+it with real Playwright mouse clicks (not isolated `page.goto()` loads):
+- Home → Transactions via the tab bar, then a direct DOM query for every
+  element whose inline style contains the tab-scene wrapper's `zIndex: -1`
+  marker: the inactive (Home) scene's wrapper now computes `display: none`
+  (previously — per the original finding below — this was a full-sized,
+  `pointer-events: auto`, fully-interactive `View`). `childElementCount: 1`
+  confirms the scene's subtree is still mounted underneath (queries don't
+  get torn down, matching the "not a full unmount" tradeoff `Screen.web.tsx`
+  makes — see its source), it is just no longer paintable or hit-testable.
+- A real `page.mouse.click()` at a genuinely-visible transaction row's exact
+  on-screen coordinates still navigated correctly to its detail screen.
+- Nine rapid tab-bar switches (Home → Transactions → Budget → Home, ×3) hit
+  zero console/page errors, and Home's hero card was still visible and
+  correctly rendered on the final return.
+- Confirmed exactly one DOM match (not two) for a transaction description
+  visible on the Transactions screen after navigating there from Home.
+
+Not independently re-verified on the real Vercel/Supabase preview (no
+credentials to that environment from here — see the QA-data/runtime
+investigation elsewhere in this pass for the same disclosed limitation);
+the DESIGN_QA-mode verification above exercises the identical navigation/
+rendering code path, since only the Supabase client is swapped, never the
+router or `react-native-screens` wiring.
+
+### Original finding (kept verbatim for the investigation trail)
 
 **Found while:** driving the app with real Playwright mouse clicks through a
 realistic navigation flow (Home → search → Transactions → detail → back →
