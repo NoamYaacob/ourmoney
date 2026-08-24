@@ -340,7 +340,27 @@ export default function Recurring() {
           {(validationError || createRecurring.isError) && (
             <ErrorMessage message={validationError ?? t('recurring.errors.generic')} />
           )}
-          <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
+          {/* Part 4/21 of the product-quality audit: this form had no way
+              back once opened, the same gap found and fixed on Goals —
+              every sibling add-form pairs submit with a cancel.
+              resetForm() already existed and already flips isAdding back
+              to false; it just wasn't wired to anything. */}
+          <View className="web:desktop:flex-row web:desktop:gap-2">
+            <View className="web:desktop:flex-1">
+              <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
+            </View>
+            <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+              <Button
+                title={t('common.cancel')}
+                variant="secondary"
+                disabled={createRecurring.isPending}
+                onPress={() => {
+                  setValidationError(null)
+                  resetForm()
+                }}
+              />
+            </View>
+          </View>
           </Card>
         </View>
       ) : (

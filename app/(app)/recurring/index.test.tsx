@@ -5,7 +5,7 @@
 // render top-right, continuing the RTL reading order into the wrap. First
 // test coverage for this screen.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
+import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import Recurring from './index'
 import { formatDayOfMonth } from '@/lib/dates/format'
@@ -29,8 +29,9 @@ jest.mock('@/features/accounts/hooks/useAccounts', () => ({
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({ categories: [], isLoading: false }),
 }))
+const mockCreateRecurringMutate = jest.fn()
 jest.mock('@/features/recurring/hooks/useCreateRecurringTransaction', () => ({
-  useCreateRecurringTransaction: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  useCreateRecurringTransaction: () => ({ mutate: mockCreateRecurringMutate, isPending: false, isError: false }),
 }))
 
 const RECURRING = [
@@ -83,6 +84,24 @@ const PRICE_INCREASE_DETECTION = {
 describe('Recurring list', () => {
   beforeEach(() => {
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [], isLoading: false, error: null })
+    mockCreateRecurringMutate.mockClear()
+  })
+
+  // Part 4/21 of the product-quality audit: this form had no way back once
+  // opened — every sibling add-form (Obligations, Installments, Goals,
+  // Accounts) pairs submit with a cancel that closes the form.
+  it('offers a way to cancel out of the add form without creating anything', async () => {
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: [], isLoading: false, error: null, hasData: true })
+
+    const { getByText, getByPlaceholderText, queryByText } = await render(<Recurring />)
+
+    await fireEvent.press(getByText('הוספת חיוב קבוע'))
+    await fireEvent.changeText(getByPlaceholderText('לדוגמה: קניות בסופר'), 'מנוי')
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockCreateRecurringMutate).not.toHaveBeenCalled()
+    expect(queryByText('ביטול')).toBeNull()
+    expect(getByText('הוספת חיוב קבוע')).toBeTruthy()
   })
 
   // The 2-column grid is gone. Both frames draw one dated column: the day

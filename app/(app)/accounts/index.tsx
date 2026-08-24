@@ -66,6 +66,13 @@ export default function Accounts() {
   const [billingCycleDayText, setBillingCycleDayText] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
 
+  function resetForm() {
+    setName('')
+    setType('cash')
+    setBillingCycleDayText('')
+    setIsAdding(false)
+  }
+
   function handleCreate() {
     if (!householdId || !name.trim() || createAccount.isPending) return
     setCreateError(null)
@@ -84,17 +91,7 @@ export default function Accounts() {
       billingCycleDay = parsed
     }
 
-    createAccount.mutate(
-      { householdId, name: name.trim(), type, billingCycleDay },
-      {
-        onSuccess: () => {
-          setName('')
-          setType('cash')
-          setBillingCycleDayText('')
-          setIsAdding(false)
-        },
-      }
-    )
+    createAccount.mutate({ householdId, name: name.trim(), type, billingCycleDay }, { onSuccess: resetForm })
   }
 
   // Visual QA + Desktop Polish pass: desktop-only total-balance summary —
@@ -311,8 +308,24 @@ export default function Accounts() {
             {(createError || createAccount.isError) && (
               <ErrorMessage message={createError ?? t('accounts.errors.generic')} />
             )}
-            <View className="mt-2">
-              <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
+            {/* Part 4/21 of the product-quality audit: this form had no way
+                back once opened, the same gap found and fixed on Goals —
+                every sibling add-form pairs submit with a cancel. */}
+            <View className="mt-2 web:desktop:flex-row web:desktop:gap-2">
+              <View className="web:desktop:flex-1">
+                <Button title={t('accounts.form.submit')} onPress={handleCreate} loading={createAccount.isPending} />
+              </View>
+              <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+                <Button
+                  title={t('common.cancel')}
+                  variant="secondary"
+                  disabled={createAccount.isPending}
+                  onPress={() => {
+                    setCreateError(null)
+                    resetForm()
+                  }}
+                />
+              </View>
             </View>
           </Card>
         </View>

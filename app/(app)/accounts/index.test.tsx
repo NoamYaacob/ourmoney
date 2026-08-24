@@ -111,6 +111,21 @@ describe('Accounts list', () => {
     expect(mockCreateAccountMutate).not.toHaveBeenCalled()
   })
 
+  // Part 4/21 of the product-quality audit: this form had no way back once
+  // opened — every sibling add-form (Obligations, Recurring, Installments,
+  // Goals) pairs submit with a cancel that closes the form.
+  it('offers a way to cancel out of the add form without creating anything', async () => {
+    const { getByText, getByLabelText, queryByText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'קופת חיסכון')
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
+    expect(queryByText('ביטול')).toBeNull()
+    expect(getByText('הוספת חשבון')).toBeTruthy()
+  })
+
   it('creates an account with the selected type from the type picker sheet', async () => {
     const { getByText, getByLabelText } = await render(<Accounts />)
 
