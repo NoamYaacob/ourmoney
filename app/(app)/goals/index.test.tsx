@@ -100,6 +100,23 @@ describe('Goals list', () => {
     expect(mockCreateGoalMutate).toHaveBeenCalledWith(expect.objectContaining({ targetDate: null }), expect.anything())
   })
 
+  // Part 4/21 of the product-quality audit: this form had no way back once
+  // opened — every sibling add-form (Obligations, Recurring, Installments,
+  // Accounts) pairs submit with a cancel that closes the form.
+  it('offers a way to cancel out of the add form without creating anything', async () => {
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null, hasData: true })
+
+    const { getByText, getByPlaceholderText, queryByText } = await render(<Goals />)
+
+    await fireEvent.press(getByText('הוספת יעד חיסכון'))
+    await fireEvent.changeText(getByPlaceholderText('לדוגמה: חופשה משפחתית'), 'טיול')
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockCreateGoalMutate).not.toHaveBeenCalled()
+    expect(queryByText('ביטול')).toBeNull()
+    expect(getByText('הוספת יעד חיסכון')).toBeTruthy()
+  })
+
   // The 2-column grid is gone. Both frames draw one column of goal rows
   // inside a single card, each carrying the thing the grid never said: how
   // it is going. Every figure in that sentence comes from

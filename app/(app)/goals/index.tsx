@@ -236,7 +236,29 @@ export default function Goals() {
           {(validationError || createGoal.isError) && (
             <ErrorMessage message={validationError ?? t('savings.errors.generic')} />
           )}
-          <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
+          {/* Part 4/21 of the product-quality audit: this form had no way
+              back once opened — every sibling add-form (Obligations,
+              Recurring, Installments, Accounts) pairs its submit button
+              with a cancel that resets and closes, and this one had been
+              left with submit only. resetForm() already existed and
+              already flips isAdding back to false; it just wasn't wired to
+              anything. */}
+          <View className="web:desktop:flex-row web:desktop:gap-2">
+            <View className="web:desktop:flex-1">
+              <Button title={t('savings.form.submit')} onPress={handleCreate} loading={createGoal.isPending} />
+            </View>
+            <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+              <Button
+                title={t('common.cancel')}
+                variant="secondary"
+                disabled={createGoal.isPending}
+                onPress={() => {
+                  setValidationError(null)
+                  resetForm()
+                }}
+              />
+            </View>
+          </View>
           </Card>
         </View>
       ) : (
