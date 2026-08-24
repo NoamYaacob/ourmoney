@@ -84,6 +84,16 @@ export default function Installments() {
   const creditCardAccountsConfiguredButQuiet = creditCardAccounts.filter(
     (a) => a.billing_cycle_day !== null && !creditCardCycleCommitments.some((c) => c.sourceId === a.id)
   )
+  // Part 6 of the product-quality audit: this screen used to render a
+  // generic "no installments yet" empty state (identical to a household
+  // that simply hasn't logged a purchase yet) even when the real reason was
+  // that no credit-card account exists at all — the only way to discover
+  // that was to open the add-purchase form and hit a dead-end error inside
+  // it. Once loading has actually settled, a household with zero
+  // credit-card accounts gets the real prerequisite explained up front,
+  // with a direct way to go add one, instead of empty-box → click → modal
+  // says no.
+  const noCreditCardAccountsAtAll = !isLoading && creditCardAccounts.length === 0
 
   const [isAdding, setIsAdding] = useState(false)
   const [description, setDescription] = useState('')
@@ -178,6 +188,18 @@ export default function Installments() {
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('nav.creditAndPayments')}
       </Text>
+
+      {noCreditCardAccountsAtAll && (
+        <View className="mb-5">
+          <EmptyState
+            iconName="card-outline"
+            message={t('installments.noCardAccountEmptyState.message')}
+            hint={t('installments.noCardAccountEmptyState.hint')}
+            actionLabel={t('installments.noCardAccountEmptyState.action')}
+            onAction={() => router.push('/accounts')}
+          />
+        </View>
+      )}
 
       {creditCardAccounts.length > 0 && creditCardCycleCommitments.length === 0 && !isLoading && (
         // The billing-cycle cards below only ever render an account with a
@@ -313,7 +335,9 @@ export default function Installments() {
               <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
             </View>
           )}
-          {plans.length === 0 && <EmptyState iconName="card-outline" message={t('installments.empty')} hint={t('installments.emptyHint')} />}
+          {plans.length === 0 && !noCreditCardAccountsAtAll && (
+            <EmptyState iconName="card-outline" message={t('installments.empty')} hint={t('installments.emptyHint')} />
+          )}
           {/* The phone stacks cards; desktop lays each plan across one line
               with its own figure columns. Both carry the same pill track —
               a plan is a countable number of payments, not a percentage. */}
@@ -338,13 +362,15 @@ export default function Installments() {
             {creditCardAccounts.length === 0 ? (
               <>
                 <ErrorMessage message={t('installments.noCreditCardAccounts')} />
-                {/* mobile-expo-reviewer finding: this branch also renders
+                {/* mobile-expo-reviewer finding: this branch renders
                     transiently while useAccounts is still resolving (its
-                    default is an empty array until the query settles), and
-                    for a household that genuinely has zero credit-card
-                    accounts it renders permanently — either way, without an
-                    explicit way back, isAdding stayed true forever with no
-                    control left to close the form. */}
+                    default is an empty array until the query settles) — the
+                    steady-state zero-accounts case is now caught earlier by
+                    noCreditCardAccountsAtAll, which hides the trigger button
+                    entirely, so this is only reachable in that brief window.
+                    Kept as a defensive fallback, still with an explicit way
+                    back rather than isAdding staying true with no control
+                    left to close the form. */}
                 <View className="mt-3">
                   <Button title={t('common.cancel')} variant="secondary" onPress={() => setIsAdding(false)} />
                 </View>
@@ -445,9 +471,17 @@ export default function Installments() {
           </Card>
         </View>
       ) : (
-        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
-          <Button title={t('installments.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
-        </View>
+        // Hidden once loading has settled and there is truly no credit-card
+        // account — clicking it could only ever dead-end inside the form
+        // (see the noCreditCardAccounts fallback below), and the empty
+        // state above already carries the one real next action. Still
+        // rendered during the brief window before useAccounts resolves, so
+        // the screen doesn't visibly flicker a button in and out.
+        !noCreditCardAccountsAtAll && (
+          <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+            <Button title={t('installments.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
+          </View>
+        )
       )}
     </Screen>
   )

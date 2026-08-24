@@ -7,8 +7,9 @@ import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { formatILS } from '@/lib/money/format'
 
+const mockRouterPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockRouterPush, back: jest.fn() }),
 }))
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
@@ -85,6 +86,7 @@ const PLANS = [
 describe('Installments list', () => {
   beforeEach(() => {
     mockCreateMutate.mockClear()
+    mockRouterPush.mockClear()
     mockUseInstallmentPlans.mockReturnValue({ plans: PLANS, isLoading: false, error: null, hasData: true })
     mockUseInstallmentMaterializedCounts.mockReturnValue({ materializedCounts: { 'plan-1': 1 } })
     mockUseAccounts.mockReturnValue({
@@ -202,12 +204,13 @@ describe('Installments list', () => {
     expect(variables.installmentCount).toBe(3)
   })
 
-  // mobile-expo-reviewer finding: a household with zero active credit-card
-  // accounts (or the accounts query still resolving, since useAccounts
-  // defaults to an empty array until it settles) hit a dead end — the form
-  // rendered only an error message with no way back, leaving isAdding stuck
-  // true forever.
-  it('offers a way back out of the add form when there are no credit-card accounts to choose from', async () => {
+  // Part 6 of the product-quality audit: a household with zero active
+  // credit-card accounts used to hit a dead end — the add-purchase button
+  // rendered normally, and only clicking it revealed (inside the form) that
+  // a credit-card account was required. Now the prerequisite is explained
+  // up front, with a direct way to go add one, and the add-purchase button
+  // (which could only ever dead-end) does not render at all.
+  it('explains the credit-card-account prerequisite up front, with no dead-end add button, when there are none', async () => {
     mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     mockUseAccounts.mockReturnValue({
       accounts: [{ id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true, billing_cycle_day: null }],
@@ -215,13 +218,42 @@ describe('Installments list', () => {
     })
     const { getByText, queryByText } = await render(<Installments />)
 
+    expect(getByText('אשראי ותשלומים דורשים חשבון כרטיס אשראי')).toBeTruthy()
+    expect(queryByText('הוספת רכישה בתשלומים')).toBeNull()
+
+    await fireEvent.press(getByText('מעבר לחשבונות'))
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/accounts')
+  })
+
+  // The steady-state zero-accounts case above no longer opens the form at
+  // all, but useAccounts still defaults to an empty array for the brief
+  // window before it resolves — this covers that the in-form fallback (and
+  // its own way back out) still work if the form is ever reached with no
+  // credit-card accounts available.
+  it('still offers a way back out of the add form in the narrow case it opens with no credit-card accounts available', async () => {
+    mockUseInstallmentPlans.mockReturnValue({ plans: PLANS, isLoading: false, error: null, hasData: true })
+    mockUseAccounts.mockReturnValue({
+      accounts: [{ id: 'acc-cc', name: 'ויזה כאל', type: 'credit_card', is_active: true, billing_cycle_day: null }],
+      isLoading: false,
+    })
+    const { getByText, queryByText, rerender } = await render(<Installments />)
     await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
+
+    // Simulate the account disappearing (e.g. archived) while the form is
+    // still open, landing on the same in-form fallback branch a slow
+    // initial load would.
+    mockUseAccounts.mockReturnValue({
+      accounts: [{ id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true, billing_cycle_day: null }],
+      isLoading: false,
+    })
+    await rerender(<Installments />)
+
     expect(getByText('כדי להוסיף רכישה בתשלומים יש קודם להוסיף חשבון כרטיס אשראי')).toBeTruthy()
 
     await fireEvent.press(getByText('ביטול'))
 
     expect(queryByText('כדי להוסיף רכישה בתשלומים יש קודם להוסיף חשבון כרטיס אשראי')).toBeNull()
-    expect(getByText('הוספת רכישה בתשלומים')).toBeTruthy()
   })
 })
 
