@@ -53,7 +53,7 @@ export default function Accounts() {
   const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { accounts, isLoading: isAccountsLoading, error } = useAccounts(householdId)
+  const { accounts, isLoading: isAccountsLoading, error, refetch } = useAccounts(householdId)
   const { balances, isLoading: isBalancesLoading } = useAccountBalances(householdId)
   // Folds in isHouseholdLoading (mobile-expo-reviewer finding — see
   // dashboard/index.tsx's identical comment for why this matters).
@@ -197,7 +197,7 @@ export default function Accounts() {
   }
 
   return (
-    <Screen width="wide" scroll>
+    <Screen onBack={() => router.back()} width="wide" scroll>
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('accounts.title')}
       </Text>
@@ -225,7 +225,7 @@ export default function Accounts() {
       )}
 
       {error ? (
-        <ErrorMessage message={t('accounts.errors.generic')} />
+        <ErrorMessage message={t('accounts.errors.generic')} onRetry={refetch} />
       ) : isLoading ? (
         <SkeletonList rows={3} />
       ) : (

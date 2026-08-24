@@ -50,7 +50,7 @@ export default function Connections() {
   const [infoVisible, setInfoVisible] = useState(false)
 
   return (
-    <Screen width="wide">
+    <Screen onBack={() => router.back()} width="wide">
       <Text className="mb-2 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('connections.title')}
       </Text>

@@ -53,7 +53,7 @@ export default function BudgetCategoryDetail() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const periodEnd = getPeriodEnd(periodStart)
-  const { categories, isLoading, error } = useBudgetProgress(householdId, periodStart)
+  const { categories, isLoading, error, refetch } = useBudgetProgress(householdId, periodStart)
   const { transactions } = useTransactions(householdId, { categoryId, periodStart, periodEnd })
 
   if (isHouseholdLoading || isLoading) {
@@ -68,7 +68,10 @@ export default function BudgetCategoryDetail() {
   if (error || !category) {
     return (
       <Screen onBack={() => router.back()}>
-        <ErrorMessage message={error ? t('budgets.errors.generic') : t('budgets.category.notFound')} />
+        <ErrorMessage
+          message={error ? t('budgets.errors.generic') : t('budgets.category.notFound')}
+          onRetry={error ? refetch : undefined}
+        />
       </Screen>
     )
   }

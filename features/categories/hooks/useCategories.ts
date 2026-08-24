@@ -30,5 +30,6 @@ export function useCategories(householdId: string | null | undefined) {
     categories: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    refetch: query.refetch,
   }
 }

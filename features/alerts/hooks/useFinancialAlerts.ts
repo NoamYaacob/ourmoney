@@ -53,6 +53,7 @@ export interface UseFinancialAlertsResult {
   alerts: FinancialAlert[]
   isLoading: boolean
   hasPartialError: boolean
+  refetch: () => void
 }
 
 export function useFinancialAlerts(householdId: string | null | undefined): UseFinancialAlertsResult {
@@ -191,5 +192,17 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
       recentTransactions.error ||
       safeToSpend.error
     ),
+    refetch: () => {
+      void forecast.refetch()
+      void obligations.refetch()
+      void priceIncrease.refetch()
+      void budget.refetch()
+      void accounts.refetch()
+      void categories.refetch()
+      void savingsGoals.refetch()
+      void accountBalances.refetch()
+      void recentTransactions.refetch()
+      void safeToSpend.refetch()
+    },
   }
 }

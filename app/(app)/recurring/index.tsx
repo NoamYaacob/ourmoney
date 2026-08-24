@@ -44,7 +44,7 @@ export default function Recurring() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { recurringTransactions, isLoading: isRecurringLoading, error } = useRecurringTransactions(householdId)
+  const { recurringTransactions, isLoading: isRecurringLoading, error, refetch } = useRecurringTransactions(householdId)
   const createRecurring = useCreateRecurringTransaction(householdId)
   const { detections: priceIncreaseDetections } = usePriceIncreaseDetections(householdId)
 
@@ -114,7 +114,7 @@ export default function Recurring() {
   const activeMonthlyTotalAgorot = activeExpenseTemplates.reduce((sum, item) => sum + Math.abs(item.amount_agorot), 0)
 
   return (
-    <Screen keyboardAvoiding width="wide">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('recurring.title')}
       </Text>
@@ -163,7 +163,7 @@ export default function Recurring() {
       )}
 
       {error ? (
-        <ErrorMessage message={t('recurring.errors.generic')} />
+        <ErrorMessage message={t('recurring.errors.generic')} onRetry={refetch} />
       ) : isLoading || isRecurringLoading ? (
         <SkeletonList rows={3} />
       ) : (

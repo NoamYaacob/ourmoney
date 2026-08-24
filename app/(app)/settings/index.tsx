@@ -218,7 +218,7 @@ export default function Settings() {
   }
 
   return (
-    <Screen width="wide">
+    <Screen onBack={() => router.back()} width="wide">
       <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('settings.title')}
       </Text>

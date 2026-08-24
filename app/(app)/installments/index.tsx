@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 import { Platform, Text, View, useWindowDimensions } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -40,6 +41,7 @@ import { InstallmentPlanRow } from '@/features/installments/components/Installme
 
 export default function Installments() {
   const { t } = useTranslation()
+  const router = useRouter()
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
@@ -147,7 +149,7 @@ export default function Installments() {
   const accountOptions = creditCardAccounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen keyboardAvoiding width="wide">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
       {/* Desktop Claude Design pass: the mockup titles this screen "אשראי
           ותשלומים" (Credit & Payments), matching its nav destination's own
           label — mobile keeps its original, narrower "רכישות בתשלומים"

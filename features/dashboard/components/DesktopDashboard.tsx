@@ -121,6 +121,7 @@ export function DesktopDashboard() {
     commitments,
     isLoading: isCommitmentsLoading,
     hasPartialError: hasCommitmentsPartialError,
+    refetch: refetchCommitments,
   } = useUpcomingCommitments(householdId)
   const today = localDateString()
   const topCommitments = commitments.slice(0, 4)
@@ -306,7 +307,7 @@ export function DesktopDashboard() {
 
             {hasCommitmentsPartialError && (
               <View className="mt-2">
-                <ErrorMessage message={t('cashFlow.commitments.errors.partial')} />
+                <ErrorMessage message={t('cashFlow.commitments.errors.partial')} onRetry={refetchCommitments} />
               </View>
             )}
 

@@ -38,7 +38,7 @@ export default function Goals() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { balances } = useAccountBalances(householdId)
-  const { goals, isLoading: isGoalsLoading, error } = useSavingsGoals(householdId)
+  const { goals, isLoading: isGoalsLoading, error, refetch } = useSavingsGoals(householdId)
   const createGoal = useCreateSavingsGoal(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading
@@ -89,7 +89,7 @@ export default function Goals() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen width="wide">
+    <Screen onBack={() => router.back()} width="wide">
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('savings.title')}
       </Text>
@@ -97,7 +97,7 @@ export default function Goals() {
       <PlanningTabs active="goals" />
 
       {error ? (
-        <ErrorMessage message={t('savings.errors.generic')} />
+        <ErrorMessage message={t('savings.errors.generic')} onRetry={refetch} />
       ) : isLoading || isGoalsLoading ? (
         <SkeletonList rows={3} />
       ) : (

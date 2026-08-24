@@ -25,6 +25,7 @@ export interface UseUpcomingCommitmentsResult {
   commitments: UpcomingCommitment[]
   isLoading: boolean
   hasPartialError: boolean
+  refetch: () => void
 }
 
 export function useUpcomingCommitments(householdId: string | null | undefined): UseUpcomingCommitmentsResult {
@@ -155,5 +156,13 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
       materializedCounts.error ||
       creditCardTransactions.error
     ),
+    refetch: () => {
+      void accounts.refetch()
+      void obligations.refetch()
+      void recurring.refetch()
+      void installmentPlans.refetch()
+      void materializedCounts.refetch()
+      void creditCardTransactions.refetch()
+    },
   }
 }

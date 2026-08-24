@@ -7,6 +7,7 @@
 // features/alerts/hooks/useFinancialAlerts.ts's own header).
 
 import { Platform, Text, View, useWindowDimensions } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
@@ -33,25 +34,26 @@ const TIER_GROUPS: { tier: AlertTier; labelKey: string }[] = [
 
 export default function Alerts() {
   const { t } = useTranslation()
+  const router = useRouter()
   // Same route split the other redesigned screens make: the two frames draw
   // an alert differently enough that a utility override cannot express it.
   const { width } = useWindowDimensions()
   const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { alerts, isLoading, hasPartialError } = useFinancialAlerts(householdId)
+  const { alerts, isLoading, hasPartialError, refetch } = useFinancialAlerts(householdId)
   const { colorScheme: scheme } = useColorScheme()
 
   if (isHouseholdLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
   }
 
   return (
-    <Screen width="wide">
+    <Screen onBack={() => router.back()} width="wide">
       <Text className="text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('alerts.screenTitle')}
       </Text>
@@ -68,7 +70,7 @@ export default function Alerts() {
           — this is a non-blocking heads-up, not an error state. */}
       {hasPartialError && (
         <View className="mb-4">
-          <ErrorMessage message={t('alerts.errors.partial')} />
+          <ErrorMessage message={t('alerts.errors.partial')} onRetry={refetch} />
         </View>
       )}
 

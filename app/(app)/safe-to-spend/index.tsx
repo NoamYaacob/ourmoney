@@ -53,7 +53,7 @@ export default function SafeToSpendDetail() {
   const isDark = scheme === 'dark'
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { result, isLoading, error } = useSafeToSpend(householdId, 'month')
+  const { result, isLoading, error, refetch } = useSafeToSpend(householdId, 'month')
   const [openGroup, setOpenGroup] = useState<SafeToSpendItemSource | null>('obligation')
 
   if (isHouseholdLoading || isLoading) {
@@ -67,7 +67,7 @@ export default function SafeToSpendDetail() {
   if (error) {
     return (
       <Screen onBack={() => router.back()}>
-        <ErrorMessage message={t('cashFlow.errors.generic')} />
+        <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetch} />
       </Screen>
     )
   }

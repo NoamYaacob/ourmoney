@@ -49,7 +49,7 @@ export default function Obligations() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { obligations, isLoading: isObligationsLoading, error } = usePlannedObligations(householdId)
+  const { obligations, isLoading: isObligationsLoading, error, refetch } = usePlannedObligations(householdId)
   const createObligation = useCreatePlannedObligation(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
@@ -131,7 +131,7 @@ export default function Obligations() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen keyboardAvoiding width="wide">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('obligations.title')}
       </Text>
@@ -139,7 +139,7 @@ export default function Obligations() {
       <PlanningTabs active="obligations" />
 
       {error ? (
-        <ErrorMessage message={t('obligations.errors.generic')} />
+        <ErrorMessage message={t('obligations.errors.generic')} onRetry={refetch} />
       ) : isLoading || isObligationsLoading ? (
         <SkeletonList rows={3} />
       ) : (

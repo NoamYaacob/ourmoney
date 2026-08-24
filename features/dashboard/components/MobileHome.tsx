@@ -75,7 +75,12 @@ export function MobileHome() {
     error: safeToSpendError,
     refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, 'month')
-  const { commitments, isLoading: isCommitmentsLoading } = useUpcomingCommitments(householdId)
+  const {
+    commitments,
+    isLoading: isCommitmentsLoading,
+    hasPartialError: hasCommitmentsPartialError,
+    refetch: refetchCommitments,
+  } = useUpcomingCommitments(householdId)
   const { alerts } = useFinancialAlerts(householdId)
 
   const periodStart = getCurrentMonthPeriodStart()
@@ -286,6 +291,12 @@ export function MobileHome() {
         >
           {t('home.next.title')}
         </CardHeading>
+
+        {hasCommitmentsPartialError && (
+          <View className="mt-2">
+            <ErrorMessage message={t('cashFlow.commitments.errors.partial')} onRetry={refetchCommitments} />
+          </View>
+        )}
 
         {isCommitmentsLoading ? (
           <View className="mt-2">

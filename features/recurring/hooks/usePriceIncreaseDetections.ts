@@ -13,8 +13,8 @@ import type { PriceIncreaseDetection, PriceIncreaseThreshold } from '../lib/pric
 export function usePriceIncreaseDetections(
   householdId: string | null | undefined,
   threshold?: PriceIncreaseThreshold
-): { detections: PriceIncreaseDetection[]; isLoading: boolean; error: Error | null } {
-  const { transactions, isLoading, error } = useTransactions(householdId)
+): { detections: PriceIncreaseDetection[]; isLoading: boolean; error: Error | null; refetch: () => void } {
+  const { transactions, isLoading, error, refetch } = useTransactions(householdId)
 
   // Migration 008 (ADR-035): a transfer leg is never a recurring charge —
   // excluded before detection rather than relying on detectPriceIncreases
@@ -38,5 +38,6 @@ export function usePriceIncreaseDetections(
     detections: detectPriceIncreases(observations, threshold),
     isLoading,
     error,
+    refetch,
   }
 }

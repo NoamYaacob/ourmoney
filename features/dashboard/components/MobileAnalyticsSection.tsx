@@ -43,10 +43,11 @@ export function MobileAnalyticsSection({
     transactions,
     isLoading,
     error,
+    refetch,
   } = useTransactions(householdId, { periodStart: monthStarts[0] as string, periodEnd: periodStart })
   const { categories } = useCategories(householdId)
 
-  if (error) return <ErrorMessage message={t('dashboard.errors.generic')} />
+  if (error) return <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetch} />
   if (isLoading) return <SkeletonList rows={3} />
 
   const input = transactions.map((transaction) => ({
