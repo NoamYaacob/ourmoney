@@ -4,7 +4,7 @@
 // web-compiled CSS does not — the first goal (source order) must render
 // top-right, continuing the RTL reading order into the wrap. First test
 // coverage for this screen.
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import Goals from './index'
@@ -100,76 +100,28 @@ describe('Goals list', () => {
     expect(mockCreateGoalMutate).toHaveBeenCalledWith(expect.objectContaining({ targetDate: null }), expect.anything())
   })
 
-  it('reverses the desktop 2-column goals grid so the first goal renders on the right', async () => {
+  // The 2-column grid is gone. Both frames draw one column of goal rows
+  // inside a single card, each carrying the thing the grid never said: how
+  // it is going. Every figure in that sentence comes from
+  // calculateSavingsPace, which the screen already ran and then ignored.
+  it('says how each goal is going, not just how full its bar is', async () => {
     mockUseSavingsGoals.mockReturnValue({ goals: GOALS, isLoading: false, error: null })
 
+    const { getByText, getAllByText } = await render(<Goals />)
+
+    expect(getByText('קרן חירום')).toBeTruthy()
+    // A percent per goal, and a pace chip per goal.
+    expect(getAllByText(/^\d+%$/).length).toBe(GOALS.length)
+  })
+
+  it('states plainly that a goal with no target date has no projection', async () => {
+    // calculateSavingsPace returns null without a target date, and the row
+    // must not invent one — "hide instead of inventing precision".
+    const noDate = [{ ...GOALS[0], id: 'g-nodate', name: 'ללא תאריך', target_date: null }]
+    mockUseSavingsGoals.mockReturnValue({ goals: noDate, isLoading: false, error: null })
+
     const { getByText } = await render(<Goals />)
 
-    let node = getByText('קרן חירום').parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row')
-  })
-})
-
-describe('Goals list — behind-schedule badge', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    // Fixed "today," independent of the real calendar — every target_date
-    // below is set relative to this literal, not to whatever day the suite
-    // actually runs on.
-    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(2026, 7, 22))
-  })
-
-  afterEach(() => {
-    jest.useRealTimers()
-  })
-
-  it('shows an overdue badge for an incomplete goal whose target date has already passed', async () => {
-    mockUseSavingsGoals.mockReturnValue({
-      goals: [{ ...GOALS[0], target_date: '2026-08-01' }],
-      isLoading: false,
-      error: null,
-    })
-
-    const { getByText } = await render(<Goals />)
-    expect(getByText('עבר התאריך היעד')).toBeTruthy()
-  })
-
-  it('shows no badge for an incomplete goal with a future target date', async () => {
-    mockUseSavingsGoals.mockReturnValue({
-      goals: [{ ...GOALS[0], target_date: '2026-12-01' }],
-      isLoading: false,
-      error: null,
-    })
-
-    const { queryByText } = await render(<Goals />)
-    expect(queryByText('עבר התאריך היעד')).toBeNull()
-    expect(queryByText('מפגר בקצב')).toBeNull()
-  })
-
-  it('shows no badge for a goal with no target date at all', async () => {
-    mockUseSavingsGoals.mockReturnValue({
-      goals: [{ ...GOALS[0], target_date: null }],
-      isLoading: false,
-      error: null,
-    })
-
-    const { queryByText } = await render(<Goals />)
-    expect(queryByText('עבר התאריך היעד')).toBeNull()
-  })
-
-  it('prefers the completed badge over a behind-schedule badge for a completed goal, even with an overdue target date', async () => {
-    mockUseSavingsGoals.mockReturnValue({
-      goals: [{ ...GOALS[0], is_completed: true, current_agorot: 500000, target_date: '2020-01-01' }],
-      isLoading: false,
-      error: null,
-    })
-
-    const { getByText, queryByText } = await render(<Goals />)
-    expect(getByText('היעד הושג! 🎉')).toBeTruthy()
-    expect(queryByText('עבר התאריך היעד')).toBeNull()
+    expect(getByText(/לא נקבע תאריך יעד/)).toBeTruthy()
   })
 })

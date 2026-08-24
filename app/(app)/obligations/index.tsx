@@ -27,6 +27,7 @@ import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { CommitmentRow } from '@/components/ui/CommitmentRow'
 import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { Screen } from '@/components/ui/Screen'
+import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
@@ -131,9 +132,11 @@ export default function Obligations() {
 
   return (
     <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('obligations.title')}
       </Text>
+
+      <PlanningTabs active="obligations" />
 
       {error ? (
         <ErrorMessage message={t('obligations.errors.generic')} />
@@ -165,7 +168,7 @@ export default function Obligations() {
             </View>
           )}
 
-          {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} />}
+          {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} hint={t('obligations.emptyHint')} />}
           {/* Responsive/desktop pass: same 2-column card grid as
               accounts/recurring/goals once there's more than one obligation,
               desktop only — `w-[48%]` + `justify-between` on a `flex-row

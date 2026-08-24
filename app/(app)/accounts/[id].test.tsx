@@ -42,6 +42,12 @@ const mockUseAccounts = jest.fn(() => ({ accounts: [ACCOUNT], isLoading: false }
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => mockUseAccounts(),
 }))
+// The detail screen lists this account's own activity now, through the same
+// transactions query the list screen uses.
+jest.mock('@/features/transactions/hooks/useTransactions', () => ({
+  useTransactions: () => ({ transactions: [], isLoading: false, error: null }),
+}))
+
 jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: { 'acct-1': 543200 }, isLoading: false }),
 }))

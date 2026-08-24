@@ -393,7 +393,7 @@ export function MobileTransactions() {
         <SkeletonList rows={6} />
       ) : hasNoTransactionsAtAll ? (
         <View className="items-center pt-10">
-          <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
+          <EmptyState iconName="receipt-outline" message={t('transactions.empty')} hint={t('transactions.emptyHint')} />
         </View>
       ) : showNoResults ? (
         <View className="items-center pt-10">

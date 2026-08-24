@@ -21,11 +21,13 @@ import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useSaveBudgetAllocations } from '@/features/budgets/hooks/useSaveBudgetAllocations'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
+import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
 import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
 import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { budgetState } from '@/features/budgets/lib/budgetState'
+import { Money } from '@/components/ui/Money'
 import { BudgetSummaryCard } from '@/features/budgets/components/BudgetSummaryCard'
 import { BudgetCategoryRow } from '@/features/budgets/components/BudgetCategoryRow'
 import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
@@ -71,6 +73,7 @@ export default function Budgets() {
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
+  const { recurringTransactions } = useRecurringTransactions(householdId)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
   const {
@@ -327,6 +330,14 @@ export default function Budgets() {
   const monthlyTrend = computeMonthlyTrend(analyticsTransactions, trendPeriodStarts)
   const categoryNameById = Object.fromEntries(categories.map((c) => [c.id, c.name_he]))
 
+  // Active recurring EXPENSE templates whose category has no allocation in
+  // the month being viewed — including the ones with no category at all,
+  // which by definition cannot be in any budget. Biggest first.
+  const allocatedCategoryIds = new Set(progress.map((p) => p.categoryId))
+  const outsideBudgetRecurring = recurringTransactions
+    .filter((r) => r.is_active && r.amount_agorot < 0 && !(r.category_id && allocatedCategoryIds.has(r.category_id)))
+    .sort((a, b) => a.amount_agorot - b.amount_agorot)
+
   return (
     <Screen width="wide">
       {/* Title and month on one 44px row, as the phone frame draws them.
@@ -423,7 +434,7 @@ export default function Budgets() {
                   min-height panel from reading as an oversized empty box
                   around a tiny icon. Mobile keeps the original compact one. */}
               <View className="web:desktop:hidden">
-                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} compact />
+                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} hint={t('budgets.noCategoriesHint')} />
               </View>
               {/* Desktop Visual/Responsive Design pass: the zero-allocation
                   desktop state previously read as broken — a small icon +
@@ -441,10 +452,13 @@ export default function Budgets() {
                   has). */}
               <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:py-10">
                 <View className="web:desktop:w-full web:desktop:max-w-[360px]">
-                  <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} />
-                  <Text className="-mt-2 mb-4 text-center text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {t('budgets.noCategoriesHint')}
-                  </Text>
+                  <View className="mb-4">
+                    <EmptyState
+                      iconName="pie-chart-outline"
+                      message={t('budgets.noCategories')}
+                      hint={t('budgets.noCategoriesHint')}
+                    />
+                  </View>
                   {addableCategories.length > 0 && (
                     <Card>
                       <Select
@@ -550,6 +564,46 @@ export default function Budgets() {
             </View>
           )}
 
+          {/* "לא בתקציב · חיובים קבועים" — the design's chip strip under the
+              category list. A household reading "8,700 ₪ מתוך" needs to know
+              that the mortgage and the kindergarten are not in that number.
+
+              "Not in this budget" needed no new rule: it is a recurring
+              expense template whose category has no allocation in the period
+              being viewed — a join over two things this screen already has.
+              Ordered by amount so the largest lead, which is what the frame's
+              own example shows.
+
+              The frame heads this strip "חיובים קבועים גדולים". "Large" is
+              dropped deliberately: no engine, column or ADR in this product
+              defines a threshold above which a recurring charge is large, and
+              inventing one here would put a number in a household's face that
+              nothing else in the app agrees with. Every uncovered recurring
+              charge is listed instead, biggest first. */}
+          {outsideBudgetRecurring.length > 0 && (
+            <View className="mt-5">
+              <Text className="mb-1 text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                {t('budgets.outsideBudgetTitle')}
+              </Text>
+              <Text className="mb-2.5 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('budgets.outsideBudgetNote')}
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {outsideBudgetRecurring.map((item) => (
+                  <View
+                    key={item.id}
+                    className="flex-row items-center gap-2 rounded-row border border-border-light bg-surface-light px-3 py-2.5 dark:border-border-dark dark:bg-surface-dark"
+                  >
+                    <Text className="text-caption font-sans text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {item.description}
+                    </Text>
+                    <Money agorot={Math.abs(item.amount_agorot)} size="caption" />
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {editingCategoryId === null && addableCategories.length > 0 && (
             // Desktop polish pass: tightened from mt-3 to feel like part of
             // the same category-budgets area above it, rather than an
@@ -607,28 +661,40 @@ export default function Budgets() {
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('budgets.analytics.breakdownTitle')}
                 </Text>
-                <View className="web:desktop:mt-4 web:desktop:items-center">
+                <View className="mt-4 items-center">
                   <CategoryDonutChart breakdown={topBreakdownEntries} categoryNameById={categoryNameById} size={132} />
                 </View>
-                <View className="web:desktop:mt-4 web:desktop:gap-2">
+                {/* The colour key. Every class here was `web:desktop:`-only,
+                    including the swatch's own width and height — so on a
+                    phone the legend rendered as bare names and percentages
+                    with no swatch at all, which leaves the donut beside it
+                    unreadable. A chart's legend is not a desktop
+                    enhancement. */}
+                <View className="mt-4 gap-2">
                   {topBreakdownEntries.map((entry, index) => (
-                    <View key={entry.categoryId} className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2">
-                      <View className="web:desktop:h-2.5 web:desktop:w-2.5 web:desktop:rounded-sm" style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }} />
-                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                    <View key={entry.categoryId} className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }} />
+                      <Text className="flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
                         {categoryNameById[entry.categoryId] ?? ''}
                       </Text>
-                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                      <Text
+                        className="text-caption text-inkMuted-light dark:text-inkMuted-dark"
+                        style={{ fontVariant: ['tabular-nums'] }}
+                      >
                         {Math.round((entry.spentAgorot / totalBreakdownAgorot) * 100)}%
                       </Text>
                     </View>
                   ))}
                   {otherBreakdownAgorot > 0 && (
-                    <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2">
-                      <View className="web:desktop:h-2.5 web:desktop:w-2.5 web:desktop:rounded-sm web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
-                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark">
+                    <View className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-[3px] bg-border-light dark:bg-border-dark" />
+                      <Text className="flex-1 text-caption text-ink-light dark:text-ink-dark">
                         {t('budgets.analytics.otherCategories')}
                       </Text>
-                      <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                      <Text
+                        className="text-caption text-inkMuted-light dark:text-inkMuted-dark"
+                        style={{ fontVariant: ['tabular-nums'] }}
+                      >
                         {Math.round((otherBreakdownAgorot / totalBreakdownAgorot) * 100)}%
                       </Text>
                     </View>

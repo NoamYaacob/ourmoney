@@ -16,7 +16,7 @@
     "comingSoon": "בקרוב",
     "cancel": "ביטול",
     "loading": "טוען...",
-    "offline": "אין חיבור לאינטרנט"
+    "offline": "אין חיבור לאינטרנט. המספרים הם מה שנטען לאחרונה."
   },
   "theme": {
     "light": "מצב בהיר",
@@ -48,6 +48,11 @@
       "newTransaction": "תנועה חדשה",
       "importCsv": "ייבוא CSV",
       "manageAccounts": "ניהול חשבונות"
+    },
+    "planningTabs": {
+      "obligations": "התחייבויות",
+      "recurring": "קבועים",
+      "goals": "יעדים"
     }
   },
   "home": {
@@ -317,7 +322,8 @@
       "transferLinked": "קושר אוטומטית",
       "uncategorizedTitle": "{{count}} תנועות בלי קטגוריה",
       "activeFilterCount": "{{count}} מסננים פעילים"
-    }
+    },
+    "emptyHint": "הוסיפו את הראשונה, או ייבאו קובץ מהבנק."
   },
   "transfers": {
     "detail": {
@@ -393,12 +399,20 @@
       "deleteConfirmTitle": "מחיקת חשבון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
       "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום.",
-      "currentCycleSpend": "הוצאות במחזור החיוב הנוכחי"
+      "currentCycleSpend": "הוצאות במחזור החיוב הנוכחי",
+      "balanceNow": "יתרה עכשיו",
+      "inThisMonth": "נכנס",
+      "outThisMonth": "יצא",
+      "activity": "פעילות",
+      "activityEmpty": "אין עדיין תנועות בחשבון הזה",
+      "activityEmptyHint": "תנועה שתשויך לחשבון תופיע כאן.",
+      "editSection": "עריכת החשבון"
     },
     "availableExplainer": "רק עו״ש ומזומן. מזה נגזר \"פנוי באמת\".",
     "availableExplainerLong": "עו״ש ומזומן בלבד ({{amount}}). חיסכון, השקעות וכרטיסי אשראי לא נכנסים לחשבון, כדי ש\"פנוי באמת\" לא ינפח את התמונה.",
     "availableExplainerTitle": "מה נכנס ל\"יתרה זמינה\"",
-    "manuallyManaged": "מנוהל ידנית"
+    "manuallyManaged": "מנוהל ידנית",
+    "emptyHint": "בלי חשבון אחד לפחות אי אפשר לחשב כמה באמת פנוי."
   },
   "categories": {
     "title": "קטגוריות",
@@ -489,7 +503,8 @@
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת חיוב קבוע",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
-    }
+    },
+    "emptyHint": "חיוב שחוזר בכל חודש — שכר דירה, מנוי, גן."
   },
   "savings": {
     "title": "יעדי חיסכון",
@@ -501,7 +516,10 @@
       "remainingByDate": "נותרו {{amount}} עד {{date}}",
       "onTrack": "בקצב",
       "behind": "מפגר בקצב",
-      "overdue": "עבר התאריך היעד"
+      "overdue": "עבר התאריך היעד",
+      "onTrackSentence": "נותרו {{amount}}. בקצב הנדרש של {{monthly}} בחודש תגיעו ליעד בזמן",
+      "behindSentence": "נותרו {{amount}}. התאריך שנקבע כבר עבר",
+      "noDateSentence": "נותרו {{amount}}. לא נקבע תאריך יעד"
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
@@ -533,7 +551,9 @@
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת יעד חיסכון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
-    }
+    },
+    "progressOf": "{{current}} מתוך {{target}}",
+    "targetOn": "יעד {{date}}"
   },
   "obligations": {
     "title": "התחייבויות עתידיות",
@@ -588,7 +608,8 @@
     "history": {
       "showButton": "היסטוריית התחייבויות",
       "hideButton": "הסתרת היסטוריה"
-    }
+    },
+    "emptyHint": "חיוב חד־פעמי שידוע מראש — ארנונה, ביטוח, אגרה."
   },
   "installments": {
     "title": "רכישות בתשלומים",
@@ -645,7 +666,8 @@
     "finishedLine": "כל {{total}} התשלומים שולמו · הסתיים ב־{{last}}",
     "listTotals": "נותר לשלם סה״כ {{remaining}} · {{monthly}} לחודש",
     "listExplainer": "{{monthly}} בחודש כבר יורדים מ\"פנוי באמת\" עד התשלום האחרון.",
-    "purchasedOn": "נרכש {{date}}"
+    "purchasedOn": "נרכש {{date}}",
+    "emptyHint": "רכישה שמתחלקת לתשלומים חודשיים בכרטיס."
   },
   "import": {
     "title": "ייבוא מקובץ CSV",
@@ -761,7 +783,9 @@
       "remaining": "נותרו {{amount}}",
       "exceeded": "חריגה {{amount}}",
       "projectedOver": "צפי לחריגה {{amount}}"
-    }
+    },
+    "outsideBudgetTitle": "לא בתקציב · חיובים קבועים",
+    "outsideBudgetNote": "החיובים האלה יורדים בכל חודש, אבל אין להם קטגוריה בתקציב הזה — ולכן הם לא נספרים בקצב שלמעלה."
   },
   "appearance": {
     "system": "לפי המכשיר"

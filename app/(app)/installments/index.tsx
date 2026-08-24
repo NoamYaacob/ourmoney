@@ -272,7 +272,7 @@ export default function Installments() {
         <SkeletonList rows={3} />
       ) : (
         <>
-          {plans.length === 0 && <EmptyState iconName="card-outline" message={t('installments.empty')} />}
+          {plans.length === 0 && <EmptyState iconName="card-outline" message={t('installments.empty')} hint={t('installments.emptyHint')} />}
           {/* The phone stacks cards; desktop lays each plan across one line
               with its own figure columns. Both carry the same pill track —
               a plan is a countable number of payments, not a percentage. */}

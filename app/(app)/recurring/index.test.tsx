@@ -182,6 +182,8 @@ describe('Recurring list', () => {
     // "חיובים קבועים" renders once (the page's own title) — twice would
     // mean the summary card's HeroLabel rendered despite having nothing
     // to show.
+    // Once: the screen title. The Planning tab strip beside it uses the
+    // short label ("קבועים"), so it no longer collides with this string.
     expect(getAllByText(i18n.t('recurring.title')).length).toBe(1)
   })
 })

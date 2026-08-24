@@ -18,6 +18,14 @@
 // queue/sync concept, and inventing one here would be exactly the kind of
 // scope this redesign pass is not supposed to add) — a household still sees
 // why a save that then fails failed.
+//
+// The design's own offline frame draws this as a danger-tinted bordered card
+// rather than a warning strip, which is the treatment here now. Two lines of
+// that frame are deliberately not reproduced. "מוצג המצב מ־09:12" needs a
+// cache timestamp this app does not keep. "אפשר להוסיף תנועות. הן יסתנכרנו
+// כשהחיבור יחזור" would be false: there is no write queue, so a save
+// attempted now fails rather than syncing later, and telling a household
+// otherwise is worse than saying less.
 
 import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
@@ -38,7 +46,7 @@ function readOnlineState(): boolean {
 export function OfflineBanner() {
   const { t } = useTranslation()
   const { colorScheme: scheme } = useColorScheme()
-  const iconColor = scheme === 'dark' ? colors.warningStrong.dark : colors.warningStrong.light
+  const iconColor = scheme === 'dark' ? colors.dangerStrong.dark : colors.dangerStrong.light
   const [isOnline, setIsOnline] = useState(readOnlineState)
 
   useEffect(() => {
@@ -63,10 +71,10 @@ export function OfflineBanner() {
     <View
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
-      className="flex-row items-center justify-center gap-2 bg-warningTint-light px-4 py-2 dark:bg-warningTint-dark"
+      className="mx-4 mt-3 flex-row items-start gap-2.5 rounded-row border border-dangerBorder-light bg-dangerSurface-light p-3 dark:border-dangerBorder-dark dark:bg-dangerSurface-dark"
     >
-      <Ionicons name="cloud-offline-outline" size={ICON.row} color={iconColor} />
-      <Text className="text-caption font-sansSemibold text-warningStrong-light dark:text-warningStrong-dark">
+      <Ionicons name="cloud-offline-outline" size={ICON.row} color={iconColor} style={{ marginTop: 1 }} />
+      <Text className="flex-1 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
         {t('common.offline')}
       </Text>
     </View>

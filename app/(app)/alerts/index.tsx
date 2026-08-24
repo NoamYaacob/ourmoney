@@ -88,10 +88,10 @@ export default function Alerts() {
           // comment claimed.
           <>
             <View className="web:desktop:hidden">
-              <EmptyState icon="✅" message={t('alerts.empty')} />
+              <EmptyState iconName="checkmark-circle-outline" message={t('alerts.empty')} />
             </View>
             <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
-              <EmptyState icon="✅" message={t('alerts.empty')} />
+              <EmptyState iconName="checkmark-circle-outline" message={t('alerts.empty')} />
             </View>
           </>
         ) : (

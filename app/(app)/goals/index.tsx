@@ -13,9 +13,11 @@ import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useCreateSavingsGoal } from '@/features/savings/hooks/useCreateSavingsGoal'
 import { goalProgressPercent, resolveGoalCurrentAgorot, resolveGoalIsCompleted } from '@/features/savings/lib/goalProgress'
 import { calculateSavingsPace } from '@/lib/engines/savings/calculateSavingsPace'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
+import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -88,9 +90,11 @@ export default function Goals() {
 
   return (
     <Screen width="wide">
-      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('savings.title')}
       </Text>
+
+      <PlanningTabs active="goals" />
 
       {error ? (
         <ErrorMessage message={t('savings.errors.generic')} />
@@ -101,11 +105,16 @@ export default function Goals() {
           {/* No actionLabel/onAction — the persistent "Add goal" button
               below already covers it (mobile-expo-reviewer finding, same
               as accounts/index.tsx and recurring/index.tsx). */}
-          {goals.length === 0 && <EmptyState icon="🏆" message={t('savings.empty')} />}
+          {goals.length === 0 && <EmptyState iconName="flag-outline" message={t('savings.empty')} />}
           {/* Responsive/desktop pass: a 2-column card grid once there's more
               than one goal, desktop only — same calc()-free pattern as
               accounts/index.tsx. */}
-          <View className={goals.length > 1 ? 'web:desktop:flex-row web:desktop:flex-wrap web:desktop:justify-between' : undefined}>
+          {/* One column of rows inside one card, as both frames draw it —
+              name, pace chip and percent on the head line, the amounts and
+              target date under it, the bar, then a sentence saying what the
+              pace actually means. A grid of cards answered "how many goals
+              are there"; this answers "are we going to make it". */}
+          <View className={goals.length > 0 ? 'gap-4 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark' : undefined}>
           {goals.map((goal) => {
             const currentAgorot = resolveGoalCurrentAgorot(goal, balances)
             const isCompleted = resolveGoalIsCompleted(goal, balances)
@@ -126,24 +135,55 @@ export default function Goals() {
                 key={goal.id}
                 onPress={() => router.push(`/goals/${goal.id}`)}
                 accessibilityRole="button"
-                className={goals.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
+                accessibilityLabel={goal.name}
               >
-                <Card>
-                  <View className="mb-1 flex-row items-center justify-between">
-                    <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
-                    {isCompleted ? (
-                      <StatusChip label={t('savings.completed')} tone="accent" />
-                    ) : (
-                      isBehind && (
-                        <StatusChip label={t(pace?.isOverdue ? 'savings.pace.overdue' : 'savings.pace.behind')} tone="danger" />
-                      )
-                    )}
-                  </View>
-                  <Text className="mb-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(currentAgorot)} / {formatILS(goal.target_agorot)}
+                <View className="flex-row flex-wrap items-baseline gap-2">
+                  <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{goal.name}</Text>
+                  {isCompleted ? (
+                    <StatusChip label={t('savings.completed')} tone="positive" />
+                  ) : isBehind ? (
+                    <StatusChip
+                      label={t(pace?.isOverdue ? 'savings.pace.overdue' : 'savings.pace.behind')}
+                      tone="warning"
+                    />
+                  ) : (
+                    pace !== null && <StatusChip label={t('savings.pace.onTrack')} tone="positive" />
+                  )}
+                  <Text
+                    className="ms-auto text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark"
+                    style={{ fontVariant: ['tabular-nums'] }}
+                  >
+                    {percent}%
                   </Text>
-                  <ProgressBar percent={percent} positiveAtLimit />
-                </Card>
+                </View>
+                <Text className="mb-1.5 mt-0.5 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('savings.progressOf', {
+                    current: formatILS(currentAgorot),
+                    target: formatILS(goal.target_agorot),
+                  })}
+                  {goal.target_date ? ` · ${t('savings.targetOn', { date: formatDateDisplay(goal.target_date) })}` : ''}
+                </Text>
+                <ProgressBar percent={percent} positiveAtLimit />
+                {/* What the pace means, in a sentence. Every figure in it
+                    comes from calculateSavingsPace — the engine already
+                    computes the required monthly saving and whether the
+                    target is still reachable; the list simply never said
+                    so. Nothing here is estimated: a goal with no target
+                    date says exactly that rather than projecting one. */}
+                {!isCompleted && (
+                  <Text className="mt-1.5 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                    {pace === null
+                      ? t('savings.pace.noDateSentence', {
+                          amount: formatILS(Math.max(0, goal.target_agorot - currentAgorot)),
+                        })
+                      : pace.isOverdue
+                        ? t('savings.pace.behindSentence', { amount: formatILS(pace.remainingAgorot) })
+                        : t('savings.pace.onTrackSentence', {
+                            amount: formatILS(pace.remainingAgorot),
+                            monthly: formatILS(pace.requiredMonthlyAgorot),
+                          })}
+                  </Text>
+                )}
               </Pressable>
             )
           })}

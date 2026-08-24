@@ -233,7 +233,7 @@ export default function Accounts() {
           {/* No actionLabel/onAction here — the persistent "Add account"
               button below already covers it; a second identical CTA stacked
               directly above it was confusing, not helpful. */}
-          {accounts.length === 0 && <EmptyState iconName="wallet-outline" message={t('accounts.empty')} compact />}
+          {accounts.length === 0 && <EmptyState iconName="wallet-outline" message={t('accounts.empty')} hint={t('accounts.emptyHint')} />}
 
           {renderGroup(
             liquidAccounts,

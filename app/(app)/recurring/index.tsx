@@ -16,6 +16,7 @@ import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { formatDateDisplay, formatDayOfMonth } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
+import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
@@ -114,9 +115,11 @@ export default function Recurring() {
 
   return (
     <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('recurring.title')}
       </Text>
+
+      <PlanningTabs active="recurring" />
 
       {priceIncreaseDetections.length > 0 && (
         <View className={`mb-4 ${INLINE_FORM_WIDTH_CLASS}`}>
@@ -193,7 +196,7 @@ export default function Recurring() {
             </View>
           )}
 
-          {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
+          {recurringTransactions.length === 0 && <EmptyState iconName="repeat-outline" message={t('recurring.empty')} hint={t('recurring.emptyHint')} />}
           {/* One card, hairline rows, opening with the day of the month —
               which is what both frames draw and what the list is actually
               for: a household scanning "what comes off, and on which day".

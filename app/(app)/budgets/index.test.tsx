@@ -177,6 +177,11 @@ jest.mock('@/features/transactions/hooks/useTransactions', () => ({
 // and "fetch failed" cases can be exercised from the same mocked module.
 let mockUncategorized: { id: string; description: string; amount_agorot: number; txn_date: string }[] = []
 let mockUncategorizedError: Error | null = null
+// The screen lists recurring charges that no allocation covers.
+jest.mock('@/features/recurring/hooks/useRecurringTransactions', () => ({
+  useRecurringTransactions: () => ({ recurringTransactions: [], isLoading: false, error: null }),
+}))
+
 jest.mock('@/features/budgets/hooks/useUncategorizedTransactions', () => ({
   useUncategorizedTransactions: () => ({
     uncategorized: mockUncategorized,
@@ -443,13 +448,17 @@ describe('Budgets', () => {
         : { ...DEFAULT_PROGRESS_RESULT, categories: [], totalAllocatedAgorot: 0, totalSpentAgorot: 0 }
     )
 
-    const { getByText, getAllByText } = await render(<Budgets />)
+    const { getAllByText } = await render(<Budgets />)
 
+    // Both the mobile and the desktop copy carry the hint now — EmptyState
+    // itself renders it, rather than the desktop branch adding a second
+    // Text under a hint-less component. Both exist in the RNTL tree at once
+    // because CSS visibility cannot be evaluated here.
     expect(
-      getByText(
+      getAllByText(
         'תקציב חודשי הוא סכום שמוקצה לכל קטגוריית הוצאה, כדי לעקוב כמה נותר להוציא בה. הוסיפו קטגוריה ראשונה כדי להתחיל.'
-      )
-    ).toBeTruthy()
+      ).length
+    ).toBe(2)
     // Mobile-compact + desktop-full renders both exist in the RNTL tree
     // simultaneously (CSS visibility can't be evaluated here) — same
     // established pattern as the empty-state message assertion above, now
