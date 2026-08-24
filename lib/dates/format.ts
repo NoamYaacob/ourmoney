@@ -18,6 +18,17 @@ export function formatDateDisplay(isoDate: string): string {
   return `${day}.${month}.${year}`
 }
 
+// `DD.MM`, no year — the desktop Home hero's commitment timeline labels
+// each dot this way (`OurMoney - Desktop.dc.html`: "28.08", "01.09"), a
+// narrower stamp than `formatDateDisplay` for a label with only ~44px to
+// sit in above a dot, where a household already knows which year it's in.
+export function formatDateShort(isoDate: string): string {
+  const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(isoDate)
+  if (!match) return isoDate
+  const [, month, day] = match
+  return `${day}.${month}`
+}
+
 // Hebrew month abbreviation for the design's commitment row, which stacks a
 // large day numeral over a short month ("28" over "אוג׳").
 //

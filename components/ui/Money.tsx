@@ -24,10 +24,17 @@
 import { Text, type TextProps } from 'react-native'
 import { formatILS } from '@/lib/money/format'
 
-export type MoneySize = 'hero' | 'display' | 'figure' | 'large' | 'row' | 'caption'
+export type MoneySize = 'heroXl' | 'hero' | 'display' | 'figure' | 'large' | 'row' | 'caption'
 export type MoneyTone = 'default' | 'positive' | 'danger' | 'muted' | 'hero' | 'heroMuted'
 
 const SIZE_CLASS: Record<MoneySize, string> = {
+  // Design System §03 `figure-xl` (52/56, Heebo 800) — "one figure per
+  // screen." The desktop Home hero uses this size for פנוי באמת
+  // (OurMoney - Desktop.dc.html measures it at 52/58); the mobile hero and
+  // the mobile safe-to-spend detail screen use the smaller `hero` tier
+  // (44/50, OurMoney - Mobile.dc.html) instead — same figure, deliberately
+  // smaller on the narrower frame.
+  heroXl: 'text-heroXl font-heebo',
   hero: 'text-hero font-heebo',
   display: 'text-display font-heebo',
   figure: 'text-figure font-heeboBold',

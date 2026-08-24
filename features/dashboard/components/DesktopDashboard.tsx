@@ -50,6 +50,7 @@ import { Money } from '@/components/ui/Money'
 import { BudgetBar } from '@/components/ui/BudgetBar'
 import { StatusChip } from '@/components/ui/StatusChip'
 import { CommitmentRow } from '@/components/ui/CommitmentRow'
+import { CommitmentTimeline } from '@/components/ui/CommitmentTimeline'
 import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { CountdownRing } from '@/components/ui/CountdownRing'
 import { colors } from '@/constants/colors'
@@ -212,7 +213,7 @@ export function DesktopDashboard() {
                 <View className="mt-2">
                   <Money
                     agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
-                    size="hero"
+                    size="heroXl"
                     tone="hero"
                   />
                 </View>
@@ -311,7 +312,14 @@ export function DesktopDashboard() {
                 <EmptyState iconName="calendar-outline" message={t('dashboard.commitments.empty')} compact />
               </View>
             ) : (
-              <View className="web:desktop:mt-5">
+              <>
+                <CommitmentTimeline
+                  items={topCommitments.map((item) => {
+                    const urgency = commitmentUrgency(today, item.date)
+                    return { id: item.id, date: item.date, daysUntil: urgency.daysUntil, tone: urgency.tone }
+                  })}
+                />
+                <View className="web:desktop:mt-5">
                 {topCommitments.map((item, index) => {
                   // The same urgency banding the mobile Home uses, so one
                   // charge cannot read as urgent on one platform and routine
@@ -346,7 +354,8 @@ export function DesktopDashboard() {
                     </View>
                   )
                 })}
-              </View>
+                </View>
+              </>
             )}
 
             {nextCardCycle && nextCardCycleDays !== null && (
