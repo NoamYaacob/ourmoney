@@ -160,7 +160,13 @@ export default function Obligations() {
               new queries on every one of these three routes for a single
               decorative card. */}
           {upcoming.length > 0 && (
-            <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:w-[340px]">
+            // Part 3A/17 of the product-quality audit: this panel was
+            // pinned to a fixed 340px while its sibling list card below (and
+            // Accounts' own hero card) span the full content column — on a
+            // wide desktop viewport that left ~780px of empty canvas beside
+            // a small floating card, exactly the pattern flagged. Full
+            // width now, matching every other panel on this content column.
+            <View className="hidden web:desktop:mb-5 web:desktop:flex">
               <HeroPanel>
                 <HeroLabel>{t('obligations.title')}</HeroLabel>
                 <View className="web:desktop:mt-1.5">

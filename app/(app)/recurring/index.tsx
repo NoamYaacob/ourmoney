@@ -194,7 +194,11 @@ export default function Recurring() {
               monthly-equivalent — a simplification worth a comment, not a
               second engine. */}
           {activeExpenseTemplates.length > 0 && (
-            <View className="hidden web:desktop:mb-5 web:desktop:flex web:desktop:w-[340px]">
+            // Part 3A/17 of the product-quality audit: see obligations/
+            // index.tsx's identical comment — this panel was pinned to a
+            // fixed 340px, leaving most of the wide desktop canvas empty
+            // beside it. Full width now, matching its sibling list card.
+            <View className="hidden web:desktop:mb-5 web:desktop:flex">
               <HeroPanel>
                 <HeroLabel>{t('recurring.title')}</HeroLabel>
                 <View className="web:desktop:mt-1.5">
