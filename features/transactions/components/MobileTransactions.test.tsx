@@ -47,7 +47,13 @@ jest.mock('@/features/budgets/hooks/useUncategorizedTransactions', () => ({
 
 let mockTransactions: unknown[] = []
 jest.mock('@/features/transactions/hooks/useTransactions', () => ({
-  useTransactions: () => ({ transactions: mockTransactions, isLoading: false, error: null }),
+  useTransactions: () => ({ transactions: mockTransactions, isLoading: false, error: null, refetch: jest.fn() }),
+}))
+
+const mockBulkMutateAsync = jest.fn<(...args: unknown[]) => Promise<{ updatedIds: string[]; missingIds: string[] }>>()
+let mockBulkIsPending = false
+jest.mock('@/features/transactions/hooks/useBulkUpdateTransactionCategory', () => ({
+  useBulkUpdateTransactionCategory: () => ({ mutateAsync: mockBulkMutateAsync, isPending: mockBulkIsPending }),
 }))
 
 function txn(overrides: Partial<Transaction> & { id: string; txn_date: string; amount_agorot: number }) {
@@ -147,6 +153,111 @@ describe('MobileTransactions — uncategorised work', () => {
     const { queryByTestId } = await render(<MobileTransactions />)
 
     expect(queryByTestId('uncategorized-strip')).toBeNull()
+  })
+})
+
+describe('MobileTransactions — bulk categorization / selection mode', () => {
+  // Regression: this screen used to have no selection mode at all, despite
+  // a comment once claiming it matched desktop. Same behavior as
+  // DesktopTransactions.test.tsx's identical suite, adapted to how it's
+  // reached here — an icon button (accessibilityLabel, no visible text)
+  // rather than a permanent text link.
+  beforeEach(() => {
+    mockBulkMutateAsync.mockReset()
+    mockBulkIsPending = false
+  })
+
+  it('does not select anything when entering selection mode', async () => {
+    const { getByLabelText, getByText, queryByText } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
+    expect(queryByText(i18n.t('transactions.selection.changeCategoryButton'))).toBeNull()
+  })
+
+  it('selecting a row updates the selected count, and pressing it again deselects', async () => {
+    const { getByLabelText, getByText } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+    await fireEvent.press(getByText('שופרסל דיל'))
+
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 1 }))).toBeTruthy()
+
+    await fireEvent.press(getByText('שופרסל דיל'))
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
+  })
+
+  it('"select all" selects every visible transaction, "deselect all" clears it without leaving selection mode', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+    await fireEvent.press(getByText(i18n.t('transactions.selection.selectAll')))
+
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 3 }))).toBeTruthy()
+
+    await fireEvent.press(getByText(i18n.t('transactions.selection.deselectAll')))
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
+    // Still in selection mode — the entry icon is gone, cancel is present.
+    expect(queryByLabelText(i18n.t('transactions.selection.enterButton'))).toBeNull()
+    expect(getByText(i18n.t('transactions.selection.cancel'))).toBeTruthy()
+  })
+
+  it('cancel exits selection mode, clears the selection, and restores normal row navigation', async () => {
+    const { getByLabelText, getByText, queryByText } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+    await fireEvent.press(getByText(i18n.t('transactions.selection.selectAll')))
+    await fireEvent.press(getByText(i18n.t('transactions.selection.cancel')))
+
+    expect(queryByText(i18n.t('transactions.selection.cancel'))).toBeNull()
+    fireEvent.press(getByText('שופרסל דיל'))
+    expect(mockPush).toHaveBeenCalledWith('/transactions/שופרסל דיל')
+  })
+
+  it('a transfer row is not selectable in selection mode', async () => {
+    mockTransactions = [txn({ id: 'העברה לחיסכון', txn_date: '2026-08-20', amount_agorot: -2_000_00, transfer_id: 'tr-1' })]
+    const { getByLabelText, getByText } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+    await fireEvent.press(getByText('העברה לחיסכון'))
+
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
+  })
+
+  it('bulk-categorizing the selection calls the mutation with exactly the selected ids and shows a success message', async () => {
+    mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['שופרסל דיל'], missingIds: [] })
+    const { getByLabelText, getByText, getAllByText, getByRole } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+    await fireEvent.press(getByText('שופרסל דיל'))
+    await fireEvent.press(getByRole('button', { name: i18n.t('transactions.selection.changeCategoryButton') }))
+    // The row already selected also shows its own category name as a
+    // subtitle, so 'סופרמרקט' matches twice once the sheet is open — press
+    // each match rather than assume DOM order, since only the sheet's own
+    // option is wired to onChange.
+    const categoryOptions = getAllByText('סופרמרקט')
+    for (const option of categoryOptions) {
+      await fireEvent.press(option)
+      if (mockBulkMutateAsync.mock.calls.length > 0) break
+    }
+
+    await waitFor(() => expect(mockBulkMutateAsync).toHaveBeenCalled())
+    expect(mockBulkMutateAsync.mock.calls[0]?.[0]).toMatchObject({
+      householdId: 'household-1',
+      transactionIds: ['שופרסל דיל'],
+      categoryId: 'cat-1',
+    })
+  })
+
+  it('the entry icon is hidden while there is nothing to select', async () => {
+    mockTransactions = []
+    const { queryByLabelText } = await render(<MobileTransactions />)
+    expect(queryByLabelText(i18n.t('transactions.selection.enterButton'))).toBeNull()
+  })
+
+  it('pressing the uncategorized strip filters to uncategorized and enters selection mode', async () => {
+    mockUncategorized = [txn({ id: 'u1', txn_date: '2026-08-21', amount_agorot: -1_000_00, category_id: null })]
+    mockTransactions = [txn({ id: 'u1', txn_date: '2026-08-21', amount_agorot: -1_000_00, category_id: null })]
+    const { getByTestId, getByText } = await render(<MobileTransactions />)
+
+    await fireEvent.press(getByTestId('uncategorized-strip'))
+
+    expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
   })
 })
 

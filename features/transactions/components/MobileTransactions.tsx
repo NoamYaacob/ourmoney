@@ -13,16 +13,16 @@
 //      It is a job to finish, not an error to feel bad about.
 //   4. Search is behind a toggle rather than always occupying a field.
 //
-// Bulk category selection — desktop's "בחירה מרובה" (features/transactions/
-// components/DesktopTransactions.tsx) — is NOT implemented here. An earlier
-// version of this comment claimed it was "kept exactly as the desktop
-// screen has it," which was never true: there is no selection-mode state,
-// no per-row select control, and no call to
-// useBulkUpdateTransactionCategory anywhere in this file. The "לסווג" strip
-// below only filters the list to the uncategorised set; assigning a
-// category still means opening each transaction individually. That's a
-// real product gap, not a design choice — tracked, not hidden behind a
-// comment that said otherwise.
+// Bulk category selection, matching desktop's "בחירה מרובה"
+// (features/transactions/components/DesktopTransactions.tsx) — same
+// selection-mode state shape, same transactionSelection.ts helpers, same
+// useBulkUpdateTransactionCategory mutation, same transactions.selection.*
+// copy. Only the entry point differs: desktop has room for a permanent
+// text link above the list; here it's a third icon button next to
+// search/filter, matching the row of icon-only actions this header already
+// has instead of adding a new visual pattern. A previous version of this
+// screen had no selection mode at all, with a comment claiming otherwise —
+// this is the fix, not a rewrite of the comment.
 
 import { useMemo, useState } from 'react'
 import { FlatList, Pressable, Text, View } from 'react-native'
@@ -38,6 +38,7 @@ import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
+import { useBulkUpdateTransactionCategory } from '@/features/transactions/hooks/useBulkUpdateTransactionCategory'
 import {
   buildTransactionQueryFilters,
   DEFAULT_TRANSACTION_FILTER_STATE,
@@ -46,13 +47,18 @@ import {
   parseTransactionFilterParams,
   type TransactionFilterState,
 } from '@/features/transactions/lib/transactionFilters'
+import { intersectWithVisible, selectAllVisible, toggleSelection } from '@/features/transactions/lib/transactionSelection'
 import { groupTransactionsByDate, dateGroupHeading } from '@/features/transactions/lib/groupByDate'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { TransactionFilterSheet } from '@/features/transactions/components/TransactionFilterSheet'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { formatILS } from '@/lib/money/format'
+import { HIT_SLOP } from '@/constants/accessibility'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Button } from '@/components/ui/Button'
 import { FAB } from '@/components/ui/FAB'
 import { Money } from '@/components/ui/Money'
 import { SectionLabel } from '@/components/ui/SectionLabel'
@@ -108,12 +114,21 @@ export function MobileTransactions() {
   const isDark = scheme === 'dark'
   const inkColor = isDark ? colors.ink.dark : colors.ink.light
   const mutedColor = isDark ? colors.inkMuted.dark : colors.inkMuted.light
+  const accentColor = isDark ? colors.accent.dark : colors.accent.light
 
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const [filters, setFilters] = useState<TransactionFilterState>(() => parseTransactionFilterParams(params))
   const [isFilterSheetOpen, setFilterSheetOpen] = useState(false)
   const [isSearchOpen, setSearchOpen] = useState(false)
+
+  // Bulk categorization selection mode — same shape as
+  // DesktopTransactions.tsx's identical state (see that file's own comment
+  // for why this is plain component state, not route params).
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkResultMessage, setBulkResultMessage] = useState<string | null>(null)
+  const bulkUpdateCategory = useBulkUpdateTransactionCategory(householdId)
 
   const queryFilters = buildTransactionQueryFilters(filters)
   const { transactions, isLoading, error, refetch } = useTransactions(householdId, queryFilters)
@@ -138,6 +153,24 @@ export function MobileTransactions() {
   const groups = useMemo(() => groupTransactionsByDate(filtered), [filtered])
   const today = localDateString()
 
+  // Transfer rows are never selectable (migration 008, ADR-035 — see
+  // DesktopTransactions.tsx's identical `visibleIds` for the full
+  // reasoning: no category to bulk-assign, and the RLS-backed RPC would
+  // reject the write anyway).
+  const visibleIds = filtered.filter((txn) => txn.transfer_id === null).map((txn) => txn.id)
+
+  // Same policy as desktop: any filter change clears the whole selection
+  // rather than trying to reconcile which selected ids are still visible —
+  // see DesktopTransactions.tsx's identical guard for why "clear outright"
+  // is the only version of this that can't silently keep a
+  // no-longer-visible id selected.
+  const filterSignature = JSON.stringify(filters)
+  const [lastFilterSignature, setLastFilterSignature] = useState(filterSignature)
+  if (filterSignature !== lastFilterSignature) {
+    setLastFilterSignature(filterSignature)
+    if (selectedIds.size > 0) setSelectedIds(new Set())
+  }
+
   const chips = activeFilterChips(
     filters,
     t,
@@ -152,6 +185,67 @@ export function MobileTransactions() {
   function clearFilter(key: keyof TransactionFilterState) {
     setFilters((current) => ({ ...current, [key]: DEFAULT_TRANSACTION_FILTER_STATE[key] }))
   }
+
+  // Identical to DesktopTransactions.tsx's handlers of the same names — see
+  // that file for the reasoning behind each (never auto-selecting on entry,
+  // clearing vs. keeping the selection on partial/full failure, etc.).
+  function handleEnterSelectionMode() {
+    setBulkResultMessage(null)
+    setIsSelectionMode(true)
+  }
+
+  function handleCancelSelection() {
+    setIsSelectionMode(false)
+    setSelectedIds(new Set())
+    setBulkResultMessage(null)
+  }
+
+  function handleSelectAll() {
+    setSelectedIds(selectAllVisible(visibleIds))
+  }
+
+  function handleDeselectAll() {
+    setSelectedIds(new Set())
+  }
+
+  function handleToggleRow(id: string) {
+    setSelectedIds((prev) => toggleSelection(prev, id))
+  }
+
+  async function handleBulkCategoryChange(value: string) {
+    if (!householdId || bulkUpdateCategory.isPending) return
+    const categoryId = value === 'uncategorized' ? null : value
+    const idsToUpdate = intersectWithVisible(selectedIds, visibleIds)
+    if (idsToUpdate.length === 0) return
+
+    setBulkResultMessage(null)
+    try {
+      const result = await bulkUpdateCategory.mutateAsync({ householdId, transactionIds: idsToUpdate, categoryId })
+      if (result.missingIds.length === 0) {
+        setBulkResultMessage(t('transactions.selection.successMessage', { count: result.updatedIds.length }))
+        setSelectedIds(new Set())
+        setIsSelectionMode(false)
+      } else {
+        setBulkResultMessage(
+          t('transactions.selection.partialMessage', { updated: result.updatedIds.length, total: idsToUpdate.length })
+        )
+        setSelectedIds(new Set(result.missingIds))
+      }
+    } catch {
+      setBulkResultMessage(t('transactions.selection.errorMessage'))
+    }
+  }
+
+  function handleUncategorizedStripPress() {
+    if (uncategorized.length === 0) return
+    setFilters((current) => ({ ...current, categoryId: 'uncategorized' }))
+    handleEnterSelectionMode()
+  }
+
+  const bulkCategoryOptions = [
+    { value: 'uncategorized', label: t('transactions.filters.uncategorized') },
+    ...categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) })),
+  ]
 
   if (isHouseholdLoading) {
     return (
@@ -184,23 +278,50 @@ export function MobileTransactions() {
           {group.transactions.map((transaction, index) => {
             const isTransfer = transaction.transfer_id !== null
             const categoryName = transaction.category_id ? categoryNameById[transaction.category_id] : undefined
+            const isSelected = selectedIds.has(transaction.id)
+
+            // A transfer row is never selectable (see visibleIds above) — in
+            // selection mode it neither toggles nor navigates, matching
+            // DesktopTransactions.tsx's identical guard.
+            const handlePress = isSelectionMode
+              ? isTransfer
+                ? undefined
+                : () => handleToggleRow(transaction.id)
+              : () =>
+                  router.push(
+                    (isTransfer
+                      ? `/transfers/${transaction.transfer_id}`
+                      : `/transactions/${transaction.id}`) as never
+                  )
 
             return (
               <View key={transaction.id}>
                 {index > 0 && <View className="h-px bg-divider-light dark:bg-divider-dark" />}
                 <Pressable
-                  onPress={() =>
-                    router.push(
-                      (isTransfer
-                        ? `/transfers/${transaction.transfer_id}`
-                        : `/transactions/${transaction.id}`) as never
-                    )
+                  onPress={handlePress}
+                  disabled={isSelectionMode && isTransfer ? true : undefined}
+                  accessibilityRole={isSelectionMode && !isTransfer ? 'checkbox' : 'button'}
+                  accessibilityState={isSelectionMode && !isTransfer ? { checked: isSelected } : undefined}
+                  accessibilityLabel={
+                    isSelectionMode && !isTransfer
+                      ? t('transactions.selection.rowLabel', {
+                          description: transaction.description,
+                          state: isSelected ? t('transactions.selection.selected') : t('transactions.selection.notSelected'),
+                        })
+                      : transaction.description
                   }
-                  accessibilityRole="button"
-                  accessibilityLabel={transaction.description}
-                  className="active:bg-surface-light dark:active:bg-surface-dark"
+                  className={`active:bg-surface-light dark:active:bg-surface-dark ${
+                    isSelectionMode && isSelected ? 'bg-surface-light dark:bg-surface-dark' : ''
+                  }`}
                 >
                   <View className="min-h-[56px] flex-row items-center gap-3 px-4 py-3">
+                    {isSelectionMode && !isTransfer && (
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={ICON.hero}
+                        color={isSelected ? accentColor : mutedColor}
+                      />
+                    )}
                     {isTransfer ? (
                       <View
                         accessibilityElementsHidden
@@ -321,8 +442,73 @@ export function MobileTransactions() {
               </View>
             )}
           </Pressable>
+          {!isSelectionMode && filtered.length > 0 && (
+            <Pressable
+              onPress={handleEnterSelectionMode}
+              accessibilityRole="button"
+              accessibilityLabel={t('transactions.selection.enterButton')}
+              hitSlop={HIT_SLOP}
+              className="h-11 w-11 items-center justify-center"
+            >
+              <Ionicons name="checkmark-circle-outline" size={ICON.hero} color={inkColor} />
+            </Pressable>
+          )}
         </View>
       </View>
+
+      {isSelectionMode && (
+        <View className="mb-3 mt-1">
+          <View className="mb-2 flex-row items-center justify-between">
+            <Text className="text-caption font-semibold text-ink-light dark:text-ink-dark">
+              {t('transactions.selection.selectedCount', { count: selectedIds.size })}
+            </Text>
+            <Pressable onPress={handleCancelSelection} accessibilityRole="button" hitSlop={HIT_SLOP}>
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('transactions.selection.cancel')}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View className="flex-row flex-wrap items-center gap-3">
+            <Pressable onPress={handleSelectAll} accessibilityRole="button" hitSlop={HIT_SLOP}>
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('transactions.selection.selectAll')}
+              </Text>
+            </Pressable>
+            <Pressable onPress={handleDeselectAll} accessibilityRole="button" hitSlop={HIT_SLOP}>
+              <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
+                {t('transactions.selection.deselectAll')}
+              </Text>
+            </Pressable>
+          </View>
+
+          {selectedIds.size > 0 && (
+            <View className="mt-3">
+              {bulkUpdateCategory.isPending ? (
+                <Button title={t('transactions.selection.changeCategoryButton')} loading disabled onPress={() => {}} />
+              ) : (
+                <Select
+                  variant="box"
+                  label={t('transactions.selection.changeCategoryButton')}
+                  options={bulkCategoryOptions}
+                  value={null}
+                  onChange={(value) => void handleBulkCategoryChange(value)}
+                  placeholder={t('transactions.form.categoryPlaceholder')}
+                  sheetTitle={t('transactions.form.categorySheetTitle')}
+                />
+              )}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Deliberately rendered outside the isSelectionMode block above — see
+          DesktopTransactions.tsx's identical comment: a fully-successful
+          bulk update exits selection mode as part of the same state change
+          that produces this message. */}
+      {bulkResultMessage && (
+        <Text className="mb-3 text-caption text-inkMuted-light dark:text-inkMuted-dark">{bulkResultMessage}</Text>
+      )}
 
       {isSearchOpen && (
         <View className="mb-1 mt-1">
@@ -367,7 +553,7 @@ export function MobileTransactions() {
       {uncategorized.length > 0 && (
         <Pressable
           testID="uncategorized-strip"
-          onPress={() => setFilters((current) => ({ ...current, categoryId: 'uncategorized' }))}
+          onPress={handleUncategorizedStripPress}
           accessibilityRole="button"
           className="mb-3 mt-1 flex-row items-center gap-3 rounded-card border border-warningBorder-light bg-surfaceMuted-light p-3.5 dark:border-warningBorder-dark dark:bg-surfaceMuted-dark"
         >
