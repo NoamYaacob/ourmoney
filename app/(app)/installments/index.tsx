@@ -162,6 +162,20 @@ export default function Installments() {
         {t('nav.creditAndPayments')}
       </Text>
 
+      {creditCardAccounts.length > 0 && creditCardCycleCommitments.length === 0 && !isLoading && (
+        // The billing-cycle cards below only ever render an account that
+        // has a `credit_card_cycle` commitment — which useUpcomingCommitments
+        // only produces for an active card whose billing_cycle_day is set.
+        // A household with a real credit-card account but no cycle date
+        // configured used to see this entire top section vanish with no
+        // explanation, which reads as broken rather than as "nothing to
+        // show yet" — the one distinction the runtime-fix work upstream of
+        // this screen made a point of preserving everywhere else.
+        <View className="mb-5">
+          <EmptyState iconName="card-outline" message={t('installments.cycleCards.empty')} compact />
+        </View>
+      )}
+
       {creditCardCycleCommitments.length > 0 && (
         /* Both frames lead with these. `OurMoney - Mobile.dc.html` screen 09
            stacks one card per credit card; the desktop frame sets them side

@@ -624,7 +624,8 @@
       "range": "מחזור {{start}} עד {{end}}",
       "regularSpend": "עסקאות רגילות",
       "installmentSpend": "תשלומים",
-      "chargedFrom": "מחזור {{start}} עד {{end}} · חיוב מ{{account}}"
+      "chargedFrom": "מחזור {{start}} עד {{end}} · חיוב מ{{account}}",
+      "empty": "אין כרגע נתוני מחזור חיוב להצגה. ודאו שתאריך הסגירה של כרטיס האשראי מוגדר בפרטי החשבון."
     },
     "listTitle": "עסקאות בתשלומים",
     "errors": {
