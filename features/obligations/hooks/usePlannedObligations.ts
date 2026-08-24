@@ -4,6 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { diagnoseQuery } from '@/lib/diagnostics/queryDiagnostics'
 import type { PlannedObligation } from '@/types/app'
 
 export function plannedObligationsQueryKey(householdId: string | null | undefined) {
@@ -14,11 +15,9 @@ export function usePlannedObligations(householdId: string | null | undefined) {
   const query = useQuery({
     queryKey: plannedObligationsQueryKey(householdId),
     queryFn: async (): Promise<PlannedObligation[]> => {
-      const { data, error } = await supabase
-        .from('planned_obligations')
-        .select('*')
-        .eq('household_id', householdId as string)
-        .order('due_date', { ascending: true })
+      const { data, error } = await diagnoseQuery('usePlannedObligations', 'planned_obligations', 'select', { householdId }, () =>
+        supabase.from('planned_obligations').select('*').eq('household_id', householdId as string).order('due_date', { ascending: true })
+      )
       if (error) throw error
       return data as PlannedObligation[]
     },

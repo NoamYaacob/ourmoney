@@ -4,6 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { diagnoseQuery } from '@/lib/diagnostics/queryDiagnostics'
 import type { Account } from '@/types/app'
 
 export function accountsQueryKey(householdId: string | null | undefined) {
@@ -14,13 +15,15 @@ export function useAccounts(householdId: string | null | undefined) {
   const query = useQuery({
     queryKey: accountsQueryKey(householdId),
     queryFn: async (): Promise<Account[]> => {
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('household_id', householdId as string)
-        .order('created_at', { ascending: true })
+      // diagnoseQuery is a zero-overhead passthrough unless a developer has
+      // explicitly opted in (see lib/diagnostics/queryDiagnostics.ts) — do
+      // not remove without checking that file's own header for why it's
+      // temporarily here.
+      const { data, error } = await diagnoseQuery('useAccounts', 'accounts', 'select', { householdId }, () =>
+        supabase.from('accounts').select('*').eq('household_id', householdId as string).order('created_at', { ascending: true })
+      )
       if (error) throw error
-      return data
+      return data as Account[]
     },
     enabled: !!householdId,
   })

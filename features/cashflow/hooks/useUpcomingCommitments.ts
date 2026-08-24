@@ -8,6 +8,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { diagnoseQuery } from '@/lib/diagnostics/queryDiagnostics'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
@@ -46,11 +47,18 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
   const creditCardTransactions = useQuery({
     queryKey: upcomingCommitmentsCreditCardTransactionsQueryKey(householdId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('account_id, amount_agorot, txn_date, transfer_id, is_shared, is_excluded')
-        .eq('household_id', householdId as string)
-        .in('account_id', creditCardAccountIds)
+      const { data, error } = await diagnoseQuery(
+        'useUpcomingCommitments.creditCardTransactions',
+        'transactions',
+        'select',
+        { householdId, creditCardAccountIds },
+        () =>
+          supabase
+            .from('transactions')
+            .select('account_id, amount_agorot, txn_date, transfer_id, is_shared, is_excluded')
+            .eq('household_id', householdId as string)
+            .in('account_id', creditCardAccountIds)
+      )
       if (error) throw error
       return data
     },

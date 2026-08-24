@@ -6,6 +6,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { diagnoseQuery } from '@/lib/diagnostics/queryDiagnostics'
 import { computeInstallmentMaterializedCounts } from '../lib/computeInstallmentMaterializedCounts'
 
 export function installmentMaterializedCountsQueryKey(householdId: string | null | undefined) {
@@ -16,13 +17,20 @@ export function useInstallmentMaterializedCounts(householdId: string | null | un
   const query = useQuery({
     queryKey: installmentMaterializedCountsQueryKey(householdId),
     queryFn: async (): Promise<Record<string, number>> => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('installment_plan_id')
-        .eq('household_id', householdId as string)
-        .not('installment_plan_id', 'is', null)
+      const { data, error } = await diagnoseQuery(
+        'useInstallmentMaterializedCounts',
+        'transactions',
+        'select',
+        { householdId },
+        () =>
+          supabase
+            .from('transactions')
+            .select('installment_plan_id')
+            .eq('household_id', householdId as string)
+            .not('installment_plan_id', 'is', null)
+      )
       if (error) throw error
-      return computeInstallmentMaterializedCounts(data)
+      return computeInstallmentMaterializedCounts(data as { installment_plan_id: string | null }[])
     },
     enabled: !!householdId,
   })

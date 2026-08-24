@@ -424,6 +424,11 @@ export default function AppLayout() {
               <Tabs.Screen name="installments/[id]" options={{ href: null }} />
               <Tabs.Screen name="connections/index" options={{ href: null }} />
               <Tabs.Screen name="connections/preview" options={{ href: null }} />
+              {/* Temporary investigation-only screen — see
+                  app/(app)/diagnostics/index.tsx's own header. Not linked
+                  from any nav; reachable only by navigating directly to
+                  /diagnostics. */}
+              <Tabs.Screen name="diagnostics/index" options={{ href: null }} />
             </Tabs>
           </View>
         </View>
