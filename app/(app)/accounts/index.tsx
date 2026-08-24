@@ -53,7 +53,7 @@ export default function Accounts() {
   const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { accounts, isLoading: isAccountsLoading, error, refetch } = useAccounts(householdId)
+  const { accounts, isLoading: isAccountsLoading, error, hasData, refetch } = useAccounts(householdId)
   const { balances, isLoading: isBalancesLoading } = useAccountBalances(householdId)
   // Folds in isHouseholdLoading (mobile-expo-reviewer finding — see
   // dashboard/index.tsx's identical comment for why this matters).
@@ -202,7 +202,7 @@ export default function Accounts() {
         {t('accounts.title')}
       </Text>
 
-      {!error && !isLoading && accounts.length > 0 && (
+      {!isLoading && hasData && accounts.length > 0 && (
         // The hero both frames open with: what is actually spendable, and
         // the one sentence that stops a household reading it as "all our
         // money". Net worth sits under it as context, never as the headline
@@ -224,12 +224,17 @@ export default function Accounts() {
         </View>
       )}
 
-      {error ? (
-        <ErrorMessage message={t('accounts.errors.generic')} onRetry={refetch} />
-      ) : isLoading ? (
+      {isLoading ? (
         <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('accounts.errors.generic')} onRetry={refetch} />
       ) : (
         <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('accounts.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
           {/* No actionLabel/onAction here — the persistent "Add account"
               button below already covers it; a second identical CTA stacked
               directly above it was confusing, not helpful. */}

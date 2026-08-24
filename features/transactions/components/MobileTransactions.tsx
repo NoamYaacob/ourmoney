@@ -131,7 +131,7 @@ export function MobileTransactions() {
   const bulkUpdateCategory = useBulkUpdateTransactionCategory(householdId)
 
   const queryFilters = buildTransactionQueryFilters(filters)
-  const { transactions, isLoading, error, refetch } = useTransactions(householdId, queryFilters)
+  const { transactions, isLoading, error, hasData, refetch } = useTransactions(householdId, queryFilters)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
   const { uncategorized } = useUncategorizedTransactions(householdId)
@@ -255,8 +255,14 @@ export function MobileTransactions() {
     )
   }
 
-  const hasNoTransactionsAtAll = !isLoading && !error && transactions.length === 0 && isDefaultTransactionFilterState(filters)
-  const showNoResults = !isLoading && !error && filtered.length === 0 && !hasNoTransactionsAtAll
+  // Keyed on `hasData` (has this query ever resolved with data), not `error`
+  // — `hasData` implies `!isLoading` (a query can't be pending once it has
+  // data), and unlike `!error` it stays true through a background refetch
+  // failure, so a household's real "no transactions" / "no results" state
+  // does not flip back to a loading-looking limbo just because a later
+  // background refetch failed after the list had already loaded correctly.
+  const hasNoTransactionsAtAll = hasData && transactions.length === 0 && isDefaultTransactionFilterState(filters)
+  const showNoResults = hasData && filtered.length === 0 && !hasNoTransactionsAtAll
 
   function renderGroup({ item: group }: { item: TransactionDateGroup }) {
     const heading = dateGroupHeading(group.date, today)
@@ -580,11 +586,16 @@ export function MobileTransactions() {
         </Pressable>
       )}
 
-      {error ? (
-        <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
-      ) : isLoading ? (
+      {isLoading ? (
         <SkeletonList rows={6} />
-      ) : hasNoTransactionsAtAll ? (
+      ) : !hasData ? (
+        <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
+      ) : error ? (
+        <View className="mb-3">
+          <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
+        </View>
+      ) : null}
+      {!hasData ? null : hasNoTransactionsAtAll ? (
         <View className="items-center pt-10">
           <EmptyState iconName="receipt-outline" message={t('transactions.empty')} hint={t('transactions.emptyHint')} />
         </View>

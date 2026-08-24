@@ -69,7 +69,7 @@ describe('Goals list', () => {
   // UX-completeness audit P1 fix: account_id/target_date were writable by
   // useCreateSavingsGoal but there was no UI field for either.
   it('lets the create form set an account and an optional target date, sending both on create', async () => {
-    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null, hasData: true })
 
     const { getByText, getByLabelText, getByPlaceholderText } = await render(<Goals />)
 
@@ -88,7 +88,7 @@ describe('Goals list', () => {
   })
 
   it('defaults to no target date, sending targetDate: null on create', async () => {
-    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null, hasData: true })
 
     const { getByText, getByLabelText, getByPlaceholderText } = await render(<Goals />)
 
@@ -105,7 +105,7 @@ describe('Goals list', () => {
   // it is going. Every figure in that sentence comes from
   // calculateSavingsPace, which the screen already ran and then ignored.
   it('says how each goal is going, not just how full its bar is', async () => {
-    mockUseSavingsGoals.mockReturnValue({ goals: GOALS, isLoading: false, error: null })
+    mockUseSavingsGoals.mockReturnValue({ goals: GOALS, isLoading: false, error: null, hasData: true })
 
     const { getByText, getAllByText } = await render(<Goals />)
 
@@ -118,7 +118,7 @@ describe('Goals list', () => {
     // calculateSavingsPace returns null without a target date, and the row
     // must not invent one — "hide instead of inventing precision".
     const noDate = [{ ...GOALS[0], id: 'g-nodate', name: 'ללא תאריך', target_date: null }]
-    mockUseSavingsGoals.mockReturnValue({ goals: noDate, isLoading: false, error: null })
+    mockUseSavingsGoals.mockReturnValue({ goals: noDate, isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Goals />)
 

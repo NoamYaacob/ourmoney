@@ -67,7 +67,7 @@ beforeEach(() => {
   // would otherwise leak into the next one.
   useCashFlowStore.setState({ horizonDays: '30' })
   mockUseCashFlowForecast.mockReset()
-  mockUseCashFlowForecast.mockReturnValue({ result: { ...HEALTHY }, isLoading: false, error: null })
+  mockUseCashFlowForecast.mockReturnValue({ result: { ...HEALTHY }, isLoading: false, error: null, hasData: true })
 })
 
 describe('DesktopCashFlow', () => {
@@ -83,8 +83,7 @@ describe('DesktopCashFlow', () => {
     mockUseCashFlowForecast.mockReturnValue({
       result: { ...HEALTHY, lowestBalanceAgorot: -61_200, firstShortfallDate: '2026-09-04' },
       isLoading: false,
-      error: null,
-    })
+      error: null, hasData: true,})
 
     const { getByText } = await render(<CashFlow />)
 
@@ -95,8 +94,7 @@ describe('DesktopCashFlow', () => {
     mockUseCashFlowForecast.mockReturnValue({
       result: { ...HEALTHY, lowestBalanceAgorot: -61_200, firstShortfallDate: '2026-09-04' },
       isLoading: false,
-      error: null,
-    })
+      error: null, hasData: true,})
 
     const { getByText } = await render(<CashFlow />)
 
@@ -109,8 +107,7 @@ describe('DesktopCashFlow', () => {
     mockUseCashFlowForecast.mockReturnValue({
       result: { ...HEALTHY, events: [forecastEvent({ id: 'salary', direction: 'inflow', title: 'משכורת דנה', amountAgorot: 1_395_000 })] },
       isLoading: false,
-      error: null,
-    })
+      error: null, hasData: true,})
 
     const { getByText, queryByText } = await render(<CashFlow />)
 
@@ -138,8 +135,51 @@ describe('DesktopCashFlow', () => {
     expect(getByText(i18n.t('cashFlow.forecast.disclaimer'))).toBeTruthy()
   })
 
+  // Regression coverage for the real-preview bug: Cash Flow rendering
+  // "almost totally blank, then just an error message" after a previously
+  // successful load. Root cause was useCashFlowForecast.error (a union
+  // across six underlying queries) blanking the whole screen on ANY
+  // background refetch failure, even though `result` still held real,
+  // last-known-good data. The fix keys the screen's branching on `hasData`
+  // (true once loaded, stays true through a later failed background
+  // refetch) instead of `error`.
+  it('keeps showing the last-known-good forecast — with a non-blocking banner, not a full-screen replacement — when a background refetch fails after a previous success', async () => {
+    mockUseCashFlowForecast.mockReturnValue({
+      result: { ...HEALTHY },
+      isLoading: false,
+      error: new Error('background refetch failed'),
+      hasData: true,
+      refetch: jest.fn(),
+    })
+
+    const { getByText, getAllByText } = await render(<CashFlow />)
+
+    expect(
+      getByText(i18n.t('cashFlow.mobile.answerOk', { amount: formatILS(HEALTHY.lowestBalanceAgorot), date: '04.09.2026' }))
+    ).toBeTruthy()
+    expect(getAllByText(formatILS(HEALTHY.startingBalanceAgorot)).length).toBeGreaterThanOrEqual(1)
+    expect(getByText(i18n.t('cashFlow.forecast.disclaimer'))).toBeTruthy()
+    expect(getAllByText(i18n.t('cashFlow.forecast.errors.generic')).length).toBeGreaterThan(0)
+  })
+
+  it('shows the full blocking error state (no forecast content to preserve) only when nothing has ever loaded', async () => {
+    mockUseCashFlowForecast.mockReturnValue({
+      result: { ...HEALTHY },
+      isLoading: false,
+      error: new Error('first load failed'),
+      hasData: false,
+      refetch: jest.fn(),
+    })
+
+    const { getByText, queryByText } = await render(<CashFlow />)
+
+    expect(getByText(i18n.t('cashFlow.forecast.errors.generic'))).toBeTruthy()
+    expect(queryByText(i18n.t('cashFlow.mobile.today'))).toBeNull()
+    expect(queryByText(i18n.t('cashFlow.forecast.disclaimer'))).toBeNull()
+  })
+
   it('shows the empty-events state when there are no forecast events', async () => {
-    mockUseCashFlowForecast.mockReturnValue({ result: { ...HEALTHY, events: [] }, isLoading: false, error: null })
+    mockUseCashFlowForecast.mockReturnValue({ result: { ...HEALTHY, events: [] }, isLoading: false, error: null, hasData: true })
 
     const { getByText, queryByText } = await render(<CashFlow />)
 
@@ -159,8 +199,7 @@ describe('DesktopCashFlow', () => {
     mockUseCashFlowForecast.mockReturnValue({
       result: { ...HEALTHY, events: [forecastEvent({ id: 'e2', source: 'recurring', sourceId: 'rec-1', title: 'חשמל' })] },
       isLoading: false,
-      error: null,
-    })
+      error: null, hasData: true,})
 
     const { getByText } = await render(<CashFlow />)
     await fireEvent.press(getByText('חשמל'))
@@ -198,7 +237,8 @@ describe('DesktopCashFlow', () => {
   })
 
   it('shows an error message when the query fails', async () => {
-    mockUseCashFlowForecast.mockReturnValue({ result: HEALTHY, isLoading: false, error: new Error('network down') })
+    // Never loaded — no prior successful data.
+    mockUseCashFlowForecast.mockReturnValue({ result: HEALTHY, isLoading: false, error: new Error('network down'), hasData: false })
 
     const { getByText } = await render(<CashFlow />)
 
@@ -206,7 +246,7 @@ describe('DesktopCashFlow', () => {
   })
 
   it('shows a loading state instead of the headline while the query is pending', async () => {
-    mockUseCashFlowForecast.mockReturnValue({ result: HEALTHY, isLoading: true, error: null })
+    mockUseCashFlowForecast.mockReturnValue({ result: HEALTHY, isLoading: true, error: null, hasData: true })
 
     const { queryByText } = await render(<CashFlow />)
 

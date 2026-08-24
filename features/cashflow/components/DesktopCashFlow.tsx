@@ -66,7 +66,7 @@ export function DesktopCashFlow() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   // Set from the shell header bar, where the mockup draws the selector.
   const days = useCashFlowStore((s) => s.horizonDays)
-  const { result: forecast, isLoading, error, refetch } = useCashFlowForecast(householdId, Number(days))
+  const { result: forecast, isLoading, error, hasData, refetch } = useCashFlowForecast(householdId, Number(days))
 
   if (isHouseholdLoading) {
     return (
@@ -85,12 +85,26 @@ export function DesktopCashFlow() {
           frame puts both in the 68px shell band — title at the start edge,
           30/60/90 pinned to the end — and DesktopTopBar owns that band for
           every desktop screen. Drawing them again titled the page twice. */}
-      {error ? (
-        <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
-      ) : isLoading ? (
+      {isLoading ? (
         <SkeletonList rows={4} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
       ) : (
         <>
+          {/* A background refetch failing after a previous success must not
+              blank the whole screen down to a bare error message — `hasData`
+              already confirmed `forecast` below is real, last-known-good
+              data (this was the root cause of Cash Flow "rendering almost
+              totally blank, then just an error message" on the real
+              preview: useCashFlowForecast's `error` is a union across six
+              underlying queries, so any ONE background refetch failing —
+              even after every horizon loaded fine — used to replace this
+              entire screen). Surface the failure non-destructively instead. */}
+          {error && (
+            <View className="web:desktop:mb-4">
+              <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
           {/* The answer, in one sentence. */}
           <View
             className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-4 web:desktop:rounded-hero web:desktop:border web:desktop:p-5 ${

@@ -44,7 +44,13 @@ export default function Recurring() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { recurringTransactions, isLoading: isRecurringLoading, error, refetch } = useRecurringTransactions(householdId)
+  const {
+    recurringTransactions,
+    isLoading: isRecurringLoading,
+    error,
+    hasData,
+    refetch,
+  } = useRecurringTransactions(householdId)
   const createRecurring = useCreateRecurringTransaction(householdId)
   const { detections: priceIncreaseDetections } = usePriceIncreaseDetections(householdId)
 
@@ -162,12 +168,17 @@ export default function Recurring() {
         </View>
       )}
 
-      {error ? (
-        <ErrorMessage message={t('recurring.errors.generic')} onRetry={refetch} />
-      ) : isLoading || isRecurringLoading ? (
+      {isLoading || isRecurringLoading ? (
         <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('recurring.errors.generic')} onRetry={refetch} />
       ) : (
         <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('recurring.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
           {/* No actionLabel/onAction — the persistent "Add recurring"
               button below already covers it (mobile-expo-reviewer finding,
               same as accounts/index.tsx and goals/index.tsx). */}

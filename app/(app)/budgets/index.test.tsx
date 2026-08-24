@@ -23,6 +23,7 @@ interface MockBudgetProgressResult {
   totalSpentAgorot: number
   isLoading: boolean
   error: Error | null
+  hasData: boolean
   refetch: () => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>
 }
 
@@ -99,6 +100,7 @@ const DEFAULT_PROGRESS_RESULT: MockBudgetProgressResult = {
   totalSpentAgorot: 20000,
   isLoading: false,
   error: null,
+  hasData: true,
   refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: PROGRESS },
   }),
@@ -127,6 +129,7 @@ const DEFAULT_PREVIOUS_PROGRESS_RESULT: MockBudgetProgressResult = {
   totalSpentAgorot: 0,
   isLoading: false,
   error: null,
+  hasData: true,
   refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: PREVIOUS_PROGRESS },
   }),
@@ -137,6 +140,7 @@ const EMPTY_PROGRESS_RESULT: MockBudgetProgressResult = {
   totalSpentAgorot: 0,
   isLoading: false,
   error: null,
+  hasData: true,
   refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: [] },
   }),
@@ -187,6 +191,10 @@ jest.mock('@/features/budgets/hooks/useUncategorizedTransactions', () => ({
     uncategorized: mockUncategorized,
     isLoading: false,
     error: mockUncategorizedError,
+    // Mirrors the real hook: false only for the "genuinely never loaded"
+    // fetch-failed scenario (no prior successful data), true for every
+    // success/empty-queue case in this file.
+    hasData: !mockUncategorizedError,
   }),
 }))
 

@@ -29,12 +29,13 @@ const DEFAULT_BUDGET_PROGRESS = {
   totalSpentAgorot: 0,
   isLoading: false,
   error: null as Error | null,
+  hasData: true,
 }
 const mockUseBudgetProgress = jest.fn<() => typeof DEFAULT_BUDGET_PROGRESS>()
 jest.mock('@/features/budgets/hooks/useBudgetProgress', () => ({
   useBudgetProgress: () => mockUseBudgetProgress(),
 }))
-const DEFAULT_TRANSACTIONS = { transactions: [] as unknown[], isLoading: false, error: null as Error | null }
+const DEFAULT_TRANSACTIONS = { transactions: [] as unknown[], isLoading: false, error: null as Error | null, hasData: true }
 const mockUseTransactions = jest.fn<() => typeof DEFAULT_TRANSACTIONS>()
 jest.mock('@/features/transactions/hooks/useTransactions', () => ({
   useTransactions: () => mockUseTransactions(),
@@ -58,6 +59,7 @@ const DEFAULT_SAFE_TO_SPEND = {
   result: DEFAULT_SAFE_TO_SPEND_RESULT,
   isLoading: false,
   error: null as Error | null,
+  hasData: true,
 }
 const mockUseSafeToSpend = jest.fn<() => typeof DEFAULT_SAFE_TO_SPEND>()
 jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
@@ -118,7 +120,9 @@ describe('Dashboard פנוי באמת hero', () => {
   })
 
   it('shows an error message when the safe-to-spend query fails', async () => {
-    mockUseSafeToSpend.mockReturnValue({ ...DEFAULT_SAFE_TO_SPEND, error: new Error('network down') })
+    // Never loaded — no prior successful data — so `hasData` stays false,
+    // the blocking-error case, not merely `.error` truthy.
+    mockUseSafeToSpend.mockReturnValue({ ...DEFAULT_SAFE_TO_SPEND, error: new Error('network down'), hasData: false })
 
     const { getByText } = await render(<Dashboard />)
 
@@ -245,6 +249,7 @@ describe('Dashboard budget-pace panel', () => {
       totalSpentAgorot: 40000,
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText } = await render(<Dashboard />)
@@ -331,6 +336,7 @@ describe('Dashboard recent-transactions panel', () => {
       ],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText, queryByText } = await render(<Dashboard />)
@@ -344,7 +350,8 @@ describe('Dashboard recent-transactions panel', () => {
   })
 
   it('shows an error message when the transactions query fails', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: new Error('network down') })
+    // Never loaded — no prior successful data.
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: new Error('network down'), hasData: false })
 
     const { getAllByText } = await render(<Dashboard />)
 
@@ -384,6 +391,7 @@ describe('Dashboard hero — a negative safe-to-spend', () => {
       result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: -760_000, shortfallAgorot: 760_000 },
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText, queryByText } = await render(<Dashboard />)

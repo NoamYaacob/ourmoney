@@ -64,7 +64,7 @@ export function MobileCashFlow() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const [days, setDays] = useState<'30' | '60' | '90'>('30')
-  const { result: forecast, isLoading, error, refetch } = useCashFlowForecast(householdId, Number(days))
+  const { result: forecast, isLoading, error, hasData, refetch } = useCashFlowForecast(householdId, Number(days))
 
   if (isHouseholdLoading) {
     return (
@@ -91,16 +91,25 @@ export function MobileCashFlow() {
         </View>
       </View>
 
-      {error ? (
-        <View className="mt-4">
-          <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
-        </View>
-      ) : isLoading ? (
+      {isLoading ? (
         <View className="mt-4">
           <SkeletonList rows={4} />
         </View>
+      ) : !hasData ? (
+        <View className="mt-4">
+          <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
+        </View>
       ) : (
         <>
+          {/* Same fix as DesktopCashFlow.tsx: a background refetch failure
+              must not blank the whole screen once `hasData` has confirmed
+              `forecast` is real — see that file's comment for the full
+              root-cause explanation. */}
+          {error && (
+            <View className="mt-4">
+              <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
           {/* The answer, in one sentence. */}
           <View
             className={`mt-3 flex-row items-start gap-3 rounded-card border p-4 ${

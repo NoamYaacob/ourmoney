@@ -80,12 +80,14 @@ export function DesktopDashboard() {
     totalSpentAgorot,
     isLoading: isProgressLoading,
     error: progressError,
+    hasData: hasProgressData,
     refetch: refetchProgress,
   } = useBudgetProgress(householdId, periodStart)
   const {
     transactions,
     isLoading: isTransactionsLoading,
     error: transactionsError,
+    hasData: hasTransactionsData,
     refetch: refetchTransactions,
   } = useTransactions(householdId, {
     periodStart,
@@ -109,6 +111,7 @@ export function DesktopDashboard() {
     result: safeToSpend,
     isLoading: isSafeToSpendLoading,
     error: safeToSpendError,
+    hasData: hasSafeToSpendData,
     refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, horizon)
 
@@ -202,16 +205,25 @@ export function DesktopDashboard() {
               </View>
             </View>
 
-            {safeToSpendError ? (
-              <View className="mt-2">
-                <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
-              </View>
-            ) : isSafeToSpendLoading ? (
+            {isSafeToSpendLoading ? (
               <View className="mt-2">
                 <SkeletonList rows={1} />
               </View>
+            ) : !hasSafeToSpendData ? (
+              <View className="mt-2">
+                <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
+              </View>
             ) : (
               <>
+                {/* A background refetch failing after a previous success
+                    must not blank the hero — `hasSafeToSpendData` already
+                    confirmed the figures below are real, last-known-good
+                    data. Surface the failure non-destructively instead. */}
+                {safeToSpendError && (
+                  <View className="mt-2">
+                    <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
+                  </View>
+                )}
                 {/* A negative safe-to-spend is a SHORTFALL, and `Money`
                     renders magnitudes — so printing the raw figure here made
                     "-7,600" look identical to "7,600 available", next to a
@@ -398,13 +410,13 @@ export function DesktopDashboard() {
               </Pressable>
             </View>
 
-            {progressError ? (
-              <View className="mt-3">
-                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
-              </View>
-            ) : isProgressLoading ? (
+            {isProgressLoading ? (
               <View className="mt-3">
                 <SkeletonList rows={3} />
+              </View>
+            ) : !hasProgressData ? (
+              <View className="mt-3">
+                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
               </View>
             ) : progress.length === 0 ? (
               <View className="mt-3">
@@ -412,6 +424,11 @@ export function DesktopDashboard() {
               </View>
             ) : (
               <>
+                {progressError && (
+                  <View className="mt-3">
+                    <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
+                  </View>
+                )}
                 <View className="web:desktop:mt-3 web:desktop:flex-row web:desktop:items-baseline web:desktop:gap-2.5">
                   <Money agorot={remainingAgorotValue} size="large" tone={remainingAgorotValue < 0 ? 'danger' : 'default'} />
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -548,13 +565,13 @@ export function DesktopDashboard() {
                 </Pressable>
               )}
             </View>
-            {transactionsError ? (
-              <View className="web:desktop:mt-3.5">
-                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
-              </View>
-            ) : isTransactionsLoading ? (
+            {isTransactionsLoading ? (
               <View className="web:desktop:mt-3.5">
                 <SkeletonList rows={3} />
+              </View>
+            ) : !hasTransactionsData ? (
+              <View className="web:desktop:mt-3.5">
+                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
               </View>
             ) : recentTransactions.length === 0 ? (
               <View className="web:desktop:mt-3.5">
@@ -562,6 +579,9 @@ export function DesktopDashboard() {
               </View>
             ) : (
               <View className="web:desktop:mt-3.5 web:desktop:gap-3">
+                {transactionsError && (
+                  <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
+                )}
                 {recentTransactions.map((txn) => {
                   const categoryName = txn.category_id ? categoryNameById[txn.category_id] : undefined
                   return (

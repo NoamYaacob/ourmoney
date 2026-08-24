@@ -104,7 +104,7 @@ describe('Transactions list', () => {
   })
 
   it('shows the empty message, and the header add-transaction button navigates to /transactions/new', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getAllByText, getAllByLabelText, getAllByRole } = await render(<Transactions />)
 
@@ -135,7 +135,7 @@ describe('Transactions list', () => {
   // asserted below by confirming the bare (non-`web:desktop:`-prefixed)
   // tokens contain no `flex-1`/`justify-center` of their own.
   it("gives the desktop empty state the column's remaining space, centered, instead of a small top-anchored box", async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getAllByText } = await render(<Transactions />)
 
@@ -160,7 +160,7 @@ describe('Transactions list', () => {
   // reusing the mobile compact one — guards that each variant is correctly
   // shown/hidden per breakpoint rather than both showing at once on either.
   it('shows the compact empty state only off desktop, and the full-size one only at desktop', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getAllByText } = await render(<Transactions />)
 
@@ -191,6 +191,7 @@ describe('Transactions list', () => {
       ],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText, getAllByText } = await render(<Transactions />)
@@ -220,7 +221,7 @@ describe('Transactions list', () => {
   // that second column, so the screen now uses the same `wide` (1150px)
   // token every other desktop screen with a sidebar uses (Dashboard, etc.).
   it('uses the wide (1150px) desktop content cap, giving room for the sidebar column', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     // Anchored on the empty-state message rather than the screen title,
     // which is the shell bar's now. Walks up to the Screen's own content
@@ -246,7 +247,7 @@ describe('Transactions list', () => {
   // keeps the original stacked layout — the `web:desktop:` prefix on every
   // class involved means nothing changes off that breakpoint.
   it('merges the search field and the 3 filter selects into one row at desktop', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getByLabelText } = await render(<Transactions />)
 
@@ -266,7 +267,7 @@ describe('Transactions list', () => {
   // shared/personal chip rows — each a full stacked row on mobile — merge
   // into one denser row at desktop, since both are secondary filters.
   it('merges the type and shared/personal chip rows into one row at desktop', async () => {
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getByTestId } = await render(<Transactions />)
 
@@ -294,6 +295,7 @@ describe('Transactions list', () => {
       ],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getAllByText } = await render(<Transactions />)
@@ -336,7 +338,7 @@ describe('Transactions list', () => {
     }
 
     it('gives a transfer row an accent (neutral) amount color, not positive/expense-ink', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
 
@@ -352,7 +354,8 @@ describe('Transactions list', () => {
         transactions: [{ ...TRANSFER_LEG, is_shared: false }],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText, queryByText } = await render(<Transactions />)
 
@@ -361,7 +364,7 @@ describe('Transactions list', () => {
     })
 
     it('tapping a transfer row navigates to the transfer detail screen, not the transaction detail screen', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
       await fireEvent.press(getByText('העברה לחיסכון'))
@@ -376,7 +379,8 @@ describe('Transactions list', () => {
         transactions: [TRANSFER_LEG, ORDINARY_TXN],
         isLoading: false,
         error: null,
-      })
+       hasData: true,
+    })
 
       const { getByText, queryByText } = await render(<Transactions />)
 
@@ -385,7 +389,7 @@ describe('Transactions list', () => {
     })
 
     it('pressing the transfer type chip updates the route params', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByTestId } = await render(<Transactions />)
       await fireEvent.press(getByTestId('transactions-filter-type-transfer'))
@@ -394,7 +398,7 @@ describe('Transactions list', () => {
     })
 
     it('a transfer row is not selectable in selection mode — tapping it does nothing', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG, ORDINARY_TXN], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG, ORDINARY_TXN], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -404,7 +408,7 @@ describe('Transactions list', () => {
     })
 
     it('"select all" does not include transfer rows', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG, ORDINARY_TXN], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TRANSFER_LEG, ORDINARY_TXN], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -419,7 +423,7 @@ describe('Transactions list', () => {
 
   describe('search + filters', () => {
     it('typing in the search field updates the route params, not local-only state', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByLabelText } = await render(<Transactions />)
       await fireEvent.changeText(getByLabelText('חיפוש'), 'סופר')
@@ -436,7 +440,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText, queryByText } = await render(<Transactions />)
 
@@ -445,7 +450,7 @@ describe('Transactions list', () => {
     })
 
     it('pressing an income/expense type chip updates the route params', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByTestId } = await render(<Transactions />)
       await fireEvent.press(getByTestId('transactions-filter-type-expense'))
@@ -454,7 +459,7 @@ describe('Transactions list', () => {
     })
 
     it('pressing a shared/personal chip updates the route params', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByTestId } = await render(<Transactions />)
       await fireEvent.press(getByTestId('transactions-filter-shared-personal'))
@@ -463,7 +468,7 @@ describe('Transactions list', () => {
     })
 
     it('pressing the account filter and choosing a specific account updates the route params', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByRole, getByText } = await render(<Transactions />)
       await fireEvent.press(getByRole('button', { name: 'חשבון' }))
@@ -473,7 +478,7 @@ describe('Transactions list', () => {
     })
 
     it('pressing the category filter and choosing "ללא קטגוריה" sets categoryId to the uncategorized sentinel', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByRole, getByText } = await render(<Transactions />)
       await fireEvent.press(getByRole('button', { name: 'קטגוריה' }))
@@ -484,7 +489,7 @@ describe('Transactions list', () => {
 
     it('a period param translates into the matching periodStart/periodEnd passed to useTransactions', async () => {
       mockSearchParams = { period: 'current_month' }
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       await render(<Transactions />)
 
@@ -495,7 +500,7 @@ describe('Transactions list', () => {
 
     it('an accountId param is passed through to useTransactions as a server-side filter', async () => {
       mockSearchParams = { accountId: 'acct-1' }
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       await render(<Transactions />)
 
@@ -505,7 +510,7 @@ describe('Transactions list', () => {
 
     it('a categoryId=uncategorized param is passed through as the uncategorized flag, not categoryId', async () => {
       mockSearchParams = { categoryId: 'uncategorized' }
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       await render(<Transactions />)
 
@@ -522,7 +527,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       await render(<Transactions />)
 
@@ -540,7 +546,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText, queryByText } = await render(<Transactions />)
 
@@ -556,7 +563,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getAllByText } = await render(<Transactions />)
       const clearButtons = getAllByText('ניקוי סינון')
@@ -569,7 +577,7 @@ describe('Transactions list', () => {
 
     it('shows the true-empty message, not no-results, when no filter is active and the household has zero transactions', async () => {
       mockSearchParams = {}
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getAllByText, queryByText } = await render(<Transactions />)
 
@@ -585,7 +593,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText } = await render(<Transactions />)
 
@@ -595,7 +604,7 @@ describe('Transactions list', () => {
 
     it('does not show a clear-filters action when no filter is active', async () => {
       mockSearchParams = {}
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { queryByText } = await render(<Transactions />)
 
@@ -610,7 +619,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText } = await render(<Transactions />)
 
@@ -624,7 +634,7 @@ describe('Transactions list', () => {
     const TXN_2 = { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false, transfer_id: null }
 
     it('does not select anything when entering selection mode', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText, queryByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -634,7 +644,7 @@ describe('Transactions list', () => {
     })
 
     it('selecting one row updates the selected count', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -644,7 +654,7 @@ describe('Transactions list', () => {
     })
 
     it('pressing an already-selected row deselects it', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -656,7 +666,7 @@ describe('Transactions list', () => {
     })
 
     it('"select all" selects every currently visible (filtered) transaction', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -666,7 +676,7 @@ describe('Transactions list', () => {
     })
 
     it('"deselect all" clears the selection but stays in selection mode', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText, queryByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -680,7 +690,7 @@ describe('Transactions list', () => {
     })
 
     it('"בטל" (cancel) exits selection mode and clears the selection, restoring normal row navigation', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText, queryByText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -696,7 +706,7 @@ describe('Transactions list', () => {
     })
 
     it('changing a filter while selection mode is active clears the selection (documented safe behavior)', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText, rerender } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -707,14 +717,14 @@ describe('Transactions list', () => {
       // re-renders with a narrower visible set — exactly what happens when
       // the user picks a different filter while selection mode is active.
       mockSearchParams = { type: 'expense' }
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null, hasData: true })
       await rerender(<Transactions />)
 
       expect(getByText('0 נבחרו')).toBeTruthy()
     })
 
     it('bulk-categorizing updates only the selected transactions, sending exactly those ids', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
       mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1'], missingIds: [] })
 
       const { getByText, getByRole } = await render(<Transactions />)
@@ -732,7 +742,7 @@ describe('Transactions list', () => {
     })
 
     it('supports assigning "ללא קטגוריה" (uncategorized) as the bulk target', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null, hasData: true })
       mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1'], missingIds: [] })
 
       const { getByText, getByRole } = await render(<Transactions />)
@@ -747,7 +757,7 @@ describe('Transactions list', () => {
     })
 
     it('shows a success message and exits selection mode when every selected row updates', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
       mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1', 't2'], missingIds: [] })
 
       const { getByText, getByRole, queryByText } = await render(<Transactions />)
@@ -761,7 +771,7 @@ describe('Transactions list', () => {
     })
 
     it('partial success keeps only the not-updated rows selected and shows a partial message (failed rows do not vanish from selection)', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
       mockBulkMutateAsync.mockResolvedValue({ updatedIds: ['t1'], missingIds: ['t2'] })
 
       const { getByText, getByRole } = await render(<Transactions />)
@@ -777,7 +787,7 @@ describe('Transactions list', () => {
     })
 
     it('treats a thrown error as a total failure — the full original selection is preserved, not cleared', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
       mockBulkMutateAsync.mockRejectedValue(new Error('network error'))
 
       const { getByText, getByRole } = await render(<Transactions />)
@@ -791,7 +801,7 @@ describe('Transactions list', () => {
     })
 
     it('shows a disabled loading control instead of the category picker while a bulk update is in flight (double-submit protection)', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null, hasData: true })
       mockBulkIsPending = true
 
       const { getByText, getByRole } = await render(<Transactions />)
@@ -807,7 +817,7 @@ describe('Transactions list', () => {
     })
 
     it('gives a selected row a non-color-only, screen-reader-visible selected state (accessibilityRole/State, not color alone)', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null, hasData: true })
 
       const { getByText, getByLabelText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -819,7 +829,7 @@ describe('Transactions list', () => {
     })
 
     it('an unselected row in selection mode is labeled and stated as not selected', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null, hasData: true })
 
       const { getByText, getByLabelText } = await render(<Transactions />)
       await fireEvent.press(getByText('בחירה'))
@@ -829,7 +839,7 @@ describe('Transactions list', () => {
     })
 
     it('the selection entry point is hidden while there is nothing to select', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { queryByText } = await render(<Transactions />)
       expect(queryByText('בחירה')).toBeNull()
@@ -844,7 +854,7 @@ describe('Transactions list', () => {
     const TXN_2 = { id: 't2', category_id: null, description: 'דלק', merchant_name: null, amount_agorot: -3000, txn_date: '2026-08-03', is_shared: true, is_excluded: false, transfer_id: null }
 
     it('shows the uncategorized-transactions queue banner, and pressing it filters to uncategorized and enters selection mode', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [TXN_1, TXN_2], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
 
@@ -860,7 +870,8 @@ describe('Transactions list', () => {
         transactions: [{ ...TXN_1, category_id: 'cat-1' }],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { queryByText } = await render(<Transactions />)
 
@@ -875,7 +886,8 @@ describe('Transactions list', () => {
         ],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText, getAllByText } = await render(<Transactions />)
 
@@ -893,7 +905,8 @@ describe('Transactions list', () => {
         transactions: [{ ...TXN_1, matched_rule_id: 'rule-1' }],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText } = await render(<Transactions />)
 
@@ -905,7 +918,8 @@ describe('Transactions list', () => {
         transactions: [{ ...TXN_1, description: 'מחסני רהיטים', amount_agorot: -59900, installment_plan_id: 'plan-1', installment_index: 5 }],
         isLoading: false,
         error: null,
-      })
+      hasData: true,
+    })
 
       const { getByText } = await render(<Transactions />)
 
@@ -914,7 +928,7 @@ describe('Transactions list', () => {
     })
 
     it('shows the active categorization rules in the sidebar, linking to the rules management screen', async () => {
-      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null })
+      mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
       const { getByText } = await render(<Transactions />)
 

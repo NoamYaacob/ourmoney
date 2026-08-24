@@ -73,6 +73,7 @@ export function MobileHome() {
     horizon,
     isLoading: isSafeToSpendLoading,
     error: safeToSpendError,
+    hasData: hasSafeToSpendData,
     refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, 'month')
   const {
@@ -91,6 +92,7 @@ export function MobileHome() {
     totalSpentAgorot,
     isLoading: isBudgetLoading,
     error: budgetError,
+    hasData: hasBudgetData,
     refetch: refetchBudget,
   } = useBudgetProgress(householdId, periodStart)
 
@@ -207,16 +209,25 @@ export function MobileHome() {
           </View>
         </View>
 
-        {safeToSpendError ? (
-          <View className="mt-2">
-            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
-          </View>
-        ) : isSafeToSpendLoading ? (
+        {isSafeToSpendLoading ? (
           <View className="mt-2">
             <SkeletonList rows={1} />
           </View>
+        ) : !hasSafeToSpendData ? (
+          <View className="mt-2">
+            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
+          </View>
         ) : (
           <>
+            {/* A background refetch failing after a previous success must
+                not blank the hero — `hasSafeToSpendData` already confirmed
+                `safeToSpend` below is real, last-known-good data. Surface
+                the failure as a small non-blocking banner instead. */}
+            {safeToSpendError && (
+              <View className="mt-2">
+                <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
+              </View>
+            )}
             <View className="mt-1.5">
               <Money
                 agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
@@ -346,10 +357,10 @@ export function MobileHome() {
       {/* 4 — the month's budget. */}
       <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button" className="mt-3">
         <View className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          {budgetError ? (
-            <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchBudget} />
-          ) : isBudgetLoading ? (
+          {isBudgetLoading ? (
             <SkeletonList rows={2} />
+          ) : !hasBudgetData ? (
+            <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchBudget} />
           ) : totalAllocatedAgorot === 0 ? (
             <>
               <CardHeading>{t('home.budget.title', { month: monthLabel })}</CardHeading>
@@ -359,6 +370,13 @@ export function MobileHome() {
             </>
           ) : (
             <>
+              {/* Preserve last-known-good data through a background refetch
+                  failure — see the hero card above for the same pattern. */}
+              {budgetError && (
+                <View className="mb-2">
+                  <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchBudget} />
+                </View>
+              )}
               <CardHeading
                 trailing={
                   <StatusChip

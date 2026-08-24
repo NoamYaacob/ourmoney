@@ -47,7 +47,7 @@ jest.mock('@/features/budgets/hooks/useUncategorizedTransactions', () => ({
 
 let mockTransactions: unknown[] = []
 jest.mock('@/features/transactions/hooks/useTransactions', () => ({
-  useTransactions: () => ({ transactions: mockTransactions, isLoading: false, error: null, refetch: jest.fn() }),
+  useTransactions: () => ({ transactions: mockTransactions, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
 }))
 
 const mockBulkMutateAsync = jest.fn<(...args: unknown[]) => Promise<{ updatedIds: string[]; missingIds: string[] }>>()

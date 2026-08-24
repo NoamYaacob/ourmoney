@@ -49,7 +49,7 @@ export default function Obligations() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { obligations, isLoading: isObligationsLoading, error, refetch } = usePlannedObligations(householdId)
+  const { obligations, isLoading: isObligationsLoading, error, hasData, refetch } = usePlannedObligations(householdId)
   const createObligation = useCreatePlannedObligation(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
@@ -138,12 +138,17 @@ export default function Obligations() {
 
       <PlanningTabs active="obligations" />
 
-      {error ? (
-        <ErrorMessage message={t('obligations.errors.generic')} onRetry={refetch} />
-      ) : isLoading || isObligationsLoading ? (
+      {isLoading || isObligationsLoading ? (
         <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('obligations.errors.generic')} onRetry={refetch} />
       ) : (
         <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('obligations.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
           {/* Desktop Claude Design pass: the mockup's dark summary card,
               stating what's already committed before any decision is made
               this month — desktop only. The figure is a plain sum of the

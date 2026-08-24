@@ -59,7 +59,7 @@ jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
 describe('Accounts list', () => {
   beforeEach(() => {
     mockCreateAccountMutate.mockClear()
-    mockUseAccounts.mockReturnValue({ accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT], isLoading: false, error: null })
+    mockUseAccounts.mockReturnValue({ accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT], isLoading: false, error: null, hasData: true })
     mockUseAccountBalances.mockReturnValue({ balances: { 'acct-1': 543200 }, isLoading: false })
   })
 
@@ -94,7 +94,7 @@ describe('Accounts list', () => {
   // (name validation + type selection via the polished bottom sheet)
   // weren't covered before this phase.
   it('shows the empty state (and still offers the persistent add-account CTA) when there are no accounts', async () => {
-    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null })
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Accounts />)
 
@@ -222,6 +222,7 @@ describe('Accounts list', () => {
       ],
       isLoading: false,
       error: null,
+      hasData: true,
     })
     mockUseAccountBalances.mockReturnValue({
       balances: { 'acct-1': 10000, 'acct-4': 20000, 'acct-2': 999900 },

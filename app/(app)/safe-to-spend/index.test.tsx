@@ -55,6 +55,7 @@ jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
     horizon: { start: '2026-08-22', end: '2026-08-31' },
     isLoading: false,
     error: null,
+    hasData: true,
   }),
 }))
 

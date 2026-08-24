@@ -90,7 +90,7 @@ describe('Recurring list', () => {
   // of cards answered "how many templates do we have", which is not a
   // question anyone opens this screen to ask.
   it('opens each row with the day of the month the charge comes off', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Recurring />)
 
@@ -109,6 +109,7 @@ describe('Recurring list', () => {
       recurringTransactions: [{ ...RECURRING[0], id: 'rec-1', is_active: false }, RECURRING[1]],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText } = await render(<Recurring />)
@@ -130,7 +131,7 @@ describe('Recurring list', () => {
   })
 
   it('renders a detected price increase with previous/current amounts and percent', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [PRICE_INCREASE_DETECTION], isLoading: false, error: null })
 
     const { getByText } = await render(<Recurring />)
@@ -147,7 +148,7 @@ describe('Recurring list', () => {
   })
 
   it('does not render the price-increase section when there are no detections', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [], isLoading: false, error: null })
 
     const { queryByText } = await render(<Recurring />)
@@ -160,7 +161,7 @@ describe('Recurring list', () => {
   // expense templates (350000 + 12000 agorot) — a paused or income template
   // must not count toward "what this household is committed to paying."
   it('shows a summary card totaling active expense templates only', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Recurring />)
 
@@ -175,6 +176,7 @@ describe('Recurring list', () => {
       ],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getAllByText } = await render(<Recurring />)

@@ -85,7 +85,7 @@ const OBLIGATIONS = [
 describe('Obligations list', () => {
   beforeEach(() => {
     mockCreateMutate.mockClear()
-    mockUsePlannedObligations.mockReturnValue({ obligations: OBLIGATIONS, isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: OBLIGATIONS, isLoading: false, error: null, hasData: true })
   })
 
   it('lists upcoming obligations sorted by nearest due date first, excluding completed ones', async () => {
@@ -114,7 +114,7 @@ describe('Obligations list', () => {
   })
 
   it('hides the history toggle entirely when there is no completed/cancelled history', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [OBLIGATIONS[0], OBLIGATIONS[1]], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [OBLIGATIONS[0], OBLIGATIONS[1]], isLoading: false, error: null, hasData: true })
     const { queryByText } = await render(<Obligations />)
 
     expect(queryByText('היסטוריית התחייבויות')).toBeNull()
@@ -150,6 +150,7 @@ describe('Obligations list', () => {
       obligations: [{ ...OBLIGATIONS[2] }],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText } = await render(<Obligations />)
@@ -161,6 +162,7 @@ describe('Obligations list', () => {
       obligations: [{ ...OBLIGATIONS[1], due_date: '2020-01-01' }],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText } = await render(<Obligations />)
@@ -168,7 +170,7 @@ describe('Obligations list', () => {
   })
 
   it('validates a missing name before creating', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -179,7 +181,7 @@ describe('Obligations list', () => {
   })
 
   it('validates a non-positive amount before creating', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -191,7 +193,7 @@ describe('Obligations list', () => {
   })
 
   it('creates a shared obligation with the entered fields, defaulting to no category/account when not chosen', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -211,7 +213,7 @@ describe('Obligations list', () => {
   })
 
   it('creates a personal obligation when the personal chip is selected', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))

@@ -53,7 +53,7 @@ export default function SafeToSpendDetail() {
   const isDark = scheme === 'dark'
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { result, isLoading, error, refetch } = useSafeToSpend(householdId, 'month')
+  const { result, isLoading, error, hasData, refetch } = useSafeToSpend(householdId, 'month')
   const [openGroup, setOpenGroup] = useState<SafeToSpendItemSource | null>('obligation')
 
   if (isHouseholdLoading || isLoading) {
@@ -64,7 +64,13 @@ export default function SafeToSpendDetail() {
     )
   }
 
-  if (error) {
+  // Only a genuine "never loaded" failure replaces the whole screen.
+  // `hasData` is false exactly then — a later background refetch failing
+  // after a previous success leaves `hasData` true and `result` holding
+  // real, last-known-good figures, which the non-blocking banner below
+  // surfaces instead of discarding them (see useSafeToSpend.ts's `hasData`
+  // field for the full reasoning).
+  if (!hasData) {
     return (
       <Screen onBack={() => router.back()}>
         <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetch} />
@@ -106,6 +112,11 @@ export default function SafeToSpendDetail() {
 
   return (
     <Screen onBack={() => router.back()} scroll width="wide">
+      {error && (
+        <View className="mb-3">
+          <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetch} />
+        </View>
+      )}
       <View className="-mx-6 -mt-6">
         <HeroPanel className="rounded-none rounded-b-hero px-6 pb-6 pt-3">
           <View className="h-11 flex-row items-center justify-between">

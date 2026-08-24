@@ -85,7 +85,7 @@ const PLANS = [
 describe('Installments list', () => {
   beforeEach(() => {
     mockCreateMutate.mockClear()
-    mockUseInstallmentPlans.mockReturnValue({ plans: PLANS, isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: PLANS, isLoading: false, error: null, hasData: true })
     mockUseInstallmentMaterializedCounts.mockReturnValue({ materializedCounts: { 'plan-1': 1 } })
     mockUseAccounts.mockReturnValue({
       accounts: [
@@ -109,7 +109,7 @@ describe('Installments list', () => {
   })
 
   it('shows an error message instead of the list when useInstallmentPlans errors', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: new Error('network error') })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: new Error('network error'), hasData: false })
 
     const { getByText, queryByText } = await render(<Installments />)
 
@@ -118,7 +118,7 @@ describe('Installments list', () => {
   })
 
   it('shows an empty state when there are no plans', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     mockUseInstallmentMaterializedCounts.mockReturnValue({ materializedCounts: {} })
 
     const { getByText } = await render(<Installments />)
@@ -126,7 +126,7 @@ describe('Installments list', () => {
   })
 
   it('validates a missing description before creating', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     const { getByText } = await render(<Installments />)
 
     await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
@@ -137,7 +137,7 @@ describe('Installments list', () => {
   })
 
   it('validates a missing account before creating', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Installments />)
 
     await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
@@ -149,7 +149,7 @@ describe('Installments list', () => {
   })
 
   it('validates a non-positive total amount before creating', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Installments />)
 
     await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
@@ -164,7 +164,7 @@ describe('Installments list', () => {
   })
 
   it('validates an invalid installment count before creating', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Installments />)
 
     await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
@@ -179,7 +179,7 @@ describe('Installments list', () => {
   })
 
   it('creates a plan with the entered fields, restricting the account picker to credit-card accounts only', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText, queryByText } = await render(<Installments />)
 
     await fireEvent.press(getByText('הוספת רכישה בתשלומים'))
@@ -208,7 +208,7 @@ describe('Installments list', () => {
   // rendered only an error message with no way back, leaving isAdding stuck
   // true forever.
   it('offers a way back out of the add form when there are no credit-card accounts to choose from', async () => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     mockUseAccounts.mockReturnValue({
       accounts: [{ id: 'acc-checking', name: 'עו״ש', type: 'checking', is_active: true, billing_cycle_day: null }],
       isLoading: false,
@@ -231,7 +231,7 @@ describe('Installments list', () => {
 // query of their own.
 describe('Installments — desktop billing-cycle cards', () => {
   beforeEach(() => {
-    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null })
+    mockUseInstallmentPlans.mockReturnValue({ plans: [], isLoading: false, error: null, hasData: true })
     mockUseInstallmentMaterializedCounts.mockReturnValue({ materializedCounts: {} })
     mockUseAccounts.mockReturnValue({
       accounts: [{ id: 'acc-cc', name: 'ויזה כאל', type: 'credit_card', is_active: true, billing_cycle_day: 10 }],

@@ -151,7 +151,7 @@ export function DesktopTransactions() {
   // (value-based hashing), not reference-based, so a fresh-but-equal
   // filters object on every render does not trigger a refetch.
   const serverFilters = buildTransactionQueryFilters(filterState)
-  const { transactions, isLoading, error, refetch } = useTransactions(householdId, serverFilters)
+  const { transactions, isLoading, error, hasData, refetch } = useTransactions(householdId, serverFilters)
   // Fail-safe display: householdId is briefly null while useHousehold
   // itself is still resolving, during which useTransactions' own isLoading
   // is false (enabled: !!householdId) — without folding in
@@ -506,11 +506,16 @@ export function DesktopTransactions() {
             </Pressable>
           )}
 
-          {error ? (
-            <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
-          ) : isPageLoading ? (
+          {isPageLoading ? (
             <SkeletonList rows={5} />
-          ) : showTrueEmpty ? (
+          ) : !hasData ? (
+            <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
+          ) : error ? (
+            <View className="web:desktop:mb-3">
+              <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
+            </View>
+          ) : null}
+          {isPageLoading || !hasData ? null : showTrueEmpty ? (
             // Phase 3.1: dropped the actionLabel button — the screen's own
             // floatingAction FAB already does the identical "add a
             // transaction" action, so showing both was a redundant, competing

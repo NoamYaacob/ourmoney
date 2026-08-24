@@ -84,6 +84,7 @@ export default function Budgets() {
     totalSpentAgorot,
     isLoading: isProgressLoading,
     error,
+    hasData: hasProgressData,
     refetch: refetchProgress,
   } = useBudgetProgress(householdId, periodStart)
   // Folds in isHouseholdLoading (mobile-expo-reviewer finding — see
@@ -94,6 +95,7 @@ export default function Budgets() {
     uncategorized,
     isLoading: isUncategorizedLoading,
     error: uncategorizedError,
+    hasData: hasUncategorizedData,
     refetch: refetchUncategorized,
   } = useUncategorizedTransactions(householdId)
   const updateTransaction = useUpdateTransaction(householdId)
@@ -351,12 +353,20 @@ export default function Budgets() {
         <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
       </View>
 
-      {error ? (
-        <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchProgress} />
-      ) : isLoading ? (
+      {isLoading ? (
         <SkeletonList rows={4} />
+      ) : !hasProgressData ? (
+        <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchProgress} />
       ) : (
         <>
+          {/* A background refetch failing after a previous success must not
+              blank the whole screen — `hasProgressData` already confirmed
+              `progress`/totals below are real, last-known-good data. */}
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchProgress} />
+            </View>
+          )}
           <BudgetSummaryCard
             totalAllocatedAgorot={totalAllocatedAgorot}
             totalSpentAgorot={totalSpentAgorot}
@@ -735,10 +745,10 @@ export default function Budgets() {
           <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
             {t('budgets.uncategorizedTitle')}
           </Text>
-          {uncategorizedError ? (
-            <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
-          ) : isUncategorizedLoading ? (
+          {isUncategorizedLoading ? (
             <SkeletonList rows={3} />
+          ) : !hasUncategorizedData ? (
+            <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
           ) : uncategorized.length === 0 ? (
             <>
               <View className="web:desktop:hidden">
@@ -750,6 +760,11 @@ export default function Budgets() {
             </>
           ) : (
             <Card>
+              {uncategorizedError && (
+                <View className="mb-3">
+                  <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
+                </View>
+              )}
               {uncategorized.map((txn, index) => (
                 <View key={txn.id}>
                   {index > 0 && (

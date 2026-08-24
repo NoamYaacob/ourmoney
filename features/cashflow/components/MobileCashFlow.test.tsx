@@ -49,12 +49,24 @@ const HEALTHY = {
   ],
 }
 let mockForecast = { ...HEALTHY }
+let mockError: Error | null = null
+let mockHasData = true
+const mockRefetch = jest.fn()
 jest.mock('@/features/cashflow/hooks/useCashFlowForecast', () => ({
-  useCashFlowForecast: () => ({ result: mockForecast, isLoading: false, error: null }),
+  useCashFlowForecast: () => ({
+    result: mockForecast,
+    isLoading: false,
+    error: mockError,
+    hasData: mockHasData,
+    refetch: mockRefetch,
+  }),
 }))
 
 beforeEach(() => {
   mockForecast = { ...HEALTHY }
+  mockError = null
+  mockHasData = true
+  mockRefetch.mockClear()
 })
 
 describe('MobileCashFlow', () => {
@@ -116,5 +128,48 @@ describe('MobileCashFlow', () => {
   it('keeps the forecast disclaimer — the projection is not a promise', async () => {
     const { getByText } = await render(<MobileCashFlow />)
     expect(getByText(i18n.t('cashFlow.forecast.disclaimer'))).toBeTruthy()
+  })
+
+  // Regression coverage for the real-preview bug: Cash Flow rendering
+  // "almost totally blank, then just an error message" after a previously
+  // successful load. Root cause was useCashFlowForecast.error (a union
+  // across six underlying queries) blanking the whole screen on ANY
+  // background refetch failure, even though `result` still held real,
+  // last-known-good data. The fix keys the screen's branching on `hasData`
+  // (true once loaded, stays true through a later failed background
+  // refetch) instead of `error` — see useCashFlowForecast.ts and this
+  // component's own comment for the full reasoning.
+  it('keeps showing the last-known-good forecast — with a non-blocking banner, not a full-screen replacement — when a background refetch fails after a previous success', async () => {
+    mockHasData = true
+    mockError = new Error('background refetch failed')
+    const { getByText, getAllByText } = await render(<MobileCashFlow />)
+
+    // The real content is still there — this is the whole point of the fix.
+    expect(
+      getByText(
+        i18n.t('cashFlow.mobile.answerOk', {
+          amount: formatILS(HEALTHY.lowestBalanceAgorot),
+          date: '04.09.2026',
+        })
+      )
+    ).toBeTruthy()
+    expect(getByText(formatILS(HEALTHY.startingBalanceAgorot))).toBeTruthy()
+    expect(getByText(i18n.t('cashFlow.forecast.disclaimer'))).toBeTruthy()
+
+    // The failure is surfaced, not hidden — but as a banner alongside the
+    // content, never as a replacement for it.
+    expect(getAllByText(i18n.t('cashFlow.forecast.errors.generic')).length).toBeGreaterThan(0)
+  })
+
+  it('shows the full blocking error state (no forecast content to preserve) only when nothing has ever loaded', async () => {
+    mockHasData = false
+    mockError = new Error('first load failed')
+    const { getByText, queryByText } = await render(<MobileCashFlow />)
+
+    expect(getByText(i18n.t('cashFlow.forecast.errors.generic'))).toBeTruthy()
+    // No stale/default forecast content leaks through when there was never
+    // a real result to show.
+    expect(queryByText(i18n.t('cashFlow.mobile.today'))).toBeNull()
+    expect(queryByText(i18n.t('cashFlow.forecast.disclaimer'))).toBeNull()
   })
 })

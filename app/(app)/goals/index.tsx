@@ -38,7 +38,7 @@ export default function Goals() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { balances } = useAccountBalances(householdId)
-  const { goals, isLoading: isGoalsLoading, error, refetch } = useSavingsGoals(householdId)
+  const { goals, isLoading: isGoalsLoading, error, hasData, refetch } = useSavingsGoals(householdId)
   const createGoal = useCreateSavingsGoal(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading
@@ -96,12 +96,17 @@ export default function Goals() {
 
       <PlanningTabs active="goals" />
 
-      {error ? (
-        <ErrorMessage message={t('savings.errors.generic')} onRetry={refetch} />
-      ) : isLoading || isGoalsLoading ? (
+      {isLoading || isGoalsLoading ? (
         <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('savings.errors.generic')} onRetry={refetch} />
       ) : (
         <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('savings.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
           {/* No actionLabel/onAction — the persistent "Add goal" button
               below already covers it (mobile-expo-reviewer finding, same
               as accounts/index.tsx and recurring/index.tsx). */}

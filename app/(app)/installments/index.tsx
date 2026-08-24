@@ -46,7 +46,7 @@ export default function Installments() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { plans, isLoading: isPlansLoading, error, refetch: refetchPlans } = useInstallmentPlans(householdId)
+  const { plans, isLoading: isPlansLoading, error, hasData, refetch: refetchPlans } = useInstallmentPlans(householdId)
   const { materializedCounts } = useInstallmentMaterializedCounts(householdId)
   const createPlan = useCreateInstallmentPlan(householdId)
   // Desktop Claude Design pass: the mockup's billing-cycle cards, at the
@@ -302,12 +302,17 @@ export default function Installments() {
         </View>
       )}
 
-      {error ? (
-        <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
-      ) : isLoading || isPlansLoading ? (
+      {isLoading || isPlansLoading ? (
         <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
       ) : (
         <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
+            </View>
+          )}
           {plans.length === 0 && <EmptyState iconName="card-outline" message={t('installments.empty')} hint={t('installments.emptyHint')} />}
           {/* The phone stacks cards; desktop lays each plan across one line
               with its own figure columns. Both carry the same pill track —
