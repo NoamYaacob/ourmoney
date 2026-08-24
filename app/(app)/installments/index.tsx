@@ -69,6 +69,21 @@ export default function Installments() {
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
 
   const creditCardAccounts = accounts.filter((a) => a.type === 'credit_card' && a.is_active)
+  // Two different real reasons a real card can have no cycle card to show —
+  // distinguished so the empty state gives an accurate, actionable reason
+  // rather than one generic message covering both:
+  //   - unconfigured: no billing_cycle_day at all, so
+  //     getCurrentBillingCycleRange has nothing to compute against.
+  //   - genuinely quiet: billing_cycle_day IS set, but
+  //     buildUpcomingCommitments.ts's own credit-card-cycle loop skips
+  //     emitting a commitment when this cycle's spend is exactly ₪0 (a
+  //     brand-new card, or one with no transactions yet) — not a
+  //     configuration problem, so telling a household to "make sure the
+  //     billing date is set" here would be actively wrong.
+  const creditCardAccountsMissingCycleDay = creditCardAccounts.filter((a) => a.billing_cycle_day === null)
+  const creditCardAccountsConfiguredButQuiet = creditCardAccounts.filter(
+    (a) => a.billing_cycle_day !== null && !creditCardCycleCommitments.some((c) => c.sourceId === a.id)
+  )
 
   const [isAdding, setIsAdding] = useState(false)
   const [description, setDescription] = useState('')
@@ -165,16 +180,21 @@ export default function Installments() {
       </Text>
 
       {creditCardAccounts.length > 0 && creditCardCycleCommitments.length === 0 && !isLoading && (
-        // The billing-cycle cards below only ever render an account that
-        // has a `credit_card_cycle` commitment — which useUpcomingCommitments
-        // only produces for an active card whose billing_cycle_day is set.
-        // A household with a real credit-card account but no cycle date
-        // configured used to see this entire top section vanish with no
-        // explanation, which reads as broken rather than as "nothing to
-        // show yet" — the one distinction the runtime-fix work upstream of
-        // this screen made a point of preserving everywhere else.
-        <View className="mb-5">
-          <EmptyState iconName="card-outline" message={t('installments.cycleCards.empty')} compact />
+        // The billing-cycle cards below only ever render an account with a
+        // `credit_card_cycle` commitment. A real card can be missing one
+        // for two different reasons (see creditCardAccountsMissingCycleDay/
+        // creditCardAccountsConfiguredButQuiet above) — shown as two
+        // distinct messages rather than one generic "nothing to show,"
+        // since only one of them is actually asking the household to do
+        // something. Both is possible (some cards unconfigured, others
+        // just quiet this cycle) and both render.
+        <View className="mb-5 gap-3">
+          {creditCardAccountsMissingCycleDay.length > 0 && (
+            <EmptyState iconName="card-outline" message={t('installments.cycleCards.emptyUnconfigured')} compact />
+          )}
+          {creditCardAccountsConfiguredButQuiet.length > 0 && (
+            <EmptyState iconName="checkmark-circle-outline" message={t('installments.cycleCards.emptyQuiet')} compact />
+          )}
         </View>
       )}
 
