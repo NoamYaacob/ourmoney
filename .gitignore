@@ -47,6 +47,3 @@ yarn-error.*
 # project-local reusable tooling, not personal config.
 .claude/settings.local.json
 .claude/worktrees/
-
-# Visual-QA fixtures (local only, never committed)
-.qa/

@@ -27,5 +27,22 @@ const config = getSentryExpoConfig(__dirname)
 // no effect on `npm test`.
 config.resolver.blockList = [...config.resolver.blockList, /\.(test|spec)\.[jt]sx?$/]
 
+// Design QA data source (docs/DESIGN_QA_MODE.md): when DESIGN_QA=1, resolve
+// the Supabase client to dev/designQaClient.ts so authenticated screens can
+// be rendered against Design-file mock data for visual comparison, without
+// any Supabase project configured. Off by default — a normal `expo start`/
+// `expo export` never sets this, so this branch never runs outside a
+// developer explicitly opting in on their own machine.
+if (process.env.DESIGN_QA === '1') {
+  const path = require('path')
+  const original = config.resolver.resolveRequest
+  config.resolver.resolveRequest = (context, moduleName, platform) => {
+    const resolved = (original ?? context.resolveRequest)(context, moduleName, platform)
+    if (resolved && typeof resolved.filePath === 'string' && /lib[\\/]supabase[\\/]client\.ts$/.test(resolved.filePath)) {
+      return { type: 'sourceFile', filePath: path.join(__dirname, 'dev/designQaClient.ts') }
+    }
+    return resolved
+  }
+}
 
 module.exports = withNativeWind(config, { input: './global.css' })
