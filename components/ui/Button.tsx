@@ -50,15 +50,26 @@ interface ButtonProps {
 // single confident brand color should show up as a filled surface, not just
 // text/icons. rounded-control is the new shared radius token for pressable/
 // input-sized elements (see tailwind.config.js).
+// Micro-interactions pass (Part 28 of the product-quality audit): every
+// variant had a `:active` press state but nothing at all for `:hover` —
+// on a mouse-driven desktop browser (the one input mode `active:` never
+// fires for on its own, since there's no press-and-hold), every button in
+// the app gave zero visual feedback until the moment of the actual click.
+// `web:hover:` only ever applies on `web` (RNW's own touch-vs-mouse media
+// query), so native mobile — which has no hover concept — is untouched.
+// A lighter opacity than the press state's 70%, since hover is meant to
+// read as "this is interactive," not "this is being activated."
 const containerByVariant: Record<ButtonVariant, string> = {
-  primary: 'items-center rounded-control bg-accent-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-accent-dark',
+  primary:
+    'items-center rounded-control bg-accent-light px-4 py-3 web:hover:opacity-90 active:opacity-70 disabled:opacity-40 dark:bg-accent-dark',
   secondary:
-    'items-center rounded-control border border-border-light bg-surfaceMuted-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:border-border-dark dark:bg-surfaceMuted-dark',
-  ghost: 'items-center rounded-control px-4 py-3 active:opacity-70 disabled:opacity-40',
+    'items-center rounded-control border border-border-light bg-surfaceMuted-light px-4 py-3 web:hover:opacity-80 active:opacity-70 disabled:opacity-40 dark:border-border-dark dark:bg-surfaceMuted-dark',
+  ghost: 'items-center rounded-control px-4 py-3 web:hover:opacity-80 active:opacity-70 disabled:opacity-40',
   // Milestone 9: a full-weight destructive action (e.g. delete account) needs
   // stronger visual weight than categories.tsx's plain danger-colored Text —
   // a solid danger-colored button, same shape as primary.
-  danger: 'items-center rounded-control bg-danger-light px-4 py-3 active:opacity-70 disabled:opacity-40 dark:bg-danger-dark',
+  danger:
+    'items-center rounded-control bg-danger-light px-4 py-3 web:hover:opacity-90 active:opacity-70 disabled:opacity-40 dark:bg-danger-dark',
 }
 
 const textByVariant: Record<ButtonVariant, string> = {

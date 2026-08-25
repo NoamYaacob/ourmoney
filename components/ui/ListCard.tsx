@@ -112,7 +112,10 @@ export function ListRow({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
-      className="active:bg-surface-light dark:active:bg-surface-dark"
+      // Micro-interactions pass (Part 28): had a press state but no hover
+      // state — see Button.tsx's identical finding/fix for why that
+      // matters specifically on a mouse-driven desktop browser.
+      className="web:hover:bg-surface-light active:bg-surface-light dark:web:hover:bg-surface-dark dark:active:bg-surface-dark"
     >
       {content}
     </Pressable>
