@@ -30,7 +30,7 @@ jest.mock('react-native/Libraries/Utilities/Platform', () => ({
   },
 }))
 
-const mockRedirect = jest.fn(() => null)
+const mockRedirect = jest.fn((_props: { href: string }) => null)
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
   Redirect: (props: { href: string }) => mockRedirect(props),

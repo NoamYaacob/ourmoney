@@ -136,8 +136,27 @@ const TABLES: Record<string, Record<string, unknown>[]> = {
   ],
   accounts: ACCOUNTS,
   categories: CATEGORIES,
+  // Product-quality audit finding: this fixture used a `match_type`/
+  // `match_value`/`priority`/`version` shape that has never matched the
+  // real `category_rules` table (`field`/`operator`/`value`/`is_active`/
+  // `is_case_sensitive`/`sort_order` — see types/database.ts) — settings/
+  // categories.tsx reads `rule.field`/`rule.operator` directly into a
+  // dynamic t(`categories.rules.field.${rule.field}`) lookup, so the stale
+  // shape rendered raw, untranslated keys ("categories.rules.field.
+  // undefined") instead of "אם תיאור מכיל". Corrected to the real shape.
   category_rules: [
-    { id: 'rule-1', household_id: HOUSEHOLD, category_id: 'cat-super', match_type: 'merchant_contains', match_value: 'שופרסל', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, priority: 1 },
+    {
+      id: 'rule-1',
+      household_id: HOUSEHOLD,
+      category_id: 'cat-super',
+      field: 'merchant_name',
+      operator: 'contains',
+      value: 'שופרסל',
+      is_active: true,
+      is_case_sensitive: false,
+      sort_order: 1,
+      created_at: '2026-01-01T00:00:00Z',
+    },
   ],
   transactions: TRANSACTIONS,
   transfers: [{ id: 'tr-1', household_id: HOUSEHOLD, from_account_id: 'acc-bank', to_account_id: 'acc-savings', amount_agorot: 200_000, txn_date: d(5), description: 'העברה לחיסכון', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, created_by: USER }],
