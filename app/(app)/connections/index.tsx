@@ -59,7 +59,14 @@ export default function Connections() {
       </Text>
 
       <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
-        <View className="web:desktop:flex-1">
+        {/* Part 3A/24 of the product-quality audit: `flex-1` let this
+            column claim the full ~800px left over from the fixed 340px
+            side panel for what is only ever 2-3 short "coming soon" rows
+            — a very wide, shallow card that read as floating in empty
+            space even though it isn't literally blank. Capped to a
+            reading-appropriate width instead, matching the side panel's
+            own already-fixed-width treatment. */}
+        <View className="web:desktop:w-[480px] web:desktop:flex-none">
           <ListCard>
             {CONNECTION_TYPES.map((type) => (
               <ListRow

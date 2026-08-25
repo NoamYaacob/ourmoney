@@ -13,13 +13,14 @@
 // learned the hard way — mixing the two makes the product half read as
 // configuration.
 
-import { Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { Platform, Text, View, useWindowDimensions } from 'react-native'
+import { Redirect, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
+import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -35,7 +36,26 @@ import { Avatar } from '@/components/ui/Avatar'
 import { ListCard, ListRow, RowIcon } from '@/components/ui/ListCard'
 import { StatusChip } from '@/components/ui/StatusChip'
 
+// Part 24 of the product-quality audit: every row on this screen already
+// has its own permanent link in the desktop sidebar (DesktopSideRail), so a
+// desktop visitor here — the sidebar itself never links to this route,
+// this only happens via a direct URL or a stale bookmark — saw a second,
+// differently-styled copy of navigation they already had. Sent to
+// Dashboard instead, same as an unrecognized deep link would be.
+//
+// The branch happens here, before any of MoreContent's own hooks run —
+// same split dashboard/index.tsx already uses for its own two
+// compositions, and for the same reason: switching which hooks a single
+// component calls between renders (rather than which component renders at
+// all) breaks the Rules of Hooks the moment a window resize crosses the
+// breakpoint.
 export default function More() {
+  const { width } = useWindowDimensions()
+  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
+  return isDesktopWeb ? <Redirect href="/dashboard" /> : <MoreContent />
+}
+
+function MoreContent() {
   const { t } = useTranslation()
   const router = useRouter()
   const { colorScheme: scheme } = useColorScheme()

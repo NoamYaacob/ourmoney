@@ -20,7 +20,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { DESKTOP_BREAKPOINT_PX, INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
+import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
 import type { FinancialAlert } from '@/types/app'
 
 // The four tiers, in the order the design files stack them: what is broken,
@@ -53,7 +53,16 @@ export default function Alerts() {
   }
 
   return (
-    <Screen onBack={() => router.back()} width="wide">
+    // Part 3A/24 of the product-quality audit: this was `width="wide"`
+    // (1150px at desktop) with its own list wrapped in a hard 600px cap —
+    // the exact "huge canvas, narrow floating content" pattern flagged
+    // elsewhere, and unlike Obligations/Recurring's hero panel (a stat
+    // display that benefits from the extra width), alert copy is prose —
+    // stretching each card edge to edge across 1150px would only hurt
+    // readability. `medium` commits the whole page to a centered 800px
+    // column instead, which reads as an intentional list layout rather
+    // than content stranded in a corner.
+    <Screen onBack={() => router.back()} width="medium">
       <Text className="text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('alerts.screenTitle')}
       </Text>
@@ -74,7 +83,7 @@ export default function Alerts() {
         </View>
       )}
 
-      <View className={INLINE_FORM_WIDTH_CLASS}>
+      <View>
         {isLoading ? (
           <SkeletonList rows={3} />
         ) : alerts.length === 0 ? (
