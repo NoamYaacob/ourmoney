@@ -29,6 +29,12 @@ export type ContentWidth = keyof typeof CONTENT_WIDTH
 // animationType, etc.) instead of via className.
 export const DESKTOP_BREAKPOINT_PX = 1200
 
+// Shared with the `tablet` Tailwind screen (tailwind.config.js) — same
+// reasoning as DESKTOP_BREAKPOINT_PX above, for the handful of call sites
+// that need to know "at least tablet width" in JS (an initial-state
+// default, a native style object) rather than via `web:tablet:` className.
+export const TABLET_BREAKPOINT_PX = 768
+
 // Shared web width clamp for centered dialogs/sheets (Select's bottom
 // sheet, the confirm Modal) — was duplicated as a literal in each caller.
 // Applies at every web width (not just tablet/desktop): on a narrow mobile

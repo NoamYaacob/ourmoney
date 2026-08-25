@@ -20,13 +20,14 @@
 // is structured for a thumb.
 
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
+import { TABLET_BREAKPOINT_PX } from '@/constants/layout'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
@@ -67,6 +68,16 @@ export function MobileHome() {
   const { user } = useAuth()
   const { displayName, avatarUrl } = useProfile(user?.id)
   const { householdId, household, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  // Tablet-tier pass: this screen is deliberately curated for a phone (see
+  // the header comment — "five seconds", a thumb, not ten cards), but that
+  // rationale stops applying once there's tablet width to spend — a 768px+
+  // canvas rendering the exact same single narrow column just left ~half
+  // the width empty below the hero and a huge gap of unused height where
+  // the closed analytics disclosure used to hide the six-month trend from a
+  // phone. Both adjustments below reuse this screen's own existing content
+  // and hooks — nothing new is added, nothing desktop-only is borrowed.
+  const { width } = useWindowDimensions()
+  const isTabletOrWiderWeb = Platform.OS === 'web' && width >= TABLET_BREAKPOINT_PX
 
   const {
     result: safeToSpend,
@@ -103,7 +114,11 @@ export function MobileHome() {
   // so the four blocks above keep the screen, open for a household that
   // came looking. Their queries are gated on it too, so a closed section
   // costs nothing.
-  const [showAnalytics, setShowAnalytics] = useState(false)
+  // Open by default from tablet width up: the "closed so the four blocks
+  // keep the screen" rationale in the comment above is specifically about
+  // phone real estate, which a tablet already has plenty of. Still a real
+  // toggle either way — a household on a tablet can still collapse it.
+  const [showAnalytics, setShowAnalytics] = useState(isTabletOrWiderWeb)
 
   // Fail-safe display, the same gate every other screen in this app uses:
   // while the household query is in flight every downstream hook is
@@ -289,8 +304,15 @@ export function MobileHome() {
         </Pressable>
       )}
 
-      {/* 3 — what comes off the account next. */}
-      <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+      {/* 3 — what comes off the account next — and 4 — the month's budget —
+          pair into one row from tablet width up (see the width-check
+          comment above): two cards this screen already builds, just no
+          longer stacked full-width on a canvas wide enough for both side
+          by side. Below tablet width this is a plain column, same as
+          before — `gap-3` applies to both directions regardless of
+          `flex-row`, so no separate mobile-only spacing class is needed. */}
+      <View className="mt-3 gap-3 web:tablet:flex-row web:tablet:items-start">
+      <View className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark web:tablet:flex-1">
         <CardHeading
           trailing={
             commitments.length > 0 ? (
@@ -355,7 +377,7 @@ export function MobileHome() {
       </View>
 
       {/* 4 — the month's budget. */}
-      <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button" className="mt-3">
+      <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button" className="web:tablet:flex-1">
         <View className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
           {isBudgetLoading ? (
             <SkeletonList rows={2} />
@@ -414,6 +436,7 @@ export function MobileHome() {
           )}
         </View>
       </Pressable>
+      </View>
 
       {/* Analytics, closed by default. See MobileAnalyticsSection's header
           for why this is a disclosure rather than a fifth block or a screen
