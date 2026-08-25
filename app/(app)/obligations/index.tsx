@@ -132,7 +132,11 @@ export default function Obligations() {
 
   return (
     <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
-      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+      {/* Part 29 of the product-quality audit: hidden from tablet width up
+          now, not just desktop — the hero panel below picks up the same
+          text as its own HeroLabel from that width too, so this would
+          otherwise duplicate it rather than genuinely add a heading. */}
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:tablet:hidden">
         {t('obligations.title')}
       </Text>
 
@@ -166,7 +170,14 @@ export default function Obligations() {
             // wide desktop viewport that left ~780px of empty canvas beside
             // a small floating card, exactly the pattern flagged. Full
             // width now, matching every other panel on this content column.
-            <View className="hidden web:desktop:mb-5 web:desktop:flex">
+            //
+            // Part 29: also shown from tablet width up, not just desktop —
+            // below this width change, the tablet tier showed the plain
+            // mobile list with this panel hidden and nothing else to fill
+            // the rest of a 768-1199px canvas, the same dead-space pattern
+            // Home's own tablet pass (Part 23) already fixed by widening
+            // existing content rather than inventing new panels.
+            <View className="hidden web:tablet:mb-5 web:tablet:flex">
               <HeroPanel>
                 <HeroLabel>{t('obligations.title')}</HeroLabel>
                 <View className="web:desktop:mt-1.5">

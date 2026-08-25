@@ -121,7 +121,10 @@ export default function Recurring() {
 
   return (
     <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
-      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+      {/* Part 29 of the product-quality audit: hidden from tablet width up
+          now, not just desktop — same reasoning as obligations/index.tsx's
+          identical comment. */}
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:tablet:hidden">
         {t('recurring.title')}
       </Text>
 
@@ -198,7 +201,9 @@ export default function Recurring() {
             // index.tsx's identical comment — this panel was pinned to a
             // fixed 340px, leaving most of the wide desktop canvas empty
             // beside it. Full width now, matching its sibling list card.
-            <View className="hidden web:desktop:mb-5 web:desktop:flex">
+            // Part 29: shown from tablet width up too, same reasoning as
+            // obligations/index.tsx's identical change.
+            <View className="hidden web:tablet:mb-5 web:tablet:flex">
               <HeroPanel>
                 <HeroLabel>{t('recurring.title')}</HeroLabel>
                 <View className="web:desktop:mt-1.5">
