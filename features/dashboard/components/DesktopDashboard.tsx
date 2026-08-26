@@ -55,7 +55,7 @@ import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { CountdownRing } from '@/components/ui/CountdownRing'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
-import { DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 const HORIZON_ORDER: HorizonKind[] = ['week', 'month', 'days30']
 const HORIZON_PILL_KEY: Record<HorizonKind, string> = {
@@ -311,7 +311,7 @@ export function DesktopDashboard() {
               min-h floor (roughly header + 2 rows) keeps a 1-item state from
               reading as an accidentally tiny box, without forcing it all the
               way up to the hero's own height the way h-full did. */}
-          <View className={`web:desktop:min-h-[220px] ${DESKTOP_CARD_CLASS}`}>
+          <View className={`web:desktop:min-h-[220px] ${DESKTOP_PANEL_CLASS}`}>
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('dashboard.commitments.title')}
@@ -415,7 +415,7 @@ export function DesktopDashboard() {
           תנועות אחרונות. */}
       <View className="web:desktop:mt-5 web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
         <View className="web:desktop:flex-1">
-          <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
+          <View className={`web:desktop:h-full ${DESKTOP_PANEL_CLASS}`}>
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('dashboard.budgetPace.title')}
@@ -514,7 +514,7 @@ export function DesktopDashboard() {
         </View>
 
         <View className="web:desktop:w-[300px] web:desktop:flex-none">
-          <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
+          <View className={`web:desktop:h-full ${DESKTOP_PANEL_CLASS}`}>
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('dashboard.needsAttention.title')}
@@ -569,7 +569,7 @@ export function DesktopDashboard() {
         </View>
 
         <View className="web:desktop:w-[280px] web:desktop:flex-none">
-          <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
+          <View className={`web:desktop:h-full ${DESKTOP_PANEL_CLASS}`}>
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('dashboard.recentTitle')}
