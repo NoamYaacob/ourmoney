@@ -18,7 +18,6 @@ import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
-import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
@@ -131,16 +130,21 @@ export default function Recurring() {
       <PlanningTabs active="recurring" />
 
       {priceIncreaseDetections.length > 0 && (
-        <View className={`mb-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+        // Product-quality pass (section 8/10 discipline — the same "small
+        // floating panel" pattern already fixed on this screen's own hero
+        // below, part 3A/17): this reused INLINE_FORM_WIDTH_CLASS, a token
+        // meant for narrow FORMS, for a notice card — the result was a
+        // ~600px card centered alone in a much wider canvas while every
+        // other section on this page spans the full content column. Now
+        // spans that same column, and reads as a real warning rather than a
+        // plain white card: this is genuinely a "something changed, look at
+        // it" surface, not routine content.
+        <View className="mb-4">
           <SectionLabel className="mb-2">{t('recurring.priceIncrease.sectionTitle')}</SectionLabel>
-          <Card>
+          <View className="overflow-hidden rounded-card border border-warningBorder-light bg-warningSurface-light dark:border-warningBorder-dark dark:bg-warningSurface-dark">
             {priceIncreaseDetections.map((d, index) => (
               <View key={d.identityKey}>
-                {index > 0 && (
-                  <View className="my-3">
-                    <Divider />
-                  </View>
-                )}
+                {index > 0 && <View className="h-px bg-warningBorder-light dark:bg-warningBorder-dark" />}
                 <Pressable
                   onPress={() =>
                     d.recurringId
@@ -148,6 +152,7 @@ export default function Recurring() {
                       : router.push(`/transactions/${d.currentTransactionId}`)
                   }
                   accessibilityRole="button"
+                  className="px-4 py-3 web:hover:bg-warningTint-light/40 dark:web:hover:bg-warningTint-dark/20"
                 >
                   <View className="flex-row items-center justify-between">
                     <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
@@ -167,7 +172,7 @@ export default function Recurring() {
                 </Pressable>
               </View>
             ))}
-          </Card>
+          </View>
         </View>
       )}
 
@@ -233,7 +238,7 @@ export default function Recurring() {
                   onPress={() => router.push(`/recurring/${item.id}`)}
                   accessibilityRole="button"
                   accessibilityLabel={item.description}
-                  className={`min-h-[44px] flex-row items-center gap-3.5 py-3 ${
+                  className={`min-h-[44px] flex-row items-center gap-3.5 rounded-control py-3 web:desktop:-mx-2 web:desktop:px-2 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40 ${
                     index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : ''
                   } ${item.is_active ? '' : 'opacity-60'}`}
                 >

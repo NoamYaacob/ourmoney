@@ -141,6 +141,7 @@ export default function Goals() {
                 onPress={() => router.push(`/goals/${goal.id}`)}
                 accessibilityRole="button"
                 accessibilityLabel={goal.name}
+                className="rounded-control web:desktop:-m-2 web:desktop:p-2 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40"
               >
                 <View className="flex-row flex-wrap items-baseline gap-2">
                   <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{goal.name}</Text>

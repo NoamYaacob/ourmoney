@@ -118,7 +118,7 @@ export function CommitmentRow({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${name}, ${timeLabel}`}
-      className="active:bg-surface-light dark:active:bg-surface-dark"
+      className="web:hover:bg-surface-light/60 active:bg-surface-light dark:web:hover:bg-surface-dark/40 dark:active:bg-surface-dark"
     >
       {body}
     </Pressable>
