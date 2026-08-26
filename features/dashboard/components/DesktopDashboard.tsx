@@ -180,10 +180,17 @@ export function DesktopDashboard() {
 
       {/* Row 1 — פנוי באמת hero (right, mockup's DOM-first column) + מה מגיע
           (left). flex-row-reverse keeps DOM order [hero, מה מגיע] while the
-          hero lands rightmost, matching the mockup exactly. */}
-      <View className="web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
+          hero lands rightmost, matching the mockup exactly.
+          Product-quality pass: this row used to force both cards to the same
+          height (items-stretch + each card's own h-full) — correct when
+          מה מגיע has enough upcoming items to fill it, but with only one or
+          two it left a large, visibly empty gap under a short list next to
+          the much taller hero. items-start lets each card size to its own
+          content instead; see the מה מגיע card's own comment for how its
+          existing "card cycle closing" footer note adapts. */}
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
         <View className="web:desktop:w-[440px] web:desktop:flex-none">
-          <HeroPanel className="web:desktop:h-full">
+          <HeroPanel>
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <HeroLabel>{t('dashboard.hero.label')}</HeroLabel>
               <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5">
@@ -276,10 +283,14 @@ export function DesktopDashboard() {
 
 
                 {nearestCommitmentExceedsSafeToSpend && commitments[0] && (
+                  // Same reasoning as the מה מגיע card's own footer note:
+                  // mt-auto pushed to the bottom of a height forced to match
+                  // its sibling; now that the hero sizes to its own content,
+                  // a plain top margin keeps the same visual rhythm.
                   <Pressable
                     onPress={() => router.push('/cash-flow')}
                     accessibilityRole="button"
-                    className="web:desktop:mt-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:pt-4"
+                    className="web:desktop:mt-4 web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:pt-4"
                   >
                     <Ionicons name="alert-circle" size={ICON.row} color="#e8a79b" />
                     <HeroNote className="web:desktop:flex-1">
@@ -296,7 +307,11 @@ export function DesktopDashboard() {
         </View>
 
         <View className="web:desktop:flex-1">
-          <View className={`web:desktop:h-full ${DESKTOP_CARD_CLASS}`}>
+          {/* Content-driven height now (see the row's own comment) — a
+              min-h floor (roughly header + 2 rows) keeps a 1-item state from
+              reading as an accidentally tiny box, without forcing it all the
+              way up to the hero's own height the way h-full did. */}
+          <View className={`web:desktop:min-h-[220px] ${DESKTOP_CARD_CLASS}`}>
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('dashboard.commitments.title')}
@@ -377,7 +392,11 @@ export function DesktopDashboard() {
             )}
 
             {nextCardCycle && nextCardCycleDays !== null && (
-              <View className="web:desktop:mt-auto web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:border-t web:desktop:border-border-light web:desktop:pt-4 dark:web:desktop:border-border-dark">
+              // mt-auto only had a floor to push against back when this card
+              // was force-stretched to the hero's height — now that height is
+              // content-driven, a plain top margin keeps the same rhythm as
+              // every other section break on this card.
+              <View className="web:desktop:mt-5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:border-t web:desktop:border-border-light web:desktop:pt-4 dark:web:desktop:border-border-dark">
                 <CountdownRing percentElapsed={100 - Math.max(0, Math.min(100, (nextCardCycleDays / 30) * 100))} daysLeft={nextCardCycleDays} />
                 <Text className="web:desktop:flex-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                   {t('dashboard.commitments.cardCycleClosing', {
