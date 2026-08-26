@@ -43,7 +43,6 @@ import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
-import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -473,29 +472,34 @@ export default function Budgets() {
                     />
                   </View>
                   {addableCategories.length > 0 && (
-                    <Card>
-                      <Select
-                        variant="row"
-                        label={t('budgets.addCategoryLabel')}
-                        options={addableCategories.map((c) => ({
-                          value: c.id,
-                          label: c.name_he,
-                          iconName: categoryIconName(c.icon),
-                        }))}
-                        value={null}
-                        onChange={(value) => {
-                          setEditingCategoryId(value)
-                          setEditingAmount('')
-                        }}
-                        placeholder={t('budgets.addCategoryPlaceholder')}
-                        sheetTitle={t('budgets.addCategoryLabel')}
-                        leadingIcon={
-                          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                            <Ionicons name="add-circle-outline" size={ICON.row} color={accentColor} />
-                          </View>
-                        }
-                      />
-                    </Card>
+                    // Product-quality pass: Select's own 'row' variant
+                    // already draws a bordered/filled box — wrapping it in a
+                    // <Card> (a second, identical border+background) is what
+                    // made this read as "a large empty box" rather than a
+                    // single deliberate control. Same fix as the other
+                    // double-bordered-select instance this pass found in
+                    // Transactions' filter toolbar.
+                    <Select
+                      variant="row"
+                      label={t('budgets.addCategoryLabel')}
+                      options={addableCategories.map((c) => ({
+                        value: c.id,
+                        label: c.name_he,
+                        iconName: categoryIconName(c.icon),
+                      }))}
+                      value={null}
+                      onChange={(value) => {
+                        setEditingCategoryId(value)
+                        setEditingAmount('')
+                      }}
+                      placeholder={t('budgets.addCategoryPlaceholder')}
+                      sheetTitle={t('budgets.addCategoryLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name="add-circle-outline" size={ICON.row} color={accentColor} />
+                        </View>
+                      }
+                    />
                   )}
                 </View>
               </View>
@@ -641,29 +645,30 @@ export default function Budgets() {
             // progress.length > 0 (the empty-state card above no longer
             // exists in that case).
             <View className={`mt-3 web:desktop:mt-2 ${progress.length === 0 ? 'web:desktop:hidden' : ''}`}>
-              <Card>
-                <Select
-                  variant="row"
-                  label={t('budgets.addCategoryLabel')}
-                  options={addableCategories.map((c) => ({
-                    value: c.id,
-                    label: c.name_he,
-                    iconName: categoryIconName(c.icon),
-                  }))}
-                  value={null}
-                  onChange={(value) => {
-                    setEditingCategoryId(value)
-                    setEditingAmount('')
-                  }}
-                  placeholder={t('budgets.addCategoryPlaceholder')}
-                  sheetTitle={t('budgets.addCategoryLabel')}
-                  leadingIcon={
-                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                      <Ionicons name="add-circle-outline" size={ICON.row} color={accentColor} />
-                    </View>
-                  }
-                />
-              </Card>
+              {/* Product-quality pass: same double-bordered-box fix as the
+                  identical control above — Select's own 'row' variant
+                  already IS the bordered control; no outer <Card> needed. */}
+              <Select
+                variant="row"
+                label={t('budgets.addCategoryLabel')}
+                options={addableCategories.map((c) => ({
+                  value: c.id,
+                  label: c.name_he,
+                  iconName: categoryIconName(c.icon),
+                }))}
+                value={null}
+                onChange={(value) => {
+                  setEditingCategoryId(value)
+                  setEditingAmount('')
+                }}
+                placeholder={t('budgets.addCategoryPlaceholder')}
+                sheetTitle={t('budgets.addCategoryLabel')}
+                leadingIcon={
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                    <Ionicons name="add-circle-outline" size={ICON.row} color={accentColor} />
+                  </View>
+                }
+              />
             </View>
           )}
           </View>
@@ -759,7 +764,13 @@ export default function Budgets() {
               </View>
             </>
           ) : (
-            <Card>
+            // Product-quality pass: this used to be a <Card> nested directly
+            // inside the sidebar's own DESKTOP_CARD_CLASS panel — the same
+            // bordered/filled surface drawn twice, one inside the other, the
+            // exact "card overuse" pattern the rest of this pass corrected
+            // in Transactions' filter selects. A plain View carries the same
+            // spacing without a second, redundant border.
+            <View className="web:desktop:mt-4">
               {uncategorizedError && (
                 <View className="mb-3">
                   <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
@@ -842,7 +853,7 @@ export default function Budgets() {
                   )}
                 </View>
               ))}
-            </Card>
+            </View>
           )}
           </View>
           </View>
