@@ -21,19 +21,46 @@ runs unmodified against this data — only the Supabase client itself is
 swapped, so what renders is the actual product, not a reimplementation of
 it.
 
+## Modes
+
+`DESIGN_QA=1` (the original mode) is always authenticated, with a household
+and its full financial data — but that means the entire `(auth)` route group
+and the onboarding flow are unreachable under it: `useAuthGuard` redirects
+straight past them, every time, because there's always a session and always
+a household. Four sibling modes cover the states `1` cannot reach, each its
+own fixture file behind the same resolver hook, sharing the query-engine
+plumbing (`createBuilder`/`createSession`) in `dev/designQaEngine.ts`:
+
+| Mode | Session | Household | Financial data | For |
+|---|---|---|---|---|
+| `1` | yes | yes | full (Design-file content) | everything else |
+| `signedout` | none | — | — | sign-in / sign-up / forgot-password |
+| `onboarding` | yes | none | — | create-household / invite-partner |
+| `empty` | yes | yes | none at all | first-time-user, right after onboarding |
+| `stress` | yes | yes | 10 accounts, 20+ categories, 130+ transactions | high-volume/scrolling/perf checks |
+
+`signedout` and `onboarding` don't fake a successful sign-in/sign-up
+themselves (`signInWithPassword`/`signUp` return a "preview only" error on
+`signedout`) — they exist to render the screens themselves, not to skip
+past them. `onboarding`'s `create_household` RPC *is* faked as a real
+success, since the whole point of that mode is to walk the actual
+create-household → invite-partner flow end to end.
+
 ## Enabling it locally
 
 ```bash
 DESIGN_QA=1 npx expo start --web
 # or, for a static export to screenshot:
 DESIGN_QA=1 npx expo export --platform web
+# any other mode: DESIGN_QA=empty, DESIGN_QA=stress, DESIGN_QA=signedout, DESIGN_QA=onboarding
 ```
 
 `metro.config.js` only installs the resolver hook that redirects
-`lib/supabase/client.ts` → `dev/designQaClient.ts` when `DESIGN_QA=1` is
-set. A normal `expo start` / `expo export` — including whatever command
-Vercel's build runs — never sets this, so this path never runs unless a
-developer opts in on their own machine.
+`lib/supabase/client.ts` → the matching `dev/designQa*Client.ts` when
+`DESIGN_QA` is set to one of the modes above. A normal `expo start` /
+`expo export` — including whatever command Vercel's build runs — never sets
+this, so this path never runs unless a developer opts in on their own
+machine.
 
 ## What it is not
 
@@ -51,10 +78,13 @@ developer opts in on their own machine.
 
 ## Extending it
 
-Add rows to the `TABLES` object in `dev/designQaClient.ts`, matching the
-real Postgres schema in `types/database.ts` column-for-column — the
-fixture is only useful if the app's real hooks/engines accept it the same
-way they'd accept a real Supabase response. Prefer copying content
-straight from the Design files over inventing new names; if a screen's
-Design frame doesn't show a concrete example, use realistic Hebrew content
-consistent with what's already there rather than a placeholder.
+Add rows to the `TABLES` object in the relevant `dev/designQa*Client.ts`
+file, matching the real Postgres schema in `types/database.ts`
+column-for-column — the fixture is only useful if the app's real
+hooks/engines accept it the same way they'd accept a real Supabase
+response. Prefer copying content straight from the Design files over
+inventing new names; if a screen's Design frame doesn't show a concrete
+example, use realistic Hebrew content consistent with what's already there
+rather than a placeholder. A change to the shared query-builder behavior
+(join embedding, filter semantics) belongs in `dev/designQaEngine.ts`, not
+duplicated across the sibling files.

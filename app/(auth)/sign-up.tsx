@@ -30,6 +30,16 @@ export default function SignUp() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
 
+  // Release-readiness pass: sign-in and forgot-password both disable their
+  // submit button until every field has something in it — this screen had
+  // no such gate at all, so its button looked identical whether the form
+  // was empty or complete. Matches that same "non-empty" bar (not full
+  // validation — validate() below still owns the real rules and per-field
+  // messages on submit) so the same conceptual action looks and behaves
+  // the same across all three auth screens.
+  const isValid =
+    displayName.trim().length > 0 && email.trim().length > 0 && password.length > 0 && confirmPassword.length > 0
+
   function validate(): FieldErrors {
     const next: FieldErrors = {}
     if (displayName.trim().length === 0) next.displayName = t('auth.validation.displayNameRequired')
@@ -109,7 +119,7 @@ export default function SignUp() {
 
       {signUp.isError && <ErrorMessage message={t(mapAuthError('signUp', signUp.error))} />}
 
-      <Button title={t('auth.signUp.submit')} onPress={handleSubmit} loading={signUp.isPending} />
+      <Button title={t('auth.signUp.submit')} onPress={handleSubmit} disabled={!isValid} loading={signUp.isPending} />
 
       <View className="mt-6 flex-row justify-center gap-1">
         <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">{t('auth.signUp.signInPrompt')}</Text>

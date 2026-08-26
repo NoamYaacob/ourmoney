@@ -28,6 +28,12 @@
 // realistically-shaped rows, so what gets screenshotted is the actual
 // product with data, not a re-implementation of it.
 
+// Query-engine plumbing (the permissive PostgrestFilterBuilder stand-in,
+// join embedding, session shape) lives in dev/designQaEngine.ts, shared with
+// the signed-out/onboarding/empty/stress fixture variants added for the
+// release-readiness pass — see that file's own header for why.
+import { createBuilder, createSession } from './designQaEngine'
+
 const HOUSEHOLD = 'hh-1'
 const USER = 'user-1'
 const PARTNER = 'user-2'
@@ -189,12 +195,6 @@ const TABLES: Record<string, Record<string, unknown>[]> = {
   invitations: [],
 }
 
-interface Result { data: unknown; error: null }
-
-// A permissive stand-in for PostgrestFilterBuilder. Filters are applied where
-// they are cheap and matter for what renders (household scoping, date
-// windows, id lookups); everything else is accepted and ignored, which is
-// fine for a rendering harness.
 const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]))
 const HOUSEHOLD_ROW = { id: HOUSEHOLD, name: 'משפחת לוי', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, created_by: USER }
 
@@ -210,54 +210,8 @@ function withJoins(table: string, select: string, row: Record<string, unknown>) 
   return row
 }
 
-function builder(table: string) {
-  let rows = [...(TABLES[table] ?? [])]
-  let selectStr = '*'
-  let single = false
-  let maybe = false
-
-  const api: Record<string, unknown> = {}
-  const chain = () => api
-  const eq = (col: string, val: unknown) => {
-    rows = rows.filter((r) => r[col] === val || col === 'household_id' || col === 'user_id')
-    return api
-  }
-  Object.assign(api, {
-    select: (q?: string) => { if (typeof q === 'string') selectStr = q; return api },
-    insert: chain,
-    update: chain,
-    upsert: chain,
-    delete: chain,
-    eq,
-    neq: (col: string, v: unknown) => { rows = rows.filter((r) => r[col] !== v); return api },
-    // Real comparisons, not pass-throughs. `lt` was a no-op, so
-    // useBudgetProgress's `.lt('amount_agorot', 0)` never excluded income and
-    // the month's spend came out negative — the kind of thing that reads as
-    // an app bug in a screenshot when it is only the harness lying.
-    gte: (col: string, v: never) => { rows = rows.filter((r) => (r[col] as never) >= v); return api },
-    lte: (col: string, v: never) => { rows = rows.filter((r) => (r[col] as never) <= v); return api },
-    lt: (col: string, v: never) => { rows = rows.filter((r) => (r[col] as never) < v); return api },
-    gt: (col: string, v: never) => { rows = rows.filter((r) => (r[col] as never) > v); return api },
-    is: (col: string, v: unknown) => { rows = rows.filter((r) => (v === null ? r[col] == null : r[col] === v)); return api },
-    in: (col: string, v: unknown[]) => { rows = rows.filter((r) => v.includes(r[col])); return api },
-    or: chain, not: chain,
-    order: chain, limit: chain, range: chain, filter: chain, match: chain,
-    single: () => { single = true; return api },
-    maybeSingle: () => { maybe = true; return api },
-    then: (res: (v: Result) => unknown) => {
-      const joined = rows.map((r) => withJoins(table, selectStr, r))
-      return Promise.resolve(res({ data: single || maybe ? (joined[0] ?? null) : joined, error: null }))
-    },
-    catch: () => Promise.resolve({ data: rows, error: null }),
-    finally: () => Promise.resolve({ data: rows, error: null }),
-  })
-  return api
-}
-
-const SESSION = {
-  access_token: 'design-qa-session', refresh_token: 'design-qa-session', expires_in: 3600, token_type: 'bearer',
-  user: { id: USER, email: 'noam@example.com', app_metadata: {}, user_metadata: {}, aud: 'authenticated', created_at: '2026-01-01T00:00:00Z' },
-}
+const builder = createBuilder(TABLES, withJoins)
+const SESSION = createSession(USER, 'noam@example.com')
 
 export const supabase = {
   auth: {
