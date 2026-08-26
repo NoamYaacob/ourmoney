@@ -198,10 +198,11 @@ describe('Transactions list', () => {
 
     expect(getByText('משכורת')).toBeTruthy()
     // The sidebar's own "income" figure legitimately echoes the same
-    // formatted amount when there's a single income transaction (the
-    // sidebar's "net" row does too, but is deliberately neutral-colored
-    // regardless of sign) — asserting at least one match carries the
-    // positive color is what proves the row itself is positive-colored.
+    // formatted amount when there's a single income transaction (as does
+    // its "net" figure — with 0 expense, net == income here too, and both
+    // get positive color under the sidebar's own good/bad net semantics) —
+    // asserting at least one match carries the positive color is what
+    // proves the row itself is positive-colored.
     const amounts = getAllByText(formatILS(500000))
     expect(amounts.some((amount) => (amount.props.className as string).includes('text-positive-light'))).toBe(true)
   })
@@ -281,7 +282,24 @@ describe('Transactions list', () => {
 
   it('gives an expense a neutral (non-positive) amount color, not accent', async () => {
     mockUseTransactions.mockReturnValue({
+      // A small income row alongside the expense keeps the sidebar's own
+      // "net" figure (income - expense = -3000) from formatting identically
+      // to the expense row's own amount (-5000) — the two now assert
+      // independently instead of relying on their text coincidentally
+      // matching. Per-row expense color stays neutral ink by design (only
+      // the sidebar's period-level net gets good/bad color semantics — see
+      // the row-level and sidebar comments in DesktopTransactions.tsx).
       transactions: [
+        {
+          id: 'txn-1',
+          category_id: null,
+          description: 'משכורת',
+          amount_agorot: 2000,
+          txn_date: '2026-08-01',
+          is_shared: true,
+          is_excluded: false,
+          transfer_id: null,
+        },
         {
           id: 'txn-2',
           category_id: null,
@@ -298,18 +316,14 @@ describe('Transactions list', () => {
       hasData: true,
     })
 
-    const { getAllByText } = await render(<Transactions />)
+    const { getByText } = await render(<Transactions />)
 
-    // With zero income, the sidebar's own "net" figure formats identically
-    // to this single expense row's amount — both are expected to be the
-    // same non-positive ink color, so every match is checked rather than
-    // picking one.
-    const amounts = getAllByText(formatILS(-5000))
-    expect(amounts.length).toBeGreaterThanOrEqual(1)
-    for (const amount of amounts) {
-      expect(amount.props.className).toContain('text-ink-light')
-      expect(amount.props.className).not.toContain('positive')
-    }
+    const expenseAmount = getByText(formatILS(-5000))
+    expect(expenseAmount.props.className).toContain('text-ink-light')
+    expect(expenseAmount.props.className).not.toContain('positive')
+
+    const netAmount = getByText(formatILS(2000 - 5000))
+    expect(netAmount.props.className).toContain('text-danger-light')
   })
 
   // Migration 008 (ADR-035).

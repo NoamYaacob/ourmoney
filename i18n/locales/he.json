@@ -206,6 +206,8 @@
       "categoryLabel": "קטגוריה",
       "allCategories": "כל הקטגוריות",
       "uncategorized": "ללא קטגוריה",
+      "typeLabel": "סוג תנועה",
+      "sharedLabel": "שיוך",
       "type": {
         "all": "הכל",
         "expense": "הוצאות",

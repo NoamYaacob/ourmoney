@@ -40,8 +40,6 @@ import {
   parseTransactionFilterParams,
   transactionFilterStateToParams,
   type TransactionFilterState,
-  type TransactionTypeFilter,
-  type TransactionSharedFilter,
 } from '@/features/transactions/lib/transactionFilters'
 import { TRANSACTION_PERIODS, type TransactionPeriod } from '@/features/transactions/lib/transactionPeriod'
 import { intersectWithVisible, selectAllVisible, toggleSelection } from '@/features/transactions/lib/transactionSelection'
@@ -54,20 +52,17 @@ import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { HIT_SLOP } from '@/constants/accessibility'
-import { DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { Chip } from '@/components/ui/Chip'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { Button } from '@/components/ui/Button'
 import { FAB } from '@/components/ui/FAB'
 import { StatusChip } from '@/components/ui/StatusChip'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-
-const TYPE_FILTER_VALUES: TransactionTypeFilter[] = ['all', 'expense', 'income', 'transfer']
-const SHARED_FILTER_VALUES: TransactionSharedFilter[] = ['all', 'shared', 'personal']
 
 export function DesktopTransactions() {
   const { t } = useTranslation()
@@ -311,91 +306,106 @@ export function DesktopTransactions() {
           mockup's own Transactions frame puts exactly those three in its
           68px band. This screen used to draw them again underneath it. */}
 
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
-        <View className="web:desktop:flex-1">
-          {/* Desktop Visual/Responsive Design pass: search + the 3 dropdown
-              filters read as a mobile filter panel stacked vertically — on a
-              wide desktop viewport they fit comfortably in one row instead.
-              Search gets more of the row (`flex-[2]`) than the 3 selects
-              combined (`flex-[3]` on their wrapper, `flex-1` each), and the
-              whole thing stops wrapping (`flex-nowrap`) once there's room.
-              Mobile/tablet keep the exact original stacked layout. */}
-          <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-3">
-            <View className="web:desktop:flex-[2]">
-              <Input
-                label={t('transactions.filters.searchLabel')}
-                value={filterState.search}
-                onChangeText={(text) => updateFilters({ search: text })}
-                placeholder={t('transactions.filters.searchPlaceholder')}
+      {/* Toolbar architecture pass: search is the primary control, given its
+          own visual weight; the three narrowing selects are a clearly
+          secondary cluster beside it (previously each select was wrapped in
+          its own border+bg box on TOP of Select's own 'row'-variant border —
+          a literal double-bordered box every one of the three rendered as).
+          Type/shared moved off seven competing Chip pills onto two compact
+          SegmentedControls — the exact same component and tint language
+          transactions/new.tsx's own expense/income/transfer +
+          shared/personal toggles already use, so "filter by type" and "set
+          a type" now look like the same product decision, not two.
+          Deliberately full-width (spans both the table and sidebar columns
+          below, not just the table column) so the summary sidebar starts at
+          the same Y as the table it summarizes, instead of floating beside
+          the filter row above it. */}
+      <View className="web:desktop:mb-5">
+        <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-3">
+          <View className="web:desktop:flex-[2]">
+            <Input
+              label={t('transactions.filters.searchLabel')}
+              value={filterState.search}
+              onChangeText={(text) => updateFilters({ search: text })}
+              placeholder={t('transactions.filters.searchPlaceholder')}
+            />
+          </View>
+
+          <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-0 web:desktop:flex-[3] web:desktop:flex-nowrap">
+            <View className="min-w-[110px] flex-1">
+              <Select
+                variant="row"
+                label={t('transactions.filters.periodLabel')}
+                options={periodOptions}
+                value={filterState.period}
+                onChange={(value) => updateFilters({ period: value as TransactionPeriod })}
+                placeholder={t('transactions.filters.periodLabel')}
               />
             </View>
-
-            <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-0 web:desktop:flex-[3] web:desktop:flex-nowrap">
-              <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-                <Select
-                  variant="row"
-                  label={t('transactions.filters.periodLabel')}
-                  options={periodOptions}
-                  value={filterState.period}
-                  onChange={(value) => updateFilters({ period: value as TransactionPeriod })}
-                  placeholder={t('transactions.filters.periodLabel')}
-                />
-              </View>
-              <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-                <Select
-                  variant="row"
-                  label={t('transactions.filters.accountLabel')}
-                  options={accountOptions}
-                  value={filterState.accountId ?? 'all'}
-                  onChange={(value) => updateFilters({ accountId: value === 'all' ? null : value })}
-                  placeholder={t('transactions.filters.accountLabel')}
-                />
-              </View>
-              <View className="min-w-[110px] flex-1 rounded-xl border border-border-light bg-surfaceMuted-light px-3 dark:border-border-dark dark:bg-surfaceMuted-dark">
-                <Select
-                  variant="row"
-                  label={t('transactions.filters.categoryLabel')}
-                  options={categoryOptions}
-                  value={filterState.categoryId ?? 'all'}
-                  onChange={(value) => updateFilters({ categoryId: value === 'all' ? null : value })}
-                  placeholder={t('transactions.filters.categoryLabel')}
-                  sheetTitle={t('transactions.filters.categoryLabel')}
-                />
-              </View>
+            <View className="min-w-[110px] flex-1">
+              <Select
+                variant="row"
+                label={t('transactions.filters.accountLabel')}
+                options={accountOptions}
+                value={filterState.accountId ?? 'all'}
+                onChange={(value) => updateFilters({ accountId: value === 'all' ? null : value })}
+                placeholder={t('transactions.filters.accountLabel')}
+              />
+            </View>
+            <View className="min-w-[110px] flex-1">
+              <Select
+                variant="row"
+                label={t('transactions.filters.categoryLabel')}
+                options={categoryOptions}
+                value={filterState.categoryId ?? 'all'}
+                onChange={(value) => updateFilters({ categoryId: value === 'all' ? null : value })}
+                placeholder={t('transactions.filters.categoryLabel')}
+                sheetTitle={t('transactions.filters.categoryLabel')}
+              />
             </View>
           </View>
+        </View>
 
-          {/* Desktop Visual/Responsive Design pass: the two chip rows (type,
-              shared/personal) are secondary filters — combined into one denser
-              row at desktop with a small vertical separator between the two
-              groups, instead of two full rows each claiming their own line.
-              Mobile/tablet keep the original two stacked rows. */}
-          <View className="web:desktop:flex-row web:desktop:flex-wrap web:desktop:items-center web:desktop:gap-3">
-            <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-4">
-              {TYPE_FILTER_VALUES.map((value) => (
-                <Chip
-                  key={value}
-                  testID={`transactions-filter-type-${value}`}
-                  label={t(`transactions.filters.type.${value}`)}
-                  selected={filterState.type === value}
-                  onPress={() => updateFilters({ type: value })}
-                />
-              ))}
-            </View>
-            <View className="hidden web:desktop:mb-4 web:desktop:flex web:desktop:h-5 web:desktop:w-px web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
-            <View className="mb-4 flex-row flex-wrap gap-2">
-              {SHARED_FILTER_VALUES.map((value) => (
-                <Chip
-                  key={value}
-                  testID={`transactions-filter-shared-${value}`}
-                  label={t(`transactions.filters.shared.${value}`)}
-                  selected={filterState.shared === value}
-                  onPress={() => updateFilters({ shared: value })}
-                />
-              ))}
-            </View>
+        {/* The same SegmentedControl (and, for type, the same ink/ink/
+            positive/accent tint mapping) transactions/new.tsx's own
+            expense/income/transfer + shared/personal toggles already use —
+            "filter by type" and "set a type" are the same conceptual
+            control everywhere in this app now, not a filter-only Chip row
+            that happened to look different. (This file only ever mounts at
+            >=1200px — see its own header comment — so no responsive
+            fallback is needed here; MobileTransactions.tsx keeps its own
+            unrelated Chip-row treatment, which fits that layout better.) */}
+        <View className="web:desktop:mt-3 web:desktop:flex-row web:desktop:items-center web:desktop:gap-4">
+          <View className="web:desktop:w-[420px]">
+            <SegmentedControl
+              accessibilityLabel={t('transactions.filters.typeLabel')}
+              options={[
+                { value: 'all', label: t('transactions.filters.type.all'), tint: 'ink', testID: 'transactions-filter-type-all' },
+                { value: 'expense', label: t('transactions.filters.type.expense'), tint: 'ink', testID: 'transactions-filter-type-expense' },
+                { value: 'income', label: t('transactions.filters.type.income'), tint: 'positive', testID: 'transactions-filter-type-income' },
+                { value: 'transfer', label: t('transactions.filters.type.transfer'), tint: 'accent', testID: 'transactions-filter-type-transfer' },
+              ]}
+              value={filterState.type}
+              onChange={(value) => updateFilters({ type: value })}
+            />
           </View>
+          <View className="web:desktop:w-[280px]">
+            <SegmentedControl
+              accessibilityLabel={t('transactions.filters.sharedLabel')}
+              options={[
+                { value: 'all', label: t('transactions.filters.shared.all'), testID: 'transactions-filter-shared-all' },
+                { value: 'shared', label: t('transactions.filters.shared.shared'), testID: 'transactions-filter-shared-shared' },
+                { value: 'personal', label: t('transactions.filters.shared.personal'), testID: 'transactions-filter-shared-personal' },
+              ]}
+              value={filterState.shared}
+              onChange={(value) => updateFilters({ shared: value })}
+            />
+          </View>
+        </View>
+      </View>
 
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
+        <View className="web:desktop:flex-1">
           {!isPageLoading && !error && !isSelectionMode && (
             <View className="mb-4 flex-row items-center justify-between web:flex-row">
               <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -561,34 +571,44 @@ export function DesktopTransactions() {
               />
             </View>
           ) : (
-            <View className={DESKTOP_CARD_CLASS}>
+            <View className={DESKTOP_PANEL_CLASS}>
               <View className="web:desktop:flex-row web:desktop:items-center web:desktop:border-b web:desktop:border-divider-light web:desktop:pb-2.5 dark:web:desktop:border-divider-dark">
                 <Text className="web:desktop:flex-1 text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.transaction')}
                 </Text>
-                <Text className="web:desktop:w-[150px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('transactions.columns.category')}
-                </Text>
-                <Text className="web:desktop:w-[120px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="web:desktop:w-[170px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.account')}
                 </Text>
                 <Text className="web:desktop:w-[90px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.attribution')}
                 </Text>
-                <Text className="web:desktop:w-[110px] text-end text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="web:desktop:w-[130px] text-end text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.amount')}
                 </Text>
               </View>
 
-              {dateGroups.map((group) => {
+              {dateGroups.map((group, groupIndex) => {
                 const heading = dateGroupHeading(group.date, today)
                 return (
                   <View key={group.date}>
-                    <Text className="web:desktop:mt-3 web:desktop:mb-1 text-meta font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark">
-                      {heading.relativeKey
-                        ? `${t(`transactions.mobile.${heading.relativeKey}`)} · ${formatDateDisplay(group.date)}`
-                        : formatDateDisplay(group.date)}
-                    </Text>
+                    {/* Clearer date grouping (product-quality pass): a thin
+                        rule ahead of every group but the first breaks a long
+                        month into visually distinct day-chunks instead of one
+                        continuous scroll where only a small text label marks
+                        the boundary. */}
+                    <View
+                      className={
+                        groupIndex === 0
+                          ? 'web:desktop:mb-1 web:desktop:mt-4 web:desktop:flex-row web:desktop:items-center'
+                          : 'web:desktop:mb-1 web:desktop:mt-5 web:desktop:flex-row web:desktop:items-center web:desktop:border-t web:desktop:border-divider-light web:desktop:pt-4 dark:web:desktop:border-divider-dark'
+                      }
+                    >
+                      <Text className="text-meta font-sansSemibold tracking-[0.03em] text-inkMuted-light dark:text-inkMuted-dark">
+                        {heading.relativeKey
+                          ? `${t(`transactions.mobile.${heading.relativeKey}`)} · ${formatDateDisplay(group.date)}`
+                          : formatDateDisplay(group.date)}
+                      </Text>
+                    </View>
 
                     {group.transactions.map((item) => {
                       const isTransfer = item.transfer_id !== null
@@ -644,7 +664,7 @@ export function DesktopTransactions() {
                                 })
                               : undefined
                           }
-                          className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:border-b web:desktop:border-divider-light web:desktop:py-2.5 dark:web:desktop:border-divider-dark ${
+                          className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-control web:desktop:border-b web:desktop:border-divider-light web:desktop:px-2 web:desktop:py-3 web:desktop:-mx-2 web:hover:bg-surface-light/70 dark:web:desktop:border-divider-dark dark:web:hover:bg-surface-dark/50 ${
                             isSelectionMode && isSelected ? 'web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark' : ''
                           }`}
                         >
@@ -679,10 +699,7 @@ export function DesktopTransactions() {
                               </Text>
                             )}
                           </View>
-                          <Text className="web:desktop:w-[150px] text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                            {isTransfer ? t('transactions.transferLabel') : (categoryName ?? '')}
-                          </Text>
-                          <Text className="web:desktop:w-[120px] text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                          <Text className="web:desktop:w-[170px] text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
                             {accountNameById[item.account_id] ?? ''}
                           </Text>
                           <View className="web:desktop:w-[90px]">
@@ -696,10 +713,10 @@ export function DesktopTransactions() {
                           <Text
                             className={
                               isTransfer
-                                ? 'web:desktop:w-[110px] text-end text-body font-medium text-accent-light dark:text-accent-dark'
+                                ? 'web:desktop:w-[130px] text-end text-body font-semibold text-accent-light dark:text-accent-dark'
                                 : item.amount_agorot > 0
-                                  ? 'web:desktop:w-[110px] text-end text-body font-medium text-positive-light dark:text-positive-dark'
-                                  : 'web:desktop:w-[110px] text-end text-body font-medium text-ink-light dark:text-ink-dark'
+                                  ? 'web:desktop:w-[130px] text-end text-body font-semibold text-positive-light dark:text-positive-dark'
+                                  : 'web:desktop:w-[130px] text-end text-body font-semibold text-ink-light dark:text-ink-dark'
                             }
                           >
                             {formatILS(item.amount_agorot)}
@@ -714,17 +731,60 @@ export function DesktopTransactions() {
           )}
         </View>
 
-        {/* Right sidebar — desktop only. Always shown, independent of the
-            list's own empty/loading state: the active-rules panel describes
-            the household's rule set, not this month's transactions, and a
-            month summary of all zeros is a correct (if unremarkable)
-            description of an empty month, not a state worth hiding. */}
+        {/* Right sidebar — desktop only. Starts at the same Y as the table
+            (the toolbar above now spans both columns, not just this one) so
+            the summary reads as this exact list's own recap rather than a
+            card floating beside the filter row above it. Always shown,
+            independent of the list's own empty/loading state: the
+            active-rules panel describes the household's rule set, not this
+            month's transactions, and a month summary of all zeros is a
+            correct (if unremarkable) description of an empty month, not a
+            state worth hiding. */}
         <View className="web:desktop:w-[300px] web:desktop:flex-none web:desktop:gap-3.5">
-            <View className={DESKTOP_CARD_CLASS}>
+            <View className={DESKTOP_PANEL_CLASS}>
               <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('transactions.summary.title', { count: filteredTransactions.length })}
               </Text>
-              <View className="web:desktop:mt-3.5 web:desktop:gap-2.5">
+
+              {/* The net figure is this card's one answer — given the same
+                  visual weight a hero figure gets elsewhere in the app
+                  (`figure` scale), not a same-sized third line in a list of
+                  four. Financial-good/bad color semantics apply here
+                  (unlike a plain per-row expense, which stays neutral ink —
+                  see the row-level comment above): a whole period's net IS
+                  the kind of good/bad signal those tokens exist for. */}
+              <Text
+                className={`web:desktop:mt-2 text-figure font-heeboBold ${
+                  incomeAgorot - expenseAgorot >= 0
+                    ? 'text-positive-light dark:text-positive-dark'
+                    : 'text-danger-light dark:text-danger-dark'
+                }`}
+              >
+                {formatILS(incomeAgorot - expenseAgorot)}
+              </Text>
+              <Text className="web:desktop:mb-3.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                {t('transactions.summary.net')}
+              </Text>
+
+              {/* A quick-glance income-vs-expense proportion bar — two
+                  segments, no axis/legend needed since the two rows directly
+                  below already carry the exact figures. */}
+              <View className="web:desktop:mb-3.5 web:desktop:h-1.5 web:desktop:flex-row web:desktop:overflow-hidden web:desktop:rounded-full web:desktop:bg-track-light dark:web:desktop:bg-track-dark">
+                {incomeAgorot + expenseAgorot > 0 && (
+                  <>
+                    <View
+                      className="web:desktop:h-full web:desktop:bg-positive-light dark:web:desktop:bg-positive-dark"
+                      style={{ width: `${(incomeAgorot / (incomeAgorot + expenseAgorot)) * 100}%` }}
+                    />
+                    <View
+                      className="web:desktop:h-full web:desktop:bg-ink-light/30 dark:web:desktop:bg-ink-dark/30"
+                      style={{ width: `${(expenseAgorot / (incomeAgorot + expenseAgorot)) * 100}%` }}
+                    />
+                  </>
+                )}
+              </View>
+
+              <View className="web:desktop:gap-2.5">
                 <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <Text className="text-body text-ink-light dark:text-ink-dark">{t('transactions.summary.income')}</Text>
                   <Text className="text-body font-sansSemibold text-positive-light dark:text-positive-dark">
@@ -737,12 +797,6 @@ export function DesktopTransactions() {
                 </View>
                 <View className="web:desktop:h-px web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
                 <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                  <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{t('transactions.summary.net')}</Text>
-                  <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
-                    {formatILS(incomeAgorot - expenseAgorot)}
-                  </Text>
-                </View>
-                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {t('transactions.summary.personalPortion')}
                   </Text>
@@ -752,7 +806,7 @@ export function DesktopTransactions() {
             </View>
 
             {activeRules.length > 0 && (
-              <View className={DESKTOP_CARD_CLASS}>
+              <View className={DESKTOP_PANEL_CLASS}>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.rulesPanel.title')}
                 </Text>

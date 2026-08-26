@@ -17,6 +17,12 @@ export interface SegmentedOption<T extends string> {
   // spent (e.g. an internal transfer, migration 008/ADR-035) — using the
   // app's existing branded accent rather than inventing a new hue.
   tint?: 'ink' | 'positive' | 'accent'
+  // Product-quality pass: optional so every existing caller (which relied on
+  // accessibilityLabel-based queries) is untouched — added specifically so a
+  // filter-style caller (e.g. Transactions' type/shared filters, migrated off
+  // a loose Chip row onto this component) can keep its existing
+  // getByTestId(...)-based test coverage working unchanged.
+  testID?: string
 }
 
 interface SegmentedControlProps<T extends string> {
@@ -49,6 +55,7 @@ export function SegmentedControl<T extends string>({
         return (
           <Pressable
             key={option.value}
+            testID={option.testID}
             onPress={() => onChange(option.value)}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
@@ -56,7 +63,7 @@ export function SegmentedControl<T extends string>({
             className={
               selected
                 ? 'flex-1 items-center rounded-control bg-surface-light py-2.5 dark:bg-surface-dark'
-                : 'flex-1 items-center rounded-control py-2.5 active:opacity-60'
+                : 'flex-1 items-center rounded-control py-2.5 web:hover:bg-surface-light/60 active:opacity-60 dark:web:hover:bg-surface-dark/60'
             }
           >
             <Text
