@@ -28,8 +28,21 @@ module.exports = {
       // desktop >=1200). Always paired with the `web:` platform variant at
       // call sites (e.g. `web:tablet:max-w-[600px]`) so native/iPhone
       // layout is untouched — these only take effect in a browser.
+      //
+      // Checkpoint 3 (product-quality visual-refinement pass, round 2):
+      // `tabletLg` is a second threshold inside the 768-1199 tablet range,
+      // not a fourth top-level tier — the whole range is still "tablet" in
+      // every other sense (bottom tab-bar nav, no desktop sidebar). What
+      // changes at 1024px specifically is whether a screen that gets a
+      // real primary+rail composition on desktop (Transactions, Budget) has
+      // enough width to run that same shape at touch scale — Checkpoint 2's
+      // own finding was that 834px doesn't, but 1024px does. Screens with a
+      // 2-up content grid instead of a rail (Accounts, Installments) key
+      // off the existing `tablet` (834px+) threshold, not this one — see
+      // ContentRail.tsx vs. the plain `web:tablet:flex-row` convention.
       screens: {
         tablet: '768px',
+        tabletLg: '1024px',
         desktop: '1200px',
       },
       // Design Phase 1 — a named type hierarchy, additive to Tailwind's

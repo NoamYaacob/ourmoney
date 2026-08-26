@@ -40,7 +40,8 @@ import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Money } from '@/components/ui/Money'
 import { CountdownRing } from '@/components/ui/CountdownRing'
-import { DESKTOP_BREAKPOINT_PX, INLINE_FORM_WIDTH_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { DESKTOP_BREAKPOINT_PX, INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
+import { SurfacePanel } from '@/components/ui/SurfacePanel'
 import { InstallmentPlanRow } from '@/features/installments/components/InstallmentPlanRow'
 
 export default function Installments() {
@@ -296,7 +297,7 @@ export default function Installments() {
             const daysLeft = Math.max(0, daysBetween(today, range.end))
             const installmentAgorot = commitment.installmentAgorot ?? 0
             return (
-              <View key={account.id} className={`web:desktop:flex-1 ${DESKTOP_CARD_CLASS}`}>
+              <SurfacePanel key={account.id} className="web:desktop:flex-1">
                 <View className="flex-row items-center justify-between gap-3">
                   <View className="flex-1">
                     <Text className="text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
@@ -353,7 +354,7 @@ export default function Installments() {
                 <Text className="mt-3 border-t border-divider-light pt-3 text-caption font-sans text-inkMuted-light dark:border-divider-dark dark:text-inkMuted-dark">
                   {t('installments.cycleCards.range', { start: formatDateDisplay(range.start), end: formatDateDisplay(range.end) })}
                 </Text>
-              </View>
+              </SurfacePanel>
             )
           })}
         </View>

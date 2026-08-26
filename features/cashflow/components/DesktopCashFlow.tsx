@@ -48,7 +48,7 @@ import { StatusChip } from '@/components/ui/StatusChip'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
-import { DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { SurfacePanel } from '@/components/ui/SurfacePanel'
 import { useCashFlowStore } from '@/store/cashFlowStore'
 
 function eventRoute(event: CashFlowForecastEvent): string {
@@ -117,7 +117,7 @@ export function DesktopCashFlow() {
               strip (not the whole card) so it still reads as an alert
               without turning the entire evidence card red for what is
               otherwise routine chart content. */}
-          <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
+          <SurfacePanel className="web:desktop:mt-4">
             <View
               className={`web:desktop:mb-5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:border web:desktop:p-4 ${
                 hasShortfall
@@ -182,13 +182,13 @@ export function DesktopCashFlow() {
             <Text className="web:desktop:mt-3 text-caption text-inkMuted-light dark:text-inkMuted-dark">
               {t('cashFlow.forecast.disclaimer')}
             </Text>
-          </View>
+          </SurfacePanel>
 
           {/* The events that back the headline sentence — the cause of the
               low point is tagged inline, the same link mobile makes: a dip
               on a line is not actionable, "the car licence on the 4th is
               what does it" is. */}
-          <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
+          <SurfacePanel className="web:desktop:mt-4">
             <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
               <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
                 {t('cashFlow.mobile.eventsTitle')}
@@ -259,7 +259,7 @@ export function DesktopCashFlow() {
                 })}
               </View>
             )}
-          </View>
+          </SurfacePanel>
 
           {hasShortfall ? (
             <View className="web:desktop:mt-4 web:desktop:rounded-hero web:desktop:border web:desktop:border-dangerBorder-light web:desktop:bg-surfaceMuted-light web:desktop:p-4 dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-surfaceMuted-dark">

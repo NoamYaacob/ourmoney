@@ -19,6 +19,17 @@ export const CONTENT_WIDTH = {
   // (every detail/edit screen that renders a bare `<Screen>` with no width
   // prop) — a call this milestone's scope never asked for.
   form: 'w-full web:tablet:max-w-[600px] web:tablet:mx-auto web:desktop:max-w-[760px]',
+  // Checkpoint 3 (product-quality visual-refinement pass, round 2): Shape B's
+  // "richer" tier from design-review/SYSTEM.md §5 — Cash Flow and Accounts,
+  // the two single-column screens whose content (a scaling chart; a 3-group
+  // account grid) genuinely benefits from more width than `wide`'s 1150px
+  // desktop cap deliberately restrains list/table screens to, without adding
+  // a second column. `wide` is unchanged and keeps its ~16 existing callers;
+  // this is a new, opt-in tier, not a redefinition. Goals/Obligations/
+  // Recurring's "compact" tier (~760–820px, SYSTEM.md §5) reuses the
+  // existing `medium` token below instead of adding a third — the numbers
+  // already match.
+  richSingle: 'w-full web:tablet:max-w-[900px] web:tablet:mx-auto web:desktop:max-w-[960px]',
 } as const
 
 export type ContentWidth = keyof typeof CONTENT_WIDTH
@@ -43,16 +54,14 @@ export const TABLET_BREAKPOINT_PX = 768
 // bottom-sheet behavior is untouched (no `web:` match off-web).
 export const DIALOG_WIDTH_CLASS = 'web:max-w-[560px] web:self-center'
 
-// Desktop Claude Design pass: the white bordered panel the approved mockup
-// (`OurMoney - Desktop.dc.html`) uses everywhere at desktop width — the
-// hero's companion cards, budget/planning/accounts panels, list containers.
-// `rounded-hero` (22px), not `rounded-card` (18px, DESKTOP_PANEL_CLASS
-// below): the mockup uses one radius for every panel this size, and it's
-// the same 22px HeroPanel already uses, not the smaller one the pre-
-// redesign desktop screens picked. Desktop-only, like every other
-// `web:desktop:`-scoped token in this file — mobile is never affected.
-export const DESKTOP_CARD_CLASS =
-  'web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-6 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark'
+// Checkpoint 3 (product-quality visual-refinement pass, round 2): the
+// `rounded-hero`/full-border/no-shadow Level-1 treatment that used to live
+// here (DESKTOP_CARD_CLASS) is retired — its last 3 callers (Installments,
+// DesktopCashFlow x2) migrated to `<SurfacePanel>`
+// (components/ui/SurfacePanel.tsx), which uses DESKTOP_PANEL_CLASS's values
+// below, the treatment every other desktop screen had already converged on.
+// One Level-1 visual treatment now, not two near-identical ones a future
+// screen could pick between by accident.
 
 // Desktop polish pass: the bounded-panel treatment shared by Dashboard's
 // and Budgets' lower-section columns — border/radius/fill/padding only.

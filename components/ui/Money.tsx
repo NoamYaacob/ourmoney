@@ -20,6 +20,29 @@
 // in or a healthy figure, `danger` for a shortfall or an overrun, `default`
 // for a plain amount. It deliberately does not accept `accent` — accent is
 // the interactive color, and a number is not a control.
+//
+// Checkpoint 3 (product-quality visual-refinement pass, round 2) — financial-
+// hierarchy usage convention (design-review/SYSTEM.md §4). This is a
+// documentation-only addition: every role below is already expressible with
+// the existing `size`/`tone` props, so there is no second formatter or
+// hierarchy component anywhere else in the app.
+//
+//   - Primary/hero figure — `size="hero"` or `"display"`. ONE per screen:
+//     the number that screen exists to answer (Home's פנוי באמת, Accounts'
+//     available-to-spend, Recurring's/Obligations' total). A screen with two
+//     figures both claiming this size has no hierarchy, only two loud
+//     numbers — demote the second one instead.
+//   - Secondary metric — `size="large"` or `"figure"`. Supporting figures
+//     beside/under the hero (Accounts' owed/illiquid breakdown, Budget's
+//     spent/remaining).
+//   - Row amount — `size="row"` (the default). Every list-row amount:
+//     transactions, accounts, obligations, recurring, installments.
+//   - Metadata — not `Money` at all; a plain `Text` in `text-meta`/
+//     `text-caption` with `inkMuted` tone (dates, category/account names).
+//   - Positive/negative/neutral: row-level amounts stay `tone="default"`
+//     unless the row itself is what's being flagged (an overdue obligation,
+//     a cash-flow event tagged as the shortfall's cause) — reserve
+//     `positive`/`danger` tone for aggregate/summary figures keyed by sign.
 
 import { Text, type TextProps } from 'react-native'
 import { formatILS } from '@/lib/money/format'
