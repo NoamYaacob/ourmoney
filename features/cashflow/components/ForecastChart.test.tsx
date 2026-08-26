@@ -88,6 +88,39 @@ describe('ForecastChart', () => {
     expect(callout).toBeTruthy()
   })
 
+  it('hides the zero reference line/label when the balance stays comfortably clear of zero', async () => {
+    // Real day-to-day movement (~17,000 ₪) against a balance that never
+    // comes anywhere near zero (min 83,226.95, range well under the
+    // balance itself) — the exact "almost completely flat" product-quality
+    // finding this fixed. The axis compresses to the data's own range
+    // instead of stretching down to an irrelevant zero.
+    const dailyPoints = [
+      point({ date: '2026-08-26', balanceAgorot: 10_061_875 }),
+      point({ date: '2026-09-05', balanceAgorot: 8_600_000 }),
+      point({ date: '2026-09-20', balanceAgorot: 8_322_695 }),
+    ]
+    const { queryByText } = await render(
+      <ForecastChart dailyPoints={dailyPoints} lowestBalanceDate="2026-09-20" chartSummary="summary" variant="wide" />
+    )
+    expect(queryByText('0 ₪', { includeHiddenElements: true })).toBeNull()
+  })
+
+  it('keeps the zero reference line/label when the balance genuinely comes close to zero, even though it stays positive', async () => {
+    // Positive throughout, but the balance's own range (500 -> -old min 100,
+    // i.e. a 400 span) is NOT small relative to how close it sits to zero —
+    // this household's forecast is exactly the safety-relevant case the
+    // zero rule exists for, so it must not be compressed away.
+    const dailyPoints = [
+      point({ date: '2026-08-26', balanceAgorot: 50000 }),
+      point({ date: '2026-09-05', balanceAgorot: 10000 }),
+      point({ date: '2026-09-20', balanceAgorot: 30000 }),
+    ]
+    const { getByText } = await render(
+      <ForecastChart dailyPoints={dailyPoints} lowestBalanceDate="2026-09-05" chartSummary="summary" variant="wide" />
+    )
+    expect(getByText('0 ₪', { includeHiddenElements: true })).toBeTruthy()
+  })
+
   it('labels four points on the wide (desktop) variant and three on the compact one', async () => {
     const dailyPoints = Array.from({ length: 30 }, (_, i) =>
       point({ date: `2026-08-${String(i + 1).padStart(2, '0')}`, balanceAgorot: 100000 + i })

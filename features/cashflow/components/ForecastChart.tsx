@@ -76,9 +76,27 @@ export function ForecastChart({
   const { w: W, h: H, ticks, zeroLabel } = GEOMETRY[variant]
 
   const balances = dailyPoints.map((point) => point.balanceAgorot)
-  const minBalance = Math.min(0, ...balances)
-  const maxBalance = Math.max(0, ...balances)
+  const rawMin = Math.min(...balances)
+  const rawMax = Math.max(...balances)
+  const rawRange = rawMax - rawMin || 1
+
+  // Product-quality pass: this always forced 0 into the visible domain,
+  // which is exactly right for a household anywhere near a real shortfall
+  // (that IS what this chart exists to show) but produces an almost-flat
+  // line for a comfortably-positive one — the household's own real
+  // day-to-day movement (thousands of shekels) reads as a rounding error
+  // against a domain stretching down to a zero that was never remotely in
+  // reach. Only compress away from zero when the real balance stays
+  // comfortably clear of it (never dips within its own range's width of
+  // zero) — every household whose balance could plausibly be read as "close
+  // to zero" still gets the exact original, safety-first zero-anchored
+  // chart. Never changes a single plotted balance, only the axis it's drawn
+  // against.
+  const staysComfortablyPositive = rawMin > rawRange
+  const minBalance = staysComfortablyPositive ? rawMin - rawRange * 0.15 : Math.min(0, ...balances)
+  const maxBalance = staysComfortablyPositive ? rawMax + rawRange * 0.15 : Math.max(0, ...balances)
   const range = maxBalance - minBalance || 1
+  const showZeroReference = !staysComfortablyPositive
 
   const stepX = W / Math.max(1, dailyPoints.length - 1)
   // The mirror: index 0 (today) maps to the right edge.
@@ -116,18 +134,23 @@ export function ForecastChart({
             </Defs>
 
             <Polygon points={area} fill="url(#forecastFill)" />
-            <Line x1={0} y1={zeroY} x2={W} y2={zeroY} stroke={axis} strokeWidth={1} />
+            {showZeroReference && <Line x1={0} y1={zeroY} x2={W} y2={zeroY} stroke={axis} strokeWidth={1} />}
             <Polyline testID="forecast-chart-line" points={polyline} fill="none" stroke={line} strokeWidth={2} />
 
             {lowest && (
               <>
                 {/* Drops to the axis, not to the frame bottom: the line's
-                    job is to tie the dip to the zero it is approaching. */}
+                    job is to tie the dip to the zero it is approaching. When
+                    the balance never comes near zero (showZeroReference
+                    false — see this file's own comment above), there is no
+                    zero to tie it to, so it drops to the frame bottom
+                    instead — still grounding the marker, just against the
+                    chart's own floor rather than an irrelevant zero. */}
                 <Line
                   x1={lowestX}
                   y1={lowestY}
                   x2={lowestX}
-                  y2={Math.max(zeroY, lowestY)}
+                  y2={showZeroReference ? Math.max(zeroY, lowestY) : H}
                   stroke={isNegative ? danger : axis}
                   strokeWidth={1}
                   strokeDasharray="3 3"
@@ -141,15 +164,21 @@ export function ForecastChart({
           {/* The zero rule's own label, sitting just above the line at the
               edge the curve starts from — the design puts a number on that
               rule so crossing it means something without reading an axis.
-              `right`, not `start`: see the note on the callout below. */}
-          <View className="absolute" style={{ right: 0, top: `${(zeroY / H) * 100}%`, transform: [{ translateY: -16 }] }}>
-            <Text
-              className="text-meta font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark"
-              maxFontSizeMultiplier={1.2}
-            >
-              {zeroLabel}
-            </Text>
-          </View>
+              `right`, not `start`: see the note on the callout below. Not
+              rendered at all when the axis itself isn't (zero out of frame
+              — an absolutely-positioned label at a `top` percentage far
+              outside [0, 100] would float off the visible card instead of
+              simply being clipped the way the SVG line above already is). */}
+          {showZeroReference && (
+            <View className="absolute" style={{ right: 0, top: `${(zeroY / H) * 100}%`, transform: [{ translateY: -16 }] }}>
+              <Text
+                className="text-meta font-sansSemibold text-inkMuted-light dark:text-inkMuted-dark"
+                maxFontSizeMultiplier={1.2}
+              >
+                {zeroLabel}
+              </Text>
+            </View>
+          )}
 
           {/* The callout is real Text rather than SVG <Text> so it picks up
               the app's font and Dynamic Type. It is positioned as a

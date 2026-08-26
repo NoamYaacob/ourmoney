@@ -105,34 +105,43 @@ export function DesktopCashFlow() {
               <ErrorMessage message={t('cashFlow.forecast.errors.generic')} onRetry={refetch} />
             </View>
           )}
-          {/* The answer, in one sentence. */}
-          <View
-            className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-4 web:desktop:rounded-hero web:desktop:border web:desktop:p-5 ${
-              hasShortfall
-                ? 'web:desktop:border-dangerBorder-light web:desktop:bg-surfaceMuted-light dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-surfaceMuted-dark'
-                : `web:desktop:border-border-light web:desktop:bg-surfaceMuted-light dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark`
-            }`}
-          >
-            <Ionicons
-              name={hasShortfall ? 'alert-circle' : 'checkmark-circle'}
-              size={ICON.hero}
-              color={hasShortfall ? (isDark ? colors.danger.dark : colors.danger.light) : isDark ? colors.positive.dark : colors.positive.light}
-            />
-            <Text className="web:desktop:flex-1 text-body font-sans text-ink-light dark:text-ink-dark web:desktop:text-[17px]">
-              {hasShortfall
-                ? t('cashFlow.mobile.answerShortfall', {
-                    date: formatDateDisplay(forecast.firstShortfallDate as string),
-                    amount: formatILS(Math.abs(forecast.lowestBalanceAgorot)),
-                  })
-                : t('cashFlow.mobile.answerOk', {
-                    amount: formatILS(forecast.lowestBalanceAgorot),
-                    date: formatDateDisplay(forecast.lowestBalanceDate),
-                  })}
-            </Text>
-          </View>
-
-          {/* The evidence: the three headline figures, then the chart. */}
+          {/* The evidence: the answer sentence, then the three headline
+              figures, then the chart. Product-quality pass: the answer used
+              to be its own full-width bordered card sitting above this one
+              — a single sentence in a ~1150px box read as a mostly-empty
+              banner, especially in the calm/positive case. Folded into this
+              card's own intro row instead (icon + sentence, a divider below
+              it before the stats) — one continuous "here's the answer, here's
+              the evidence" card rather than two stacked boxes for what is
+              really one narrative. The shortfall case keeps its own tinted
+              strip (not the whole card) so it still reads as an alert
+              without turning the entire evidence card red for what is
+              otherwise routine chart content. */}
           <View className={`web:desktop:mt-4 ${DESKTOP_CARD_CLASS}`}>
+            <View
+              className={`web:desktop:mb-5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:border web:desktop:p-4 ${
+                hasShortfall
+                  ? 'web:desktop:bg-dangerSurface-light web:desktop:border-dangerBorder-light dark:web:desktop:bg-dangerSurface-dark dark:web:desktop:border-dangerBorder-dark'
+                  : 'web:desktop:bg-surface-light web:desktop:border-border-light dark:web:desktop:bg-surface-dark dark:web:desktop:border-border-dark'
+              }`}
+            >
+              <Ionicons
+                name={hasShortfall ? 'alert-circle' : 'checkmark-circle'}
+                size={ICON.row}
+                color={hasShortfall ? (isDark ? colors.danger.dark : colors.danger.light) : isDark ? colors.positive.dark : colors.positive.light}
+              />
+              <Text className="web:desktop:flex-1 text-body font-sans text-ink-light dark:text-ink-dark web:desktop:text-[17px]">
+                {hasShortfall
+                  ? t('cashFlow.mobile.answerShortfall', {
+                      date: formatDateDisplay(forecast.firstShortfallDate as string),
+                      amount: formatILS(Math.abs(forecast.lowestBalanceAgorot)),
+                    })
+                  : t('cashFlow.mobile.answerOk', {
+                      amount: formatILS(forecast.lowestBalanceAgorot),
+                      date: formatDateDisplay(forecast.lowestBalanceDate),
+                    })}
+              </Text>
+            </View>
             <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-9">
               <View>
                 <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
