@@ -58,6 +58,20 @@ export function Screen({
     center ? ' grow justify-center' : ''
   }`
 
+  // Product-quality pass (section 9/26): every current caller of `center`
+  // is an auth/onboarding screen (sign-in, sign-up, forgot/reset-password,
+  // create-household, invite-partner, invite/[token]) — a form of fields
+  // floating directly on the page's own beige canvas, no surrounding
+  // surface at all. Fine on a phone, where the canvas IS the form's own
+  // edge; on a wide desktop it read as unfinished rather than deliberately
+  // minimal — every comparable product (Stripe, Linear, Notion) gives an
+  // auth form its own card. Desktop-only, so mobile/tablet are untouched;
+  // scoped to `center` rather than added per-screen since every screen that
+  // sets it wants exactly this treatment (no caller currently disagrees).
+  const centerCardClass = center
+    ? ' web:desktop:rounded-hero web:desktop:border web:desktop:border-border-light/70 web:desktop:bg-surfaceMuted-light web:desktop:p-8 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70 dark:web:desktop:bg-surfaceMuted-dark'
+    : ''
+
   const backButton = onBack && (
     <Pressable
       onPress={onBack}
@@ -72,6 +86,8 @@ export function Screen({
     </Pressable>
   )
 
+  const body = center ? <View className={`w-full${centerCardClass}`}>{children}</View> : children
+
   const content = scroll ? (
     <ScrollView
       contentContainerClassName={pageClass}
@@ -79,7 +95,7 @@ export function Screen({
       showsVerticalScrollIndicator={false}
     >
       {backButton}
-      {children}
+      {body}
     </ScrollView>
   ) : (
     <View
@@ -88,7 +104,7 @@ export function Screen({
       }`}
     >
       {backButton}
-      {children}
+      {body}
     </View>
   )
 
