@@ -135,4 +135,36 @@ describe('useFinancialAlerts', () => {
     expect(result.current.alerts.some((a) => a.type === 'savings_goal_behind')).toBe(false)
     expect(result.current.hasPartialError).toBe(true)
   })
+
+  // Release-readiness pass: a brand-new household with zero accounts has
+  // safeToSpendAgorot === 0 (nothing to sum), which lowBalanceSeverity()
+  // can't distinguish from a real household whose cash ran low —
+  // DEFAULT_ACCOUNTS/DEFAULT_SAFE_TO_SPEND above are already exactly this
+  // shape (accounts: [], safeToSpendAgorot: 0), so the defaults alone
+  // reproduce the false alarm this test guards against.
+  it('does not fire low_balance_warning or excess_cash_available for a household with zero accounts, even though safeToSpendAgorot is 0', async () => {
+    resetDefaults()
+
+    const { result } = await renderHook(() => useFinancialAlerts('household-1'), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.alerts.some((a) => a.type === 'low_balance_warning')).toBe(false)
+    expect(result.current.alerts.some((a) => a.type === 'excess_cash_available')).toBe(false)
+  })
+
+  it('does fire low_balance_warning once the household has at least one account and a genuinely low safeToSpendAgorot', async () => {
+    resetDefaults()
+    mockUseAccounts.mockReturnValue({
+      accounts: [{ id: 'acc-1', type: 'checking', billing_cycle_day: null }],
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+    mockUseSafeToSpend.mockReturnValue({ result: { safeToSpendAgorot: 1000 }, isLoading: false, error: null, hasData: true })
+
+    const { result } = await renderHook(() => useFinancialAlerts('household-1'), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.alerts.some((a) => a.type === 'low_balance_warning')).toBe(true)
+  })
 })

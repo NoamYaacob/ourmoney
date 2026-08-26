@@ -174,7 +174,23 @@ export function useFinancialAlerts(householdId: string | null | undefined): UseF
           targetDate: goal.target_date,
         }))
       : [],
-    safeToSpendAgorot: safeToSpend.hasData ? safeToSpend.result.safeToSpendAgorot : null,
+    // Release-readiness pass finding: a brand-new household with zero
+    // accounts computes safeToSpendAgorot as exactly 0 (no cash accounts to
+    // sum), and lowBalanceSeverity(0) reads that the same as a real
+    // household whose cash genuinely ran low — firing a "balance
+    // approaching zero" warning card on a screen that has no accounts,
+    // transactions, or budget at all yet. That 0 isn't a low balance, it's
+    // the absence of any balance to have. Gating on accounts.hasData &&
+    // length > 0 here (not in calculateSafeToSpend.ts itself, which still
+    // correctly computes 0 for the Home hero card's own honest display)
+    // keeps the alerts feed silent until there's an actual account for
+    // "low" to mean anything about — same treatment for
+    // excess_cash_available, which is exactly as meaningless with zero
+    // accounts.
+    safeToSpendAgorot:
+      safeToSpend.hasData && accounts.hasData && accounts.accounts.length > 0
+        ? safeToSpend.result.safeToSpendAgorot
+        : null,
   })
 
   return {
