@@ -127,23 +127,25 @@ describe('Transactions list', () => {
   // Desktop polish pass (round 2): a real-browser visual check at a
   // realistic ~900px viewport height found the earlier "bounded region
   // near the top" treatment still read as a small card floating in mostly
-  // empty page — `web:desktop:flex-1 web:desktop:justify-center` claims
+  // empty page — `web:tabletLg:flex-1 web:tabletLg:justify-center` claims
   // the column's remaining vertical space (Screen's own content column is
   // already `flex-1`, see Screen.tsx) and centers the card within it
   // instead of leaving that space as dead canvas below a top-anchored box.
   // Mobile keeps the exact original unscoped "items-center pt-10" box —
-  // asserted below by confirming the bare (non-`web:desktop:`-prefixed)
-  // tokens contain no `flex-1`/`justify-center` of their own.
-  it("gives the desktop empty state the column's remaining space, centered, instead of a small top-anchored box", async () => {
+  // asserted below by confirming the bare (non-`web:tabletLg:`-prefixed)
+  // tokens contain no `flex-1`/`justify-center` of their own. Checkpoint 4:
+  // `web:desktop:` -> `web:tabletLg:` throughout, matching this screen's own
+  // new mount threshold.
+  it("gives the rich-composition empty state the column's remaining space, centered, instead of a small top-anchored box", async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getAllByText } = await render(<Transactions />)
 
     const card = climbTo(getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')[0], 'max-w-[520px]')
     const cardClassName = card?.props.className as string
-    expect(cardClassName).toContain('web:desktop:max-w-[520px]')
-    expect(cardClassName).toContain('web:desktop:rounded-card')
-    expect(cardClassName).toContain('web:desktop:border')
+    expect(cardClassName).toContain('web:tabletLg:max-w-[520px]')
+    expect(cardClassName).toContain('web:tabletLg:rounded-card')
+    expect(cardClassName).toContain('web:tabletLg:border')
 
     const outerBox = card?.parent
     const outerTokens = ((outerBox?.props.className as string) ?? '').split(/\s+/)
@@ -151,28 +153,28 @@ describe('Transactions list', () => {
     expect(outerTokens).toContain('pt-10')
     expect(outerTokens).not.toContain('flex-1')
     expect(outerTokens).not.toContain('justify-center')
-    expect(outerTokens).toContain('web:desktop:flex-1')
-    expect(outerTokens).toContain('web:desktop:justify-center')
+    expect(outerTokens).toContain('web:tabletLg:flex-1')
+    expect(outerTokens).toContain('web:tabletLg:justify-center')
   })
 
   // Desktop polish pass (round 2): `compact` has no responsive variant, so
-  // the desktop card renders a second, full-size EmptyState instead of
+  // the rich card renders a second, full-size EmptyState instead of
   // reusing the mobile compact one — guards that each variant is correctly
   // shown/hidden per breakpoint rather than both showing at once on either.
-  it('shows the compact empty state only off desktop, and the full-size one only at desktop', async () => {
+  it('shows the compact empty state only below tabletLg, and the full-size one only from tabletLg up', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getAllByText } = await render(<Transactions />)
 
     const [mobileMessage, desktopMessage] = getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')
-    const mobileWrapper = climbTo(mobileMessage, 'web:desktop:hidden')
-    const desktopWrapper = climbTo(desktopMessage, 'web:desktop:flex')
+    const mobileWrapper = climbTo(mobileMessage, 'web:tabletLg:hidden')
+    const desktopWrapper = climbTo(desktopMessage, 'web:tabletLg:flex')
     const mobileTokens = ((mobileWrapper?.props.className as string) ?? '').split(/\s+/)
     const desktopTokens = ((desktopWrapper?.props.className as string) ?? '').split(/\s+/)
-    expect(mobileTokens).toContain('web:desktop:hidden')
+    expect(mobileTokens).toContain('web:tabletLg:hidden')
     expect(mobileTokens).not.toContain('hidden')
     expect(desktopTokens).toContain('hidden')
-    expect(desktopTokens).toContain('web:desktop:flex')
+    expect(desktopTokens).toContain('web:tabletLg:flex')
   })
 
   it('renders a populated row with description, category name, and a positive-colored income amount', async () => {
@@ -216,68 +218,72 @@ describe('Transactions list', () => {
   // (components/ui/DesktopTopBar), where the mockup's own Transactions frame
   // puts it. Its layout and contents are covered by that component's tests.
 
-  // Desktop Claude Design pass: the mockup pairs the transaction feed with a
-  // 300px sidebar (this view's summary + active rules) — the flat, single-
-  // column `medium` (800px) cap the pre-redesign screen used has no room for
-  // that second column, so the screen now uses the same `wide` (1150px)
-  // token every other desktop screen with a sidebar uses (Dashboard, etc.).
-  it('uses the wide (1150px) desktop content cap, giving room for the sidebar column', async () => {
+  // Checkpoint 4 (Home + Transactions recompose): the flat `wide` (1150px)
+  // cap was replaced by ContentRail's own wider Shape-A caps (1050px at
+  // tabletLg, 1390px at desktop) — this screen now mounts starting at 1024
+  // (TABLET_LG_BREAKPOINT_PX), so it needs the width ContentRail provides at
+  // that tier, not `wide`'s narrower tablet value (820px) or desktop value
+  // (1150px), both of which would double-clamp the rail layout back down.
+  it('uses ContentRail\'s own width caps (1050px tabletLg / 1390px desktop), not a flatter Screen-level clamp', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     // Anchored on the empty-state message rather than the screen title,
-    // which is the shell bar's now. Walks up to the Screen's own content
-    // column, which is what carries the width cap.
+    // which is the shell bar's now. Walks up to the outer content column,
+    // which is what carries the width cap.
     const { getAllByText } = await render(<Transactions />)
 
     let node = getAllByText('עדיין אין תנועות. הוסיפו את הראשונה שלכם.')[0]?.parent
     let className = ''
-    for (let depth = 0; depth < 12 && node; depth += 1) {
+    for (let depth = 0; depth < 14 && node; depth += 1) {
       const candidate = (node.props?.className as string | undefined) ?? ''
-      if (candidate.includes('web:desktop:max-w-[1150px]')) {
+      if (candidate.includes('web:desktop:max-w-[1390px]')) {
         className = candidate
         break
       }
       node = node.parent
     }
-    expect(className).toContain('web:desktop:max-w-[1150px]')
+    expect(className).toContain('web:tabletLg:max-w-[1050px]')
+    expect(className).toContain('web:desktop:max-w-[1390px]')
   })
 
-  // Desktop Visual/Responsive Design pass (section C): search + the 3
-  // dropdown filters (period/account/category) merge into one row at
-  // desktop instead of reading as a stacked mobile filter panel. Mobile
-  // keeps the original stacked layout — the `web:desktop:` prefix on every
-  // class involved means nothing changes off that breakpoint.
-  it('merges the search field and the 3 filter selects into one row at desktop', async () => {
+  // Checkpoint 4: every filter row switched from `web:desktop:` to
+  // `web:tabletLg:` scoping, matching this screen's own new mount threshold
+  // (1024, not 1200) — search + the 3 dropdown filters (period/account/
+  // category) merge into one row from tabletLg up instead of reading as a
+  // stacked mobile filter panel. Mobile keeps the original stacked layout —
+  // the `web:tabletLg:` prefix on every class involved means nothing
+  // changes below that breakpoint.
+  it('merges the search field and the 3 filter selects into one row from tabletLg up', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getByLabelText } = await render(<Transactions />)
 
     const searchField = getByLabelText('חיפוש')
-    const row = climbTo(searchField, 'web:desktop:items-start')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row')
+    const row = climbTo(searchField, 'web:tabletLg:items-start')
+    expect(row?.props.className as string).toContain('web:tabletLg:flex-row')
 
     const periodField = getByLabelText('תקופה')
     const accountField = getByLabelText('חשבון')
     const categoryField = getByLabelText('קטגוריה')
-    expect(climbTo(periodField, 'web:desktop:items-start')).toBe(row)
-    expect(climbTo(accountField, 'web:desktop:items-start')).toBe(row)
-    expect(climbTo(categoryField, 'web:desktop:items-start')).toBe(row)
+    expect(climbTo(periodField, 'web:tabletLg:items-start')).toBe(row)
+    expect(climbTo(accountField, 'web:tabletLg:items-start')).toBe(row)
+    expect(climbTo(categoryField, 'web:tabletLg:items-start')).toBe(row)
   })
 
-  // Desktop Visual/Responsive Design pass (section C): the type and
-  // shared/personal chip rows — each a full stacked row on mobile — merge
-  // into one denser row at desktop, since both are secondary filters.
-  it('merges the type and shared/personal chip rows into one row at desktop', async () => {
+  // Checkpoint 4: the type and shared/personal chip rows — each a full
+  // stacked row on mobile — merge into one denser row from tabletLg up,
+  // since both are secondary filters.
+  it('merges the type and shared/personal chip rows into one row from tabletLg up', async () => {
     mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
 
     const { getByTestId } = await render(<Transactions />)
 
     const typeChip = getByTestId('transactions-filter-type-expense')
-    const row = climbTo(typeChip, 'web:desktop:items-center')
-    expect(row?.props.className as string).toContain('web:desktop:flex-row')
+    const row = climbTo(typeChip, 'web:tabletLg:items-center')
+    expect(row?.props.className as string).toContain('web:tabletLg:flex-row')
 
     const sharedChip = getByTestId('transactions-filter-shared-shared')
-    expect(climbTo(sharedChip, 'web:desktop:items-center')).toBe(row)
+    expect(climbTo(sharedChip, 'web:tabletLg:items-center')).toBe(row)
   })
 
   it('gives an expense a neutral (non-positive) amount color, not accent', async () => {

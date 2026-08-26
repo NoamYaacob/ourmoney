@@ -129,4 +129,28 @@ describe('DesktopTopBar', () => {
     const { queryByText } = await render(<DesktopTopBar activeSegment="dashboard" />)
     expect(queryByText(i18n.t('cashFlow.forecast.horizon.days30'))).toBeNull()
   })
+
+  // Checkpoint 4: Home and Transactions mount their rich component starting
+  // at tabletLg (1024) instead of desktop (1200) — this bar has to show
+  // that early too on exactly those two routes, or the 1024-1199 range would
+  // have no title at all. Every other route is unchanged (still 1200-only).
+  describe('tabletLg visibility (Checkpoint 4)', () => {
+    it('shows from web:tabletLg: on dashboard and transactions', async () => {
+      const dashboard = await render(<DesktopTopBar activeSegment="dashboard" />)
+      const dashboardBar = dashboard.getByText(i18n.t('tabs.dashboard')).parent
+      expect((dashboardBar?.props.className as string) ?? '').toContain('web:tabletLg:flex')
+
+      const transactions = await render(<DesktopTopBar activeSegment="transactions" />)
+      const transactionsBar = transactions.getByText(i18n.t('tabs.transactions')).parent
+      expect((transactionsBar?.props.className as string) ?? '').toContain('web:tabletLg:flex')
+    })
+
+    it('stays web:desktop:-only everywhere else', async () => {
+      const { getByText } = await render(<DesktopTopBar activeSegment="accounts" />)
+      const bar = getByText(i18n.t('settings.financial.accounts')).parent
+      const className = (bar?.props.className as string) ?? ''
+      expect(className).toContain('web:desktop:flex')
+      expect(className).not.toContain('web:tabletLg:flex')
+    })
+  })
 })

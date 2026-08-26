@@ -13,10 +13,28 @@
 // from selection, and the true-empty vs. no-results distinction. Only what
 // renders and how it's arranged changed.
 //
-// Renders only at >=1200px on web (app/(app)/transactions/index.tsx picks
-// between this and MobileTransactions), so every class below is
-// desktop-scoped — this component is simply never mounted at any other
-// width.
+// Renders at >=1024px on web (app/(app)/transactions/index.tsx picks
+// between this and MobileTransactions, at TABLET_LG_BREAKPOINT_PX rather
+// than DESKTOP_BREAKPOINT_PX — see that file's own comment) — Checkpoint 4
+// (Home + Transactions recompose) moved this screen's own switch earlier,
+// making it (with Home) the first real, rendered use of the `tabletLg`
+// breakpoint Checkpoint 3 added but nothing yet consumed. Every class below
+// is `web:tabletLg:`-scoped, not `web:desktop:`-scoped, for exactly that
+// reason — this is the SAME visual language from 1024 up; the only place
+// tabletLg and desktop genuinely differ is ContentRail's own rail width
+// (280px vs 320px) and outer max-width (1050px vs 1390px), which that
+// primitive already parameterizes internally. DesktopTopBar (the shell's
+// title band) was extended the same way, per-segment, for this exact
+// reason — see its own header comment.
+//
+// Toolbar: Checkpoint 1 found "a lot of chrome before the first table row"
+// (search+3 selects, type+shared controls, the uncategorized banner) — the
+// brief asks for a toolbar, not a wall of controls. Every filter stays
+// individually visible and directly reachable (collapsing them behind a
+// disclosure was considered and rejected — it would touch this screen's
+// interaction surface far more than the actual finding calls for); the fix
+// is tighter vertical rhythm between the existing rows and a smaller
+// uncategorized-queue banner, not fewer controls.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
@@ -52,8 +70,9 @@ import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { HIT_SLOP } from '@/constants/accessibility'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { RESPONSIVE_PANEL_CLASS } from '@/constants/layout'
 import { Screen } from '@/components/ui/Screen'
+import { ContentRail, CONTENT_RAIL_WIDTH_CLASS } from '@/components/ui/ContentRail'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
@@ -298,31 +317,43 @@ export function DesktopTransactions() {
   return (
     <Screen
       scroll={false}
-      width="wide"
+      width="full"
       floatingAction={<FAB accessibilityLabel={t('transactions.addButton')} onPress={() => router.push('/transactions/new')} />}
     >
-      {/* The title, the CSV-import link and the primary action are the
-          shell bar's on desktop now (components/ui/DesktopTopBar.tsx) — the
-          mockup's own Transactions frame puts exactly those three in its
-          68px band. This screen used to draw them again underneath it. */}
+      {/* Checkpoint 4: `width="full"` (no clamp of its own) rather than
+          `wide` — this screen's own outer wrapper below, sized off
+          ContentRail's exported CONTENT_RAIL_WIDTH_CLASS, is what caps and
+          centers the content now. `wide`'s 820/1150px caps would otherwise
+          double-clamp this screen to a narrower width than Shape A's own
+          1050/1390px, silently shrinking the rail layout back down. */}
+      <View className={CONTENT_RAIL_WIDTH_CLASS}>
+        {/* The title, the CSV-import link and the primary action are the
+            shell bar's now (components/ui/DesktopTopBar.tsx, tabletLg+ on
+            this route specifically — see its own header comment). The
+            mockup's own Transactions frame puts exactly those three in its
+            68px band. This screen used to draw them again underneath it. */}
 
-      {/* Toolbar architecture pass: search is the primary control, given its
-          own visual weight; the three narrowing selects are a clearly
-          secondary cluster beside it (previously each select was wrapped in
-          its own border+bg box on TOP of Select's own 'row'-variant border —
-          a literal double-bordered box every one of the three rendered as).
-          Type/shared moved off seven competing Chip pills onto two compact
-          SegmentedControls — the exact same component and tint language
-          transactions/new.tsx's own expense/income/transfer +
-          shared/personal toggles already use, so "filter by type" and "set
-          a type" now look like the same product decision, not two.
-          Deliberately full-width (spans both the table and sidebar columns
-          below, not just the table column) so the summary sidebar starts at
-          the same Y as the table it summarizes, instead of floating beside
-          the filter row above it. */}
-      <View className="web:desktop:mb-5">
-        <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-3">
-          <View className="web:desktop:flex-[2]">
+        {/* Toolbar architecture pass: search is the primary control, given
+            its own visual weight; the three narrowing selects are a clearly
+            secondary cluster beside it (previously each select was wrapped
+            in its own border+bg box on TOP of Select's own 'row'-variant
+            border — a literal double-bordered box every one of the three
+            rendered as). Type/shared moved off seven competing Chip pills
+            onto two compact SegmentedControls — the exact same component
+            and tint language transactions/new.tsx's own expense/income/
+            transfer + shared/personal toggles already use, so "filter by
+            type" and "set a type" now look like the same product decision,
+            not two. Deliberately full-width (spans both the table and
+            sidebar columns below, not just the table column) so the summary
+            sidebar starts at the same Y as the table it summarizes, instead
+            of floating beside the filter row above it.
+            Checkpoint 4: `mb-5` → `mb-4` and the row gaps below tightened —
+            Checkpoint 1's own finding was chrome density, not missing
+            controls, so every field here stays exactly as reachable as
+            before; only the vertical rhythm between rows tightened. */}
+        <View className="web:tabletLg:mb-4">
+          <View className="web:tabletLg:flex-row web:tabletLg:items-start web:tabletLg:gap-3">
+          <View className="web:tabletLg:flex-[2]">
             <Input
               label={t('transactions.filters.searchLabel')}
               value={filterState.search}
@@ -331,7 +362,7 @@ export function DesktopTransactions() {
             />
           </View>
 
-          <View className="mb-2 flex-row flex-wrap gap-2 web:desktop:mb-0 web:desktop:flex-[3] web:desktop:flex-nowrap">
+          <View className="mb-2 flex-row flex-wrap gap-2 web:tabletLg:mb-0 web:tabletLg:flex-[3] web:tabletLg:flex-nowrap">
             <View className="min-w-[110px] flex-1">
               <Select
                 variant="row"
@@ -375,8 +406,8 @@ export function DesktopTransactions() {
             >=1200px — see its own header comment — so no responsive
             fallback is needed here; MobileTransactions.tsx keeps its own
             unrelated Chip-row treatment, which fits that layout better.) */}
-        <View className="web:desktop:mt-3 web:desktop:flex-row web:desktop:items-center web:desktop:gap-4">
-          <View className="web:desktop:w-[420px]">
+        <View className="web:tabletLg:mt-3 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-4">
+          <View className="web:tabletLg:w-[420px]">
             <SegmentedControl
               accessibilityLabel={t('transactions.filters.typeLabel')}
               options={[
@@ -389,7 +420,7 @@ export function DesktopTransactions() {
               onChange={(value) => updateFilters({ type: value })}
             />
           </View>
-          <View className="web:desktop:w-[280px]">
+          <View className="web:tabletLg:w-[280px]">
             <SegmentedControl
               accessibilityLabel={t('transactions.filters.sharedLabel')}
               options={[
@@ -404,8 +435,10 @@ export function DesktopTransactions() {
         </View>
       </View>
 
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
-        <View className="web:desktop:flex-1">
+      <ContentRail
+        className="web:tabletLg:mt-1"
+        primary={
+          <>
           {!isPageLoading && !error && !isSelectionMode && (
             <View className="mb-4 flex-row items-center justify-between web:flex-row">
               <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -490,17 +523,19 @@ export function DesktopTransactions() {
               uncategorized filter and enters selection mode, the same two
               real capabilities this screen already has (no new mutation, no
               invented "auto-classify" flow — just the fastest path through
-              existing ones). */}
+              existing ones).
+              Checkpoint 4: shrunk from a `p-3.5`/`h-8 w-8` icon badge to a
+              slimmer strip (`p-2.5`, no separate icon badge fill) — Checkpoint
+              1's "a lot of chrome before the first row" finding named this
+              banner specifically as reading like a full card. */}
           {!isPageLoading && !error && uncategorizedVisible.length > 0 && (
             <Pressable
               onPress={handleUncategorizedQueuePress}
               accessibilityRole="button"
-              className="web:desktop:mb-3 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-hero web:desktop:border web:desktop:border-warning-light/40 web:desktop:bg-surfaceMuted-light web:desktop:p-3.5 dark:web:desktop:border-warning-dark/40 dark:web:desktop:bg-surfaceMuted-dark"
+              className="web:tabletLg:mb-3 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2.5 web:tabletLg:rounded-row web:tabletLg:border web:tabletLg:border-warning-light/40 web:tabletLg:bg-surfaceMuted-light web:tabletLg:p-2.5 dark:web:tabletLg:border-warning-dark/40 dark:web:tabletLg:bg-surfaceMuted-dark"
             >
-              <View className="web:desktop:h-8 web:desktop:w-8 web:desktop:items-center web:desktop:justify-center web:desktop:rounded-control web:desktop:bg-warningTint-light dark:web:desktop:bg-warningTint-dark">
-                <Ionicons name="pricetag-outline" size={ICON.row} color={colors.warningStrong[scheme === 'dark' ? 'dark' : 'light']} />
-              </View>
-              <View className="web:desktop:flex-1">
+              <Ionicons name="pricetag-outline" size={ICON.row} color={colors.warningStrong[scheme === 'dark' ? 'dark' : 'light']} />
+              <View className="web:tabletLg:flex-1">
                 <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
                   {t('transactions.queue.title', { count: uncategorizedVisible.length })}
                 </Text>
@@ -508,7 +543,7 @@ export function DesktopTransactions() {
                   {t('transactions.queue.subtitle', { amount: formatILS(uncategorizedTotalAgorot) })}
                 </Text>
               </View>
-              <View className="web:desktop:rounded-control web:desktop:bg-ink-light web:desktop:px-3.5 web:desktop:py-2 dark:web:desktop:bg-ink-dark">
+              <View className="web:tabletLg:rounded-control web:tabletLg:bg-ink-light web:tabletLg:px-3.5 web:tabletLg:py-2 dark:web:tabletLg:bg-ink-dark">
                 <Text className="text-caption font-sansSemibold text-surface-light dark:text-surface-dark">
                   {t('transactions.queue.button')}
                 </Text>
@@ -521,7 +556,7 @@ export function DesktopTransactions() {
           ) : !hasData ? (
             <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
           ) : error ? (
-            <View className="web:desktop:mb-3">
+            <View className="web:tabletLg:mb-3">
               <ErrorMessage message={t('transactions.errors.generic')} onRetry={refetch} />
             </View>
           ) : null}
@@ -535,27 +570,27 @@ export function DesktopTransactions() {
             // found the previous desktop treatment — a `self-end`-anchored,
             // modestly-sized box near the top — still read as "a small card
             // floating in a huge blank page," especially at typical ~900px
-            // viewport heights. `web:desktop:flex-1 web:desktop:justify-center`
+            // viewport heights. `web:tabletLg:flex-1 web:tabletLg:justify-center`
             // (Screen's own content column is already a `flex-1` column, see
             // Screen.tsx) makes this box claim the remaining vertical space
             // below the header and centers its content within it — the
             // available space is used deliberately instead of left as dead
             // canvas beneath a small anchored box. Mobile is untouched: without
-            // `web:desktop:`, it stays the exact original unscoped "items-center
+            // `web:tabletLg:`, it stays the exact original unscoped "items-center
             // pt-10" box (flex-1/justify-center was deliberately rejected for
             // mobile in an earlier pass — see the dedicated regression test
             // below for why that choice is guarded, not reintroduced here).
-            <View className="items-center pt-10 web:desktop:flex-1 web:desktop:justify-center web:desktop:pt-0">
-              <View className="web:desktop:w-full web:desktop:max-w-[520px] web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+            <View className="items-center pt-10 web:tabletLg:flex-1 web:tabletLg:justify-center web:tabletLg:pt-0">
+              <View className="web:tabletLg:w-full web:tabletLg:max-w-[520px] web:tabletLg:rounded-card web:tabletLg:border web:tabletLg:border-border-light web:tabletLg:bg-surfaceMuted-light web:tabletLg:px-10 web:tabletLg:py-16 dark:web:tabletLg:border-border-dark dark:web:tabletLg:bg-surfaceMuted-dark">
                 {/* Two EmptyState renders, not one — `compact` is a single
                     fixed prop with no responsive variant, and desktop's roomier
                     card calls for the larger icon/spacing `compact={false}`
                     already gives every other full-size empty state in this app,
                     while mobile keeps the exact original compact treatment. */}
-                <View className="web:desktop:hidden">
+                <View className="web:tabletLg:hidden">
                   <EmptyState iconName="receipt-outline" message={t('transactions.empty')} compact />
                 </View>
-                <View className="hidden web:desktop:flex">
+                <View className="hidden web:tabletLg:flex">
                   <EmptyState iconName="receipt-outline" message={t('transactions.empty')} />
                 </View>
               </View>
@@ -571,18 +606,26 @@ export function DesktopTransactions() {
               />
             </View>
           ) : (
-            <View className={DESKTOP_PANEL_CLASS}>
-              <View className="web:desktop:flex-row web:desktop:items-center web:desktop:border-b web:desktop:border-divider-light web:desktop:pb-2.5 dark:web:desktop:border-divider-dark">
-                <Text className="web:desktop:flex-1 text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
+            <View className={RESPONSIVE_PANEL_CLASS}>
+              <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:border-b web:tabletLg:border-divider-light web:tabletLg:pb-2.5 dark:web:tabletLg:border-divider-dark">
+                <Text className="web:tabletLg:flex-1 text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.transaction')}
                 </Text>
-                <Text className="web:desktop:w-[170px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
+                {/* Checkpoint 4: narrower at tabletLg (130px) than desktop
+                    (170px) — the primary column has ~220-290px less room at
+                    1024-1199 than at 1200+ (ContentRail's own narrower rail
+                    and outer cap), and every fixed column staying at its
+                    desktop width squeezed the row's own subtitle (category
+                    + date) into truncating. Account names themselves still
+                    fit comfortably at 130px; freed width goes back to the
+                    row's own text. */}
+                <Text className="web:tabletLg:w-[130px] web:desktop:w-[170px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.account')}
                 </Text>
-                <Text className="web:desktop:w-[90px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="web:tabletLg:w-[90px] text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.attribution')}
                 </Text>
-                <Text className="web:desktop:w-[130px] text-end text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="web:tabletLg:w-[130px] text-end text-meta font-sansSemibold tracking-[0.05em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.columns.amount')}
                 </Text>
               </View>
@@ -599,8 +642,8 @@ export function DesktopTransactions() {
                     <View
                       className={
                         groupIndex === 0
-                          ? 'web:desktop:mb-1 web:desktop:mt-4 web:desktop:flex-row web:desktop:items-center'
-                          : 'web:desktop:mb-1 web:desktop:mt-5 web:desktop:flex-row web:desktop:items-center web:desktop:border-t web:desktop:border-divider-light web:desktop:pt-4 dark:web:desktop:border-divider-dark'
+                          ? 'web:tabletLg:mb-1 web:tabletLg:mt-4 web:tabletLg:flex-row web:tabletLg:items-center'
+                          : 'web:tabletLg:mb-1 web:tabletLg:mt-5 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:border-t web:tabletLg:border-divider-light web:tabletLg:pt-4 dark:web:tabletLg:border-divider-dark'
                       }
                     >
                       <Text className="text-meta font-sansSemibold tracking-[0.03em] text-inkMuted-light dark:text-inkMuted-dark">
@@ -664,8 +707,8 @@ export function DesktopTransactions() {
                                 })
                               : undefined
                           }
-                          className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-control web:desktop:border-b web:desktop:border-divider-light web:desktop:px-2 web:desktop:py-3 web:desktop:-mx-2 web:hover:bg-surface-light/70 dark:web:desktop:border-divider-dark dark:web:hover:bg-surface-dark/50 ${
-                            isSelectionMode && isSelected ? 'web:desktop:bg-surface-light dark:web:desktop:bg-surface-dark' : ''
+                          className={`web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-3 web:tabletLg:rounded-control web:tabletLg:border-b web:tabletLg:border-divider-light web:tabletLg:px-2 web:tabletLg:py-3 web:tabletLg:-mx-2 web:hover:bg-surface-light/70 dark:web:tabletLg:border-divider-dark dark:web:hover:bg-surface-dark/50 ${
+                            isSelectionMode && isSelected ? 'web:tabletLg:bg-surface-light dark:web:tabletLg:bg-surface-dark' : ''
                           }`}
                         >
                           {isSelectionMode && !isTransfer && (
@@ -686,7 +729,7 @@ export function DesktopTransactions() {
                           ) : (
                             <CategoryIcon icon={item.category_id ? categoryIconById[item.category_id] : undefined} size="sm" />
                           )}
-                          <View className="web:desktop:flex-1">
+                          <View className="web:tabletLg:flex-1">
                             <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                               {item.description}
                             </Text>
@@ -699,10 +742,10 @@ export function DesktopTransactions() {
                               </Text>
                             )}
                           </View>
-                          <Text className="web:desktop:w-[170px] text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                          <Text className="web:tabletLg:w-[130px] web:desktop:w-[170px] text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
                             {accountNameById[item.account_id] ?? ''}
                           </Text>
-                          <View className="web:desktop:w-[90px]">
+                          <View className="web:tabletLg:w-[90px]">
                             {!isTransfer && (
                               <StatusChip
                                 label={item.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
@@ -713,10 +756,10 @@ export function DesktopTransactions() {
                           <Text
                             className={
                               isTransfer
-                                ? 'web:desktop:w-[130px] text-end text-body font-semibold text-accent-light dark:text-accent-dark'
+                                ? 'web:tabletLg:w-[130px] text-end text-body font-semibold text-accent-light dark:text-accent-dark'
                                 : item.amount_agorot > 0
-                                  ? 'web:desktop:w-[130px] text-end text-body font-semibold text-positive-light dark:text-positive-dark'
-                                  : 'web:desktop:w-[130px] text-end text-body font-semibold text-ink-light dark:text-ink-dark'
+                                  ? 'web:tabletLg:w-[130px] text-end text-body font-semibold text-positive-light dark:text-positive-dark'
+                                  : 'web:tabletLg:w-[130px] text-end text-body font-semibold text-ink-light dark:text-ink-dark'
                             }
                           >
                             {formatILS(item.amount_agorot)}
@@ -729,19 +772,22 @@ export function DesktopTransactions() {
               })}
             </View>
           )}
-        </View>
-
-        {/* Right sidebar — desktop only. Starts at the same Y as the table
-            (the toolbar above now spans both columns, not just this one) so
-            the summary reads as this exact list's own recap rather than a
-            card floating beside the filter row above it. Always shown,
-            independent of the list's own empty/loading state: the
-            active-rules panel describes the household's rule set, not this
-            month's transactions, and a month summary of all zeros is a
-            correct (if unremarkable) description of an empty month, not a
-            state worth hiding. */}
-        <View className="web:desktop:w-[300px] web:desktop:flex-none web:desktop:gap-3.5">
-            <View className={DESKTOP_PANEL_CLASS}>
+          </>
+        }
+        rail={
+          <View className="web:tabletLg:gap-3.5">
+            {/* Right sidebar. Starts at the same Y as the table (the
+                toolbar above now spans both columns, not just this one) so
+                the summary reads as this exact list's own recap rather than
+                a card floating beside the filter row above it. Always
+                shown, independent of the list's own empty/loading state:
+                the active-rules panel describes the household's rule set,
+                not this month's transactions, and a month summary of all
+                zeros is a correct (if unremarkable) description of an empty
+                month, not a state worth hiding. ContentRail's own rail slot
+                already supplies the width/flex-none wrapper — this gap-3.5
+                is only the spacing between the two cards below. */}
+            <View className={RESPONSIVE_PANEL_CLASS}>
               <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('transactions.summary.title', { count: filteredTransactions.length })}
               </Text>
@@ -754,7 +800,7 @@ export function DesktopTransactions() {
                   see the row-level comment above): a whole period's net IS
                   the kind of good/bad signal those tokens exist for. */}
               <Text
-                className={`web:desktop:mt-2 text-figure font-heeboBold ${
+                className={`web:tabletLg:mt-2 text-figure font-heeboBold ${
                   incomeAgorot - expenseAgorot >= 0
                     ? 'text-positive-light dark:text-positive-dark'
                     : 'text-danger-light dark:text-danger-dark'
@@ -762,41 +808,41 @@ export function DesktopTransactions() {
               >
                 {formatILS(incomeAgorot - expenseAgorot)}
               </Text>
-              <Text className="web:desktop:mb-3.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              <Text className="web:tabletLg:mb-3.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                 {t('transactions.summary.net')}
               </Text>
 
               {/* A quick-glance income-vs-expense proportion bar — two
                   segments, no axis/legend needed since the two rows directly
                   below already carry the exact figures. */}
-              <View className="web:desktop:mb-3.5 web:desktop:h-1.5 web:desktop:flex-row web:desktop:overflow-hidden web:desktop:rounded-full web:desktop:bg-track-light dark:web:desktop:bg-track-dark">
+              <View className="web:tabletLg:mb-3.5 web:tabletLg:h-1.5 web:tabletLg:flex-row web:tabletLg:overflow-hidden web:tabletLg:rounded-full web:tabletLg:bg-track-light dark:web:tabletLg:bg-track-dark">
                 {incomeAgorot + expenseAgorot > 0 && (
                   <>
                     <View
-                      className="web:desktop:h-full web:desktop:bg-positive-light dark:web:desktop:bg-positive-dark"
+                      className="web:tabletLg:h-full web:tabletLg:bg-positive-light dark:web:tabletLg:bg-positive-dark"
                       style={{ width: `${(incomeAgorot / (incomeAgorot + expenseAgorot)) * 100}%` }}
                     />
                     <View
-                      className="web:desktop:h-full web:desktop:bg-ink-light/30 dark:web:desktop:bg-ink-dark/30"
+                      className="web:tabletLg:h-full web:tabletLg:bg-ink-light/30 dark:web:tabletLg:bg-ink-dark/30"
                       style={{ width: `${(expenseAgorot / (incomeAgorot + expenseAgorot)) * 100}%` }}
                     />
                   </>
                 )}
               </View>
 
-              <View className="web:desktop:gap-2.5">
-                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
+              <View className="web:tabletLg:gap-2.5">
+                <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
                   <Text className="text-body text-ink-light dark:text-ink-dark">{t('transactions.summary.income')}</Text>
                   <Text className="text-body font-sansSemibold text-positive-light dark:text-positive-dark">
                     {formatILS(incomeAgorot)}
                   </Text>
                 </View>
-                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
+                <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
                   <Text className="text-body text-ink-light dark:text-ink-dark">{t('transactions.summary.expense')}</Text>
                   <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">{formatILS(expenseAgorot)}</Text>
                 </View>
-                <View className="web:desktop:h-px web:desktop:bg-border-light dark:web:desktop:bg-border-dark" />
-                <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
+                <View className="web:tabletLg:h-px web:tabletLg:bg-border-light dark:web:tabletLg:bg-border-dark" />
+                <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {t('transactions.summary.personalPortion')}
                   </Text>
@@ -806,14 +852,14 @@ export function DesktopTransactions() {
             </View>
 
             {activeRules.length > 0 && (
-              <View className={DESKTOP_PANEL_CLASS}>
+              <View className={RESPONSIVE_PANEL_CLASS}>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('transactions.rulesPanel.title')}
                 </Text>
-                <View className="web:desktop:mt-3 web:desktop:gap-2.5">
+                <View className="web:tabletLg:mt-3 web:tabletLg:gap-2.5">
                   {activeRules.map((rule) => (
-                    <View key={rule.id} className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-                      <Text className="web:desktop:flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                    <View key={rule.id} className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+                      <Text className="web:tabletLg:flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
                         {t(`categories.rules.field.${rule.field}`)} {t(`categories.rules.operator.${rule.operator}`)} &quot;{rule.value}&quot;
                       </Text>
                       <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -822,7 +868,7 @@ export function DesktopTransactions() {
                     </View>
                   ))}
                 </View>
-                <Pressable onPress={() => router.push('/settings/categories')} accessibilityRole="button" className="web:desktop:mt-3">
+                <Pressable onPress={() => router.push('/settings/categories')} accessibilityRole="button" className="web:tabletLg:mt-3">
                   <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
                     {t('transactions.rulesPanel.manageLink')}
                   </Text>
@@ -830,6 +876,8 @@ export function DesktopTransactions() {
               </View>
             )}
           </View>
+        }
+      />
       </View>
     </Screen>
   )

@@ -12,9 +12,27 @@
 // That section (and the useTransactions/useCategories calls that only fed
 // it) moves with it in the Budget screen's own rebuild, not duplicated here.
 //
-// Renders only at >=1200px on web (app/(app)/dashboard/index.tsx picks
-// between this and MobileHome), so every class below is desktop-scoped —
-// this component is simply never mounted at any other width.
+// Renders at >=1024px on web (app/(app)/dashboard/index.tsx picks between
+// this and MobileHome, at TABLET_LG_BREAKPOINT_PX rather than
+// DESKTOP_BREAKPOINT_PX — see that file's own comment).
+//
+// Checkpoint 4 (Home + Transactions recompose): two changes, both scoped to
+// this screen. (1) Every class below moved from `web:desktop:` to
+// `web:tabletLg:` — this is the SAME composition from 1024 up, not a
+// separate tablet design; the only place tabletLg and desktop genuinely
+// differ is the two explicitly `web:desktop:`-scoped rules noted at each
+// row below (the hero/מה מגיע row becoming a real row instead of a stack,
+// and row 2's 3-way split). (2) Row 1's hero/מה מגיע split moved from a
+// fixed 440px/flex-1 pairing (SYSTEM.md §5's own finding: the hero had a
+// large empty region right of its figure, and מה מגיע filled its column
+// edge-to-edge with no relationship between the two) to a deliberate 7/5
+// flex ratio, and row 2 reordered to needsAttention -> budgetPace -> recent
+// (rightmost/first-read in RTL) to match the user's own stated priority
+// order (position/spend -> needs attention soon -> budget tracking ->
+// recent activity) — budgetPace keeps the widest column because its
+// category list is the most content-dense of the three, but reading order
+// now ranks it below needsAttention, which the previous DOM order (budget
+// first) did not.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
@@ -55,7 +73,7 @@ import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { CountdownRing } from '@/components/ui/CountdownRing'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { RESPONSIVE_PANEL_CLASS } from '@/constants/layout'
 
 const HORIZON_ORDER: HorizonKind[] = ['week', 'month', 'days30']
 const HORIZON_PILL_KEY: Record<HorizonKind, string> = {
@@ -178,22 +196,35 @@ export function DesktopDashboard() {
           screen — not as a row inside one screen's body, which is why no
           other desktop screen used to have them at all. */}
 
-      {/* Row 1 — פנוי באמת hero (right, mockup's DOM-first column) + מה מגיע
-          (left). flex-row-reverse keeps DOM order [hero, מה מגיע] while the
-          hero lands rightmost, matching the mockup exactly.
+      {/* Row 1 — פנוי באמת hero + מה מגיע. A plain `flex-row` under this
+          app's global RTL direction already places the first JSX child
+          (the hero) on the visual right, which is where the mockup puts it
+          and where the dominant figure belongs in RTL reading order — this
+          codebase's established pattern (ContentRail.tsx, Modal.tsx carry
+          the identical reasoning); `flex-row-reverse` would push it left.
           Product-quality pass: this row used to force both cards to the same
           height (items-stretch + each card's own h-full) — correct when
           מה מגיע has enough upcoming items to fill it, but with only one or
           two it left a large, visibly empty gap under a short list next to
           the much taller hero. items-start lets each card size to its own
           content instead; see the מה מגיע card's own comment for how its
-          existing "card cycle closing" footer note adapts. */}
-      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-5">
-        <View className="web:desktop:w-[440px] web:desktop:flex-none">
+          existing "card cycle closing" footer note adapts.
+          Checkpoint 4: fixed 440px/flex-1 replaced with a 7/5 flex ratio
+          (SYSTEM.md §5/§7) — the hero grows into its larger share rather
+          than leaving a blank region beside the figure, and מה מגיע no
+          longer fills whatever's left edge-to-edge with no relationship to
+          the hero beside it. Below tabletLg this never mounts (MobileHome
+          does); from tabletLg to just under desktop, the two stack — a
+          440px-fixed hero and a flexed neighbor do not both fit comfortably
+          at touch scale in the ~900-960px this screen has there, so the
+          real row (`web:desktop:flex-row`, 1200+) is the one place this
+          composition is intentionally desktop-only, not tabletLg-scaled. */}
+      <View className="web:tabletLg:gap-5 web:desktop:flex-row web:desktop:items-start">
+        <View className="web:desktop:flex-[7]">
           <HeroPanel>
-            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
+            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
               <HeroLabel>{t('dashboard.hero.label')}</HeroLabel>
-              <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-1.5">
+              <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-1.5">
                 {HORIZON_ORDER.map((value) => (
                   <Pressable key={value} onPress={() => setHorizon(value)} accessibilityRole="button">
                     <Text
@@ -242,7 +273,7 @@ export function DesktopDashboard() {
                     tone="hero"
                   />
                 </View>
-                <View className="web:desktop:mt-2.5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5">
+                <View className="web:tabletLg:mt-2.5 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2.5">
                   <HeroTag>
                     {hasShortfall ? t('home.hero.shortfallTag') : t('dashboard.hero.notBankBalance')}
                   </HeroTag>
@@ -254,10 +285,10 @@ export function DesktopDashboard() {
                 </View>
                 {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
 
-                <View className="web:desktop:mt-5 web:desktop:h-9 web:desktop:flex-row web:desktop:gap-0.5 web:desktop:overflow-hidden web:desktop:rounded-control">
-                  <View className="web:desktop:bg-accent-light dark:web:desktop:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
-                  <View className="web:desktop:bg-heroBorder-light" style={{ flexGrow: Math.max(1, safeToSpend.plannedObligationsAgorot) }} />
-                  <View className="web:desktop:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
+                <View className="web:tabletLg:mt-5 web:tabletLg:h-9 web:tabletLg:flex-row web:tabletLg:gap-0.5 web:tabletLg:overflow-hidden web:tabletLg:rounded-control">
+                  <View className="web:tabletLg:bg-accent-light dark:web:tabletLg:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
+                  <View className="web:tabletLg:bg-heroBorder-light" style={{ flexGrow: Math.max(1, safeToSpend.plannedObligationsAgorot) }} />
+                  <View className="web:tabletLg:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
                 </View>
 
                 {/* The waterfall legend, in the mockup's own order: the
@@ -265,7 +296,7 @@ export function DesktopDashboard() {
                     balance, then the balance itself as the closing total.
                     Each row carries the colour of the bar segment above it —
                     without that key the bar is just three grey blocks. */}
-                <View className="web:desktop:mt-4 web:desktop:gap-2.5">
+                <View className="web:tabletLg:mt-4 web:tabletLg:gap-2.5">
                   <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.accent.light} emphasis>
                     <Money agorot={safeToSpend.safeToSpendAgorot} size="caption" tone="hero" />
                   </HeroLegendRow>
@@ -275,7 +306,7 @@ export function DesktopDashboard() {
                   <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.inkMuted.light}>
                     <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
                   </HeroLegendRow>
-                  <View className="web:desktop:h-px web:desktop:bg-heroBorder-light" />
+                  <View className="web:tabletLg:h-px web:tabletLg:bg-heroBorder-light" />
                   <HeroLegendRow label={t('cashFlow.availableCash')} emphasis>
                     <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="hero" />
                   </HeroLegendRow>
@@ -290,10 +321,10 @@ export function DesktopDashboard() {
                   <Pressable
                     onPress={() => router.push('/cash-flow')}
                     accessibilityRole="button"
-                    className="web:desktop:mt-4 web:desktop:flex-row web:desktop:items-center web:desktop:gap-2 web:desktop:pt-4"
+                    className="web:tabletLg:mt-4 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2 web:tabletLg:pt-4"
                   >
                     <Ionicons name="alert-circle" size={ICON.row} color="#e8a79b" />
-                    <HeroNote className="web:desktop:flex-1">
+                    <HeroNote className="web:tabletLg:flex-1">
                       {t('dashboard.hero.overspendWarning', {
                         date: formatDateDisplay(commitments[0].date),
                       })}{' '}
@@ -306,14 +337,14 @@ export function DesktopDashboard() {
           </HeroPanel>
         </View>
 
-        <View className="web:desktop:flex-1">
+        <View className="web:desktop:flex-[5]">
           {/* Content-driven height now (see the row's own comment) — a
               min-h floor (roughly header + 2 rows) keeps a 1-item state from
               reading as an accidentally tiny box, without forcing it all the
               way up to the hero's own height the way h-full did. */}
-          <View className={`web:desktop:min-h-[220px] ${DESKTOP_PANEL_CLASS}`}>
-            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
+          <View className={`web:tabletLg:min-h-[220px] ${RESPONSIVE_PANEL_CLASS}`}>
+            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
                 {t('dashboard.commitments.title')}
               </Text>
               {topCommitments.length > 0 && (
@@ -352,7 +383,7 @@ export function DesktopDashboard() {
                     return { id: item.id, date: item.date, daysUntil: urgency.daysUntil, tone: urgency.tone }
                   })}
                 />
-                <View className="web:desktop:mt-5">
+                <View className="web:tabletLg:mt-5">
                 {topCommitments.map((item, index) => {
                   // The same urgency banding the mobile Home uses, so one
                   // charge cannot read as urgent on one platform and routine
@@ -396,9 +427,9 @@ export function DesktopDashboard() {
               // was force-stretched to the hero's height — now that height is
               // content-driven, a plain top margin keeps the same rhythm as
               // every other section break on this card.
-              <View className="web:desktop:mt-5 web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:border-t web:desktop:border-border-light web:desktop:pt-4 dark:web:desktop:border-border-dark">
+              <View className="web:tabletLg:mt-5 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-3 web:tabletLg:border-t web:tabletLg:border-border-light web:tabletLg:pt-4 dark:web:tabletLg:border-border-dark">
                 <CountdownRing percentElapsed={100 - Math.max(0, Math.min(100, (nextCardCycleDays / 30) * 100))} daysLeft={nextCardCycleDays} />
-                <Text className="web:desktop:flex-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="web:tabletLg:flex-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                   {t('dashboard.commitments.cardCycleClosing', {
                     name: nextCardCycle.description,
                     date: formatDateDisplay(nextCardCycle.date),
@@ -411,13 +442,76 @@ export function DesktopDashboard() {
         </View>
       </View>
 
-      {/* Row 2 — קצב תקציב (primary, DOM-first/rightmost) · דורש טיפול ·
-          תנועות אחרונות. */}
-      <View className="web:desktop:mt-5 web:desktop:flex-row web:desktop:items-stretch web:desktop:gap-5">
-        <View className="web:desktop:flex-1">
-          <View className={`web:desktop:h-full ${DESKTOP_PANEL_CLASS}`}>
-            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]">
+      {/* Row 2 — דורש טיפול (DOM-first/rightmost — needs the user's own
+          priority order: position/spend above, this next) · קצב תקציב ·
+          תנועות אחרונות. Checkpoint 4: reordered from [budgetPace,
+          needsAttention, recent] — budgetPace still gets the widest column
+          (flex-1, below) since its category list is the most content-dense
+          of the three, but reading order now puts needsAttention first,
+          matching "what needs my attention soon" ranking above "how am I
+          tracking against budget" in the brief's own priority list. Stacks
+          at tabletLg (a 3-way split doesn't have room at ~900-960px); the
+          real 3-across row is desktop-only, same reasoning as row 1. */}
+      <View className="web:tabletLg:mt-5 web:tabletLg:gap-5 web:desktop:flex-row web:desktop:items-stretch">
+        <View className="web:tabletLg:w-full web:desktop:w-[300px] web:desktop:flex-none">
+          <View className={`web:tabletLg:h-full ${RESPONSIVE_PANEL_CLASS}`}>
+            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+              <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
+                {t('dashboard.needsAttention.title')}
+              </Text>
+              <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
+                <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
+                  {t('alerts.viewAll')}
+                </Text>
+              </Pressable>
+            </View>
+            {isAlertsLoading ? (
+              <View className="web:tabletLg:mt-3.5">
+                <SkeletonList rows={3} />
+              </View>
+            ) : topAlerts.length === 0 ? (
+              <View className="web:tabletLg:mt-3.5">
+                <EmptyState icon="✅" message={t('alerts.empty')} compact />
+              </View>
+            ) : (
+              <View className="web:tabletLg:mt-3.5 web:tabletLg:gap-2.5">
+                {topAlerts.map((alert) => (
+                  <Pressable
+                    key={alert.id}
+                    onPress={() => router.push(alert.actionRoute)}
+                    accessibilityRole="button"
+                    className={`web:tabletLg:flex-row web:tabletLg:gap-2.5 web:tabletLg:rounded-row web:tabletLg:border-e-[3px] web:tabletLg:bg-surface-light web:tabletLg:p-3.5 dark:web:tabletLg:bg-surface-dark ${
+                      alert.severity === 'critical'
+                        ? 'web:tabletLg:border-danger-light dark:web:tabletLg:border-danger-dark'
+                        : alert.severity === 'warning'
+                          ? 'web:tabletLg:border-warning-light dark:web:tabletLg:border-warning-dark'
+                          : 'web:tabletLg:border-border-light dark:web:tabletLg:border-border-dark'
+                    }`}
+                  >
+                    <Ionicons
+                      name={severityIconName(alert.severity)}
+                      size={ICON.row}
+                      color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
+                    />
+                    <View className="web:tabletLg:flex-1">
+                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {alert.title}
+                      </Text>
+                      <Text className="web:tabletLg:mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={2}>
+                        {alert.description}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View className="web:tabletLg:flex-1">
+          <View className={`web:tabletLg:h-full ${RESPONSIVE_PANEL_CLASS}`}>
+            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
                 {t('dashboard.budgetPace.title')}
               </Text>
               <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button">
@@ -446,14 +540,14 @@ export function DesktopDashboard() {
                     <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
                   </View>
                 )}
-                <View className="web:desktop:mt-3 web:desktop:flex-row web:desktop:items-baseline web:desktop:gap-2.5">
+                <View className="web:tabletLg:mt-3 web:tabletLg:flex-row web:tabletLg:items-baseline web:tabletLg:gap-2.5">
                   <Money agorot={remainingAgorotValue} size="large" tone={remainingAgorotValue < 0 ? 'danger' : 'default'} />
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {t('dashboard.budgetPace.outOf', { amount: formatILS(totalAllocatedAgorot) })}
                   </Text>
                 </View>
                 {pace.percentSpent !== null && (
-                  <View className="web:desktop:mt-2.5">
+                  <View className="web:tabletLg:mt-2.5">
                     <BudgetBar
                       percent={pace.percentSpent}
                       pacePercent={pace.pacePercent}
@@ -464,12 +558,12 @@ export function DesktopDashboard() {
                   </View>
                 )}
                 {pace.hasProjection && pace.state !== 'healthy' && (
-                  <Text className="web:desktop:mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                  <Text className="web:tabletLg:mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
                     {t('dashboard.budgetPace.projection', { amount: formatILS(pace.projectedOverspendAgorot) })}
                   </Text>
                 )}
 
-                <View className="web:desktop:mt-5 web:desktop:gap-3.5">
+                <View className="web:tabletLg:mt-5 web:tabletLg:gap-3.5">
                   {progress.slice(0, 4).map((category) => {
                     const catState = budgetState({
                       allocatedAgorot: category.allocatedAgorot,
@@ -480,8 +574,8 @@ export function DesktopDashboard() {
                     })
                     return (
                       <View key={category.categoryId}>
-                        <View className="web:desktop:flex-row web:desktop:items-baseline web:desktop:justify-between">
-                          <View className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2">
+                        <View className="web:tabletLg:flex-row web:tabletLg:items-baseline web:tabletLg:justify-between">
+                          <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2">
                             <CategoryIcon icon={category.categoryIcon} size="sm" />
                             <Text className="text-body font-sansMedium text-ink-light dark:text-ink-dark">
                               {category.categoryNameHe}
@@ -495,7 +589,7 @@ export function DesktopDashboard() {
                           </Text>
                         </View>
                         {catState.percentSpent !== null && (
-                          <View className="web:desktop:mt-1.5">
+                          <View className="web:tabletLg:mt-1.5">
                             <BudgetBar
                               percent={catState.percentSpent}
                               pacePercent={catState.pacePercent}
@@ -513,64 +607,9 @@ export function DesktopDashboard() {
           </View>
         </View>
 
-        <View className="web:desktop:w-[300px] web:desktop:flex-none">
-          <View className={`web:desktop:h-full ${DESKTOP_PANEL_CLASS}`}>
-            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
-              <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
-                {t('dashboard.needsAttention.title')}
-              </Text>
-              <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
-                <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                  {t('alerts.viewAll')}
-                </Text>
-              </Pressable>
-            </View>
-            {isAlertsLoading ? (
-              <View className="web:desktop:mt-3.5">
-                <SkeletonList rows={3} />
-              </View>
-            ) : topAlerts.length === 0 ? (
-              <View className="web:desktop:mt-3.5">
-                <EmptyState icon="✅" message={t('alerts.empty')} compact />
-              </View>
-            ) : (
-              <View className="web:desktop:mt-3.5 web:desktop:gap-2.5">
-                {topAlerts.map((alert) => (
-                  <Pressable
-                    key={alert.id}
-                    onPress={() => router.push(alert.actionRoute)}
-                    accessibilityRole="button"
-                    className={`web:desktop:flex-row web:desktop:gap-2.5 web:desktop:rounded-row web:desktop:border-e-[3px] web:desktop:bg-surface-light web:desktop:p-3.5 dark:web:desktop:bg-surface-dark ${
-                      alert.severity === 'critical'
-                        ? 'web:desktop:border-danger-light dark:web:desktop:border-danger-dark'
-                        : alert.severity === 'warning'
-                          ? 'web:desktop:border-warning-light dark:web:desktop:border-warning-dark'
-                          : 'web:desktop:border-border-light dark:web:desktop:border-border-dark'
-                    }`}
-                  >
-                    <Ionicons
-                      name={severityIconName(alert.severity)}
-                      size={ICON.row}
-                      color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
-                    />
-                    <View className="web:desktop:flex-1">
-                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                        {alert.title}
-                      </Text>
-                      <Text className="web:desktop:mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={2}>
-                        {alert.description}
-                      </Text>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View className="web:desktop:w-[280px] web:desktop:flex-none">
-          <View className={`web:desktop:h-full ${DESKTOP_PANEL_CLASS}`}>
-            <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between">
+        <View className="web:tabletLg:w-full web:desktop:w-[280px] web:desktop:flex-none">
+          <View className={`web:tabletLg:h-full ${RESPONSIVE_PANEL_CLASS}`}>
+            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
               <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
                 {t('dashboard.recentTitle')}
               </Text>
@@ -588,19 +627,19 @@ export function DesktopDashboard() {
               )}
             </View>
             {isTransactionsLoading ? (
-              <View className="web:desktop:mt-3.5">
+              <View className="web:tabletLg:mt-3.5">
                 <SkeletonList rows={3} />
               </View>
             ) : !hasTransactionsData ? (
-              <View className="web:desktop:mt-3.5">
+              <View className="web:tabletLg:mt-3.5">
                 <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
               </View>
             ) : recentTransactions.length === 0 ? (
-              <View className="web:desktop:mt-3.5">
+              <View className="web:tabletLg:mt-3.5">
                 <EmptyState iconName="receipt-outline" message={t('dashboard.noTransactions')} compact />
               </View>
             ) : (
-              <View className="web:desktop:mt-3.5 web:desktop:gap-3">
+              <View className="web:tabletLg:mt-3.5 web:tabletLg:gap-3">
                 {transactionsError && (
                   <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
                 )}
@@ -611,10 +650,10 @@ export function DesktopDashboard() {
                       key={txn.id}
                       onPress={() => router.push(`/transactions/${txn.id}`)}
                       accessibilityRole="button"
-                      className="web:desktop:flex-row web:desktop:items-center web:desktop:gap-2.5"
+                      className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2.5"
                     >
                       <CategoryIcon icon={txn.category_id ? categoryIconById[txn.category_id] : undefined} size="sm" />
-                      <View className="web:desktop:flex-1">
+                      <View className="web:tabletLg:flex-1">
                         <Text className="text-body font-sansMedium text-ink-light dark:text-ink-dark" numberOfLines={1}>
                           {txn.description}
                         </Text>

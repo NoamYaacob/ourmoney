@@ -14,15 +14,24 @@
 //
 // This file is deliberately thin, per CLAUDE.md § Component Architecture —
 // screens in app/ compose feature components and own routing, nothing else.
+//
+// Checkpoint 4 (Home + Transactions recompose): the switch point moved from
+// DESKTOP_BREAKPOINT_PX (1200) to TABLET_LG_BREAKPOINT_PX (1024) — this is
+// one of exactly two screens (with Transactions) that made this move; every
+// other screen's own switch is untouched. DesktopDashboard's own
+// composition is now written to look intentional starting at 1024 (its own
+// header comment explains how), and DesktopTopBar shows its title band
+// starting at 1024 specifically for this route too — both needed to move
+// together, or a styled dashboard would have appeared under no page title.
 
 import { Platform, useWindowDimensions } from 'react-native'
-import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
+import { TABLET_LG_BREAKPOINT_PX } from '@/constants/layout'
 import { MobileHome } from '@/features/dashboard/components/MobileHome'
 import { DesktopDashboard } from '@/features/dashboard/components/DesktopDashboard'
 
 export default function Dashboard() {
   const { width } = useWindowDimensions()
-  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
+  const isRichWeb = Platform.OS === 'web' && width >= TABLET_LG_BREAKPOINT_PX
 
-  return isDesktopWeb ? <DesktopDashboard /> : <MobileHome />
+  return isRichWeb ? <DesktopDashboard /> : <MobileHome />
 }

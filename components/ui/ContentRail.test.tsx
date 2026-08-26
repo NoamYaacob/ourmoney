@@ -6,7 +6,7 @@
 import { describe, expect, it } from '@jest/globals'
 import { render } from '@testing-library/react-native'
 import { Text } from 'react-native'
-import { ContentRail } from './ContentRail'
+import { ContentRail, CONTENT_RAIL_WIDTH_CLASS } from './ContentRail'
 
 describe('ContentRail', () => {
   it('renders both primary and rail content', async () => {
@@ -29,7 +29,13 @@ describe('ContentRail', () => {
     const { getByText } = await render(<ContentRail primary={<Text>primary content</Text>} rail={<Text>rail content</Text>} />)
     const outerClassName = getByText('primary content').parent?.parent?.props.className as string
     expect(outerClassName).toContain('web:tabletLg:max-w-[1050px]')
-    expect(outerClassName).toContain('web:desktop:max-w-[1320px]')
+    expect(outerClassName).toContain('web:desktop:max-w-[1390px]')
+  })
+
+  it('exports the width/centering fragment so a sibling toolbar can align to the same column', () => {
+    expect(CONTENT_RAIL_WIDTH_CLASS).toContain('web:tabletLg:max-w-[1050px]')
+    expect(CONTENT_RAIL_WIDTH_CLASS).toContain('web:desktop:max-w-[1390px]')
+    expect(CONTENT_RAIL_WIDTH_CLASS).toContain('web:tabletLg:mx-auto')
   })
 
   it('fixes the rail to a narrower width at tabletLg than at desktop', async () => {

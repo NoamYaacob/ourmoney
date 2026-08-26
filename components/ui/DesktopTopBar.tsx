@@ -24,6 +24,22 @@
 // A month stepper only appears where a month is genuinely the screen's
 // context. On Transactions — which spans whatever range its filters select —
 // or on Accounts, it would claim a scope the screen does not have.
+//
+// Checkpoint 4 (Home + Transactions recompose): this bar shows from
+// `web:desktop:` (1200px) on every route except Home and Transactions,
+// which show it from `web:tabletLg:` (1024px) instead — those two screens'
+// own rich components now mount starting at 1024 (see their own header
+// comments), and neither draws its own title, so without this the
+// 1024-1199 range would show their tabletLg composition under no title at
+// all. Every other route's content still switches to its desktop component
+// at 1200 unchanged, so this bar staying `web:desktop:`-scoped there is
+// what prevents a title band appearing over still-mobile-styled content —
+// a per-segment threshold, not a global one, is what the Checkpoint 4 brief
+// means by "the smallest architectural piece necessary." The side rail and
+// the bottom-tab-bar visibility are untouched (still 1200/unchanged) —
+// SYSTEM.md 2 is explicit that the bottom tab bar owns all of 768-1199px,
+// including this sub-range; only this title band moves earlier, for these
+// two routes.
 
 import { useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
@@ -36,8 +52,11 @@ import { ICON } from '@/constants/icons'
 import { useRTL } from '@/hooks/useRTL'
 import { usePeriodStore } from '@/store/periodStore'
 import { useCashFlowStore, type CashFlowHorizonDays } from '@/store/cashFlowStore'
+
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { formatMonthLabel, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
+
+const TABLET_LG_SEGMENTS = new Set(['dashboard', 'transactions'])
 
 // Screen title per route segment, matching the mockup's own header wording.
 // Cash Flow is the one place that wording differs from its rail label: the
@@ -106,9 +125,14 @@ export function DesktopTopBar({ activeSegment }: { activeSegment: string }) {
   const showImport = IMPORT_SEGMENTS.has(activeSegment)
   const showAdd = ADD_SEGMENTS.has(activeSegment)
   const showHorizon = activeSegment === 'cash-flow'
+  const visibleFromTabletLg = TABLET_LG_SEGMENTS.has(activeSegment)
 
   return (
-    <View className="hidden h-[68px] flex-none flex-row items-center gap-3.5 border-b border-border-light bg-surfaceMuted-light px-7 web:desktop:flex dark:border-border-dark dark:bg-surfaceMuted-dark">
+    <View
+      className={`hidden h-[68px] flex-none flex-row items-center gap-3.5 border-b border-border-light bg-surfaceMuted-light px-7 dark:border-border-dark dark:bg-surfaceMuted-dark ${
+        visibleFromTabletLg ? 'web:tabletLg:flex' : 'web:desktop:flex'
+      }`}
+    >
       <Text className="font-heeboBold text-[20px] leading-[26px] text-ink-light dark:text-ink-dark">
         {titleKey ? t(titleKey) : ''}
       </Text>

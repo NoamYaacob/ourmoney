@@ -30,6 +30,15 @@ export const CONTENT_WIDTH = {
   // existing `medium` token below instead of adding a third — the numbers
   // already match.
   richSingle: 'w-full web:tablet:max-w-[900px] web:tablet:mx-auto web:desktop:max-w-[960px]',
+  // Checkpoint 4: for a screen whose OWN wrapper (ContentRail's exported
+  // CONTENT_RAIL_WIDTH_CLASS, components/ui/ContentRail.tsx) already caps
+  // and centers its content starting at `tabletLg` — Screen's own clamp
+  // would just double-cap it at a *narrower* value (`wide`'s 820/1150) than
+  // Shape A's own 1050/1390, silently shrinking the rail layout back down.
+  // `full` is deliberately the only CONTENT_WIDTH entry with no clamp of its
+  // own — every other tier assumes Screen itself owns the width decision;
+  // this one hands that decision entirely to the caller's own content.
+  full: 'w-full',
 } as const
 
 export type ContentWidth = keyof typeof CONTENT_WIDTH
@@ -45,6 +54,22 @@ export const DESKTOP_BREAKPOINT_PX = 1200
 // that need to know "at least tablet width" in JS (an initial-state
 // default, a native style object) rather than via `web:tablet:` className.
 export const TABLET_BREAKPOINT_PX = 768
+
+// Checkpoint 4 (Home + Transactions recompose): shared with the `tabletLg`
+// Tailwind screen (tailwind.config.js, added Checkpoint 3). Every screen's
+// JS mobile/desktop switch used DESKTOP_BREAKPOINT_PX (1200) until now,
+// which is exactly why `tabletLg` had no live effect anywhere — Checkpoint 3
+// found and documented this gap rather than papering over it. Home and
+// Transactions are the first two screens whose own switch moves to this
+// constant instead, so their richer composition starts at 1024 rather than
+// 1200. This is a **per-screen** opt-in, not a global rename of
+// DESKTOP_BREAKPOINT_PX: every other screen's switch (and the shared
+// DESKTOP_PANEL_CLASS/SurfacePanel constants below, which several
+// screens outside this checkpoint's scope also render unconditionally, not
+// behind their own width switch) must stay exactly as they are until each
+// is deliberately moved in its own checkpoint — see RESPONSIVE_PANEL_CLASS's
+// own comment for why a shared constant couldn't just be widened instead.
+export const TABLET_LG_BREAKPOINT_PX = 1024
 
 // Shared web width clamp for centered dialogs/sheets (Select's bottom
 // sheet, the confirm Modal) — was duplicated as a literal in each caller.
@@ -77,6 +102,28 @@ export const DIALOG_WIDTH_CLASS = 'web:max-w-[560px] web:self-center'
 // the app's card language instead of predating it.
 export const DESKTOP_PANEL_CLASS =
   'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light/70 web:desktop:bg-surfaceMuted-light web:desktop:p-6 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70 dark:web:desktop:bg-surfaceMuted-dark'
+
+// Checkpoint 4: the same Level-1 panel treatment as DESKTOP_PANEL_CLASS
+// above, `web:tabletLg:`-scoped instead of `web:desktop:`-scoped, for Home
+// and Transactions now that their own JS switch mounts the rich composition
+// starting at 1024 (TABLET_LG_BREAKPOINT_PX) rather than 1200.
+//
+// This is a NEW constant, not a widened DESKTOP_PANEL_CLASS, because that
+// constant is not safely widenable: most of its other callers
+// (transactions/new.tsx, transactions/import.tsx, transactions/[id].tsx,
+// goals/[id].tsx, recurring/[id].tsx, obligations/[id].tsx,
+// installments/[id].tsx, settings/index.tsx) are single-tree screens with no
+// JS width switch at all — they render unconditionally and rely entirely on
+// DESKTOP_PANEL_CLASS's own `web:desktop:` scoping to stay unstyled below
+// 1200. Widening that scoping would have silently redesigned eight
+// unrelated screens this checkpoint never reviewed. budgets/index.tsx does
+// have its own switch, but still at 1200 (unchanged this checkpoint) — its
+// own DESKTOP_PANEL_CLASS usage must stay desktop-only until Checkpoint 5
+// deliberately moves it. Same reasoning applies to `SurfacePanel`
+// (components/ui/SurfacePanel.tsx): Installments renders it unconditionally
+// (no JS switch of its own), so it was not touched either.
+export const RESPONSIVE_PANEL_CLASS =
+  'web:tabletLg:rounded-card web:tabletLg:border web:tabletLg:border-border-light/70 web:tabletLg:bg-surfaceMuted-light web:tabletLg:p-6 web:tabletLg:shadow-sm dark:web:tabletLg:border-border-dark/70 dark:web:tabletLg:bg-surfaceMuted-dark'
 
 // Visual QA + Desktop Polish pass: the same `web:desktop:max-w-[600px]`
 // literal was independently duplicated across Recurring/Goals/Obligations/
