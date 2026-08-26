@@ -39,12 +39,16 @@ function climbToPanel(textNode: any) {
 }
 
 // Desktop Claude Design pass: the sidebar's own cards (donut/trend/
-// uncategorized) use DESKTOP_CARD_CLASS (marker 'web:desktop:rounded-hero'),
-// not DESKTOP_PANEL_CLASS's 'web:desktop:min-h-[300px]' climbToPanel above
-// looks for — same climbing technique, different marker class.
+// uncategorized) use DESKTOP_PANEL_CLASS, same as every other desktop panel
+// on this page (product-quality pass — these three used to be the older,
+// heavier DESKTOP_CARD_CLASS, sitting right beside the category column's own
+// DESKTOP_PANEL_CLASS panel with a visibly different border/radius/shadow).
+// 'web:desktop:shadow-sm' is the marker: unique to DESKTOP_PANEL_CLASS,
+// unlike 'web:desktop:min-h-[300px]' climbToPanel above looks for, which
+// only the single main panel carries.
 function climbToSidebarCard(textNode: any) {
   let current = textNode
-  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:rounded-hero')) {
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:shadow-sm')) {
     current = current.parent
   }
   return current
@@ -499,15 +503,16 @@ describe('Budgets', () => {
 
     // Desktop Claude Design pass: the uncategorized queue moved from an
     // equal-width column into a 300px sidebar card (climbToSidebarCard,
-    // marker 'web:desktop:rounded-hero' — DESKTOP_CARD_CLASS's own radius,
-    // distinct from DESKTOP_PANEL_CLASS's 'web:desktop:min-h-[300px]' the
-    // category column still uses) — still a child of the same grid row.
+    // marker 'web:desktop:shadow-sm' — DESKTOP_PANEL_CLASS's own marker,
+    // distinct from the same class's 'web:desktop:min-h-[300px]' the
+    // category column adds on top of it) — still a child of the same grid
+    // row.
     const uncategorizedCard = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))
     expect(uncategorizedCard?.parent?.parent).toBe(gridWrapper)
   })
 
   // Desktop polish pass: the uncategorized queue gets its own bordered
-  // sidebar card (DESKTOP_CARD_CLASS), same as the category column's own
+  // sidebar card (DESKTOP_PANEL_CLASS), same as the category column's own
   // bounded panel beside it.
   it('gives both the category-budgets column and the uncategorized sidebar card their own bordered desktop treatment', async () => {
     const { getByText } = await render(<Budgets />)

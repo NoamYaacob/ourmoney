@@ -52,7 +52,7 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
-import { DESKTOP_BREAKPOINT_PX, DESKTOP_PANEL_CLASS, DESKTOP_CARD_CLASS } from '@/constants/layout'
+import { DESKTOP_BREAKPOINT_PX, DESKTOP_PANEL_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
 const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
@@ -686,7 +686,7 @@ export default function Budgets() {
               untouched below). */}
           <View className="web:desktop:w-[300px] web:desktop:flex-none web:desktop:gap-3.5">
             {analyticsTransactionsRaw.length > 0 && !isAnalyticsLoading && totalBreakdownAgorot > 0 && (
-              <View className={DESKTOP_CARD_CLASS}>
+              <View className={DESKTOP_PANEL_CLASS}>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('budgets.analytics.breakdownTitle')}
                 </Text>
@@ -733,7 +733,7 @@ export default function Budgets() {
             )}
 
             {!isAnalyticsLoading && monthlyTrend.some((point) => point.incomeAgorot > 0 || point.expenseAgorot > 0) && (
-              <View className={DESKTOP_CARD_CLASS}>
+              <View className={DESKTOP_PANEL_CLASS}>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('budgets.analytics.trendTitle')}
                 </Text>
@@ -743,7 +743,7 @@ export default function Budgets() {
               </View>
             )}
 
-          <View className={DESKTOP_CARD_CLASS}>
+          <View className={DESKTOP_PANEL_CLASS}>
           {/* Uncategorized transactions queue — the same real feature the
               pre-redesign equal-width column offered, condensed into a
               sidebar card matching the mockup's own compact treatment. */}
@@ -765,10 +765,10 @@ export default function Budgets() {
             </>
           ) : (
             // Product-quality pass: this used to be a <Card> nested directly
-            // inside the sidebar's own DESKTOP_CARD_CLASS panel — the same
-            // bordered/filled surface drawn twice, one inside the other, the
-            // exact "card overuse" pattern the rest of this pass corrected
-            // in Transactions' filter selects. A plain View carries the same
+            // inside the sidebar's own panel — the same bordered/filled
+            // surface drawn twice, one inside the other, the exact "card
+            // overuse" pattern the rest of this pass corrected in
+            // Transactions' filter selects. A plain View carries the same
             // spacing without a second, redundant border.
             <View className="web:desktop:mt-4">
               {uncategorizedError && (
