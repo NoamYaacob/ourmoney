@@ -80,6 +80,13 @@ export default function Accounts() {
   const [type, setType] = useState<AccountType>(() => requestedType ?? 'cash')
   const [billingCycleDayText, setBillingCycleDayText] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
+  // Product-quality pass (section 8): the hero's own explainer used to be a
+  // second, full-width bordered card sitting below the whole account list —
+  // read as documentation embedded inside the product, not part of the
+  // hero it was explaining. Collapsed into the hero itself, closed by
+  // default, same chevron-toggle interaction safe-to-spend/index.tsx's own
+  // excluded-groups disclosure already uses.
+  const [isExplainerOpen, setIsExplainerOpen] = useState(false)
 
   function resetForm() {
     setName('')
@@ -138,6 +145,15 @@ export default function Accounts() {
   const owedAccounts = accounts.filter((a) => a.type === 'credit_card')
   const illiquidAccounts = accounts.filter((a) => a.type !== 'checking' && a.type !== 'cash' && a.type !== 'credit_card')
 
+  // The hero's own supplementary stats (section 8): showing the liquid
+  // total again beside a headline that already IS the liquid total would be
+  // a redundant number filling space, not real information. What actually
+  // completes the picture is the two groups that headline deliberately
+  // excludes — real balances from the same `balances` map every row already
+  // reads from, not a second figure invented for the hero.
+  const owedTotalAgorot = owedAccounts.reduce((sum, a) => sum + (balances[a.id] ?? 0), 0)
+  const illiquidTotalAgorot = illiquidAccounts.reduce((sum, a) => sum + (balances[a.id] ?? 0), 0)
+
   // One row for both platforms, one card per GROUP with hairlines between
   // rows — which is what both frames draw. It had been a bordered card per
   // account, so a household with six accounts read as six unrelated objects
@@ -152,7 +168,7 @@ export default function Accounts() {
           onPress={() => router.push(`/accounts/${account.id}`)}
           accessibilityRole="button"
           accessibilityLabel={account.name}
-          className="min-h-[44px] flex-row items-center gap-3 py-3.5"
+          className="min-h-[44px] flex-row items-center gap-3 rounded-control py-3.5 web:desktop:-mx-2 web:desktop:px-2 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40"
         >
           <RowIcon tone={isOwed ? 'danger' : 'neutral'}>
             <Ionicons
@@ -221,18 +237,78 @@ export default function Accounts() {
         // — the whole point of the grouping below is that those are
         // different numbers.
         <View className="rounded-card border border-border-light bg-surfaceMuted-light p-5 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <Text className="text-meta font-sansSemibold tracking-[0.06em] text-positiveStrong-light dark:text-positiveStrong-dark">
-            {t('accounts.availableToSpend')}
-          </Text>
-          {isBalancesLoading ? <View className="h-11" /> : <Money agorot={availableCashAgorot} size="display" />}
-          <Text className="mt-0.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
-            {t('accounts.availableExplainer')}
-          </Text>
-          <Text className="mt-2 border-t border-divider-light pt-2 text-meta font-sans text-inkMuted-light dark:border-divider-dark dark:text-inkMuted-dark">
-            {isBalancesLoading ? '' : t('accounts.netWorth', { amount: formatILS(totalBalanceAgorot) })}
-            {' · '}
-            {t('accounts.activeAccountCount', { count: activeAccountBalances.length })}
-          </Text>
+          <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between web:desktop:gap-8">
+            <View className="web:desktop:flex-1">
+              <Text className="text-meta font-sansSemibold tracking-[0.06em] text-positiveStrong-light dark:text-positiveStrong-dark">
+                {t('accounts.availableToSpend')}
+              </Text>
+              {isBalancesLoading ? <View className="h-11" /> : <Money agorot={availableCashAgorot} size="display" />}
+              <Text className="mt-0.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('accounts.availableExplainer')}
+              </Text>
+            </View>
+
+            {/* Desktop only: what the headline deliberately leaves out, as
+                real figures rather than only a caption sentence trying to
+                make the same point in prose — this is also what used to
+                leave the hero's own end side almost entirely empty on a
+                wide desktop canvas. Each stat only renders if that group
+                actually has an account, so a household with no credit
+                cards doesn't get a meaningless "₪0 owed" stat. */}
+            {!isBalancesLoading && (owedAccounts.length > 0 || illiquidAccounts.length > 0) && (
+              <View className="hidden web:desktop:flex web:desktop:flex-row web:desktop:items-center web:desktop:gap-7 web:desktop:border-s web:desktop:border-divider-light web:desktop:ps-8 dark:web:desktop:border-divider-dark">
+                {owedAccounts.length > 0 && (
+                  <View>
+                    <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('accounts.heroStats.owed')}
+                    </Text>
+                    <Money agorot={owedTotalAgorot} size="large" tone="danger" />
+                  </View>
+                )}
+                {illiquidAccounts.length > 0 && (
+                  <View>
+                    <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('accounts.heroStats.illiquid')}
+                    </Text>
+                    <Money agorot={illiquidTotalAgorot} size="large" tone="muted" />
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          <View className="mt-2 border-t border-divider-light pt-2 dark:border-divider-dark">
+            <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {isBalancesLoading ? '' : t('accounts.netWorth', { amount: formatILS(totalBalanceAgorot) })}
+              {' · '}
+              {t('accounts.activeAccountCount', { count: activeAccountBalances.length })}
+            </Text>
+
+            {/* The explainer, collapsed by default — was a whole second
+                card below the account list; now it's one tap away from the
+                figure it explains, instead of documentation the household
+                has to scroll past. */}
+            <Pressable
+              onPress={() => setIsExplainerOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: isExplainerOpen }}
+              className="mt-1.5 flex-row items-center gap-1 self-start web:hover:opacity-70"
+            >
+              <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
+                {t('accounts.availableExplainerTitle')}
+              </Text>
+              <Ionicons
+                name={isExplainerOpen ? 'chevron-up' : 'chevron-down'}
+                size={ICON.chip}
+                color={scheme === 'dark' ? colors.accent.dark : colors.accent.light}
+              />
+            </Pressable>
+            {isExplainerOpen && (
+              <Text className="mt-1.5 max-w-[560px] text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('accounts.availableExplainerLong', { amount: formatILS(availableCashAgorot) })}
+              </Text>
+            )}
+          </View>
         </View>
       )}
 
@@ -272,17 +348,6 @@ export default function Accounts() {
             'text-inkMuted-light dark:text-inkMuted-dark',
             // Recessed rather than white: not money to plan against today.
             'border-border-light bg-surface-light dark:border-border-dark dark:bg-surface-dark'
-          )}
-
-          {accounts.length > 0 && (
-            <View className="mt-4 rounded-card border border-border-light bg-surfaceMuted-light p-5 dark:border-border-dark dark:bg-surfaceMuted-dark">
-              <Text className="text-caption font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
-                {t('accounts.availableExplainerTitle')}
-              </Text>
-              <Text className="mt-2 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                {t('accounts.availableExplainerLong', { amount: formatILS(availableCashAgorot) })}
-              </Text>
-            </View>
           )}
         </>
       )}
