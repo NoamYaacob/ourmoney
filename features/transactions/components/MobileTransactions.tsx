@@ -66,7 +66,6 @@ import { StatusChip } from '@/components/ui/StatusChip'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import type { Transaction } from '@/types/app'
 import type { TransactionDateGroup } from '@/features/transactions/lib/groupByDate'
 
 // Which parts of the filter state show up as a removable chip. `search` is

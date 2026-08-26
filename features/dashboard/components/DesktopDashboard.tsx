@@ -31,11 +31,11 @@ import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { severityIconName, severityColorToken } from '@/features/alerts/lib/alertDisplay'
 import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
-import { daysUntilDue, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { daysUntilDue } from '@/features/obligations/lib/upcomingObligations'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import { budgetState, BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE } from '@/features/budgets/lib/budgetState'
 import { usePeriodStore } from '@/store/periodStore'
-import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
@@ -73,7 +73,6 @@ export function DesktopDashboard() {
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
-  const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
   const {
     categories: progress,
     totalAllocatedAgorot,
@@ -117,7 +116,6 @@ export function DesktopDashboard() {
 
   const { alerts, isLoading: isAlertsLoading } = useFinancialAlerts(householdId)
   const { colorScheme: scheme } = useColorScheme()
-  const iconColor = scheme === 'dark' ? '#a9a79e' : '#57564f'
   const topAlerts = isAlertsLoading ? [] : alerts.slice(0, 4)
 
   const {

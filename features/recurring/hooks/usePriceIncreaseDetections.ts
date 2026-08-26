@@ -7,8 +7,12 @@
 // actual detection work as a pure function.
 
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
-import { detectPriceIncreases, type RecurringChargeObservation } from '../lib/priceIncreaseDetection'
-import type { PriceIncreaseDetection, PriceIncreaseThreshold } from '../lib/priceIncreaseDetection'
+import {
+  detectPriceIncreases,
+  type RecurringChargeObservation,
+  type PriceIncreaseDetection,
+  type PriceIncreaseThreshold,
+} from '../lib/priceIncreaseDetection'
 
 export function usePriceIncreaseDetections(
   householdId: string | null | undefined,

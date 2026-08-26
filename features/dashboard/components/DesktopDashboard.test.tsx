@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import { DesktopDashboard as Dashboard } from './DesktopDashboard'
-import { formatMonthLabel, getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 
 const mockPush = jest.fn()
@@ -96,8 +95,6 @@ beforeEach(() => {
 afterEach(() => {
   jest.clearAllMocks()
 })
-
-const CURRENT_MONTH_LABEL = formatMonthLabel(getCurrentMonthPeriodStart())
 
 // The header's own tests moved to components/ui/DesktopTopBar.test.tsx
 // when it became the shell band the mockup draws on every desktop screen.
