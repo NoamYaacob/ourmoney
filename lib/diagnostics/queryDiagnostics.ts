@@ -71,7 +71,21 @@ const STORAGE_KEY = 'ourmoney_diag'
 // `localStorage`/`window` reads must stay guarded the same way
 // lib/supabase/client.ts's own web/native split already does, or this
 // throws on native.
+//
+// Release-readiness pass finding: this had no build-mode guard at all — any
+// visitor to a production deployment could turn on request capture (and
+// have every instrumented household id, account id, and PostgREST error
+// recorded) just by adding ?diag=1 to the URL. Never a secret/token/money
+// leak per this file's own safety model above, but production tooling that
+// activates for a normal user by URL parameter is exactly the kind of
+// leftover this pass exists to close. __DEV__ is false in every production/
+// exported build (Expo/Metro's standard dev-mode global — the same signal
+// lib/monitoring/crashReporting.ts already keys its own dev/prod split on),
+// so gating here keeps this useful for local investigation while making it
+// fully inert — no URL param, no stored flag, ever turns it on — once built
+// for production.
 export function isDiagnosticsEnabled(): boolean {
+  if (!__DEV__) return false
   if (typeof window === 'undefined') return false
   try {
     if (new URLSearchParams(window.location.search).get('diag') === '1') {

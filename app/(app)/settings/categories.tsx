@@ -38,6 +38,7 @@ import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -68,6 +69,25 @@ export default function Categories() {
   const updateRule = useUpdateCategoryRule(householdId)
   const deleteRule = useDeleteCategoryRule(householdId)
   const applyRetroactively = useApplyRulesRetroactively(householdId)
+
+  // Release-readiness pass finding: both delete buttons below used to fire
+  // deleteCategory.mutate/deleteRule.mutate directly on press, with no
+  // confirmation step at all — every other destructive action in the app
+  // (transaction/account/recurring/goal/obligation/instalment delete) goes
+  // through components/ui/Modal's destructive confirm dialog first. Same
+  // pattern here now, not a vague "are you sure?" but wording that names
+  // the specific item and states its actual, checked consequences (a
+  // category delete cascades any rule pointing to it and fails outright if
+  // transactions still reference it; a rule delete never touches
+  // already-categorized transactions, only future auto-categorization —
+  // see the migration/hook comments this copy was verified against).
+  const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<{ id: string; name: string } | null>(null)
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState<{
+    id: string
+    field: CategoryRuleField
+    operator: CategoryRuleOperator
+    value: string
+  } | null>(null)
 
   const [newCategoryName, setNewCategoryName] = useState('')
   const [ruleCategoryId, setRuleCategoryId] = useState<string | null>(null)
@@ -195,7 +215,7 @@ export default function Categories() {
                     <Pressable
                       onPress={() => {
                         if (deleteCategory.isPending) return
-                        deleteCategory.mutate(category.id)
+                        setConfirmDeleteCategory({ id: category.id, name: category.name_he })
                       }}
                       disabled={deleteCategory.isPending}
                       accessibilityRole="button"
@@ -365,7 +385,7 @@ export default function Categories() {
                       <Pressable
                         onPress={() => {
                           if (deleteRule.isPending) return
-                          deleteRule.mutate(rule.id)
+                          setConfirmDeleteRule({ id: rule.id, field: rule.field, operator: rule.operator, value: rule.value })
                         }}
                         disabled={deleteRule.isPending}
                         accessibilityRole="button"
@@ -455,6 +475,44 @@ export default function Categories() {
       </View>
       </View>
       </View>
+
+      <Modal
+        visible={confirmDeleteCategory !== null}
+        title={t('categories.deleteConfirmTitle')}
+        message={confirmDeleteCategory ? t('categories.deleteConfirmMessage', { name: confirmDeleteCategory.name }) : undefined}
+        confirmLabel={t('categories.delete')}
+        cancelLabel={t('common.cancel')}
+        destructive
+        loading={deleteCategory.isPending}
+        onCancel={() => setConfirmDeleteCategory(null)}
+        onConfirm={() => {
+          if (!confirmDeleteCategory) return
+          deleteCategory.mutate(confirmDeleteCategory.id, { onSuccess: () => setConfirmDeleteCategory(null) })
+        }}
+      />
+
+      <Modal
+        visible={confirmDeleteRule !== null}
+        title={t('categories.rules.deleteConfirmTitle')}
+        message={
+          confirmDeleteRule
+            ? t('categories.rules.deleteConfirmMessage', {
+                field: t(`categories.rules.field.${confirmDeleteRule.field}`),
+                operator: t(`categories.rules.operator.${confirmDeleteRule.operator}`),
+                value: confirmDeleteRule.value,
+              })
+            : undefined
+        }
+        confirmLabel={t('categories.delete')}
+        cancelLabel={t('common.cancel')}
+        destructive
+        loading={deleteRule.isPending}
+        onCancel={() => setConfirmDeleteRule(null)}
+        onConfirm={() => {
+          if (!confirmDeleteRule) return
+          deleteRule.mutate(confirmDeleteRule.id, { onSuccess: () => setConfirmDeleteRule(null) })
+        }}
+      />
     </Screen>
   )
 }

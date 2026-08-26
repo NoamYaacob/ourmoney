@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { SettingsSection } from '@/components/ui/SettingsSection'
@@ -258,8 +258,13 @@ export default function Settings() {
       <View className={DESKTOP_PANEL_CLASS}>
       {/* Profile */}
       {isProfileLoading ? (
+        // Release-readiness pass: was a bare LoadingSpinner, unlike every
+        // other section on this screen (the members list below already
+        // uses SkeletonList) — an unsized spinner replaced by the resolved
+        // avatar+name+button Card caused a visible layout jump. Shaped to
+        // roughly the resolved Card's own height instead.
         <View className="mb-6">
-          <LoadingSpinner />
+          <SkeletonList rows={1} rowClassName="h-20 w-full rounded-card" />
         </View>
       ) : isEditingProfile ? (
         <Card>
@@ -316,7 +321,13 @@ export default function Settings() {
         {householdError ? (
           <ErrorMessage message={t('household.errors.bug')} />
         ) : isHouseholdLoading ? (
-          <LoadingSpinner />
+          // Release-readiness pass: same LoadingSpinner-vs-SkeletonList gap
+          // as Profile above — this block resolves to a name row plus a
+          // short members list, not one spinner-sized shape.
+          <View className="gap-3">
+            <Skeleton className="h-6 w-1/2 rounded-md" />
+            <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
+          </View>
         ) : (
           <>
             {isRenamingHousehold ? (

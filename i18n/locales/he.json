@@ -427,6 +427,8 @@
     "empty": "עדיין אין קטגוריות מותאמות אישית.",
     "delete": "מחיקה",
     "deleteCategoryLabel": "מחיקת קטגוריית {{name}}",
+    "deleteConfirmTitle": "מחיקת קטגוריה",
+    "deleteConfirmMessage": "הקטגוריה \"{{name}}\" תימחק, וכל כלל סיווג שמפנה אליה יימחק יחד איתה. לא ניתן לשחזר פעולה זו. אם יש תנועות המשויכות לקטגוריה זו, המחיקה תיכשל.",
     "edit": "עריכה",
     "editCategoryLabel": "עריכת קטגוריית {{name}}",
     "save": "שמירה",
@@ -446,6 +448,8 @@
       "ifLabel": "אם",
       "thenLabel": "אז",
       "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
+      "deleteConfirmTitle": "מחיקת כלל סיווג",
+      "deleteConfirmMessage": "הכלל \"{{field}} {{operator}} {{value}}\" יימחק. לא ניתן לשחזר פעולה זו. תנועות שסווגו בעבר לפי הכלל הזה יישארו כפי שהן — רק סיווג עתידי יושפע.",
       "editRuleLabel": "עריכת כלל: {{field}} {{operator}} {{value}}",
       "field": {
         "description": "תיאור",

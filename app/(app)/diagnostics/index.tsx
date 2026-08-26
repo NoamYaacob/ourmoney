@@ -61,6 +61,20 @@ export default function Diagnostics() {
 
   useEffect(() => subscribeToQueryDiagnostics(() => setEntries([...getQueryDiagnostics()])), [])
 
+  // Release-readiness pass: queryDiagnostics.ts's own capture is now gated
+  // behind __DEV__ (see its header comment), but this route itself was
+  // still reachable — and would just render an always-empty, always-"OFF"
+  // screen — for anyone who typed /diagnostics into a production URL. Bail
+  // out to the same explicit not-available screen production gives every
+  // other dev-only surface, rather than shipping a dead developer tool.
+  if (!__DEV__) {
+    return (
+      <Screen onBack={() => router.back()}>
+        <Text className="text-body text-ink-light dark:text-ink-dark">This screen is not available.</Text>
+      </Screen>
+    )
+  }
+
   const failed = entries.filter((e) => !e.ok)
   const dump = entries.map(entryLine).join('\n\n')
 
