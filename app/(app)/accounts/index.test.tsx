@@ -12,8 +12,10 @@ import '@/i18n'
 import { formatILS } from '@/lib/money/format'
 import Accounts from './index'
 
+const mockUseLocalSearchParams = jest.fn<() => Record<string, string>>().mockReturnValue({})
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
+  useLocalSearchParams: () => mockUseLocalSearchParams(),
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -59,8 +61,25 @@ jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
 describe('Accounts list', () => {
   beforeEach(() => {
     mockCreateAccountMutate.mockClear()
+    mockUseLocalSearchParams.mockReturnValue({})
     mockUseAccounts.mockReturnValue({ accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT], isLoading: false, error: null, hasData: true })
     mockUseAccountBalances.mockReturnValue({ balances: { 'acct-1': 543200 }, isLoading: false })
+  })
+
+  // Credit & Payments' redesigned onboarding empty state (part 56 of the
+  // product-quality pass) links here with `?add=credit_card` so the
+  // household lands straight in the pre-typed form instead of an empty list.
+  it('opens the add form pre-set to the given type when arriving with ?add=<type>', async () => {
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null, hasData: true })
+    mockUseLocalSearchParams.mockReturnValue({ add: 'credit_card' })
+
+    const { getByText } = await render(<Accounts />)
+
+    expect(getByText('ביטול')).toBeTruthy()
+    // The type Select's own trigger shows its selected option's label as
+    // visible text (Select.tsx `variant="row"`) — confirms the form opened
+    // pre-set to credit_card, not just opened.
+    expect(getByText('כרטיס אשראי')).toBeTruthy()
   })
 
   it('shows the live computed balance for an account, not the dead balance_agorot column', async () => {

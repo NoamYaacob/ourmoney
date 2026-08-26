@@ -9,6 +9,10 @@ import { useState } from 'react'
 import { Platform, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
@@ -42,6 +46,8 @@ import { InstallmentPlanRow } from '@/features/installments/components/Installme
 export default function Installments() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
@@ -190,14 +196,69 @@ export default function Installments() {
       </Text>
 
       {noCreditCardAccountsAtAll && (
-        <View className="mb-5">
-          <EmptyState
-            iconName="card-outline"
-            message={t('installments.noCardAccountEmptyState.message')}
-            hint={t('installments.noCardAccountEmptyState.hint')}
-            actionLabel={t('installments.noCardAccountEmptyState.action')}
-            onAction={() => router.push('/accounts')}
-          />
+        // Product-quality pass (section 7): this used to be the shared,
+        // deliberately modest EmptyState — right for a filtered list with
+        // nothing matching, wrong for the ONE genuine first-use onboarding
+        // moment on this screen. A household opening "אשראי ותשלומים" for
+        // the first time needs telling what the screen is for, why it's
+        // blank, and exactly what to do — not a dashed box with a bare
+        // sentence and a tiny outline button floating in a huge desktop
+        // canvas. Built as its own panel rather than a new EmptyState
+        // variant: nowhere else in the app currently needs this shape, and
+        // forcing it into the shared component would mean threading a
+        // three-step list through a prop nothing else uses.
+        <View className="mb-6 items-center">
+          <View className="w-full items-center gap-5 rounded-hero border border-border-light bg-surfaceMuted-light px-6 py-10 dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:max-w-[640px] web:desktop:px-12 web:desktop:py-14 web:desktop:shadow-sm">
+            <View className="h-14 w-14 items-center justify-center rounded-full bg-accentTint-light dark:bg-accentTint-dark">
+              <Ionicons
+                name="card-outline"
+                size={ICON.hero}
+                color={accentColor}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+            </View>
+
+            <View className="items-center gap-2">
+              <Text className="text-center text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[22px]">
+                {t('installments.noCardAccountEmptyState.title')}
+              </Text>
+              <Text className="max-w-[420px] text-center text-bodySm font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('installments.noCardAccountEmptyState.body')}
+              </Text>
+            </View>
+
+            {/* The "what happens after" — the exact three steps between
+                here and a real billing-cycle card, so the primary CTA
+                below doesn't read as a leap into the unknown. */}
+            <View className="w-full max-w-[360px] gap-2.5">
+              {[
+                t('installments.noCardAccountEmptyState.step1'),
+                t('installments.noCardAccountEmptyState.step2'),
+                t('installments.noCardAccountEmptyState.step3'),
+              ].map((step, index) => (
+                <View key={step} className="flex-row items-center gap-3">
+                  <View className="h-6 w-6 items-center justify-center rounded-full bg-surface-light dark:bg-surface-dark">
+                    <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark">{index + 1}</Text>
+                  </View>
+                  <Text className="flex-1 text-caption font-sans text-ink-light dark:text-ink-dark">{step}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* A real primary action, not the outline `secondary` treatment
+                the rest of this screen's own "add" button uses below — this
+                is the one and only thing to do on the screen right now.
+                Pre-selects the credit-card type on Accounts (`?add=`) so
+                the household lands straight in the right form instead of
+                having to find the type picker themselves. */}
+            <View className="w-full max-w-[280px]">
+              <Button
+                title={t('installments.noCardAccountEmptyState.action')}
+                onPress={() => router.push({ pathname: '/accounts', params: { add: 'credit_card' } })}
+              />
+            </View>
+          </View>
         </View>
       )}
 

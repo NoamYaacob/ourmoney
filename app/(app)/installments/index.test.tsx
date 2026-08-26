@@ -218,12 +218,12 @@ describe('Installments list', () => {
     })
     const { getByText, queryByText } = await render(<Installments />)
 
-    expect(getByText('אשראי ותשלומים דורשים חשבון כרטיס אשראי')).toBeTruthy()
+    expect(getByText('עדיין אין כאן כרטיס אשראי')).toBeTruthy()
     expect(queryByText('הוספת רכישה בתשלומים')).toBeNull()
 
-    await fireEvent.press(getByText('מעבר לחשבונות'))
+    await fireEvent.press(getByText('הוספת כרטיס אשראי'))
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/accounts')
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/accounts', params: { add: 'credit_card' } })
   })
 
   // The steady-state zero-accounts case above no longer opens the form at

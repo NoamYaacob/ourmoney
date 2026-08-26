@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -49,6 +49,7 @@ const ACCOUNT_TYPE_OPTIONS: AccountType[] = [
 export default function Accounts() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { add: addTypeParam } = useLocalSearchParams<{ add?: string }>()
   const { colorScheme: scheme } = useColorScheme()
   const iconColor = scheme === 'dark' ? colors.ink.dark : colors.ink.light
   const { user } = useAuth()
@@ -60,9 +61,23 @@ export default function Accounts() {
   const isLoading = isHouseholdLoading || isAccountsLoading
   const createAccount = useCreateAccount(householdId)
 
-  const [isAdding, setIsAdding] = useState(false)
+  // Arriving from another screen's "add the prerequisite account" empty
+  // state (currently only Credit & Payments — installments/index.tsx) with
+  // `?add=credit_card`: open the form pre-set to that type instead of
+  // landing on a bare list the household then has to find the button on
+  // themselves. Only ACCOUNT_TYPE_OPTIONS values are honored — anything
+  // else falls back to the ordinary default rather than silently opening
+  // the form with a type the picker doesn't offer. Read once via a lazy
+  // initializer, not an effect: the param describes how this screen was
+  // opened, not ongoing state to keep resyncing against, and a plain
+  // useState(false) followed by a setState-in-effect would cost an extra
+  // render on every mount just to reach the same first-paint value.
+  const requestedType =
+    addTypeParam && ACCOUNT_TYPE_OPTIONS.includes(addTypeParam as AccountType) ? (addTypeParam as AccountType) : null
+
+  const [isAdding, setIsAdding] = useState(() => requestedType !== null)
   const [name, setName] = useState('')
-  const [type, setType] = useState<AccountType>('cash')
+  const [type, setType] = useState<AccountType>(() => requestedType ?? 'cash')
   const [billingCycleDayText, setBillingCycleDayText] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
 
