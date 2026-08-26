@@ -78,4 +78,16 @@ export const DESKTOP_PANEL_CLASS =
 // active from `tablet` up), while every one of these call sites wraps an
 // inner `<View>` that already sits inside a wider `Screen` (`wide`) and
 // only ever needs the desktop-only cap itself.
-export const INLINE_FORM_WIDTH_CLASS = 'web:desktop:max-w-[600px]'
+//
+// Product-quality pass: a real-browser review of Accounts' inline "add
+// account" state (the clearest example of the problem, but structurally
+// identical on every other caller) found a narrow, edge-aligned form
+// sitting in a huge blank desktop canvas — a mobile-width block dropped
+// onto a wide screen, not a composed desktop panel. `mx-auto` centers it
+// as a deliberate, self-contained panel instead; the width itself is
+// unchanged; every caller's <Card> already gives it the bordered/radiused
+// surface a centered panel needs; the same rule now applies to the
+// collapsed "add" button too (the sibling state on every one of these
+// screens), so opening the form doesn't visually jump from one alignment
+// to another.
+export const INLINE_FORM_WIDTH_CLASS = 'web:desktop:max-w-[600px] web:desktop:mx-auto'

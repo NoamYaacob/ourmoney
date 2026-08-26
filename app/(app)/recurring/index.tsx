@@ -266,6 +266,13 @@ export default function Recurring() {
       {isAdding ? (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Card>
+          {/* Product-quality pass: a centered form with no heading of its
+              own still read as loose fields rather than a deliberate
+              panel — the button that opened it already says exactly this,
+              reused here rather than inventing new copy. */}
+          <Text className="mb-4 text-heading font-semibold text-ink-light dark:text-ink-dark">
+            {t('recurring.form.formTitle')}
+          </Text>
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />

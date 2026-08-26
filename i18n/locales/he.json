@@ -388,6 +388,7 @@
       "other": "אחר"
     },
     "form": {
+      "formTitle": "חשבון חדש",
       "nameLabel": "שם החשבון",
       "typeLabel": "סוג חשבון",
       "submit": "הוספת חשבון",
@@ -499,6 +500,7 @@
       "yearly": "שנתי"
     },
     "form": {
+      "formTitle": "חיוב קבוע חדש",
       "frequencyLabel": "תדירות",
       "nextDueDateLabel": "תאריך הבא",
       "submit": "הוספת חיוב קבוע",
@@ -541,6 +543,7 @@
       "linkedAccountRequiresAccount": "כדי לעקוב לפי יתרת חשבון יש לבחור חשבון מקושר"
     },
     "form": {
+      "formTitle": "יעד חיסכון חדש",
       "nameLabel": "שם היעד",
       "namePlaceholder": "לדוגמה: חופשה משפחתית",
       "targetLabel": "סכום יעד",
@@ -586,6 +589,7 @@
       "notFound": "ההתחייבות לא נמצאה"
     },
     "form": {
+      "formTitle": "התחייבות חדשה",
       "nameLabel": "שם ההתחייבות",
       "namePlaceholder": "לדוגמה: ביטוח רכב",
       "dueDateLabel": "תאריך יעד",
@@ -652,6 +656,7 @@
       "notFound": "הרכישה לא נמצאה"
     },
     "form": {
+      "formTitle": "רכישה בתשלומים חדשה",
       "descriptionLabel": "תיאור הרכישה",
       "descriptionPlaceholder": "לדוגמה: מקרר חדש",
       "merchantLabel": "בית עסק",

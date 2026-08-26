@@ -301,6 +301,13 @@ export default function Obligations() {
       {isAdding ? (
         <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Card>
+          {/* Product-quality pass: a centered form with no heading of its
+              own still read as loose fields rather than a deliberate
+              panel — the button that opened it already says exactly this,
+              reused here rather than inventing new copy. */}
+          <Text className="mb-4 text-heading font-semibold text-ink-light dark:text-ink-dark">
+            {t('obligations.form.formTitle')}
+          </Text>
           {/* Visual QA + Desktop Polish pass: name+amount and category+
               account pair into rows at desktop, matching every other add/
               edit form in this app — this form previously stayed a single
