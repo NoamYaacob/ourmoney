@@ -354,6 +354,30 @@ describe('Dashboard recent-transactions panel', () => {
 
     expect(getAllByText(i18n.t('dashboard.errors.generic')).length).toBeGreaterThanOrEqual(1)
   })
+
+  // Second visual review pass finding: this panel's own "view all" link
+  // read "כל ההתראות" (all ALERTS) — a copy-paste leftover from the alerts
+  // panel above it (dashboard.viewAll, "כל התנועות", already existed as an
+  // unused sibling key). No test navigated this specific link before, which
+  // is exactly how the wrong copy went unnoticed.
+  it('labels its own "view all" link for transactions, not the alerts panel\'s label, and navigates to /transactions', async () => {
+    mockUseTransactions.mockReturnValue({
+      transactions: [{ id: 'txn-1', description: 'קפה', amount_agorot: -1500, transfer_id: null, category_id: 'cat-1' }],
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+
+    const { getByText } = await render(<Dashboard />)
+
+    // "כל ההתראות" legitimately exists too — it's the alerts panel's own,
+    // separate "view all" link on the same page. The regression is this
+    // panel's own link carrying that text instead of its own, so the real
+    // assertion is on what pressing THIS panel's link does.
+    await fireEvent.press(getByText(i18n.t('dashboard.viewAll')))
+
+    expect(mockPush).toHaveBeenCalledWith('/transactions')
+  })
 })
 
 describe('Dashboard RTL layout', () => {

@@ -577,7 +577,12 @@ export function DesktopDashboard() {
               {recentTransactions.length > 0 && (
                 <Pressable onPress={() => router.push('/transactions')} accessibilityRole="button">
                   <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                    {t('alerts.viewAll')}
+                    {/* Second visual pass: this read "כל ההתראות" (all
+                        ALERTS) on a recent-transactions card's own "view
+                        all" link — a copy-paste leftover from the alerts
+                        card right above it. dashboard.viewAll ("כל
+                        התנועות") already existed as a sibling key, unused. */}
+                    {t('dashboard.viewAll')}
                   </Text>
                 </Pressable>
               )}
