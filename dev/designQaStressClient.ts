@@ -167,6 +167,55 @@ for (let m = 0; m < 4; m++) {
   TRANSACTIONS.push(txn({ description: 'משכורת דנה', amount_agorot: 1_395_000, txn_date: d(1, -m), category_id: 'cat-salary', account_id: 'acc-bank-joint' }))
 }
 
+// Already-materialized instalment transactions, one per elapsed charge
+// since each plan's first_charge_date — exactly the same reason
+// designQaClient.ts's own TRANSACTIONS seeds these (see its header
+// comment): forecastInstallmentOccurrences.ts always resumes forecasting
+// from materializedCount + 1 (computeInstallmentMaterializedCounts.ts
+// counts real transaction rows carrying installment_plan_id/
+// installment_index), so a plan with a first_charge_date months in the
+// past and zero backing transactions gets every one of its already-elapsed
+// months forecast as still-upcoming — and, since those forecast dates land
+// in the past, badged "באיחור" (overdue) on Home's "מה מגיע" card. That's
+// not an engine bug, it's what a genuinely under-recorded household would
+// look like; a stress fixture meant to exercise "a household used for a
+// year" needs the elapsed months actually recorded, same as the real
+// generate_installment_transactions() flow would have produced by now.
+interface ElapsedInstallmentSeed {
+  planId: string
+  description: string
+  merchant: string
+  monthlyAgorot: number
+  chargeDay: number
+  monthsElapsed: number
+  categoryId: string | null
+  accountId: string
+  isShared: boolean
+}
+const INSTALLMENT_ELAPSED: ElapsedInstallmentSeed[] = [
+  { planId: 'ip-sofa', description: 'ספה, מחסני רהיטים', merchant: 'מחסני רהיטים', monthlyAgorot: 59_900, chargeDay: 10, monthsElapsed: 4, categoryId: null, accountId: 'acc-card-visa', isShared: true },
+  { planId: 'ip-fridge', description: 'מקרר, א.ל.מ חשמל', merchant: 'א.ל.מ חשמל', monthlyAgorot: 40_000, chargeDay: 10, monthsElapsed: 8, categoryId: null, accountId: 'acc-card-visa', isShared: true },
+  { planId: 'ip-laptop', description: 'מחשב נייד, KSP', merchant: 'KSP', monthlyAgorot: 48_000, chargeDay: 5, monthsElapsed: 2, categoryId: 'cat-tech', accountId: 'acc-card-master', isShared: false },
+  { planId: 'ip-tv', description: 'טלוויזיה, איירפורט סיטי', merchant: 'איירפורט סיטי', monthlyAgorot: 60_000, chargeDay: 20, monthsElapsed: 1, categoryId: 'cat-tech', accountId: 'acc-card-master', isShared: true },
+]
+for (const seed of INSTALLMENT_ELAPSED) {
+  for (let index = 1; index <= seed.monthsElapsed; index++) {
+    TRANSACTIONS.push(
+      txn({
+        description: seed.description,
+        merchant: seed.merchant,
+        amount_agorot: -seed.monthlyAgorot,
+        txn_date: d(seed.chargeDay, index - seed.monthsElapsed - 1),
+        category_id: seed.categoryId,
+        account_id: seed.accountId,
+        is_shared: seed.isShared,
+        installment_plan_id: seed.planId,
+        installment_index: index,
+      })
+    )
+  }
+}
+
 const TABLES: Record<string, Record<string, unknown>[]> = {
   households: [{ id: HOUSEHOLD, name: 'משפחת כהן־לוי', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, created_by: USER }],
   household_members: [
