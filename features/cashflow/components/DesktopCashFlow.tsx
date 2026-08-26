@@ -213,8 +213,14 @@ export function DesktopCashFlow() {
                       onPress={() => router.push(eventRoute(event) as never)}
                       accessibilityRole="button"
                       accessibilityLabel={event.title}
-                      className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:py-2.5 ${
-                        isCause ? 'web:desktop:bg-dangerSurface-light dark:web:desktop:bg-dangerSurface-dark web:desktop:px-3' : ''
+                      // Second visual pass: this had no hover state at all —
+                      // the same gap already fixed on every other desktop
+                      // list row this pass (Accounts, Recurring, Goals,
+                      // Settings, CommitmentRow). `-mx-3 px-3` unconditional
+                      // now (was cause-only) so the fill has somewhere to
+                      // sit on every row, not just the shortfall-cause one.
+                      className={`web:desktop:flex-row web:desktop:items-center web:desktop:gap-3 web:desktop:rounded-row web:desktop:-mx-3 web:desktop:px-3 web:desktop:py-2.5 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40 ${
+                        isCause ? 'web:desktop:bg-dangerSurface-light dark:web:desktop:bg-dangerSurface-dark' : ''
                       } ${index > 0 ? 'web:desktop:border-t web:desktop:border-divider-light dark:web:desktop:border-divider-dark' : ''}`}
                     >
                       <Text
