@@ -56,7 +56,12 @@ import { useCashFlowStore, type CashFlowHorizonDays } from '@/store/cashFlowStor
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { formatMonthLabel, shiftMonth } from '@/features/budgets/lib/budgetPeriod'
 
-const TABLET_LG_SEGMENTS = new Set(['dashboard', 'transactions'])
+// Checkpoint 5: cash-flow and budgets joined the same tabletLg-mounted set
+// Checkpoint 4 started with dashboard/transactions. budgets/index.tsx is a
+// single unconditional tree (not a Desktop*/Mobile* split like the other
+// three) — its own mobile title+MonthNavigator row (`web:tabletLg:hidden`)
+// moved to the same 1024 threshold so the two never show at once.
+const TABLET_LG_SEGMENTS = new Set(['dashboard', 'transactions', 'cash-flow', 'budgets'])
 
 // Screen title per route segment, matching the mockup's own header wording.
 // Cash Flow is the one place that wording differs from its rail label: the

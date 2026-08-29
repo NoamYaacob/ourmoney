@@ -22,13 +22,34 @@
 // It computes nothing. Every balance plotted is a `dailyPoints` entry from
 // calculateCashFlowForecast; the only arithmetic here is turning agorot and
 // dates into pixel coordinates.
+//
+// Checkpoint 5 (Cash Flow + Budget + Accounts): two additions, both reusing
+// data this component (or its caller) already has — SYSTEM.md §8 was
+// explicit that "make the chart bigger" is not the fix; "make it use its
+// real width" is.
+//   1. Width-aware tick density: the SVG's `viewBox` is only ever an
+//      abstract aspect ratio (`width="100%"` stretches it), so a wider
+//      container used to just add blank margin around the same fixed 4
+//      date labels — real information (more of the dates already in
+//      `dailyPoints`) stayed hidden behind a static tick count regardless
+//      of how much room there was to show it. `onLayout` measures the
+//      chart's own real rendered width and grows the tick count from
+//      there — capped, and only ever growing from the existing default
+//      (never below it), so the very first paint (before layout fires) and
+//      every test in ForecastChart.test.tsx render exactly as before.
+//   2. Optional event markers: `events` (the same CashFlowForecastEvent
+//      list DesktopCashFlow already renders as its own list below the
+//      chart) get a small tick on the line at each event's real date —
+//      no new data, just the existing event dates plotted against the
+//      x-axis they already share with `dailyPoints`.
 
-import { Text, View } from 'react-native'
+import { useState } from 'react'
+import { Text, View, type LayoutChangeEvent } from 'react-native'
 import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { formatILS } from '@/lib/money/format'
-import type { CashFlowDailyPoint } from '@/lib/engines/cashflow/calculateCashFlowForecast'
+import type { CashFlowDailyPoint, CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
 export type ForecastChartVariant = 'compact' | 'wide'
 
@@ -38,7 +59,16 @@ interface ForecastChartProps {
   chartSummary: string
   /** `compact` is the phone frame, `wide` the desktop one. */
   variant?: ForecastChartVariant
+  /** Optional — when passed, each event's date gets a small marker on the line. */
+  events?: CashFlowForecastEvent[]
 }
+
+// One tick roughly every 110px of real rendered width reads as comfortably
+// spaced at this chart's own label font size — below the existing default
+// this never applies (see MIN_TICKS below), so a narrow mobile-web render
+// never gets denser than before.
+const PX_PER_TICK = 110
+const MAX_TICKS = 8
 
 // The viewBox is only an aspect ratio — the SVG itself is width="100%" — so
 // these are the design's own proportions rather than rendered pixels.
@@ -64,16 +94,28 @@ export function ForecastChart({
   lowestBalanceDate,
   chartSummary,
   variant = 'compact',
+  events,
 }: ForecastChartProps) {
   const { colorScheme: scheme } = useColorScheme()
   const isDark = scheme === 'dark'
   const line = isDark ? colors.accent.dark : colors.accent.light
   const danger = isDark ? colors.danger.dark : colors.danger.light
   const axis = isDark ? colors.border.dark : colors.border.light
+  // Real rendered width, measured after first paint — null until then, so
+  // the tick count below falls back to GEOMETRY's own default (matching
+  // every existing test and the very first frame).
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null)
+  function handleLayout(event: LayoutChangeEvent) {
+    const next = Math.round(event.nativeEvent.layout.width)
+    // Avoid a re-render loop from a no-op measurement (onLayout can fire
+    // more than once for the same size).
+    setMeasuredWidth((prev) => (prev === next ? prev : next))
+  }
 
   if (dailyPoints.length === 0) return null
 
-  const { w: W, h: H, ticks, zeroLabel } = GEOMETRY[variant]
+  const { w: W, h: H, ticks: defaultTicks, zeroLabel } = GEOMETRY[variant]
+  const ticks = measuredWidth ? Math.min(MAX_TICKS, Math.max(defaultTicks, Math.floor(measuredWidth / PX_PER_TICK))) : defaultTicks
 
   const balances = dailyPoints.map((point) => point.balanceAgorot)
   const rawMin = Math.min(...balances)
@@ -121,9 +163,21 @@ export function ForecastChart({
     Math.round((i * (dailyPoints.length - 1)) / Math.max(1, ticks - 1))
   )
 
+  // Event markers: each event's own date, matched against the same
+  // dailyPoints index the balance line already plots — no new data, and no
+  // marker for the low-point date itself (already the large circle below).
+  const dateToIndex = new Map(dailyPoints.map((point, index) => [point.date, index]))
+  const eventMarkers = (events ?? [])
+    .map((event) => {
+      const index = dateToIndex.get(event.date)
+      if (index === undefined || index === lowestIndex) return null
+      return { id: event.id, x: xForIndex(index), y: yForBalance(dailyPoints[index]!.balanceAgorot) }
+    })
+    .filter((marker): marker is { id: string; x: number; y: number } => marker !== null)
+
   return (
     <View accessible accessibilityLabel={chartSummary}>
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" onLayout={handleLayout}>
         <View style={{ position: 'relative' }}>
           <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} testID="forecast-chart">
             <Defs>
@@ -136,6 +190,10 @@ export function ForecastChart({
             <Polygon points={area} fill="url(#forecastFill)" />
             {showZeroReference && <Line x1={0} y1={zeroY} x2={W} y2={zeroY} stroke={axis} strokeWidth={1} />}
             <Polyline testID="forecast-chart-line" points={polyline} fill="none" stroke={line} strokeWidth={2} />
+
+            {eventMarkers.map((marker) => (
+              <Circle key={marker.id} cx={marker.x} cy={marker.y} r={3} fill={line} stroke="#ffffff" strokeWidth={1} />
+            ))}
 
             {lowest && (
               <>

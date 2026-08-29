@@ -4,6 +4,23 @@
 // account-type icon per row (accountIcon.ts, Phase 2), Select's 'row'
 // variant + polished sheet for the type picker, Ionicon empty state. Every
 // hook call and mutation payload below is unchanged from Phase 1.
+//
+// Checkpoint 5 (Cash Flow + Budget + Accounts): no JS width switch exists
+// here (unlike Home/Transactions/Cash Flow) — this has always been one
+// unconditional tree, purely CSS-responsive, so there is no "mount
+// threshold" to move. Two independent tablet changes, per design-review/
+// SYSTEM.md §2's own table for this screen specifically:
+//   - `web:tablet:` (768px) — the 3 account groups (liquid/owed/illiquid)
+//     wrap 2-up instead of stacking full width. This tier was in SYSTEM.md's
+//     plan from Checkpoint 2 but never actually built; it is now.
+//   - `web:tabletLg:` (1024px) — the hero's owed/illiquid stat reveal
+//     (previously `web:desktop:`-only) moves a tier earlier, since 834px
+//     genuinely doesn't have room for it (SYSTEM.md §2's own 834 vs 1024
+///    distinction) but 1024px does.
+// `Screen width="wide"` -> `"richSingle"` (900 tablet / 960 desktop) per
+// SYSTEM.md §5 "Accounts — Shape B... ~900-960px", no rail (§6: the one
+// candidate second column, the liquid/owed/illiquid split, already lives in
+// the hero — a rail would duplicate it, not add to it).
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
@@ -212,10 +229,25 @@ export default function Accounts() {
     )
   }
 
-  function renderGroup(group: Account[], labelKey: string, labelClass: string, cardClass: string) {
+  // Checkpoint 5: `web:tablet:w-[calc(50%-8px)]` wraps the 3 groups 2-up
+  // from 768px — SYSTEM.md §2's own table calls this out for Accounts
+  // specifically ("2-up group grid"), planned in Checkpoint 2 but never
+  // actually built until now. Below `tablet` unchanged (`mt-4`, full width,
+  // stacked). The row-level gap (on the wrapper below) replaces this
+  // per-group `mt-4` from `tablet` up; `web:tablet:mt-0` turns it off here
+  // so groups on the same row don't also carry their own top margin.
+  function renderGroup(
+    group: Account[],
+    labelKey: string,
+    labelClass: string,
+    cardClass: string,
+    fullWidth: boolean
+  ) {
     if (group.length === 0) return null
     return (
-      <View className="mt-4">
+      <View
+        className={`mt-4 w-full web:tablet:mt-0 ${fullWidth ? '' : 'web:tablet:w-[calc(50%-8px)]'}`}
+      >
         <Text className={`mb-2 text-meta font-sansSemibold tracking-[0.06em] ${labelClass}`}>{t(labelKey)}</Text>
         <View className={`overflow-hidden rounded-card border px-4 ${cardClass}`}>
           {group.map((account, index) => renderAccountRow(account, index === group.length - 1))}
@@ -224,8 +256,37 @@ export default function Accounts() {
     )
   }
 
+  // The 3 possible groups, in the same fixed display order as before, but
+  // as data rather than 3 separate renderGroup() call sites — so the 2-up
+  // grid below can see how many groups actually ended up visible and give
+  // the odd one out (whenever that count is 1 or 3, both real cases) full
+  // width instead of stranding it at half.
+  const accountGroups = [
+    {
+      accounts: liquidAccounts,
+      labelKey: 'accounts.groups.liquid',
+      labelClass: 'text-positiveStrong-light dark:text-positiveStrong-dark',
+      cardClass: 'border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark',
+    },
+    {
+      accounts: owedAccounts,
+      labelKey: 'accounts.groups.owed',
+      // The credit group carries a tinted border in both frames: what is
+      // owed is not the same kind of thing as what is held.
+      labelClass: 'text-dangerStrong-light dark:text-dangerStrong-dark',
+      cardClass: 'border-dangerBorder-light bg-surfaceMuted-light dark:border-dangerBorder-dark dark:bg-surfaceMuted-dark',
+    },
+    {
+      accounts: illiquidAccounts,
+      labelKey: 'accounts.groups.illiquid',
+      labelClass: 'text-inkMuted-light dark:text-inkMuted-dark',
+      // Recessed rather than white: not money to plan against today.
+      cardClass: 'border-border-light bg-surface-light dark:border-border-dark dark:bg-surface-dark',
+    },
+  ].filter((group) => group.accounts.length > 0)
+
   return (
-    <Screen onBack={() => router.back()} width="wide" scroll>
+    <Screen onBack={() => router.back()} width="richSingle" scroll>
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('accounts.title')}
       </Text>
@@ -237,8 +298,15 @@ export default function Accounts() {
         // — the whole point of the grouping below is that those are
         // different numbers.
         <View className="rounded-card border border-border-light bg-surfaceMuted-light p-5 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          <View className="web:desktop:flex-row web:desktop:items-center web:desktop:justify-between web:desktop:gap-8">
-            <View className="web:desktop:flex-1">
+          {/* Checkpoint 5: this row layout now activates at the same
+              `web:tabletLg:` threshold as the stat block it wraps (below),
+              not `web:desktop:` — the two were previously mismatched, so
+              from 1024-1199 the stat block appeared but stacked under the
+              headline instead of beside it, leaving its own `border-s`
+              (meant to separate two side-by-side blocks) rendering against
+              nothing, flush against the card's own edge. */}
+          <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between web:tabletLg:gap-8">
+            <View className="web:tabletLg:flex-1">
               <Text className="text-meta font-sansSemibold tracking-[0.06em] text-positiveStrong-light dark:text-positiveStrong-dark">
                 {t('accounts.availableToSpend')}
               </Text>
@@ -256,7 +324,10 @@ export default function Accounts() {
                 actually has an account, so a household with no credit
                 cards doesn't get a meaningless "₪0 owed" stat. */}
             {!isBalancesLoading && (owedAccounts.length > 0 || illiquidAccounts.length > 0) && (
-              <View className="hidden web:desktop:flex web:desktop:flex-row web:desktop:items-center web:desktop:gap-7 web:desktop:border-s web:desktop:border-divider-light web:desktop:ps-8 dark:web:desktop:border-divider-dark">
+              // Checkpoint 5: reveals from `tabletLg` (1024) now, not
+              // `desktop` (1200) — SYSTEM.md §2's own 834-vs-1024 distinction
+              // for this screen: 834px doesn't have the room, 1024px does.
+              <View className="hidden web:tabletLg:flex web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-7 web:tabletLg:border-s web:tabletLg:border-divider-light web:tabletLg:ps-8 dark:web:tabletLg:border-divider-dark">
                 {owedAccounts.length > 0 && (
                   <View>
                     <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
@@ -276,6 +347,47 @@ export default function Accounts() {
               </View>
             )}
           </View>
+
+          {/* Checkpoint 5: "the hero card still reads as three text blocks,
+              not a visual asset/liability picture" (Checkpoint 1's own
+              finding). A proportional segmented bar — the same
+              Math.max(1, amount)-as-flexGrow technique Home's own hero
+              waterfall bar already uses — turns the same three numbers
+              already on this card (available/owed/illiquid) into one
+              visual read of the household's own balance sheet, with no
+              new figure computed for it. Only drawn once there is more
+              than one segment to compare (an owed or illiquid group) —
+              a lone liquid-only household would just see a solid bar,
+              which is not "a picture," so the plain figure above still
+              carries that case alone. */}
+          {!isBalancesLoading && (owedAccounts.length > 0 || illiquidAccounts.length > 0) && (
+            <View className="web:tablet:mt-4 mt-3 h-2.5 flex-row gap-0.5 overflow-hidden rounded-full">
+              <View
+                className="bg-positive-light dark:bg-positive-dark"
+                style={{ flexGrow: Math.max(1, availableCashAgorot), flexBasis: 0 }}
+              />
+              {/* Math.abs, not the raw signed total: a credit-card balance
+                  is stored negative (it's owed), so the raw `> 0`/flexGrow
+                  this originally shipped with silently never rendered this
+                  segment for a household that actually carries credit-card
+                  debt — the one case this bar most needs to show. The
+                  figure above (Money, tone="danger") already renders the
+                  true signed amount; only this segment's own size/presence
+                  check needed the magnitude. */}
+              {Math.abs(owedTotalAgorot) > 0 && (
+                <View
+                  className="bg-danger-light dark:bg-danger-dark"
+                  style={{ flexGrow: Math.max(1, Math.abs(owedTotalAgorot)), flexBasis: 0 }}
+                />
+              )}
+              {Math.abs(illiquidTotalAgorot) > 0 && (
+                <View
+                  className="bg-inkMuted-light dark:bg-inkMuted-dark"
+                  style={{ flexGrow: Math.max(1, Math.abs(illiquidTotalAgorot)), flexBasis: 0 }}
+                />
+              )}
+            </View>
+          )}
 
           <View className="mt-2 border-t border-divider-light pt-2 dark:border-divider-dark">
             <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
@@ -328,27 +440,29 @@ export default function Accounts() {
               directly above it was confusing, not helpful. */}
           {accounts.length === 0 && <EmptyState iconName="wallet-outline" message={t('accounts.empty')} hint={t('accounts.emptyHint')} />}
 
-          {renderGroup(
-            liquidAccounts,
-            'accounts.groups.liquid',
-            'text-positiveStrong-light dark:text-positiveStrong-dark',
-            'border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark'
-          )}
-          {renderGroup(
-            owedAccounts,
-            'accounts.groups.owed',
-            'text-dangerStrong-light dark:text-dangerStrong-dark',
-            // The credit group carries a tinted border in both frames: what
-            // is owed is not the same kind of thing as what is held.
-            'border-dangerBorder-light bg-surfaceMuted-light dark:border-dangerBorder-dark dark:bg-surfaceMuted-dark'
-          )}
-          {renderGroup(
-            illiquidAccounts,
-            'accounts.groups.illiquid',
-            'text-inkMuted-light dark:text-inkMuted-dark',
-            // Recessed rather than white: not money to plan against today.
-            'border-border-light bg-surface-light dark:border-border-dark dark:bg-surface-dark'
-          )}
+          {/* Checkpoint 5: the 2-up wrap itself lives on this row wrapper
+              (`web:tablet:flex-row web:tablet:flex-wrap web:tablet:gap-4`),
+              each visible group picking up `web:tablet:w-[calc(50%-8px)]`
+              from renderGroup, matching the 16px gap here — EXCEPT the last
+              visible group when the visible count is odd (1 or 3 groups: a
+              household missing one or two of owed/illiquid is common, not
+              an edge case). An unconditional half-width on every group left
+              that lone last card floating at half the row's width with dead
+              space beside it — a real instance of exactly the "floating
+              narrow column" the tablet/desktop composition review warns
+              against, caught only by screenshotting a household with all
+              three groups present and a household with just one. */}
+          <View className="web:tablet:flex-row web:tablet:flex-wrap web:tablet:gap-4">
+            {accountGroups.map((group, index) =>
+              renderGroup(
+                group.accounts,
+                group.labelKey,
+                group.labelClass,
+                group.cardClass,
+                index === accountGroups.length - 1 && accountGroups.length % 2 === 1
+              )
+            )}
+          </View>
         </>
       )}
 

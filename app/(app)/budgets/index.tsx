@@ -52,10 +52,26 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
-import { DESKTOP_BREAKPOINT_PX, DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { TABLET_LG_BREAKPOINT_PX, RESPONSIVE_PANEL_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
-const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
+// Checkpoint 5 (Cash Flow + Budget + Accounts): every `web:desktop:` class
+// below moved to `web:tabletLg:`, and DESKTOP_PANEL_CLASS became
+// RESPONSIVE_PANEL_CLASS — the same move Checkpoint 4 made for Home/
+// Transactions and Checkpoint 5 made for Cash Flow. This screen is a single
+// unconditional tree (not a Desktop*/Mobile* split), so unlike those three
+// there is no separate mobile component to leave untouched — the mobile
+// rows are simply the unprefixed classes throughout, which this move never
+// touches.
+//
+// Deliberately NOT migrated to ContentRail here (design-review's own
+// Checkpoint 3 primitive Transactions now uses): this row+sidebar grid is
+// already the strongest desktop composition in the app (Checkpoint 1's own
+// verdict — "POLISH, do not restructure") and its sidebar is a deliberately
+// tuned 300px, not ContentRail's 280/320 — swapping it would have been
+// exactly the kind of change the Checkpoint 5 brief warns against ("do not
+// force primitives where the screen's own architecture says otherwise").
+const DESKTOP_PANEL = `web:tabletLg:min-h-[300px] ${RESPONSIVE_PANEL_CLASS}`
 // Desktop Claude Design pass: 6 calendar months ending at the currently
 // viewed month — matches the mockup's own "מגמה · 6 חודשים" trend card.
 const TREND_MONTHS = 6
@@ -68,7 +84,7 @@ export default function Budgets() {
   // name line and drops the card chrome. Same route split the dashboard,
   // transactions and cash-flow screens already make.
   const { width } = useWindowDimensions()
-  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
+  const isRichWeb = Platform.OS === 'web' && width >= TABLET_LG_BREAKPOINT_PX
   const { user } = useAuth()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
@@ -343,11 +359,11 @@ export default function Budgets() {
     .sort((a, b) => a.amount_agorot - b.amount_agorot)
 
   return (
-    <Screen width="wide">
+    <Screen width="wideRail">
       {/* Title and month on one 44px row, as the phone frame draws them.
           Desktop draws both in the shell header band instead, so the whole
           row is hidden there rather than duplicating the controls. */}
-      <View className="mb-3 min-h-[44px] flex-row items-center justify-between gap-3 web:desktop:hidden">
+      <View className="mb-3 min-h-[44px] flex-row items-center justify-between gap-3 web:tabletLg:hidden">
         <Text className="text-title font-heebo text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
         <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
       </View>
@@ -370,7 +386,7 @@ export default function Budgets() {
             totalAllocatedAgorot={totalAllocatedAgorot}
             totalSpentAgorot={totalSpentAgorot}
             state={monthState}
-            variant={isDesktopWeb ? 'row' : 'stacked'}
+            variant={isRichWeb ? 'row' : 'stacked'}
             testID="budget-summary"
           />
 
@@ -379,11 +395,11 @@ export default function Budgets() {
               grouped away from the hero — a plain spacer replaces the
               earlier standalone divider line, matching Dashboard's
               identical treatment. Desktop-only; mobile/tablet untouched. */}
-          <View className="hidden web:desktop:mt-6 web:desktop:flex" />
+          <View className="hidden web:tabletLg:mt-6 web:tabletLg:flex" />
 
           {/* Responsive/desktop pass: category budgets and the uncategorized
               queue sit side by side at desktop
-              (`web:desktop:flex-row` — see _layout.tsx's
+              (`web:tabletLg:flex-row` — see _layout.tsx's
               DesktopSideRail comment for why `-reverse` is needed on web).
               Reversing keeps source/DOM order as [categories,
               uncategorized] while visually placing categories (primary) on
@@ -395,8 +411,8 @@ export default function Budgets() {
               so the drift went uncaught. Restored to `-reverse` and the
               test tightened to exact-token matching. Mobile/tablet stay
               stacked in the original order (plain View column default). */}
-          <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
-          <View className="web:desktop:flex-1">
+          <View className="web:tabletLg:flex-row web:tabletLg:items-start web:tabletLg:gap-6">
+          <View className="web:tabletLg:flex-1">
           {/* Desktop polish pass: the category-budgets column (list + the
               add-category control) becomes one bounded panel, so it reads
               as a single coherent area rather than a list with an isolated
@@ -445,7 +461,7 @@ export default function Budgets() {
                   a bigger, non-compact EmptyState at desktop keeps a
                   min-height panel from reading as an oversized empty box
                   around a tiny icon. Mobile keeps the original compact one. */}
-              <View className="web:desktop:hidden">
+              <View className="web:tabletLg:hidden">
                 <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} hint={t('budgets.noCategoriesHint')} />
               </View>
               {/* Desktop Visual/Responsive Design pass: the zero-allocation
@@ -462,8 +478,8 @@ export default function Budgets() {
                   control isn't duplicated (mobile is untouched: it still
                   only ever renders the control in the one place it always
                   has). */}
-              <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:py-10">
-                <View className="web:desktop:w-full web:desktop:max-w-[360px]">
+              <View className="hidden web:tabletLg:flex web:tabletLg:items-center web:tabletLg:py-10">
+                <View className="web:tabletLg:w-full web:tabletLg:max-w-[360px]">
                   <View className="mb-4">
                     <EmptyState
                       iconName="pie-chart-outline"
@@ -519,7 +535,7 @@ export default function Budgets() {
                     <BudgetCategoryRow
                       category={category}
                       state={categoryState}
-                      variant={isDesktopWeb ? 'plain' : 'card'}
+                      variant={isRichWeb ? 'plain' : 'card'}
                       testID={`budget-category-${category.categoryId}`}
                       onPress={() => {
                         setEditingCategoryId(category.categoryId)
@@ -534,7 +550,7 @@ export default function Budgets() {
                       // second copy of that flow. The desktop frame has no
                       // per-category screen and gets no chevron.
                       onOpenDetail={
-                        isDesktopWeb ? undefined : () => router.push(`/budgets/${category.categoryId}`)
+                        isRichWeb ? undefined : () => router.push(`/budgets/${category.categoryId}`)
                       }
                     />
                     {editingCategoryId === category.categoryId && (
@@ -644,7 +660,7 @@ export default function Budgets() {
             // (unchanged), and it still renders here at desktop too once
             // progress.length > 0 (the empty-state card above no longer
             // exists in that case).
-            <View className={`mt-3 web:desktop:mt-2 ${progress.length === 0 ? 'web:desktop:hidden' : ''}`}>
+            <View className={`mt-3 web:tabletLg:mt-2 ${progress.length === 0 ? 'web:tabletLg:hidden' : ''}`}>
               {/* Product-quality pass: same double-bordered-box fix as the
                   identical control above — Select's own 'row' variant
                   already IS the bordered control; no outer <Card> needed. */}
@@ -681,17 +697,22 @@ export default function Budgets() {
               from the pre-redesign Dashboard, which showed this exact
               window but the approved Home mockup never does (see the
               trendPeriodStarts comment above). Desktop-only; mobile is
-              entirely unaffected (this whole block is `web:desktop:`-only,
+              entirely unaffected (this whole block was `web:desktop:`-only,
               and the uncategorized queue's own mobile rendering is
               untouched below). */}
-          <View className="web:desktop:w-[300px] web:desktop:flex-none web:desktop:gap-3.5">
+          <View className="web:tabletLg:w-[300px] web:tabletLg:flex-none web:tabletLg:gap-3.5">
             {analyticsTransactionsRaw.length > 0 && !isAnalyticsLoading && totalBreakdownAgorot > 0 && (
-              <View className={DESKTOP_PANEL_CLASS}>
+              <View className={RESPONSIVE_PANEL_CLASS}>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('budgets.analytics.breakdownTitle')}
                 </Text>
+                {/* Checkpoint 5: 132 -> 160 — Checkpoint 1's own finding
+                    was that this chart reads visually plainer/smaller than
+                    the panel around it; the sidebar column has the width to
+                    spare (see this file's own RESPONSIVE_PANEL_CLASS
+                    padding). */}
                 <View className="mt-4 items-center">
-                  <CategoryDonutChart breakdown={topBreakdownEntries} categoryNameById={categoryNameById} size={132} />
+                  <CategoryDonutChart breakdown={topBreakdownEntries} categoryNameById={categoryNameById} size={160} />
                 </View>
                 {/* The colour key. Every class here was `web:desktop:`-only,
                     including the swatch's own width and height — so on a
@@ -733,17 +754,17 @@ export default function Budgets() {
             )}
 
             {!isAnalyticsLoading && monthlyTrend.some((point) => point.incomeAgorot > 0 || point.expenseAgorot > 0) && (
-              <View className={DESKTOP_PANEL_CLASS}>
+              <View className={RESPONSIVE_PANEL_CLASS}>
                 <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
                   {t('budgets.analytics.trendTitle')}
                 </Text>
-                <View className="web:desktop:mt-4">
+                <View className="web:tabletLg:mt-4">
                   <MonthlyTrendChart points={monthlyTrend} />
                 </View>
               </View>
             )}
 
-          <View className={DESKTOP_PANEL_CLASS}>
+          <View className={RESPONSIVE_PANEL_CLASS}>
           {/* Uncategorized transactions queue — the same real feature the
               pre-redesign equal-width column offered, condensed into a
               sidebar card matching the mockup's own compact treatment. */}
@@ -756,10 +777,10 @@ export default function Budgets() {
             <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
           ) : uncategorized.length === 0 ? (
             <>
-              <View className="web:desktop:hidden">
+              <View className="web:tabletLg:hidden">
                 <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} compact />
               </View>
-              <View className="hidden web:desktop:flex">
+              <View className="hidden web:tabletLg:flex">
                 <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} />
               </View>
             </>
@@ -770,7 +791,7 @@ export default function Budgets() {
             // overuse" pattern the rest of this pass corrected in
             // Transactions' filter selects. A plain View carries the same
             // spacing without a second, redundant border.
-            <View className="web:desktop:mt-4">
+            <View className="web:tabletLg:mt-4">
               {uncategorizedError && (
                 <View className="mb-3">
                   <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />

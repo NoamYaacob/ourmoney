@@ -39,6 +39,19 @@ export const CONTENT_WIDTH = {
   // own — every other tier assumes Screen itself owns the width decision;
   // this one hands that decision entirely to the caller's own content.
   full: 'w-full',
+  // Checkpoint 5 (Cash Flow + Budget + Accounts): Budget's own category-
+  // list+sidebar row (a hand-built Shape-A-like grid, not ContentRail — see
+  // budgets/index.tsx's own comment for why) now activates from `tabletLg`
+  // instead of `desktop`, but `wide`'s own tablet-tier cap (820px) does not
+  // grow until `desktop` (1200px) — at 1024-1199 that left a 300px sidebar
+  // and a multi-stat summary row trying to fit inside a container that
+  // never got wider, overflowing the page (`BudgetSummaryCard`'s row
+  // variant, `ms-auto` positioned, was the visible symptom). Same 820px
+  // tablet-tier cap as `wide` (1024-1199 still isn't the rail's territory
+  // per SYSTEM.md §2's own table below `tabletLg`); same 1150px final value
+  // as `wide` too (no visual change at 1200+, where this screen already
+  // worked) — the only difference is *when* 1150px is reached.
+  wideRail: 'w-full web:tablet:max-w-[820px] web:tablet:mx-auto web:tabletLg:max-w-[1150px] web:desktop:max-w-[1150px]',
 } as const
 
 export type ContentWidth = keyof typeof CONTENT_WIDTH

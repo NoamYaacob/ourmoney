@@ -4,15 +4,22 @@
 // leads with the answer sentence and drops the second horizon selector
 // (the safe-to-spend horizon lives on its own screen now), so it is a
 // separate component instead of a stack of `web:desktop:` overrides.
+//
+// Checkpoint 5 (Cash Flow + Budget + Accounts): the switch point moved from
+// DESKTOP_BREAKPOINT_PX (1200) to TABLET_LG_BREAKPOINT_PX (1024) — the same
+// move Checkpoint 4 made for Home and Transactions. DesktopCashFlow's own
+// composition is written to look intentional starting at 1024 (its own
+// header comment explains how), and DesktopTopBar shows its title band
+// from 1024 specifically for this route too.
 
 import { Platform, useWindowDimensions } from 'react-native'
-import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
+import { TABLET_LG_BREAKPOINT_PX } from '@/constants/layout'
 import { MobileCashFlow } from '@/features/cashflow/components/MobileCashFlow'
 import { DesktopCashFlow } from '@/features/cashflow/components/DesktopCashFlow'
 
 export default function CashFlow() {
   const { width } = useWindowDimensions()
-  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
+  const isRichWeb = Platform.OS === 'web' && width >= TABLET_LG_BREAKPOINT_PX
 
-  return isDesktopWeb ? <DesktopCashFlow /> : <MobileCashFlow />
+  return isRichWeb ? <DesktopCashFlow /> : <MobileCashFlow />
 }

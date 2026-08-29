@@ -32,7 +32,7 @@ interface MockBudgetProgressResult {
 // resilient to the DesktopPanelHeader's icon-chip + title nesting.
 function climbToPanel(textNode: any) {
   let current = textNode
-  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:min-h-[300px]')) {
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:tabletLg:min-h-[300px]')) {
     current = current.parent
   }
   return current
@@ -43,12 +43,12 @@ function climbToPanel(textNode: any) {
 // on this page (product-quality pass — these three used to be the older,
 // heavier DESKTOP_CARD_CLASS, sitting right beside the category column's own
 // DESKTOP_PANEL_CLASS panel with a visibly different border/radius/shadow).
-// 'web:desktop:shadow-sm' is the marker: unique to DESKTOP_PANEL_CLASS,
-// unlike 'web:desktop:min-h-[300px]' climbToPanel above looks for, which
+// 'web:tabletLg:shadow-sm' is the marker: unique to DESKTOP_PANEL_CLASS,
+// unlike 'web:tabletLg:min-h-[300px]' climbToPanel above looks for, which
 // only the single main panel carries.
 function climbToSidebarCard(textNode: any) {
   let current = textNode
-  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:shadow-sm')) {
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:tabletLg:shadow-sm')) {
     current = current.parent
   }
   return current
@@ -488,7 +488,7 @@ describe('Budgets', () => {
   // the primary column) reads on the right in this RTL app — not a fake
   // pixel/viewport assertion.
   // Visual QA + Desktop Polish pass: this previously matched via
-  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH the
+  // `.toContain('web:tabletLg:flex-row')`, a substring satisfied by BOTH the
   // reversed and unreversed forms — so it silently kept passing through a
   // real regression where the grid reverted to plain `flex-row`. Rewritten
   // to exact whitespace-token membership.
@@ -498,13 +498,13 @@ describe('Budgets', () => {
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
     const gridWrapper = categoriesPanel?.parent?.parent
     const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:flex-row')
-    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
+    expect(tokens).toContain('web:tabletLg:flex-row')
+    expect(tokens).not.toContain('web:tabletLg:flex-row-reverse')
 
     // Desktop Claude Design pass: the uncategorized queue moved from an
     // equal-width column into a 300px sidebar card (climbToSidebarCard,
-    // marker 'web:desktop:shadow-sm' — DESKTOP_PANEL_CLASS's own marker,
-    // distinct from the same class's 'web:desktop:min-h-[300px]' the
+    // marker 'web:tabletLg:shadow-sm' — DESKTOP_PANEL_CLASS's own marker,
+    // distinct from the same class's 'web:tabletLg:min-h-[300px]' the
     // category column adds on top of it) — still a child of the same grid
     // row.
     const uncategorizedCard = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))
@@ -517,8 +517,8 @@ describe('Budgets', () => {
   it('gives both the category-budgets column and the uncategorized sidebar card their own bordered desktop treatment', async () => {
     const { getByText } = await render(<Budgets />)
 
-    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:border')
-    expect(climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:tabletLg:border')
+    expect(climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:tabletLg:border')
   })
 
   // Debugging pass (real-browser regression): see dashboard/index.test.tsx's
@@ -531,10 +531,10 @@ describe('Budgets', () => {
     const { getByText } = await render(<Budgets />)
 
     const className = climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string
-    expect(className).toContain('web:desktop:bg-surfaceMuted-light')
-    expect(className).toContain('dark:web:desktop:bg-surfaceMuted-dark')
-    expect(className).not.toContain('web:desktop:bg-surface-light')
-    expect(className).not.toContain('web:desktop:bg-surface-dark')
+    expect(className).toContain('web:tabletLg:bg-surfaceMuted-light')
+    expect(className).toContain('dark:web:tabletLg:bg-surfaceMuted-dark')
+    expect(className).not.toContain('web:tabletLg:bg-surface-light')
+    expect(className).not.toContain('web:tabletLg:bg-surface-dark')
   })
 
   // Desktop polish pass (still applies to the primary column): the category
@@ -546,7 +546,7 @@ describe('Budgets', () => {
   it('gives the category-budgets column a minimum desktop height', async () => {
     const { getByText } = await render(<Budgets />)
 
-    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
+    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:tabletLg:min-h-[300px]')
   })
 
   // Desktop Claude Design pass: the mockup's own right column — donut +
@@ -557,7 +557,7 @@ describe('Budgets', () => {
 
     const sidebar = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.parent
     const tokens = ((sidebar?.props.className as string | undefined) ?? '').split(/\s+/)
-    expect(tokens).toContain('web:desktop:w-[300px]')
+    expect(tokens).toContain('web:tabletLg:w-[300px]')
   })
 })
 

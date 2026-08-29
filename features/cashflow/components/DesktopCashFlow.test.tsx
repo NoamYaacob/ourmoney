@@ -90,7 +90,7 @@ describe('DesktopCashFlow', () => {
     expect(getByText(i18n.t('cashFlow.mobile.answerShortfall', { date: '04.09.2026', amount: formatILS(61_200) }))).toBeTruthy()
   })
 
-  it('tags the event that takes the balance to its low point, and shows the shortfall warning card', async () => {
+  it('tags the event that takes the balance to its low point', async () => {
     mockUseCashFlowForecast.mockReturnValue({
       result: { ...HEALTHY, lowestBalanceAgorot: -61_200, firstShortfallDate: '2026-09-04' },
       isLoading: false,
@@ -100,21 +100,38 @@ describe('DesktopCashFlow', () => {
 
     expect(getByText('טסט ואגרת רכב')).toBeTruthy()
     expect(getByText(i18n.t('cashFlow.mobile.causeTag'))).toBeTruthy()
-    expect(getByText(i18n.t('cashFlow.forecast.shortfallWarningTitle'))).toBeTruthy()
   })
 
-  it('does not tag an income event as the cause, and shows the no-shortfall state', async () => {
+  // Checkpoint 5: the trailing shortfall-status card (shortfallWarningTitle
+  // in the shortfall case, noShortfall in the calm one) was pure duplicate
+  // messaging — cashFlow.mobile.answerShortfall/answerOk above it already
+  // states the same date and amount. Removed as a "summary card + chart
+  // card + status card" pattern, not a feature cut — these regression
+  // guards now assert the duplicate text is GONE, not present.
+  it('does not tag an income event as the cause, and shows no separate shortfall-status card (the answer sentence already carries that)', async () => {
     mockUseCashFlowForecast.mockReturnValue({
       result: { ...HEALTHY, events: [forecastEvent({ id: 'salary', direction: 'inflow', title: 'משכורת דנה', amountAgorot: 1_395_000 })] },
       isLoading: false,
       error: null, hasData: true,})
 
-    const { getByText, queryByText } = await render(<CashFlow />)
+    const { queryByText } = await render(<CashFlow />)
 
     expect(queryByText(i18n.t('cashFlow.mobile.causeTag'))).toBeNull()
     expect(queryByText(i18n.t('cashFlow.mobile.causeTagLow'))).toBeNull()
-    expect(getByText(i18n.t('cashFlow.forecast.noShortfall'))).toBeTruthy()
+    expect(queryByText(i18n.t('cashFlow.forecast.noShortfall'))).toBeNull()
     expect(queryByText(i18n.t('cashFlow.forecast.shortfallWarningTitle'))).toBeNull()
+  })
+
+  it('never renders the removed duplicate shortfall-status card, even in the shortfall case', async () => {
+    mockUseCashFlowForecast.mockReturnValue({
+      result: { ...HEALTHY, lowestBalanceAgorot: -61_200, firstShortfallDate: '2026-09-04' },
+      isLoading: false,
+      error: null, hasData: true,})
+
+    const { queryByText } = await render(<CashFlow />)
+
+    expect(queryByText(i18n.t('cashFlow.forecast.shortfallWarningTitle'))).toBeNull()
+    expect(queryByText(i18n.t('cashFlow.forecast.shortfallWarningBody', { date: '2026-09-04' }))).toBeNull()
   })
 
   it('shows the three balance figures the screen is built around, and the chart', async () => {
