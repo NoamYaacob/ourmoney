@@ -1247,5 +1247,17 @@
       "title": "יעד חיסכון הושג!",
       "body": "הגעתם ליעד החיסכון שהגדרתם. כל הכבוד!"
     }
+  },
+  "financialTimeline": {
+    "sectionTitle": "ציר הזמן הפיננסי",
+    "today": "היום",
+    "lowPointInline": "נמוך: {{amount}} · {{date}}",
+    "emptyTitle": "אין תנועות עתידיות ידועות בטווח",
+    "emptyBody": "היתרה צפויה להישאר כפי שהיא עד סוף התקופה, בהתאם למה שכבר ידוע.",
+    "noMovementThisDay": "אין תנועות ביום זה.",
+    "pastDueBadge": "באיחור",
+    "todayDetailTitle": "כבר נעולות להיום",
+    "viewFullForecast": "פתחו את התחזית המלאה",
+    "stepAccessibilityLabel": "{{date}}, יתרה {{balance}}, {{count}} תנועות"
   }
 }

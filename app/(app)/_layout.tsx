@@ -429,6 +429,11 @@ export default function AppLayout() {
                   from any nav; reachable only by navigating directly to
                   /diagnostics. */}
               <Tabs.Screen name="diagnostics/index" options={{ href: null }} />
+              {/* Design Lock review harness for the Direction D Financial
+                  Timeline prototype — see app/(app)/diagnostics/timeline-lab.tsx's
+                  own header. Not linked from any nav; reachable only by
+                  navigating directly to /diagnostics/timeline-lab. */}
+              <Tabs.Screen name="diagnostics/timeline-lab" options={{ href: null }} />
             </Tabs>
           </View>
         </View>
