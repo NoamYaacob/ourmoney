@@ -34,9 +34,9 @@
 // release-readiness pass — see that file's own header for why.
 import { createBuilder, createSession, DESIGN_QA_REFERENCE_DATE } from './designQaEngine'
 
-const HOUSEHOLD = 'hh-1'
-const USER = 'user-1'
-const PARTNER = 'user-2'
+export const HOUSEHOLD = 'hh-1'
+export const USER = 'user-1'
+export const PARTNER = 'user-2'
 
 // Anchored so "today" always sits mid-month with events either side,
 // matching the mockups' own late-August framing. Fixed, not wall-clock —
@@ -210,7 +210,7 @@ const HOUSEHOLD_ROW = { id: HOUSEHOLD, name: 'משפחת לוי', created_at: '2
 // The real queries request embedded resources (`households(*)`,
 // `categories(name_he, icon)`); PostgREST returns those as nested objects,
 // so the fixture has to as well or screens render nameless rows.
-function withJoins(table: string, select: string, row: Record<string, unknown>) {
+export function withJoins(table: string, select: string, row: Record<string, unknown>) {
   if (select.includes('households(')) return { ...row, households: HOUSEHOLD_ROW }
   if (select.includes('categories(')) {
     const c = CATEGORY_BY_ID[row.category_id as string]

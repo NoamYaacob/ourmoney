@@ -57,6 +57,16 @@ const DESIGN_QA_CLIENT_FILES = {
   onboarding: 'dev/designQaOnboardingClient.ts',
   empty: 'dev/designQaEmptyClient.ts',
   stress: 'dev/designQaStressClient.ts',
+  // CP8E — Financial Pulse deterministic snapshot states. Each is
+  // DESIGN_QA=1's own household/financial fixture (pulse-secondary reuses
+  // `stress` instead, for its already-existing Netflix price-increase
+  // history), overriding only the financial_pulse_snapshots row — see each
+  // file's own header for the exact scenario and figures.
+  'pulse-first': 'dev/designQaPulseFirstClient.ts',
+  'pulse-negative': 'dev/designQaPulseNegativeClient.ts',
+  'pulse-positive': 'dev/designQaPulsePositiveClient.ts',
+  'pulse-nochange': 'dev/designQaPulseNoChangeClient.ts',
+  'pulse-secondary': 'dev/designQaPulseSecondaryClient.ts',
 }
 const designQaTargetFile = DESIGN_QA_CLIENT_FILES[process.env.DESIGN_QA]
 if (designQaTargetFile) {

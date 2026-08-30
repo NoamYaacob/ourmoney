@@ -66,6 +66,12 @@ const mockUseFinancialAlerts = jest.fn<() => typeof DEFAULT_ALERTS>()
 jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
   useFinancialAlerts: () => mockUseFinancialAlerts(),
 }))
+// CP8E — see MobileHome.test.tsx's identical mock for why this hook is
+// mocked directly rather than its real Supabase-backed dependencies.
+let mockPulse: unknown = null
+jest.mock('@/features/pulse/hooks/useFinancialPulse', () => ({
+  useFinancialPulse: () => ({ pulse: mockPulse }),
+}))
 
 const DEFAULT_GOALS = { goals: [] as unknown[], isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
 const mockUseSavingsGoals = jest.fn<() => typeof DEFAULT_GOALS>()
@@ -105,6 +111,7 @@ beforeEach(() => {
   mockUseSavingsGoals.mockReturnValue(DEFAULT_GOALS)
   mockUseAccounts.mockReturnValue(DEFAULT_ACCOUNTS)
   mockPush.mockClear()
+  mockPulse = null
 })
 
 afterEach(() => {
@@ -240,6 +247,27 @@ describe('Dashboard מה יקרה עד אז (same panel as the hero)', () => {
   })
 })
 
+describe('Dashboard — Financial Pulse (CP8E)', () => {
+  it('renders nothing when there is no comparison', async () => {
+    mockPulse = null
+    const { queryByText } = await render(<Dashboard />)
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
+  })
+
+  it('renders the headline when a real comparison exists', async () => {
+    mockPulse = {
+      safeToSpendDeltaAgorot: 40000,
+      previousSafeToSpendAgorot: 290000,
+      currentSafeToSpendAgorot: 330000,
+      cause: null,
+      secondaryItems: [{ kind: 'recurring_price_increase', description: 'Netflix', increaseAgorot: 900 }],
+    }
+    const { getByText } = await render(<Dashboard />)
+    expect(getByText(i18n.t('home.pulse.more', { amount: formatILS(40000) }))).toBeTruthy()
+    expect(getByText(i18n.t('home.pulse.secondaryPriceIncrease', { description: 'Netflix', amount: formatILS(900) }))).toBeTruthy()
+  })
+})
+
 function alert(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'upcoming_obligation:ob-1',
@@ -354,6 +382,7 @@ describe('Dashboard — zero accounts (true no-data state)', () => {
     expect(queryByText(i18n.t('dashboard.hero.label'))).toBeNull()
     expect(queryByText(i18n.t('home.timeline.title'))).toBeNull()
     expect(queryByText(i18n.t('home.attention.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
     expect(queryByText(i18n.t('home.goals.title'))).toBeNull()
     expect(queryByText(i18n.t('home.analytics.toggle'))).toBeNull()
   })
@@ -363,5 +392,17 @@ describe('Dashboard — zero accounts (true no-data state)', () => {
 
     await fireEvent.press(getByText(i18n.t('home.hero.noDataCta')))
     expect(mockPush).toHaveBeenCalledWith('/accounts?add=checking')
+  })
+
+  it('never renders Financial Pulse here even when a real comparison is available — structurally unreachable, not conditionally hidden', async () => {
+    mockPulse = {
+      safeToSpendDeltaAgorot: -1000,
+      previousSafeToSpendAgorot: 1000,
+      currentSafeToSpendAgorot: 0,
+      cause: { kind: 'generic' },
+      secondaryItems: [],
+    }
+    const { queryByText } = await render(<Dashboard />)
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
   })
 })

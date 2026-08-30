@@ -9,22 +9,26 @@
 //      size.
 //   2. WHY — the ProtectedFreeBoundary (CP8A) directly beneath it, still in
 //      the same panel.
-//   3. WHAT WILL HAPPEN — the same panel's own connected Money Journey:
+//   3. WHAT CHANGED — Financial Pulse (CP8E): a compact, self-guarding
+//      narrative bridge comparing NOW against the last snapshot this
+//      household member successfully saw. Renders nothing on a first
+//      visit or when nothing truthfully changed — never a permanent empty
+//      container, never a fabricated "no change."
+//   4. WHAT WILL HAPPEN — the same panel's own connected Money Journey:
 //      today's balance -> each real upcoming event's own BEFORE -> EVENT ±
 //      DELTA -> AFTER -> ... -> the 30-day low point. A native vertical
 //      journey on this breakpoint (MoneyJourney's own `mobile` variant),
 //      not a shrunk desktop chart.
-//   4. WHAT NEEDS ACTION — מה דורש תשומת לב, every real financial alert,
+//   5. WHAT NEEDS ACTION — מה דורש תשומת לב, every real financial alert,
 //      not just the one critical one this screen used to show.
-//   5. PROGRESS — לאן אנחנו מתקדמים, savings-goal progress, using only
+//   6. PROGRESS — לאן אנחנו מתקדמים, savings-goal progress, using only
 //      engine-truthful pace language.
 //
-// Hero, boundary and journey are deliberately ONE HeroPanel with hairline
-// (not card-boundary) dividers between them — not three stacked widgets —
-// so the panel reads as one connected canvas: what's available now, what's
-// already protected, what happens to the money next. WHAT CHANGED (a
-// since-last-visit delta) is intentionally NOT here yet — it needs
-// persisted state CP8E hasn't built.
+// Hero, boundary, pulse and journey are deliberately ONE HeroPanel with
+// hairline (not card-boundary) dividers between them — not four stacked
+// widgets — so the panel reads as one connected canvas: what's available
+// now, what's already protected, what changed, what happens to the money
+// next.
 //
 // No fixed Budget Pace card and no Recent Transactions card on Home
 // (explicit product decision, carried from the approved design) — budget
@@ -67,6 +71,8 @@ import { formatILS } from '@/lib/money/format'
 import { greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
 import { MoneyJourney, MoneyJourneyLowBadge } from '@/features/cashflow/components/MoneyJourney'
+import { useFinancialPulse } from '@/features/pulse/hooks/useFinancialPulse'
+import { FinancialPulseCard } from '@/features/pulse/components/FinancialPulseCard'
 import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
 import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { Screen } from '@/components/ui/Screen'
@@ -113,6 +119,17 @@ export function MobileHome() {
   } = useSavingsGoals(householdId)
   const { balances } = useAccountBalances(householdId)
   const { accounts, hasData: hasAccountsData } = useAccounts(householdId)
+
+  // CP8E — Financial Pulse. Composed from the SAME safeToSpend result the
+  // hero above already rendered (never a second, divergent read), so
+  // whatever Pulse claims changed is guaranteed consistent with the figure
+  // the user is looking at. Called unconditionally, alongside every other
+  // hook above, even though the JSX for the true zero-account state below
+  // never renders FinancialPulseCard — see that branch's own comment.
+  const { pulse } = useFinancialPulse(householdId, user?.id, {
+    hasData: hasSafeToSpendData,
+    safeToSpendAgorot: safeToSpend.safeToSpendAgorot,
+  })
 
   const periodStart = getCurrentMonthPeriodStart()
 
@@ -287,6 +304,14 @@ export function MobileHome() {
             </>
           )}
         </Pressable>
+
+        {/* WHAT CHANGED — Financial Pulse (CP8E). A compact narrative
+            bridge, in the SAME panel, between the hero above and the Money
+            Journey below — not a sixth disconnected card. Self-guards on
+            no comparison being available (first visit) or nothing having
+            truthfully changed — renders nothing in either case, never a
+            permanent empty container. */}
+        <FinancialPulseCard pulse={pulse} />
 
         {/* WHAT WILL HAPPEN — the Money Journey. A hairline, not a card
             boundary, keeps this reading as one panel with the hero/boundary

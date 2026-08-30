@@ -14,8 +14,8 @@
 
 import { createBuilder, createSession, DESIGN_QA_REFERENCE_DATE } from './designQaEngine'
 
-const HOUSEHOLD = 'hh-stress-1'
-const USER = 'user-1'
+export const HOUSEHOLD = 'hh-stress-1'
+export const USER = 'user-1'
 const PARTNER = 'user-2'
 
 // Fixed, not wall-clock — see DESIGN_QA_REFERENCE_DATE's own comment in
@@ -325,7 +325,7 @@ export const TABLES: Record<string, Record<string, unknown>[]> = {
 const HOUSEHOLD_ROW = TABLES.households![0]!
 const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]))
 
-function withJoins(_table: string, select: string, row: Record<string, unknown>) {
+export function withJoins(_table: string, select: string, row: Record<string, unknown>) {
   if (select.includes('households(')) return { ...row, households: HOUSEHOLD_ROW }
   if (select.includes('categories(')) {
     const c = CATEGORY_BY_ID[row.category_id as string]

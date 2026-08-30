@@ -80,6 +80,15 @@ let mockAlerts: unknown[] = []
 jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
   useFinancialAlerts: () => ({ alerts: mockAlerts, isLoading: false, hasPartialError: false }),
 }))
+// CP8E — this screen's tests care about composition, not Financial Pulse's
+// own correctness (covered by lib/engines/pulse/computeFinancialPulse.test.ts
+// and features/pulse/hooks/useFinancialPulse.test.ts). Mocking the
+// composition hook directly here also avoids pulling in useTransactions'
+// real Supabase client import, which throws outside a configured env.
+let mockPulse: unknown = null
+jest.mock('@/features/pulse/hooks/useFinancialPulse', () => ({
+  useFinancialPulse: () => ({ pulse: mockPulse }),
+}))
 
 let mockGoals: unknown[] = []
 jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
@@ -123,6 +132,7 @@ beforeEach(() => {
   mockAlerts = []
   mockGoals = []
   mockAccounts = [{ id: 'a1' }]
+  mockPulse = null
 })
 
 describe('MobileHome — the hero', () => {
@@ -188,6 +198,28 @@ describe('MobileHome — מה יקרה עד אז (Money Journey)', () => {
   it('says so plainly when nothing is coming', async () => {
     const { getByText } = await render(<MobileHome />)
     expect(getByText(i18n.t('home.timeline.empty'))).toBeTruthy()
+  })
+})
+
+describe('MobileHome — Financial Pulse (CP8E)', () => {
+  it('renders nothing when there is no comparison (first visit / nothing changed)', async () => {
+    mockPulse = null
+    const { queryByText } = await render(<MobileHome />)
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
+  })
+
+  it('renders the headline and "since last time" note when a real comparison exists', async () => {
+    mockPulse = {
+      safeToSpendDeltaAgorot: -62000,
+      previousSafeToSpendAgorot: 200450,
+      currentSafeToSpendAgorot: 138450,
+      cause: { kind: 'generic' },
+      secondaryItems: [],
+    }
+    const { getByText } = await render(<MobileHome />)
+    expect(getByText(i18n.t('home.pulse.less', { amount: formatILS(62000) }))).toBeTruthy()
+    expect(getByText(i18n.t('home.pulse.sinceLastTime'))).toBeTruthy()
+    expect(getByText(i18n.t('home.pulse.causeGeneric'))).toBeTruthy()
   })
 })
 
@@ -271,6 +303,7 @@ describe('MobileHome — zero accounts (true no-data state)', () => {
     // own empty state for — this is a different, earlier state.
     expect(queryByText(i18n.t('home.timeline.title'))).toBeNull()
     expect(queryByText(i18n.t('home.attention.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
     expect(queryByText(i18n.t('home.goals.title'))).toBeNull()
     expect(queryByText(i18n.t('home.analytics.toggle'))).toBeNull()
     expect(queryByTestId('home-hero')).toBeNull()
@@ -281,5 +314,17 @@ describe('MobileHome — zero accounts (true no-data state)', () => {
 
     fireEvent.press(getByText(i18n.t('home.hero.noDataCta')))
     expect(mockPush).toHaveBeenCalledWith('/accounts?add=checking')
+  })
+
+  it('never renders Financial Pulse here even when a real comparison is available — structurally unreachable, not conditionally hidden', async () => {
+    mockPulse = {
+      safeToSpendDeltaAgorot: -1000,
+      previousSafeToSpendAgorot: 1000,
+      currentSafeToSpendAgorot: 0,
+      cause: { kind: 'generic' },
+      secondaryItems: [],
+    }
+    const { queryByText } = await render(<MobileHome />)
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
   })
 })

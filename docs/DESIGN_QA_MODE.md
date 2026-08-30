@@ -38,6 +38,20 @@ plumbing (`createBuilder`/`createSession`) in `dev/designQaEngine.ts`:
 | `onboarding` | yes | none | — | create-household / invite-partner |
 | `empty` | yes | yes | none at all | first-time-user, right after onboarding |
 | `stress` | yes | yes | 10 accounts, 20+ categories, 130+ transactions | high-volume/scrolling/perf checks |
+| `pulse-first` | yes | yes | `1`'s own | Financial Pulse (CP8E): no snapshot row yet |
+| `pulse-negative` | yes | yes | `1`'s own | Financial Pulse: Safe-to-Spend dropped since last snapshot |
+| `pulse-positive` | yes | yes | `1`'s own | Financial Pulse: Safe-to-Spend rose since last snapshot |
+| `pulse-nochange` | yes | yes | `1`'s own | Financial Pulse: snapshot exactly equals today's figure |
+| `pulse-secondary` | yes | yes | `stress`'s own | Financial Pulse: a real recurring-price-increase secondary item |
+
+The five `pulse-*` modes (`dev/designQaPulse*Client.ts`) each reuse `1`'s
+(or, for `pulse-secondary`, `stress`'s) own household/financial `TABLES` and
+`withJoins` verbatim — both now exported from their source file specifically
+so these thin siblings never duplicate that fixture — and override only the
+`financial_pulse_snapshots` row (migration 017). See each file's own header
+comment for the exact scenario and the real figures it depends on
+(re-verify them against the underlying fixture's own real, engine-computed
+Safe-to-Spend if that fixture's financial data ever changes).
 
 `signedout` and `onboarding` don't fake a successful sign-in/sign-up
 themselves (`signInWithPassword`/`signUp` return a "preview only" error on

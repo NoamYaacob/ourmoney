@@ -101,6 +101,15 @@
       "empty": "עוד לא הגדרתם תקציב לחודש הזה",
       "setUp": "להגדיר תקציב"
     },
+    "pulse": {
+      "sectionLabel": "מה השתנה מאז הפעם האחרונה",
+      "sinceLastTime": "מאז הפעם האחרונה",
+      "less": "{{amount}} פחות פנויים",
+      "more": "{{amount}} יותר פנויים",
+      "causeTransaction": "הסיבה העיקרית: {{description}} · {{amount}}",
+      "causeGeneric": "מאז הבדיקה הקודמת נרשמו חיובים משמעותיים",
+      "secondaryPriceIncrease": "{{description}} התייקר ב־{{amount}}"
+    },
     "timeline": {
       "title": "מה יקרה עד אז",
       "today": "היום",

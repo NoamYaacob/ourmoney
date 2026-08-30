@@ -5,21 +5,24 @@
 // tailwind.config.js). One continuous financial story, not a grid of
 // panels:
 //
-//   1. NOW/WHY — פנוי באמת hero with ProtectedFreeBoundary, and WHAT WILL
-//      HAPPEN — the SAME panel's own connected Money Journey
+//   1. NOW/WHY — פנוי באמת hero with ProtectedFreeBoundary. The hero's own
+//      horizon selector (week/month/30 ימים) and its always-visible
+//      waterfall legend are a real, separately-approved desktop feature
+//      predating this checkpoint and are unchanged.
+//   2. WHAT CHANGED — Financial Pulse (CP8E), in the SAME panel: a compact,
+//      self-guarding comparison against the last snapshot this member
+//      successfully saw. Renders nothing on a first visit or when nothing
+//      truthfully changed.
+//   3. WHAT WILL HAPPEN — the SAME panel's own connected Money Journey
 //      (MoneyJourney's `tabletLg`/`desktop` chart variant), not a separate
-//      card beside it. The hero's own horizon selector (week/month/
-//      30 ימים) and its always-visible waterfall legend are a real,
-//      separately-approved desktop feature predating this checkpoint and
-//      are unchanged.
-//   2. WHAT NEEDS ACTION — מה דורש תשומת לב, every real alert, 3-up from
+//      card beside it.
+//   4. WHAT NEEDS ACTION — מה דורש תשומת לב, every real alert, 3-up from
 //      tabletLg.
-//   3. PROGRESS — לאן אנחנו מתקדמים, savings-goal progress, using only
+//   5. PROGRESS — לאן אנחנו מתקדמים, savings-goal progress, using only
 //      engine-truthful pace language.
 //
-// Hero, boundary and journey are deliberately ONE HeroPanel — a connected
-// canvas, not three stacked widgets. WHAT CHANGED is intentionally NOT
-// here yet (needs CP8E's persisted state).
+// Hero, boundary, pulse and journey are deliberately ONE HeroPanel — a
+// connected canvas, not four stacked widgets.
 //
 // No fixed Budget Pace panel and no Recent Transactions panel on Home
 // (explicit product decision, carried from the approved design) — budget
@@ -55,6 +58,8 @@ import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 import { MoneyJourney, MoneyJourneyLowBadge, type MoneyJourneyVariant } from '@/features/cashflow/components/MoneyJourney'
+import { useFinancialPulse } from '@/features/pulse/hooks/useFinancialPulse'
+import { FinancialPulseCard } from '@/features/pulse/components/FinancialPulseCard'
 import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
 import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
@@ -123,6 +128,13 @@ export function DesktopDashboard() {
   } = useSavingsGoals(householdId)
   const { balances } = useAccountBalances(householdId)
   const { accounts, hasData: hasAccountsData } = useAccounts(householdId)
+
+  // CP8E — Financial Pulse, composed from the SAME safeToSpend result the
+  // hero above renders — see MobileHome.tsx's identical comment.
+  const { pulse } = useFinancialPulse(householdId, user?.id, {
+    hasData: hasSafeToSpendData,
+    safeToSpendAgorot: safeToSpend.safeToSpendAgorot,
+  })
 
   const [showAnalytics, setShowAnalytics] = useState(true)
   const periodStart = getCurrentMonthPeriodStart()
@@ -281,6 +293,14 @@ export function DesktopDashboard() {
             </View>
           </>
         )}
+
+        {/* WHAT CHANGED — Financial Pulse (CP8E), in the SAME panel between
+            the hero and the Money Journey. Self-guards on no comparison
+            being available or nothing having truthfully changed. */}
+        <FinancialPulseCard
+          pulse={pulse}
+          className="web:tabletLg:mt-5 web:tabletLg:border-t web:tabletLg:border-white/[0.07] web:tabletLg:pt-4"
+        />
 
         {/* WHAT WILL HAPPEN — the Money Journey. A hairline, not a card
             boundary, keeps this reading as one panel with the hero/boundary
