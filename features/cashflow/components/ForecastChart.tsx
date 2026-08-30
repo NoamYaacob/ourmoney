@@ -42,6 +42,15 @@
 //      chart) get a small tick on the line at each event's real date —
 //      no new data, just the existing event dates plotted against the
 //      x-axis they already share with `dailyPoints`.
+//
+// CP8B: the index-mirror math that used to live inline here
+// (`stepX`/`xForIndex`) is now lib/engines/cashflow/dailyPointScale.ts's
+// `buildDailyPointScale` — Money Journey needed the identical
+// date-proportional mapping and this was the one place it already existed,
+// proven correct by every test below. Pure extraction: `xForIndex(i)` below
+// computes byte-for-byte what the old inline `W - index * stepX` did, and
+// this file's own full test suite (RTL mirror, callout position, zero-range
+// guards) passes unchanged after the swap.
 
 import { useState } from 'react'
 import { Text, View, type LayoutChangeEvent } from 'react-native'
@@ -49,6 +58,7 @@ import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, Stop } from
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { formatILS } from '@/lib/money/format'
+import { buildDailyPointScale } from '@/lib/engines/cashflow/dailyPointScale'
 import type { CashFlowDailyPoint, CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
 export type ForecastChartVariant = 'compact' | 'wide'
@@ -140,9 +150,9 @@ export function ForecastChart({
   const range = maxBalance - minBalance || 1
   const showZeroReference = !staysComfortablyPositive
 
-  const stepX = W / Math.max(1, dailyPoints.length - 1)
-  // The mirror: index 0 (today) maps to the right edge.
-  const xForIndex = (index: number) => W - index * stepX
+  // The mirror: index 0 (today) maps to the right edge. Extracted to
+  // dailyPointScale.ts — see this file's own header comment.
+  const { xForIndex } = buildDailyPointScale(dailyPoints, W)
   const yForBalance = (balance: number) => TOP_PAD + (H - TOP_PAD) * (1 - (balance - minBalance) / range)
 
   const zeroY = yForBalance(0)
