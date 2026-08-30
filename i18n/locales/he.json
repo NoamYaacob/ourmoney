@@ -387,6 +387,7 @@
       "fromLabel": "מהחשבון",
       "toLabel": "לחשבון",
       "amountLabel": "סכום",
+      "amountPlaceholder": "0.00",
       "descriptionLabel": "תיאור",
       "save": "שמירה",
       "delete": "מחיקה",
@@ -736,6 +737,7 @@
     },
     "detail": {
       "title": "פרטי הרכישה",
+      "cycleContext": "התשלום הבא, {{amount}}, נכלל במחזור החיוב של {{account}}, שנסגר ב-{{end}}.",
       "edit": "עריכה",
       "save": "שמירה",
       "immutableNotice": "סכום, מספר תשלומים, חשבון ותאריך החיוב הראשון קבועים ולא ניתנים לעריכה לאחר יצירת הרכישה.",

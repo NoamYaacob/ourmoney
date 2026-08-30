@@ -78,18 +78,13 @@ export function BudgetCategoryRow({
       ? 'text-warningStrong-light dark:text-warningStrong-dark'
       : 'text-positiveStrong-light dark:text-positiveStrong-dark'
 
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${category.categoryNameHe}, ${t(BUDGET_STATE_LABEL_KEY[state.state])}`}
-      className={
-        isPlain
-          ? ''
-          : 'rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark'
-      }
-    >
+  const rowLabel = `${category.categoryNameHe}, ${t(BUDGET_STATE_LABEL_KEY[state.state])}`
+  const cardClassName = isPlain
+    ? ''
+    : 'rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark'
+
+  const content = (
+    <>
       <View className="flex-row items-baseline gap-2.5">
         <StatusDot tone={tone} />
         <CategoryIcon icon={category.categoryIcon} size="sm" />
@@ -111,24 +106,7 @@ export function BudgetCategoryRow({
             {formatRatioILS(category.spentAgorot, category.allocatedAgorot)}
           </Text>
         ) : (
-          <>
-            <View className="flex-1" />
-            {onOpenDetail && (
-              <Pressable
-                onPress={onOpenDetail}
-                accessibilityRole="button"
-                accessibilityLabel={`${category.categoryNameHe}, ${t('budgets.category.detailTransactions')}`}
-                hitSlop={HIT_SLOP}
-                className="h-6 w-6 items-center justify-center"
-              >
-                <Ionicons
-                  name="chevron-back"
-                  size={ICON.row}
-                  color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
-                />
-              </Pressable>
-            )}
-          </>
+          <View className="flex-1" />
         )}
       </View>
 
@@ -138,7 +116,7 @@ export function BudgetCategoryRow({
           pacePercent={state.pacePercent}
           state={state.state}
           height={isPlain ? 10 : 8}
-          accessibilityLabel={`${category.categoryNameHe}, ${t(BUDGET_STATE_LABEL_KEY[state.state])}`}
+          accessibilityLabel={rowLabel}
         />
       </View>
 
@@ -162,6 +140,46 @@ export function BudgetCategoryRow({
           </Text>
         </View>
       )}
-    </Pressable>
+    </>
+  )
+
+  if (isPlain) {
+    return (
+      <Pressable testID={testID} onPress={onPress} accessibilityRole="button" accessibilityLabel={rowLabel} className={cardClassName}>
+        {content}
+      </Pressable>
+    )
+  }
+
+  // Checkpoint 7 fix: the chevron used to be a second Pressable nested
+  // inside this row's own Pressable — on web that compiles to a <button>
+  // nested inside a <button>, which is invalid HTML, throws a real React
+  // hydration warning, and leaves keyboard/screen-reader focus behavior
+  // undefined for whichever control sits inside. The two are genuinely
+  // different actions (open the amount editor vs. open the category's own
+  // transactions), so both still need to be independently tappable — just
+  // as siblings, never one inside the other. Visual result and both tap
+  // targets are unchanged; only the DOM/accessibility-tree nesting is.
+  return (
+    <View testID={testID} className={`flex-row items-start gap-1 ${cardClassName}`}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={rowLabel} className="flex-1">
+        {content}
+      </Pressable>
+      {onOpenDetail && (
+        <Pressable
+          onPress={onOpenDetail}
+          accessibilityRole="button"
+          accessibilityLabel={`${category.categoryNameHe}, ${t('budgets.category.detailTransactions')}`}
+          hitSlop={HIT_SLOP}
+          className="h-6 w-6 items-center justify-center"
+        >
+          <Ionicons
+            name="chevron-back"
+            size={ICON.row}
+            color={scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light}
+          />
+        </Pressable>
+      )}
+    </View>
   )
 }

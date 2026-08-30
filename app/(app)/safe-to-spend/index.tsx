@@ -111,14 +111,26 @@ export default function SafeToSpendDetail() {
   const groups = allGroups.filter((group) => group.amountAgorot > 0)
 
   return (
-    <Screen onBack={() => router.back()} scroll width="wide">
+    // Checkpoint 7: this was the one screen a tap off the fully desktop-
+    // composed Home hero with no distinct tablet/desktop treatment at
+    // all — `wide` (1150px at desktop) also read as a needlessly wide
+    // frame around a single column of rows; `richSingle` matches what
+    // Cash Flow (its closest, already-approved sibling: hero + evidence
+    // list, no second data category) already settled on.
+    <Screen onBack={() => router.back()} scroll width="richSingle">
       {error && (
         <View className="mb-3">
           <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetch} />
         </View>
       )}
-      <View className="-mx-6 -mt-6">
-        <HeroPanel className="rounded-none rounded-b-hero px-6 pb-6 pt-3">
+      {/* The edge-bleed only cancelled Screen's mobile/tablet padding
+          (px-6/pt-6) — at web:desktop: Screen's own padding grows to
+          px-8/pt-9, so without a matching web:desktop: pair here the hero
+          under-cancelled by 8px horizontally / 12px vertically at that
+          width. Same class of bug SYSTEM.md's own §1 already names once
+          (the Cash Flow banner-merge incident) — fixed the same way. */}
+      <View className="-mx-6 -mt-6 web:desktop:-mx-8 web:desktop:-mt-9">
+        <HeroPanel className="rounded-none rounded-b-hero px-6 pb-6 pt-3 web:desktop:px-8 web:desktop:pb-8 web:desktop:pt-4">
           <View className="h-11 flex-row items-center justify-between">
             <Pressable
               onPress={() => router.back()}
@@ -148,10 +160,10 @@ export default function SafeToSpendDetail() {
         </HeroPanel>
       </View>
 
-      <View className="mt-4 overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark">
+      <View className="mt-4 overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:shadow-sm">
         {/* Money that exists. No chevron: there is nothing underneath it to
             open — the account-by-account view is its own screen. */}
-        <View className="min-h-[56px] flex-row items-center gap-3 px-4 py-3.5">
+        <View className="min-h-[56px] flex-row items-center gap-3 px-4 py-3.5 web:desktop:px-5 web:desktop:py-4">
           <View className="h-9 w-9 items-center justify-center rounded-row bg-surface-light dark:bg-surface-dark">
             <Ionicons name="wallet-outline" size={ICON.row} color={isDark ? colors.ink.dark : colors.ink.light} />
           </View>
@@ -176,7 +188,7 @@ export default function SafeToSpendDetail() {
                 accessibilityRole="button"
                 accessibilityState={{ expanded: isOpen }}
                 accessibilityLabel={t(group.labelKey)}
-                className="min-h-[56px] flex-row items-center gap-3 px-4 py-3.5"
+                className="min-h-[56px] flex-row items-center gap-3 px-4 py-3.5 web:desktop:px-5 web:desktop:py-4 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40"
               >
                 {/* The minus is the operator in the sum, so it sits where
                     every other row puts its icon — the column reads as
@@ -236,7 +248,7 @@ export default function SafeToSpendDetail() {
 
       {/* The equals row, on the dark panel — the same surface the figure
           arrived on, so the sum visibly closes back onto the hero. */}
-      <HeroPanel className="mt-3 p-4">
+      <HeroPanel className="mt-3 p-4 web:desktop:p-5">
         <View className="flex-row items-center gap-3">
           <Text className="font-heebo text-heading text-heroAccent-light">=</Text>
           <Text className="flex-1 text-body font-sansSemibold text-heroInk-light">
@@ -253,7 +265,7 @@ export default function SafeToSpendDetail() {
       {/* What the number deliberately leaves out. A household that knows it
           has ₪40,000 in a savings account and reads "₪1,384 פנוי" needs this
           sentence, or the screen looks wrong rather than careful. */}
-      <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+      <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:p-5 web:desktop:shadow-sm">
         <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
           <Text className="font-sansBold text-ink-light dark:text-ink-dark">
             {t('safeToSpendDetail.excludedTitle')}

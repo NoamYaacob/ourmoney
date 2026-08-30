@@ -56,15 +56,23 @@ export function BudgetSummaryCard({
         <View className="flex-row items-start gap-9 border-b border-border-light pb-5 dark:border-border-dark">
           <View>
             <StatLabel>{t('budgets.summary.remainingLabel')}</StatLabel>
-            <Money agorot={remainingAgorot} size="display" tone={remainingAgorot < 0 ? 'danger' : 'default'} />
+            {/* Checkpoint 7: this was the last screen still giving three
+                figures equal weight (all `display`) — the exact "no
+                hierarchy, only loud numbers" pattern Money.tsx's own header
+                comment names, already corrected on Cash Flow (low point
+                `figure`, the other two `large`). Remaining is the one figure
+                a household is actually deciding against opening this screen
+                (see this file's own header comment); spent/allocated are
+                context for it, not co-equal headlines. */}
+            <Money agorot={remainingAgorot} size="figure" tone={remainingAgorot < 0 ? 'danger' : 'default'} />
           </View>
           <View>
             <StatLabel>{t('budgets.summary.spentLabel')}</StatLabel>
-            <Money agorot={totalSpentAgorot} size="display" tone="muted" />
+            <Money agorot={totalSpentAgorot} size="large" tone="muted" />
           </View>
           <View>
             <StatLabel>{t('budgets.summary.allocatedLabel')}</StatLabel>
-            <Money agorot={totalAllocatedAgorot} size="display" tone="muted" />
+            <Money agorot={totalAllocatedAgorot} size="large" tone="muted" />
           </View>
 
           {state.hasProjection && (

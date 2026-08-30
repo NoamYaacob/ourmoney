@@ -13,6 +13,10 @@ import { useDeleteInstallmentPlan } from '@/features/installments/hooks/useDelet
 import { isConflictError, isNotFoundError } from '@/lib/mutations/concurrencyError'
 import { formatILS } from '@/lib/money/format'
 import { formatDateDisplay } from '@/lib/dates/format'
+import { getCurrentBillingCycleRange } from '@/features/accounts/lib/creditCardCycle'
+import { daysBetween } from '@/lib/engines/alerts/alertSeverity'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { addMonthClamped } from '@/lib/engines/cashflow/forecastInstallmentOccurrences'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -22,7 +26,11 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
 import { ConflictModal } from '@/components/ui/ConflictModal'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { Money } from '@/components/ui/Money'
+import { StatusChip } from '@/components/ui/StatusChip'
+import { CountdownRing } from '@/components/ui/CountdownRing'
+import { SurfacePanel } from '@/components/ui/SurfacePanel'
+import { InstallmentTrack } from '@/features/installments/components/InstallmentTrack'
 import type { InstallmentPlan } from '@/types/app'
 
 export default function InstallmentPlanDetail() {
@@ -135,26 +143,81 @@ export default function InstallmentPlanDetail() {
   const account = accounts.find((a) => a.id === plan.account_id)
   const materialized = materializedCounts[plan.id] ?? 0
   const remainingAgorot = plan.total_agorot - plan.monthly_agorot * materialized
+  const isFinished = materialized >= plan.installment_count
+  const trackLabel = t('installments.installmentProgress', { materialized, total: plan.installment_count })
+
+  // The same billing-cycle tie-in the list's own cycle cards draw (same
+  // pure getCurrentBillingCycleRange, same daysBetween) — this plan's next
+  // charge is money that comes off THIS card's current statement, not an
+  // isolated fact about the plan alone. Only meaningful for an open plan
+  // whose card actually has a billing cycle configured; a paid-off plan or
+  // an account missing billing_cycle_day render neither the ring nor the
+  // sentence, same guard installments/index.tsx's own cycle cards use.
+  const today = localDateString()
+  const cycleRange =
+    !isFinished && account?.billing_cycle_day != null ? getCurrentBillingCycleRange(account.billing_cycle_day, today) : null
+  const cycleLengthDays = cycleRange ? Math.max(1, daysBetween(cycleRange.start, cycleRange.end)) : 0
+  const cycleDaysElapsed = cycleRange ? Math.max(0, daysBetween(cycleRange.start, today)) : 0
+  const cycleDaysLeft = cycleRange ? Math.max(0, daysBetween(today, cycleRange.end)) : 0
+  const nextChargeDate = !isFinished ? addMonthClamped(plan.first_charge_date, materialized) : null
 
   return (
     <Screen onBack={() => router.back()} keyboardAvoiding width="form">
-      <Text className="mb-2 text-2xl font-bold text-ink-light dark:text-ink-dark web:desktop:text-[26px]">
-        {plan.description}
-      </Text>
-      <Text className="mb-1 text-lg text-inkMuted-light dark:text-inkMuted-dark">{formatILS(remainingAgorot)}</Text>
-      <Text className="mb-6 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-        {t('installments.installmentProgress', { materialized, total: plan.installment_count })}
-        {' · '}
-        {t('installments.monthlyAmount')} {formatILS(plan.monthly_agorot)}
-        {'\n'}
-        {formatDateDisplay(plan.first_charge_date)}
-        {category ? ` · ${category.name_he}` : ''}
-        {account ? ` · ${account.name}` : ''}
-        {' · '}
-        {plan.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
-      </Text>
+      {/* Checkpoint 7: brought up to its own list screen's bar — the same
+          InstallmentTrack pill row (never just a "5 of 12" sentence), the
+          remaining balance as the one real hero figure on the screen, and
+          a tie to the billing cycle this plan's next charge actually lands
+          in. Not a copy of the list's layout: no cycle-card grid, no other
+          plans — a single-plan composition InstallmentPlanRow's own two
+          variants don't have a shape for. `tier="tablet"` matches the same
+          fix already proven on Installments' own cycle cards. */}
+      <SurfacePanel tier="tablet">
+        <View className="flex-row items-center gap-2">
+          <Text className="flex-1 text-title font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[26px]" numberOfLines={2}>
+            {plan.description}
+          </Text>
+          {!plan.is_shared && <StatusChip label={t('transactions.form.personal')} />}
+        </View>
 
-      <View className={DESKTOP_PANEL_CLASS}>
+        <Text className="mt-3 text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+          {t('installments.remainingAmount')}
+        </Text>
+        <Money agorot={remainingAgorot} size="figure" tone={remainingAgorot > 0 ? 'default' : 'muted'} />
+
+        <View className="mt-4">
+          <InstallmentTrack paidCount={materialized} totalCount={plan.installment_count} height={8} accessibilityLabel={trackLabel} />
+          <Text className="mt-1.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">{trackLabel}</Text>
+        </View>
+
+        <View className="mt-4 flex-row items-start justify-between gap-3 border-t border-divider-light pt-4 dark:border-divider-dark">
+          <View>
+            <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('installments.monthlyAmount')}
+            </Text>
+            <Money agorot={plan.monthly_agorot} size="row" />
+          </View>
+          <Text className="max-w-[55%] text-end text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+            {formatDateDisplay(plan.first_charge_date)}
+            {category ? ` · ${category.name_he}` : ''}
+            {account ? ` · ${account.name}` : ''}
+          </Text>
+        </View>
+
+        {cycleRange && account && nextChargeDate && (
+          <View className="mt-4 flex-row items-center gap-3 border-t border-divider-light pt-4 dark:border-divider-dark">
+            <CountdownRing percentElapsed={Math.min(100, (cycleDaysElapsed / cycleLengthDays) * 100)} daysLeft={cycleDaysLeft} size={44} />
+            <Text className="flex-1 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('installments.detail.cycleContext', {
+                amount: formatILS(plan.monthly_agorot),
+                account: account.name,
+                end: formatDateDisplay(cycleRange.end),
+              })}
+            </Text>
+          </View>
+        )}
+      </SurfacePanel>
+
+      <SurfacePanel tier="tablet" className="mt-4">
         {isEditing ? (
           <View className="mb-2">
             <View className="web:desktop:flex-row web:desktop:gap-4">
@@ -223,7 +286,7 @@ export default function InstallmentPlanDetail() {
             {actionError && <ErrorMessage message={actionError} />}
           </>
         )}
-      </View>
+      </SurfacePanel>
 
       <Modal
         visible={confirmDeleteVisible}
