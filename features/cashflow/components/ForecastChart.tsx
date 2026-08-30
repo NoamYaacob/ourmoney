@@ -43,14 +43,17 @@
 //      no new data, just the existing event dates plotted against the
 //      x-axis they already share with `dailyPoints`.
 //
-// CP8B: the index-mirror math that used to live inline here
-// (`stepX`/`xForIndex`) is now lib/engines/cashflow/dailyPointScale.ts's
-// `buildDailyPointScale` — Money Journey needed the identical
-// date-proportional mapping and this was the one place it already existed,
-// proven correct by every test below. Pure extraction: `xForIndex(i)` below
-// computes byte-for-byte what the old inline `W - index * stepX` did, and
-// this file's own full test suite (RTL mirror, callout position, zero-range
-// guards) passes unchanged after the swap.
+// CP8B: two pieces of this file's own math moved to shared, tested modules
+// — Money Journey needed the identical logic and these were the one place
+// each already existed, proven correct by every test below. Both are pure
+// extractions (byte-for-byte the same computation, just named and tested on
+// their own); this file's full suite (RTL mirror, callout position,
+// zero-range guards) passes unchanged after both swaps.
+//   - The index-mirror math (`stepX`/`xForIndex`) is now
+//     lib/engines/cashflow/dailyPointScale.ts's `buildDailyPointScale`.
+//   - The "calm negative state" axis-compression rule
+//     (`staysComfortablyPositive`/`minBalance`/`maxBalance`) is now
+//     lib/engines/cashflow/balanceAxisRange.ts's `computeBalanceAxisRange`.
 
 import { useState } from 'react'
 import { Text, View, type LayoutChangeEvent } from 'react-native'
@@ -59,6 +62,7 @@ import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { formatILS } from '@/lib/money/format'
 import { buildDailyPointScale } from '@/lib/engines/cashflow/dailyPointScale'
+import { computeBalanceAxisRange } from '@/lib/engines/cashflow/balanceAxisRange'
 import type { CashFlowDailyPoint, CashFlowForecastEvent } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
 export type ForecastChartVariant = 'compact' | 'wide'
@@ -127,28 +131,12 @@ export function ForecastChart({
   const { w: W, h: H, ticks: defaultTicks, zeroLabel } = GEOMETRY[variant]
   const ticks = measuredWidth ? Math.min(MAX_TICKS, Math.max(defaultTicks, Math.floor(measuredWidth / PX_PER_TICK))) : defaultTicks
 
+  // The "calm negative state" axis rule — extracted to
+  // balanceAxisRange.ts (see that file's own header for the full
+  // reasoning); CP8B's Money Journey chart reuses the identical rule
+  // rather than defining a second, possibly-diverging one.
   const balances = dailyPoints.map((point) => point.balanceAgorot)
-  const rawMin = Math.min(...balances)
-  const rawMax = Math.max(...balances)
-  const rawRange = rawMax - rawMin || 1
-
-  // Product-quality pass: this always forced 0 into the visible domain,
-  // which is exactly right for a household anywhere near a real shortfall
-  // (that IS what this chart exists to show) but produces an almost-flat
-  // line for a comfortably-positive one — the household's own real
-  // day-to-day movement (thousands of shekels) reads as a rounding error
-  // against a domain stretching down to a zero that was never remotely in
-  // reach. Only compress away from zero when the real balance stays
-  // comfortably clear of it (never dips within its own range's width of
-  // zero) — every household whose balance could plausibly be read as "close
-  // to zero" still gets the exact original, safety-first zero-anchored
-  // chart. Never changes a single plotted balance, only the axis it's drawn
-  // against.
-  const staysComfortablyPositive = rawMin > rawRange
-  const minBalance = staysComfortablyPositive ? rawMin - rawRange * 0.15 : Math.min(0, ...balances)
-  const maxBalance = staysComfortablyPositive ? rawMax + rawRange * 0.15 : Math.max(0, ...balances)
-  const range = maxBalance - minBalance || 1
-  const showZeroReference = !staysComfortablyPositive
+  const { minBalance, range, showZeroReference } = computeBalanceAxisRange(balances)
 
   // The mirror: index 0 (today) maps to the right edge. Extracted to
   // dailyPointScale.ts — see this file's own header comment.
