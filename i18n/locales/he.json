@@ -106,7 +106,7 @@
       "sinceLastTime": "מאז הפעם האחרונה",
       "less": "{{amount}} פחות פנויים",
       "more": "{{amount}} יותר פנויים",
-      "causeTransaction": "הסיבה העיקרית: {{description}} · {{amount}}",
+      "causeTransaction": "מאז הבדיקה הקודמת נרשם גם חיוב של {{amount}} · {{description}}",
       "causeGeneric": "מאז הבדיקה הקודמת נרשמו חיובים משמעותיים",
       "secondaryPriceIncrease": "{{description}} התייקר ב־{{amount}}"
     },

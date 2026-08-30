@@ -213,6 +213,7 @@ describe('MobileHome — Financial Pulse (CP8E)', () => {
       safeToSpendDeltaAgorot: -62000,
       previousSafeToSpendAgorot: 200450,
       currentSafeToSpendAgorot: 138450,
+      hasPrimaryChange: true,
       cause: { kind: 'generic' },
       secondaryItems: [],
     }
@@ -321,6 +322,7 @@ describe('MobileHome — zero accounts (true no-data state)', () => {
       safeToSpendDeltaAgorot: -1000,
       previousSafeToSpendAgorot: 1000,
       currentSafeToSpendAgorot: 0,
+      hasPrimaryChange: true,
       cause: { kind: 'generic' },
       secondaryItems: [],
     }

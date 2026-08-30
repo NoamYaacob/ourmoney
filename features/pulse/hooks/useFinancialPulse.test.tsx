@@ -114,6 +114,26 @@ describe('useFinancialPulse — recording lifecycle', () => {
     await unmountSecond()
   })
 
+  it('still records the snapshot even when the delta is below the materiality threshold and Pulse is visually omitted (CP8E correction)', async () => {
+    mockUseFinancialPulseSnapshot.mockReturnValue({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      hasData: true,
+    })
+    const { result, unmount } = await renderHook(() =>
+      // 499 agorot below the ₪5.00 materiality threshold — Pulse must be
+      // omitted from render, but the write is unconditional on hasData.
+      useFinancialPulse('household-1', 'user-1', { hasData: true, safeToSpendAgorot: 499501 })
+    )
+
+    expect(result.current.pulse).toBeNull()
+    await waitFor(() => expect(mockMutate).toHaveBeenCalledTimes(1))
+    expect(mockMutate).toHaveBeenCalledWith(
+      { householdId: 'household-1', userId: 'user-1', safeToSpendAgorot: 499501 },
+      expect.objectContaining({ onError: expect.any(Function) })
+    )
+    await unmount()
+  })
+
   it('logs a failed write via captureException without throwing, and never breaks the render', async () => {
     mockMutate.mockImplementation((_input, options) => {
       options.onError(new Error('insufficient_privilege'))

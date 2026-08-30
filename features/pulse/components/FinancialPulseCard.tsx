@@ -42,7 +42,7 @@ export function FinancialPulseCard({ pulse, className = 'mt-2 border-t border-wh
 
   const isDecrease = pulse.safeToSpendDeltaAgorot < 0
   const magnitude = formatILS(Math.abs(pulse.safeToSpendDeltaAgorot))
-  const headline = pulse.safeToSpendDeltaAgorot === 0 ? null : t(isDecrease ? 'home.pulse.less' : 'home.pulse.more', { amount: magnitude })
+  const headline = pulse.hasPrimaryChange ? t(isDecrease ? 'home.pulse.less' : 'home.pulse.more', { amount: magnitude }) : null
 
   return (
     <View className={className} accessibilityRole="summary" accessibilityLabel={t('home.pulse.sectionLabel')}>

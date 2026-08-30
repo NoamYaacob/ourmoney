@@ -16,6 +16,7 @@ describe('FinancialPulseCard', () => {
       safeToSpendDeltaAgorot: -62000,
       previousSafeToSpendAgorot: 200450,
       currentSafeToSpendAgorot: 138450,
+      hasPrimaryChange: true,
       cause: null,
       secondaryItems: [],
     }
@@ -27,11 +28,26 @@ describe('FinancialPulseCard', () => {
     expect(getByText(i18n.t('home.pulse.sinceLastTime'))).toBeTruthy()
   })
 
+  it('renders no headline for a nonzero but sub-threshold delta — gates on hasPrimaryChange, not on delta !== 0 (CP8E correction)', async () => {
+    const pulse: FinancialPulseResult = {
+      safeToSpendDeltaAgorot: -499,
+      previousSafeToSpendAgorot: 500000,
+      currentSafeToSpendAgorot: 499501,
+      hasPrimaryChange: false,
+      cause: null,
+      secondaryItems: [],
+    }
+    const { queryByText } = await render(<FinancialPulseCard pulse={pulse} />)
+    expect(queryByText(i18n.t('home.pulse.less', { amount: formatILS(499) }))).toBeNull()
+    expect(queryByText(i18n.t('home.pulse.sinceLastTime'))).toBeNull()
+  })
+
   it('renders the "more available" headline for a positive delta', async () => {
     const pulse: FinancialPulseResult = {
       safeToSpendDeltaAgorot: 40000,
       previousSafeToSpendAgorot: 290000,
       currentSafeToSpendAgorot: 330000,
+      hasPrimaryChange: true,
       cause: null,
       secondaryItems: [],
     }
@@ -44,6 +60,7 @@ describe('FinancialPulseCard', () => {
       safeToSpendDeltaAgorot: 0,
       previousSafeToSpendAgorot: 500000,
       currentSafeToSpendAgorot: 500000,
+      hasPrimaryChange: false,
       cause: null,
       secondaryItems: [{ kind: 'recurring_price_increase', description: 'Netflix', increaseAgorot: 900 }],
     }
@@ -57,6 +74,7 @@ describe('FinancialPulseCard', () => {
       safeToSpendDeltaAgorot: -184000,
       previousSafeToSpendAgorot: 491800,
       currentSafeToSpendAgorot: 307800,
+      hasPrimaryChange: true,
       cause: { kind: 'transaction', description: 'חיוב אשראי', amountAgorot: -184000 },
       secondaryItems: [],
     }
@@ -66,11 +84,31 @@ describe('FinancialPulseCard', () => {
     ).toBeTruthy()
   })
 
+  it('renders the transaction cause line in correlation-safe wording — never asserts causation (CP8E correction)', async () => {
+    const pulse: FinancialPulseResult = {
+      safeToSpendDeltaAgorot: -184000,
+      previousSafeToSpendAgorot: 491800,
+      currentSafeToSpendAgorot: 307800,
+      hasPrimaryChange: true,
+      cause: { kind: 'transaction', description: 'תיקון מזגן', amountAgorot: -184000 },
+      secondaryItems: [],
+    }
+    const { getByText } = await render(<FinancialPulseCard pulse={pulse} />)
+    const rendered = getByText(i18n.t('home.pulse.causeTransaction', { description: 'תיקון מזגן', amount: formatILS(184000) }))
+    expect(rendered).toBeTruthy()
+    // Preserves the real transaction amount and description...
+    expect(rendered.props.children).toEqual(expect.stringContaining('תיקון מזגן'))
+    expect(rendered.props.children).toEqual(expect.stringContaining(formatILS(184000)))
+    // ...but never claims it caused the delta.
+    expect(rendered.props.children).not.toEqual(expect.stringContaining('הסיבה העיקרית'))
+  })
+
   it('renders the generic cause line when the engine could not prove a specific cause', async () => {
     const pulse: FinancialPulseResult = {
       safeToSpendDeltaAgorot: -62000,
       previousSafeToSpendAgorot: 200450,
       currentSafeToSpendAgorot: 138450,
+      hasPrimaryChange: true,
       cause: { kind: 'generic' },
       secondaryItems: [],
     }
@@ -83,6 +121,7 @@ describe('FinancialPulseCard', () => {
       safeToSpendDeltaAgorot: -1000,
       previousSafeToSpendAgorot: 501000,
       currentSafeToSpendAgorot: 500000,
+      hasPrimaryChange: true,
       cause: { kind: 'generic' },
       secondaryItems: [
         { kind: 'recurring_price_increase', description: 'Netflix', increaseAgorot: 900 },
@@ -99,6 +138,7 @@ describe('FinancialPulseCard', () => {
       safeToSpendDeltaAgorot: -62000,
       previousSafeToSpendAgorot: 200450,
       currentSafeToSpendAgorot: 138450,
+      hasPrimaryChange: true,
       cause: null,
       secondaryItems: [],
     }
@@ -111,6 +151,7 @@ describe('FinancialPulseCard', () => {
       safeToSpendDeltaAgorot: -1000,
       previousSafeToSpendAgorot: 501000,
       currentSafeToSpendAgorot: 500000,
+      hasPrimaryChange: true,
       cause: null,
       secondaryItems: [],
     }

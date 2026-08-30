@@ -21,17 +21,25 @@
 // domain's own prior state, or an ambiguous historical reconstruction —
 // exactly what section 5 says not to build. "Start narrow."
 //
-// CAUSAL EXPLANATION (section 4): a negative Safe-to-Spend delta may only
-// be attributed to a SPECIFIC transaction when that transaction is
-// PROVABLY the one thing that changed — defined here as "exactly one
-// non-transfer, non-excluded expense was posted since the previous
-// snapshot, AND its magnitude is within a reasonable band of the delta."
-// Zero or multiple new transactions, or a lone transaction whose amount
-// doesn't plausibly explain the delta (some of it may come from a changed
-// obligation/recurring/instalment reservation instead — this engine has no
-// persisted history of those to check), fall back to the safer generic
-// copy. This is a deliberately conservative bar: "financial truth outranks
-// richer copy."
+// RELEVANCE FILTER, NOT PROOF OF CAUSE (CP8E correction, post-independent-
+// review): a negative delta may surface ONE specific transaction — defined
+// here as "exactly one non-transfer, non-excluded expense was posted since
+// the previous snapshot, AND its magnitude is within a reasonable band of
+// the delta" — but this band check is a plausibility/relevance filter, NOT
+// a causal proof. Safe-to-Spend can move for reasons this engine has no
+// visibility into at all (a forecast-horizon date rolling an obligation
+// into/out of its window, an edited recurring template's amount, a new
+// obligation, an account balance change from any other source) with zero
+// transactions involved — and even a materialized instalment transaction
+// that DOES pass this filter nets against a *forecast* instalment
+// reservation the same charge simultaneously reduces, so its own face
+// amount is not necessarily its true net effect. The copy this engine's
+// caller renders for the "one transaction" case must therefore never
+// assert that the named transaction caused the delta — only that it is a
+// real transaction, dated since last time, whose size is in the right
+// range. Zero or multiple new transactions, or a lone transaction whose
+// amount doesn't plausibly fit, fall back to the safer generic copy. Still
+// a deliberately conservative bar: "financial truth outranks richer copy."
 
 export interface FinancialPulsePreviousSnapshot {
   safeToSpendAgorot: number
@@ -76,6 +84,12 @@ export interface FinancialPulseResult {
   safeToSpendDeltaAgorot: number
   previousSafeToSpendAgorot: number
   currentSafeToSpendAgorot: number
+  // CP8E correction: whether safeToSpendDeltaAgorot clears
+  // MATERIALITY_THRESHOLD_AGOROT. The caller (FinancialPulseCard) must
+  // gate the primary headline on THIS field, never on
+  // `safeToSpendDeltaAgorot === 0` — a sub-threshold delta is real and
+  // non-zero, but still not material enough to headline.
+  hasPrimaryChange: boolean
   cause: FinancialPulseCause | null
   secondaryItems: FinancialPulseSecondaryItem[]
 }
@@ -93,6 +107,12 @@ const CAUSE_BAND_MAX_RATIO = 1.3
 // secondary changes," per this checkpoint's own product contract, never a
 // growing list.
 const MAX_SECONDARY_ITEMS = 2
+
+// CP8E correction: a Safe-to-Spend move smaller than this is real but too
+// small to headline as a Financial Pulse. Fixed product constant — ₪5.00,
+// integer agorot, not configurable, not a percentage. ">=" so a delta of
+// exactly 500 agorot (₪5.00) still counts.
+const MATERIALITY_THRESHOLD_AGOROT = 500
 
 function localDateOf(isoTimestamp: string): string {
   const d = new Date(isoTimestamp)
@@ -146,17 +166,19 @@ export function computeFinancialPulse(input: {
     .map((p) => ({ kind: 'recurring_price_increase' as const, description: p.description, increaseAgorot: p.increaseAgorot }))
 
   const deltaAgorot = currentSafeToSpendAgorot - previousSnapshot.safeToSpendAgorot
-  const hasPrimaryChange = deltaAgorot !== 0
+  const hasPrimaryChange = Math.abs(deltaAgorot) >= MATERIALITY_THRESHOLD_AGOROT
 
   // Nothing truthfully changed since last time, on either axis — the
   // calmer of section 10's two allowed options: omit entirely, never a
-  // hollow "לא השתנה כלום."
+  // hollow "לא השתנה כלום." A sub-threshold delta is real but not material
+  // enough to headline, and is treated the same as "no change" here.
   if (!hasPrimaryChange && secondaryItems.length === 0) return null
 
   return {
     safeToSpendDeltaAgorot: deltaAgorot,
     previousSafeToSpendAgorot: previousSnapshot.safeToSpendAgorot,
     currentSafeToSpendAgorot,
+    hasPrimaryChange,
     cause: hasPrimaryChange ? resolveCause(deltaAgorot, transactionsSincePrevious) : null,
     secondaryItems,
   }

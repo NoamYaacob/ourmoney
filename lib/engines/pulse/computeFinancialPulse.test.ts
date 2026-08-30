@@ -41,17 +41,6 @@ describe('computeFinancialPulse — no change', () => {
     expect(result).toBeNull()
   })
 
-  it('does NOT omit a real 1-agorot delta — exact comparison, no materiality threshold', () => {
-    const result = computeFinancialPulse({
-      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
-      currentSafeToSpendAgorot: 499999,
-      transactionsSincePreviousCandidate: [],
-      priceIncreases: [],
-    })
-    expect(result).not.toBeNull()
-    expect(result!.safeToSpendDeltaAgorot).toBe(-1)
-  })
-
   it('still renders when Safe-to-Spend is unchanged but a secondary item exists', () => {
     const result = computeFinancialPulse({
       previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
@@ -61,6 +50,84 @@ describe('computeFinancialPulse — no change', () => {
     })
     expect(result).not.toBeNull()
     expect(result!.safeToSpendDeltaAgorot).toBe(0)
+    expect(result!.cause).toBeNull()
+    expect(result!.secondaryItems).toHaveLength(1)
+  })
+})
+
+describe('computeFinancialPulse — materiality threshold (CP8E correction)', () => {
+  it('omits Pulse for a 1-agorot delta — real but not material', () => {
+    const result = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 499999,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [],
+    })
+    expect(result).toBeNull()
+  })
+
+  it('omits Pulse for a 499-agorot delta — just under the ₪5 threshold', () => {
+    const result = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 500000 - 499,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [],
+    })
+    expect(result).toBeNull()
+  })
+
+  it('shows Pulse for exactly a 500-agorot (₪5.00) delta — the threshold itself counts', () => {
+    const result = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 500000 - 500,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [],
+    })
+    expect(result).not.toBeNull()
+    expect(result!.hasPrimaryChange).toBe(true)
+    expect(result!.safeToSpendDeltaAgorot).toBe(-500)
+  })
+
+  it('applies the same 500-agorot threshold symmetrically to a positive delta', () => {
+    const belowThreshold = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 500000 + 499,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [],
+    })
+    expect(belowThreshold).toBeNull()
+
+    const atThreshold = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 500000 + 500,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [],
+    })
+    expect(atThreshold).not.toBeNull()
+    expect(atThreshold!.hasPrimaryChange).toBe(true)
+    expect(atThreshold!.safeToSpendDeltaAgorot).toBe(500)
+  })
+
+  it('does not suppress a larger real change — materiality never hides genuine deltas', () => {
+    const result = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 491800, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 429800,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [],
+    })
+    expect(result!.hasPrimaryChange).toBe(true)
+    expect(result!.safeToSpendDeltaAgorot).toBe(-62000)
+  })
+
+  it('still surfaces a secondary item even when the primary delta is sub-threshold', () => {
+    const result = computeFinancialPulse({
+      previousSnapshot: { safeToSpendAgorot: 500000, capturedAt: '2026-08-10T00:00:00Z' },
+      currentSafeToSpendAgorot: 499999,
+      transactionsSincePreviousCandidate: [],
+      priceIncreases: [increase()],
+    })
+    expect(result).not.toBeNull()
+    expect(result!.hasPrimaryChange).toBe(false)
     expect(result!.cause).toBeNull()
     expect(result!.secondaryItems).toHaveLength(1)
   })

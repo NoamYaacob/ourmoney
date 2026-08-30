@@ -259,6 +259,7 @@ describe('Dashboard — Financial Pulse (CP8E)', () => {
       safeToSpendDeltaAgorot: 40000,
       previousSafeToSpendAgorot: 290000,
       currentSafeToSpendAgorot: 330000,
+      hasPrimaryChange: true,
       cause: null,
       secondaryItems: [{ kind: 'recurring_price_increase', description: 'Netflix', increaseAgorot: 900 }],
     }
@@ -399,6 +400,7 @@ describe('Dashboard — zero accounts (true no-data state)', () => {
       safeToSpendDeltaAgorot: -1000,
       previousSafeToSpendAgorot: 1000,
       currentSafeToSpendAgorot: 0,
+      hasPrimaryChange: true,
       cause: { kind: 'generic' },
       secondaryItems: [],
     }
