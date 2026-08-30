@@ -46,6 +46,37 @@ past them. `onboarding`'s `create_household` RPC *is* faked as a real
 success, since the whole point of that mode is to walk the actual
 create-household → invite-partner flow end to end.
 
+## Date determinism
+
+`1` and `stress` are the two modes with date-relative fixture data (upcoming
+obligations, recurring `next_due_date`, the cash-flow low point, and so on),
+built as offsets from a "today." Both derive that "today" from
+`DESIGN_QA_REFERENCE_DATE` in `dev/designQaEngine.ts` — **never** from the
+real wall clock. Before this existed, both files opened with `const now =
+new Date()`, so every date-relative row silently shifted by one calendar day,
+every day: a screenshot taken on one date could never be compared
+byte-for-byte to one taken on another, and it made any date-proportional
+chart (the cash-flow forecast, and the Money Journey work planned on top of
+it) render differently across CI/test runs depending only on when the run
+happened.
+
+The fixed reference date is **August 18, 2026**. It was chosen, not just
+picked arbitrarily: `dev/designQaClient.ts`'s own fixture data assumes
+"today" sits mid-month (matching the Design files' own late-August framing),
+and August 18 was checked against every relative-date expression in both
+`dev/designQaClient.ts` and `dev/designQaStressClient.ts` to confirm none of
+them lands on an ambiguous boundary — for example, both files' hardcoded
+`next_due_date` offsets assume a day-of-month-3/5/7/15 due date has already
+passed this month (→ next month) and a day-of-month-20 due date is still
+upcoming this month, which is only simultaneously true for a "today" between
+the 15th and the 20th.
+
+`dev/designQaFixtureDates.test.ts` asserts exact fixture dates against this
+reference so a regression back to wall-clock time fails a test, not just a
+screenshot diff. `dev/designQaEmptyClient.ts`,
+`dev/designQaSignedOutClient.ts`, and `dev/designQaOnboardingClient.ts` have
+no date-relative fixture data and don't need a reference date at all.
+
 ## Enabling it locally
 
 ```bash

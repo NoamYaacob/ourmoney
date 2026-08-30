@@ -12,13 +12,16 @@
 // explicitly sets `DESIGN_QA=stress` on their own machine (see
 // metro.config.js).
 
-import { createBuilder, createSession } from './designQaEngine'
+import { createBuilder, createSession, DESIGN_QA_REFERENCE_DATE } from './designQaEngine'
 
 const HOUSEHOLD = 'hh-stress-1'
 const USER = 'user-1'
 const PARTNER = 'user-2'
 
-const now = new Date()
+// Fixed, not wall-clock — see DESIGN_QA_REFERENCE_DATE's own comment in
+// designQaEngine.ts for why this specific date and why fixed dates matter
+// here (deterministic screenshots/visual-regression across days).
+const now = DESIGN_QA_REFERENCE_DATE
 const Y = now.getFullYear()
 const M = now.getMonth() + 1
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -26,6 +29,7 @@ const d = (day: number, monthOffset = 0) => {
   const dt = new Date(Y, M - 1 + monthOffset, day)
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
 }
+export const TODAY = d(now.getDate())
 const monthStart = `${Y}-${pad(M)}-01`
 
 const CATEGORY_DEFS: [string, string, string, boolean][] = [
@@ -255,7 +259,7 @@ for (const seed of INSTALLMENT_ELAPSED) {
   }
 }
 
-const TABLES: Record<string, Record<string, unknown>[]> = {
+export const TABLES: Record<string, Record<string, unknown>[]> = {
   households: [{ id: HOUSEHOLD, name: 'משפחת כהן־לוי', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, created_by: USER }],
   household_members: [
     { id: 'hm-1', household_id: HOUSEHOLD, user_id: USER, role: 'owner', created_at: '2026-01-01T00:00:00Z', profiles: { id: USER, display_name: 'נועם כהן־לוי', avatar_url: null } },

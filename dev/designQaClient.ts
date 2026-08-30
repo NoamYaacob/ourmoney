@@ -32,15 +32,18 @@
 // join embedding, session shape) lives in dev/designQaEngine.ts, shared with
 // the signed-out/onboarding/empty/stress fixture variants added for the
 // release-readiness pass — see that file's own header for why.
-import { createBuilder, createSession } from './designQaEngine'
+import { createBuilder, createSession, DESIGN_QA_REFERENCE_DATE } from './designQaEngine'
 
 const HOUSEHOLD = 'hh-1'
 const USER = 'user-1'
 const PARTNER = 'user-2'
 
 // Anchored so "today" always sits mid-month with events either side,
-// matching the mockups' own late-August framing.
-const now = new Date()
+// matching the mockups' own late-August framing. Fixed, not wall-clock —
+// see DESIGN_QA_REFERENCE_DATE's own comment in designQaEngine.ts for why
+// this specific date and why fixed dates matter here (deterministic
+// screenshots/visual-regression across days, not just "some date").
+const now = DESIGN_QA_REFERENCE_DATE
 const Y = now.getFullYear()
 const M = now.getMonth() + 1
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -49,7 +52,7 @@ const d = (day: number, monthOffset = 0) => {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
 }
 const monthStart = `${Y}-${pad(M)}-01`
-const TODAY = d(now.getDate())
+export const TODAY = d(now.getDate())
 
 // Column-for-column with types/database.ts's accounts Row — the harness is
 // only useful if the app's own engines accept it. The earlier shape invented
@@ -130,7 +133,7 @@ const TRANSACTIONS = [
   txn({ description: 'חניון עזריאלי', amount_agorot: -3_200, txn_date: d(now.getDate() - 3), category_id: null }),
 ]
 
-const TABLES: Record<string, Record<string, unknown>[]> = {
+export const TABLES: Record<string, Record<string, unknown>[]> = {
   households: [{ id: HOUSEHOLD, name: 'משפחת לוי', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, created_by: USER }],
   household_members: [
     { id: 'hm-1', household_id: HOUSEHOLD, user_id: USER, role: 'owner', created_at: '2026-01-01T00:00:00Z', profiles: { id: USER, display_name: 'נועם לוי', avatar_url: null } },

@@ -72,6 +72,35 @@ export function createBuilder(tables: Record<string, Row[]>, withJoins: (table: 
   }
 }
 
+// The single fixed "today" every date-relative DESIGN_QA fixture (designQaClient.ts,
+// designQaStressClient.ts) derives from — replaces what was previously each file's own
+// `new Date()`. Those two files build every transaction/obligation/recurring/goal date as
+// an offset from "today," so anchoring to the real wall clock meant a screenshot taken on
+// one date could never be compared byte-for-byte to one taken on another: DESIGN_QA=1's
+// `TODAY`, DESIGN_QA=stress's 130-row transaction spread, every "next due date" — all of it
+// silently shifted every day, which also makes any date-proportional chart's rendering
+// non-deterministic across CI/test runs (see the "Money Journey" migration-plan finding).
+//
+// August 18, 2026 was chosen, not just "some fixed date": designQaClient.ts's own header
+// comment already called for "today always sits mid-month... matching the mockups' own
+// late-August framing," and this value was checked against every relative-date computation
+// in both fixture files so none of them lands on an ambiguous boundary —
+//   - designQaClient.ts's `d(now.getDate() - 1..6)` event spread stays inside August with
+//     room on both sides (13th-17th before, through the 31st after).
+//   - Both files' hardcoded `next_due_date` offsets for day-of-month 3/5/7/15 (already-passed
+//     this month → next month) and day-of-month 20 (still upcoming this month) are only
+//     correct for a "today" that is after the 15th and before the 20th — the 18th satisfies
+//     both without landing exactly on either boundary.
+//   - designQaStressClient.ts's installment/goal date math (materialized-month counts,
+//     target dates) was likewise checked and holds for this value.
+//
+// Constructed via the local (year, monthIndex, day) form — not an ISO string — so reading
+// back .getFullYear()/.getMonth()/.getDate() (exactly what every `d()` helper below does)
+// is immune to the process's own timezone: both construction and read happen through the
+// same local-calendar interpretation, so this produces the identical Y/M/D everywhere,
+// whether a test runs in CI or on a developer's machine.
+export const DESIGN_QA_REFERENCE_DATE = new Date(2026, 7, 18)
+
 // The shape supabase-js's own auth session carries — reused identically by
 // every variant that needs an authenticated SESSION (the default fixture,
 // and the onboarding variant; the signed-out variant has none at all).
