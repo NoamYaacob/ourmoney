@@ -123,8 +123,11 @@ describe('Dashboard פנוי באמת hero', () => {
     expect(getByText(i18n.t('dashboard.hero.horizonMonth'))).toBeTruthy()
     expect(getByText(i18n.t('dashboard.hero.horizonDays30'))).toBeTruthy()
     expect(getByText(i18n.t('dashboard.hero.notBankBalance'))).toBeTruthy()
-    // ₪3,300.00 appears twice: the headline and the breakdown's own total row.
-    expect(getAllByText(/3,300/).length).toBe(2)
+    // ₪3,300.00 appears three times: the headline, the protected/free
+    // boundary's own "free" label, and the breakdown's own total row — the
+    // same engine figure, never a second calculation (see
+    // ProtectedFreeBoundary's header comment).
+    expect(getAllByText(/3,300/).length).toBe(3)
     expect(getByText(i18n.t('cashFlow.availableCash'))).toBeTruthy()
     expect(getByText(i18n.t('cashFlow.plannedObligations'))).toBeTruthy()
     expect(getByText(i18n.t('cashFlow.recurringCharges'))).toBeTruthy()

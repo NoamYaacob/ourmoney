@@ -61,6 +61,7 @@ import { FAB } from '@/components/ui/FAB'
 import { Avatar } from '@/components/ui/Avatar'
 import { Money } from '@/components/ui/Money'
 import { HeroPanel, HeroLabel, HeroNote, HeroTag } from '@/components/ui/HeroPanel'
+import { ProtectedFreeBoundary } from '@/components/ui/ProtectedFreeBoundary'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -169,15 +170,6 @@ export function MobileHome() {
   const daysLeft = Math.max(1, Math.round((Date.parse(horizon.end) - Date.parse(today)) / 86_400_000) + 1)
   const perDayAgorot = hasShortfall ? 0 : Math.floor(safeToSpend.safeToSpendAgorot / daysLeft)
 
-  // The composition bar: how the money that exists right now divides into
-  // free / committed-to-obligations / committed-to-recurring-and-instalments.
-  // Percentages of availableCash, so the three segments read as slices of
-  // one real quantity rather than an abstract 100%.
-  const cash = Math.max(1, safeToSpend.availableCashAgorot)
-  const freePercent = Math.max(0, (Math.max(0, safeToSpend.safeToSpendAgorot) / cash) * 100)
-  const obligationsPercent = Math.min(100 - freePercent, (safeToSpend.plannedObligationsAgorot / cash) * 100)
-  const recurringPercent = Math.max(0, 100 - freePercent - obligationsPercent)
-
   return (
     <Screen
       width="wide"
@@ -267,20 +259,16 @@ export function MobileHome() {
               </View>
               {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
 
-              {/* The composition bar. Three segments, no legend: the panel's
-                  own numbers name them, and a legend on a 4-line hero is more
-                  to read than the bar saves. */}
+              {/* The protected/free boundary — the approved Living Money
+                  treatment (CP8A), replacing the old free-first 3-segment
+                  bar. */}
               {!hasShortfall && safeToSpend.availableCashAgorot > 0 && (
-                <View
-                  className="mt-4 h-2.5 flex-row gap-0.5 overflow-hidden rounded-full"
-                  accessibilityLabel={t('home.hero.compositionLabel', {
-                    amount: formatILS(safeToSpend.availableCashAgorot),
-                    safe: formatILS(safeToSpend.safeToSpendAgorot),
-                  })}
-                >
-                  <View style={{ width: `${freePercent}%`, backgroundColor: colors.accent.light }} />
-                  <View style={{ width: `${obligationsPercent}%`, backgroundColor: colors.heroBorder.light }} />
-                  <View style={{ width: `${recurringPercent}%`, backgroundColor: colors.inkMuted.light }} />
+                <View className="mt-4">
+                  <ProtectedFreeBoundary
+                    protectedAgorot={safeToSpend.reservedAgorot}
+                    freeAgorot={safeToSpend.safeToSpendAgorot}
+                    totalAgorot={safeToSpend.availableCashAgorot}
+                  />
                 </View>
               )}
             </>

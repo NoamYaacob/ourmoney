@@ -59,6 +59,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { HeroPanel, HeroLabel, HeroNote, HeroTag, HeroLegendRow } from '@/components/ui/HeroPanel'
+import { ProtectedFreeBoundary } from '@/components/ui/ProtectedFreeBoundary'
 import { Money } from '@/components/ui/Money'
 import { colors } from '@/constants/colors'
 import { RESPONSIVE_PANEL_CLASS, DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
@@ -229,25 +230,45 @@ export function DesktopDashboard() {
             </View>
             {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
 
-            <View className="web:tabletLg:mt-5 web:tabletLg:h-9 web:tabletLg:flex-row web:tabletLg:gap-0.5 web:tabletLg:overflow-hidden web:tabletLg:rounded-control">
-              <View className="web:tabletLg:bg-accent-light dark:web:tabletLg:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
-              <View className="web:tabletLg:bg-heroBorder-light" style={{ flexGrow: Math.max(1, safeToSpend.plannedObligationsAgorot) }} />
-              <View className="web:tabletLg:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
-            </View>
+            {/* The protected/free boundary — the approved Living Money
+                treatment (CP8A), replacing the old inline 3-segment bar
+                (which weighted its first segment by `availableCashAgorot`,
+                the whole pool, rather than by the free remainder — a
+                display bug this component fixes, not just a re-skin).
+                Guarded the same way MobileHome's own boundary is: a
+                shortfall has no meaningful protected/free split to draw. */}
+            {!hasShortfall && safeToSpend.availableCashAgorot > 0 && (
+              <View className="web:tabletLg:mt-5">
+                <ProtectedFreeBoundary
+                  protectedAgorot={safeToSpend.reservedAgorot}
+                  freeAgorot={safeToSpend.safeToSpendAgorot}
+                  totalAgorot={safeToSpend.availableCashAgorot}
+                  height={14}
+                />
+              </View>
+            )}
 
             {/* The waterfall legend, in the mockup's own order: the answer
                 first, then each thing subtracted from the balance, then
-                the balance itself as the closing total. */}
+                the balance itself as the closing total. Instalments only
+                render when the household has any — same "a group with
+                nothing in it is not a zero to render" rule the
+                /safe-to-spend receipt screen follows. */}
             <View className="web:tabletLg:mt-4 web:tabletLg:gap-2.5">
-              <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.accent.light} emphasis>
+              <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.heroAccent.light} emphasis>
                 <Money agorot={safeToSpend.safeToSpendAgorot} size="caption" tone="hero" />
               </HeroLegendRow>
               <HeroLegendRow label={t('cashFlow.plannedObligations')} swatchColor={colors.heroBorder.light}>
                 <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
               </HeroLegendRow>
-              <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.inkMuted.light}>
+              <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.heroBorder.light}>
                 <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
               </HeroLegendRow>
+              {safeToSpend.installmentsAgorot > 0 && (
+                <HeroLegendRow label={t('cashFlow.installmentCharges')} swatchColor={colors.heroBorder.light}>
+                  <Money agorot={safeToSpend.installmentsAgorot} size="caption" tone="heroMuted" />
+                </HeroLegendRow>
+              )}
               <View className="web:tabletLg:h-px web:tabletLg:bg-heroBorder-light" />
               <HeroLegendRow label={t('cashFlow.availableCash')} emphasis>
                 <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="hero" />

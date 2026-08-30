@@ -128,9 +128,12 @@ beforeEach(() => {
 
 describe('MobileHome — the hero', () => {
   it('renders the engine figure and routes to its derivation when tapped', async () => {
-    const { getByText, getByTestId } = await render(<MobileHome />)
+    const { getAllByText, getByText, getByTestId } = await render(<MobileHome />)
 
-    expect(getByText(formatILS(SAFE_TO_SPEND.safeToSpendAgorot))).toBeTruthy()
+    // The hero figure and the protected/free boundary's own "free" label
+    // both show the engine's safeToSpendAgorot — same figure, same source,
+    // never a second calculation (see ProtectedFreeBoundary's header).
+    expect(getAllByText(formatILS(SAFE_TO_SPEND.safeToSpendAgorot)).length).toBe(2)
     // The one thing the design insists the hero says outright.
     expect(getByText(i18n.t('home.hero.notBankBalance'))).toBeTruthy()
 

@@ -35,6 +35,7 @@ import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Money } from '@/components/ui/Money'
 import { HeroPanel, HeroLabel, HeroNote } from '@/components/ui/HeroPanel'
+import { ProtectedFreeBoundary } from '@/components/ui/ProtectedFreeBoundary'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 
@@ -157,6 +158,19 @@ export default function SafeToSpendDetail() {
             />
           </View>
           <HeroNote className="mt-1">{t('safeToSpendDetail.intro')}</HeroNote>
+
+          {/* The same boundary Home shows, reused unchanged — this screen is
+              the hero's own "why," so the split it opens on should match the
+              split the household already saw before tapping in. */}
+          {!hasShortfall && result.availableCashAgorot > 0 && (
+            <View className="mt-4">
+              <ProtectedFreeBoundary
+                protectedAgorot={result.reservedAgorot}
+                freeAgorot={result.safeToSpendAgorot}
+                totalAgorot={result.availableCashAgorot}
+              />
+            </View>
+          )}
         </HeroPanel>
       </View>
 
