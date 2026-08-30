@@ -55,7 +55,6 @@ import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 import { MoneyJourney, MoneyJourneyLowBadge, type MoneyJourneyVariant } from '@/features/cashflow/components/MoneyJourney'
-import { HouseholdLensControl } from '@/features/household/components/HouseholdLensControl'
 import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
 import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
@@ -306,16 +305,6 @@ export function DesktopDashboard() {
           )}
         </View>
       </HeroPanel>
-
-      {/* Household Lens (CP8D) — שלנו/שלי/שלך, same control and same
-          shared store MobileHome mounts. Does not change anything above it
-          (see MobileHome.tsx's own comment for why — no real source behind
-          the hero/boundary/Money Journey carries per-member attribution);
-          it sets the session-wide lens that has a real effect once you
-          reach Transactions. Renders nothing for a single-member household. */}
-      <View className="web:tabletLg:mt-5 web:tabletLg:w-[240px]">
-        <HouseholdLensControl householdId={householdId} />
-      </View>
 
       {/* 2 — מה דורש תשומת לב, 3-up from tabletLg. */}
       <View className={`web:tabletLg:mt-5 ${RESPONSIVE_PANEL_CLASS}`}>

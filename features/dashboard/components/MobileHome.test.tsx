@@ -30,17 +30,6 @@ jest.mock('@/features/auth/hooks/useProfile', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', household: { name: 'משפחת לוי' }, isLoading: false }),
 }))
-// Single-member by default — the Household Lens control renders nothing,
-// matching every existing test's own baseline expectations below. The
-// dedicated Household Lens describe block overrides this with a real
-// second member.
-let mockMembers: { userId: string; role: 'owner' | 'member'; joinedAt: string; displayName: string; avatarUrl: string | null }[] = [
-  { userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null },
-]
-jest.mock('@/features/household/hooks/useHouseholdMembers', () => ({
-  useHouseholdMembers: () => ({ members: mockMembers, isLoading: false, error: null }),
-}))
-
 const SAFE_TO_SPEND = {
   availableCashAgorot: 1_310_050,
   plannedObligationsAgorot: 347_000,
@@ -134,7 +123,6 @@ beforeEach(() => {
   mockAlerts = []
   mockGoals = []
   mockAccounts = [{ id: 'a1' }]
-  mockMembers = [{ userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null }]
 })
 
 describe('MobileHome — the hero', () => {
@@ -262,41 +250,12 @@ describe('MobileHome — לאן אנחנו מתקדמים', () => {
   })
 })
 
-describe('MobileHome — Household Lens (CP8D)', () => {
-  it('does not render the lens control for a single-member household', async () => {
-    const { queryByText } = await render(<MobileHome />)
-    expect(queryByText(i18n.t('household.lens.shared'))).toBeNull()
-  })
-
-  it('renders שלנו/שלי/שלך for a real two-member household, and switching lens changes nothing on Home itself', async () => {
-    mockMembers = [
-      { userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null },
-      { userId: 'user-2', role: 'member', joinedAt: '2026-01-01', displayName: 'דנה לוי', avatarUrl: null },
-    ]
-    const { getByText, getAllByText } = await render(<MobileHome />)
-
-    expect(getByText(i18n.t('household.lens.shared'))).toBeTruthy()
-    expect(getByText(i18n.t('household.lens.me'))).toBeTruthy()
-    expect(getByText(i18n.t('household.lens.partner'))).toBeTruthy()
-
-    // The hero figure — the one household-truthful Safe-to-Spend number —
-    // is present regardless of which lens is selected (it appears twice:
-    // the hero figure itself and the boundary's own "free" label, exactly
-    // as the very first test in this file already establishes). Home's own
-    // hero never reads lens state at all (no import, no subscription), so
-    // there is nothing here that even could change it; the pure
-    // resolveLensAttributedUserIds/resolveRowEmphasis unit tests in
-    // householdLens.test.ts cover the attribution logic itself.
-    expect(getAllByText(formatILS(SAFE_TO_SPEND.safeToSpendAgorot)).length).toBe(2)
-  })
-})
-
 describe('MobileHome — zero accounts (true no-data state)', () => {
   beforeEach(() => {
     mockAccounts = []
   })
 
-  it('collapses to one restrained message with a single CTA, no calculated ₪0, no other panels, and no lens control', async () => {
+  it('collapses to one restrained message with a single CTA, no calculated ₪0, no other panels', async () => {
     const { getByText, queryByText, queryByTestId } = await render(<MobileHome />)
 
     expect(getByText(i18n.t('home.hero.noDataTitle'))).toBeTruthy()
@@ -307,7 +266,6 @@ describe('MobileHome — zero accounts (true no-data state)', () => {
     // Never a calculated-looking ₪0.00 standing in for "nothing to
     // calculate from yet".
     expect(queryByText(formatILS(0))).toBeNull()
-    expect(queryByText(i18n.t('household.lens.shared'))).toBeNull()
 
     // None of the four sections a household WITH accounts still gets its
     // own empty state for — this is a different, earlier state.

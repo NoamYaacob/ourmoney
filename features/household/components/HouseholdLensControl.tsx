@@ -1,7 +1,13 @@
-// CP8D — the one shared Household Lens control (שלנו | שלי | שלך). A
-// single implementation Home and Transactions both mount, backed by the
-// one shared Zustand store (store/householdLensStore.ts) — never a
-// per-screen filter re-implemented three times.
+// CP8D — the one shared Household Lens control (שלנו | שלי | שלך). Backed
+// by the one shared Zustand store (store/householdLensStore.ts) — never a
+// per-screen filter re-implemented. CP8D correction: independent review
+// found the lens has no truthful, visible effect on Home (no real data
+// source behind Safe-to-Spend/Money Journey/Attention/Goals carries
+// per-member attribution — see householdLens.ts's own audit header), so
+// Home no longer mounts this. Transactions is currently the only mounted
+// caller — kept as a shared, reusable component rather than folded into
+// Transactions directly, since it is exactly what a future genuinely-
+// attributable surface would reuse without new plumbing.
 //
 // Renders nothing when the lens has no real second option to offer — a
 // single-member household, or a household query still resolving members —

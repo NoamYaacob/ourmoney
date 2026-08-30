@@ -21,18 +21,6 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
-interface LensTestMember {
-  userId: string
-  role: 'owner' | 'member'
-  joinedAt: string
-  displayName: string
-  avatarUrl: string | null
-}
-const DEFAULT_MEMBERS: LensTestMember[] = [{ userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null }]
-const mockUseHouseholdMembers = jest.fn<() => { members: LensTestMember[]; isLoading: boolean; error: null }>()
-jest.mock('@/features/household/hooks/useHouseholdMembers', () => ({
-  useHouseholdMembers: () => mockUseHouseholdMembers(),
-}))
 
 const DEFAULT_SAFE_TO_SPEND_RESULT = {
   availableCashAgorot: 500000,
@@ -116,7 +104,6 @@ beforeEach(() => {
   mockUseFinancialAlerts.mockReturnValue(DEFAULT_ALERTS)
   mockUseSavingsGoals.mockReturnValue(DEFAULT_GOALS)
   mockUseAccounts.mockReturnValue(DEFAULT_ACCOUNTS)
-  mockUseHouseholdMembers.mockReturnValue({ members: DEFAULT_MEMBERS, isLoading: false, error: null })
   mockPush.mockClear()
 })
 
@@ -350,44 +337,18 @@ describe('Dashboard — dark mode', () => {
   })
 })
 
-describe('Dashboard — Household Lens (CP8D)', () => {
-  it('does not render the lens control for a single-member household', async () => {
-    const { queryByText } = await render(<Dashboard />)
-    expect(queryByText(i18n.t('household.lens.shared'))).toBeNull()
-  })
-
-  it('renders שלנו/שלי/שלך for a real two-member household', async () => {
-    mockUseHouseholdMembers.mockReturnValue({
-      members: [...DEFAULT_MEMBERS, { userId: 'user-2', role: 'member', joinedAt: '2026-01-01', displayName: 'דנה לוי', avatarUrl: null }],
-      isLoading: false,
-      error: null,
-    })
-    const { getByText, getAllByText } = await render(<Dashboard />)
-
-    expect(getByText(i18n.t('household.lens.shared'))).toBeTruthy()
-    expect(getByText(i18n.t('household.lens.me'))).toBeTruthy()
-    expect(getByText(i18n.t('household.lens.partner'))).toBeTruthy()
-    // The waterfall's own safeToSpendAgorot figure — unrelated to lens
-    // state, and present regardless (the hero never reads lens state).
-    // Appears three times, exactly as this file's own first test already
-    // establishes (headline, boundary's "free" label, breakdown total).
-    expect(getAllByText(/3,300/).length).toBe(3)
-  })
-})
-
 describe('Dashboard — zero accounts (true no-data state)', () => {
   beforeEach(() => {
     mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null, hasData: true, refetch: jest.fn() })
   })
 
-  it('collapses to one restrained message with a single CTA, no calculated ₪0, no other panels, and no lens control', async () => {
+  it('collapses to one restrained message with a single CTA, no calculated ₪0, no other panels', async () => {
     const { getByText, queryByText } = await render(<Dashboard />)
 
     expect(getByText(i18n.t('home.hero.noDataTitle'))).toBeTruthy()
     expect(getByText(i18n.t('home.hero.noDataBody'))).toBeTruthy()
     expect(getByText(i18n.t('home.hero.noDataCta'))).toBeTruthy()
     expect(getByText(i18n.t('home.hero.noDataPreview'))).toBeTruthy()
-    expect(queryByText(i18n.t('household.lens.shared'))).toBeNull()
 
     expect(queryByText(formatILS(0))).toBeNull()
     expect(queryByText(i18n.t('dashboard.hero.label'))).toBeNull()

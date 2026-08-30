@@ -67,7 +67,6 @@ import { formatILS } from '@/lib/money/format'
 import { greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
 import { MoneyJourney, MoneyJourneyLowBadge } from '@/features/cashflow/components/MoneyJourney'
-import { HouseholdLensControl } from '@/features/household/components/HouseholdLensControl'
 import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
 import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { Screen } from '@/components/ui/Screen'
@@ -311,18 +310,6 @@ export function MobileHome() {
           )}
         </View>
       </HeroPanel>
-
-      {/* Household Lens (CP8D) — שלנו/שלי/שלך. Renders nothing for a
-          single-member household (HouseholdLensControl's own guard). Does
-          NOT change anything above it — the hero, boundary and Money
-          Journey stay the one household-truthful figure/geometry
-          regardless of lens, since none of their real data sources carry
-          genuine per-member attribution (see householdLens.ts's own audit
-          header). It sets the session-wide lens that DOES have a real,
-          truthful effect once you reach Transactions. */}
-      <View className="mt-3 w-[240px]">
-        <HouseholdLensControl householdId={householdId} />
-      </View>
 
       {/* 3 — מה דורש תשומת לב. Every real alert, not just the top critical
           one this screen used to show — same severity-sorted list /alerts
