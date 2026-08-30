@@ -167,6 +167,45 @@ for (let m = 0; m < 4; m++) {
   TRANSACTIONS.push(txn({ description: 'משכורת דנה', amount_agorot: 1_395_000, txn_date: d(1, -m), category_id: 'cat-salary', account_id: 'acc-bank-joint' }))
 }
 
+// Checkpoint 6 visual-review follow-up: real recurring-charge history for
+// rc-5 (נטפליקס below), carrying recurring_id — every other MERCHANTS-based
+// row above has recurring_id: null (they're one-off spend rows, not
+// generated occurrences of a template), so no detection anywhere in this
+// fixture previously resolved to a real recurring_transactions row. This is
+// the same identity signal generate_recurring_transactions() itself would
+// stamp on a real occurrence (features/recurring/lib/priceIncreaseDetection.ts's
+// preferred, non-text-fallback grouping key). Three stable months at
+// ₪45.90 establish detectPriceIncreases' median baseline, then the most
+// recent charge jumps to ₪54.90 — +₪9.00 / +19.6%, clearing both the
+// ₪5.00 and 5% bars (DEFAULT_PRICE_INCREASE_THRESHOLD) the same way a real
+// Netflix price rise would.
+for (let m = 3; m >= 1; m--) {
+  TRANSACTIONS.push(
+    txn({
+      description: 'נטפליקס',
+      merchant: 'נטפליקס',
+      amount_agorot: -4_590,
+      txn_date: d(3, -m),
+      category_id: 'cat-subs',
+      account_id: 'acc-card-master',
+      is_shared: true,
+      recurring_id: 'rc-5',
+    })
+  )
+}
+TRANSACTIONS.push(
+  txn({
+    description: 'נטפליקס',
+    merchant: 'נטפליקס',
+    amount_agorot: -5_490,
+    txn_date: d(3),
+    category_id: 'cat-subs',
+    account_id: 'acc-card-master',
+    is_shared: true,
+    recurring_id: 'rc-5',
+  })
+)
+
 // Already-materialized instalment transactions, one per elapsed charge
 // since each plan's first_charge_date — exactly the same reason
 // designQaClient.ts's own TRANSACTIONS seeds these (see its header

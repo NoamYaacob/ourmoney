@@ -289,15 +289,24 @@ export default function Installments() {
            by side. They had been desktop-only, which left the phone opening
            a screen called "אשראי ותשלומים" with no אשראי on it.
 
-           Checkpoint 6: at desktop, both cycles now sit inside ONE
-           SurfacePanel as side-by-side InsetGroups (a divider, not a second
-           border) instead of each being its own bordered box — the exact
-           consolidation InsetGroup.tsx's own header comment names this
-           screen for. Mobile/tablet are unaffected: SurfacePanel/InsetGroup
-           are both desktop-only, so this container renders exactly as
-           before below 1200px (the outer `gap-3` still stacks the cards). */
+           Checkpoint 6: both cycles now sit inside ONE SurfacePanel as
+           side-by-side InsetGroups (a divider, not a second border) instead
+           of each being its own bordered box — the exact consolidation
+           InsetGroup.tsx's own header comment names this screen for.
+
+           Checkpoint 6 tablet fix: SYSTEM.md §5 documents this exact 2-up
+           composition starting at the 834px tablet tier, not just desktop —
+           the original `web:desktop:`-only scoping left 834-1199 with no
+           surface/border/shadow at all (disclosed in the Checkpoint 6
+           visual review as a genuine, pre-existing defect). `tier="tablet"`
+           on the panel and both groups below keys the exact same values off
+           `web:tablet:` (768px+) instead, and this container's own layout
+           classes (flex-row, dividers, flex-1) move with it — mobile
+           (below 768) is unaffected either way, and 1440 desktop renders
+           byte-for-byte the same values as before, just from an earlier
+           matching breakpoint. */
         <View className="mb-5">
-          <SurfacePanel className="gap-3 web:desktop:flex-row web:desktop:gap-0">
+          <SurfacePanel tier="tablet" className="gap-3 web:tablet:flex-row web:tablet:gap-0">
           {creditCardCycleCommitments.map((commitment, cycleIndex) => {
             const account = creditCardAccounts.find((a) => a.id === commitment.sourceId)
             if (!account || account.billing_cycle_day === null) return null
@@ -309,11 +318,12 @@ export default function Installments() {
             return (
               <InsetGroup
                 key={account.id}
-                className={`web:desktop:flex-1 ${
+                tier="tablet"
+                className={`web:tablet:flex-1 ${
                   cycleIndex > 0
-                    ? 'web:desktop:border-s web:desktop:border-divider-light web:desktop:ps-4 dark:web:desktop:border-divider-dark'
+                    ? 'web:tablet:border-s web:tablet:border-divider-light web:tablet:ps-4 dark:web:tablet:border-divider-dark'
                     : cycleIndex < creditCardCycleCommitments.length - 1
-                      ? 'web:desktop:pe-4'
+                      ? 'web:tablet:pe-4'
                       : ''
                 }`}
               >

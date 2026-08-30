@@ -21,29 +21,49 @@
 // component — `Divider` — so this file doesn't duplicate that; it exists
 // for the one thing Divider doesn't do, a bounded/tinted sub-region.
 //
-// Desktop-only, matching SurfacePanel — `web:desktop:`-scoped throughout,
-// so mobile and tablet are unaffected regardless of where this is used.
+// Desktop-only by default, matching SurfacePanel — `web:desktop:`-scoped
+// throughout, so mobile and tablet are unaffected unless a caller opts a
+// specific group into the earlier `tier="tablet"` breakpoint (see
+// SurfacePanel.tsx's own header comment — same tier prop, same reasoning:
+// Installments' two billing-cycle groups are the one caller, matching its
+// parent SurfacePanel's own `tier="tablet"`).
 import type { ReactNode } from 'react'
 import { View, type ViewProps } from 'react-native'
-import { useInsideSurfacePanel } from './SurfacePanel'
+import { useInsideSurfacePanel, type SurfacePanelTier } from './SurfacePanel'
 
 export type InsetGroupTone = 'neutral' | 'warning' | 'danger'
 
-const TONE_CLASS: Record<InsetGroupTone, string> = {
-  neutral: '',
-  warning:
-    'web:desktop:border web:desktop:border-warningBorder-light web:desktop:bg-warningSurface-light web:desktop:p-4 dark:web:desktop:border-warningBorder-dark dark:web:desktop:bg-warningSurface-dark',
-  danger:
-    'web:desktop:border web:desktop:border-dangerBorder-light web:desktop:bg-dangerSurface-light web:desktop:p-4 dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-dangerSurface-dark',
+const BASE_CLASS: Record<SurfacePanelTier, string> = {
+  desktop: 'web:desktop:rounded-row',
+  tablet: 'web:tablet:rounded-row',
+}
+
+const TONE_CLASS: Record<SurfacePanelTier, Record<InsetGroupTone, string>> = {
+  desktop: {
+    neutral: '',
+    warning:
+      'web:desktop:border web:desktop:border-warningBorder-light web:desktop:bg-warningSurface-light web:desktop:p-4 dark:web:desktop:border-warningBorder-dark dark:web:desktop:bg-warningSurface-dark',
+    danger:
+      'web:desktop:border web:desktop:border-dangerBorder-light web:desktop:bg-dangerSurface-light web:desktop:p-4 dark:web:desktop:border-dangerBorder-dark dark:web:desktop:bg-dangerSurface-dark',
+  },
+  tablet: {
+    neutral: '',
+    warning:
+      'web:tablet:border web:tablet:border-warningBorder-light web:tablet:bg-warningSurface-light web:tablet:p-4 dark:web:tablet:border-warningBorder-dark dark:web:tablet:bg-warningSurface-dark',
+    danger:
+      'web:tablet:border web:tablet:border-dangerBorder-light web:tablet:bg-dangerSurface-light web:tablet:p-4 dark:web:tablet:border-dangerBorder-dark dark:web:tablet:bg-dangerSurface-dark',
+  },
 }
 
 interface InsetGroupProps extends ViewProps {
   children: ReactNode
   tone?: InsetGroupTone
   className?: string
+  /** Breakpoint tier — must match the enclosing SurfacePanel's own `tier`. Defaults to `'desktop'` (unchanged). */
+  tier?: SurfacePanelTier
 }
 
-export function InsetGroup({ children, tone = 'neutral', className, ...viewProps }: InsetGroupProps) {
+export function InsetGroup({ children, tone = 'neutral', className, tier = 'desktop', ...viewProps }: InsetGroupProps) {
   const isInsidePanel = useInsideSurfacePanel()
 
   if (__DEV__ && !isInsidePanel) {
@@ -55,7 +75,7 @@ export function InsetGroup({ children, tone = 'neutral', className, ...viewProps
   }
 
   return (
-    <View className={`web:desktop:rounded-row ${TONE_CLASS[tone]} ${className ?? ''}`} {...viewProps}>
+    <View className={`${BASE_CLASS[tier]} ${TONE_CLASS[tier][tone]} ${className ?? ''}`} {...viewProps}>
       {children}
     </View>
   )

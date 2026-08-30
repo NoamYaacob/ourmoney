@@ -12,13 +12,26 @@
 // treatment left in the codebase, not two "almost the same" ones a future
 // screen could pick between by accident.
 //
-// Desktop-only, like the class string it replaces: every class below is
-// `web:desktop:`-scoped, so mobile and the whole 768-1199 tablet range are
-// completely unaffected by this component existing — a screen that hasn't
-// been migrated to use it yet (nothing has, as of this commit) renders
-// identically to before. `web:tabletLg:` panel-shaped siblings for the rail
-// layout live in ContentRail.tsx, not here — this component only ever
-// draws the *desktop* Level-1 treatment.
+// Desktop-only by default, like the class string it replaces: every class
+// below is `web:desktop:`-scoped, so mobile and the whole 768-1199 tablet
+// range are unaffected by a caller that doesn't opt in to an earlier tier —
+// a screen that hasn't been migrated to use it yet renders identically to
+// before. `web:tabletLg:` panel-shaped siblings for the rail layout live in
+// ContentRail.tsx, not here — this component only ever draws Shape B's
+// single-column Level-1 treatment.
+//
+// Checkpoint 6 fix: `tier="tablet"` opts a specific call site into the exact
+// same values (border/radius/fill/shadow never change) keyed off
+// `web:tablet:` (768px+, matching design-review/SYSTEM.md §2's 834px 2-up
+// tier — `tablet` is the closest named breakpoint below it and the range
+// between 768-833 already renders identically to the mobile composition
+// with nothing to distinguish) instead of `web:desktop:`. Installments' two
+// billing-cycle InsetGroups are the one caller that needs this — SYSTEM.md
+// §5 documents the 2-up cycle-card composition starting at tablet, but the
+// original desktop-only scoping left 834-1199 with zero surface/border/
+// shadow at all (a real, disclosed visual defect, not a redesign). Default
+// stays `'desktop'` so every other caller (DesktopCashFlow) is byte-for-
+// byte unchanged.
 //
 // Nesting guard: `SurfacePanel.tsx`'s whole reason to exist is design-
 // review/SYSTEM.md §3's rule that a Level-1 panel never contains another
@@ -31,8 +44,14 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { View, type ViewProps } from 'react-native'
 
-const SURFACE_PANEL_CLASS =
-  'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light/70 web:desktop:bg-surfaceMuted-light web:desktop:p-6 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70 dark:web:desktop:bg-surfaceMuted-dark'
+export type SurfacePanelTier = 'desktop' | 'tablet'
+
+const SURFACE_PANEL_CLASS: Record<SurfacePanelTier, string> = {
+  desktop:
+    'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light/70 web:desktop:bg-surfaceMuted-light web:desktop:p-6 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70 dark:web:desktop:bg-surfaceMuted-dark',
+  tablet:
+    'web:tablet:rounded-card web:tablet:border web:tablet:border-border-light/70 web:tablet:bg-surfaceMuted-light web:tablet:p-6 web:tablet:shadow-sm dark:web:tablet:border-border-dark/70 dark:web:tablet:bg-surfaceMuted-dark',
+}
 
 const InsideSurfacePanelContext = createContext(false)
 
@@ -53,9 +72,11 @@ interface SurfacePanelProps extends ViewProps {
    * hero surface `HeroPanel` already is), not a one-off override here.
    */
   className?: string
+  /** Breakpoint the fixed surface treatment activates from. Defaults to `'desktop'` (1200px+, unchanged). Pass `'tablet'` (768px+) only when SYSTEM.md documents this section's own composition starting at tablet — see this file's own header comment. */
+  tier?: SurfacePanelTier
 }
 
-export function SurfacePanel({ children, className, ...viewProps }: SurfacePanelProps) {
+export function SurfacePanel({ children, className, tier = 'desktop', ...viewProps }: SurfacePanelProps) {
   const isNested = useInsideSurfacePanel()
 
   if (__DEV__ && isNested) {
@@ -67,7 +88,7 @@ export function SurfacePanel({ children, className, ...viewProps }: SurfacePanel
 
   return (
     <InsideSurfacePanelContext.Provider value={true}>
-      <View className={`${SURFACE_PANEL_CLASS} ${className ?? ''}`} {...viewProps}>
+      <View className={`${SURFACE_PANEL_CLASS[tier]} ${className ?? ''}`} {...viewProps}>
         {children}
       </View>
     </InsideSurfacePanelContext.Provider>
