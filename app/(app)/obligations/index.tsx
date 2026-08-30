@@ -191,51 +191,66 @@ export default function Obligations() {
           )}
 
           {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} hint={t('obligations.emptyHint')} />}
-          {/* Responsive/desktop pass: same 2-column card grid as
-              accounts/recurring/goals once there's more than one obligation,
-              desktop only — `w-[48%]` + `justify-between` on a `flex-row
-              flex-wrap` container is a calc()-free way to get two even
-              columns in Yoga/RN's flexbox. Mobile/tablet keep the original
-              single-column list untouched. */}
-          {/* One card, hairline-separated rows, in the design system's own
-              "מה מגיע" shape — the same CommitmentRow the dashboard uses. The
-              obligations list had grown its own row (a category tile, the
-              date as prose, the amount as plain text), which is exactly the
-              drift §07 exists to prevent: the same commitment looked like
-              two different things depending on which screen you opened.
+          {/* Checkpoint 6: grouped by timing, not one flat chronological
+              list — a household opening this screen wants "what's actually
+              urgent right now" before "what's coming eventually," and
+              commitmentUrgency already computes exactly that per row (the
+              same function a dashboard alert about the same charge would
+              use, so the two can never disagree). This is presentation of
+              already-computed data, not a new engine — a shared urgency
+              rail was explicitly considered and rejected (design-review/
+              SYSTEM.md §6): with the full list already visible and short,
+              a rail would just re-sum numbers already on screen.
+              One continuous panel, group headers instead of a second
+              bordered box per group — SYSTEM.md §3's "one Level-1 panel per
+              section" rule. */}
+          {upcoming.length > 0 && (() => {
+            const rows = upcoming
+              .map((item) => upcomingById.get(item.id))
+              .filter((o): o is NonNullable<typeof o> => o !== undefined)
+              .map((obligation) => ({ obligation, urgency: commitmentUrgency(today, obligation.due_date) }))
+            const groups: { key: 'overdue' | 'thisWeek' | 'later'; rows: typeof rows }[] = [
+              { key: 'overdue' as const, rows: rows.filter((r) => r.urgency.daysUntil < 0) },
+              { key: 'thisWeek' as const, rows: rows.filter((r) => r.urgency.daysUntil >= 0 && r.urgency.daysUntil <= 7) },
+              { key: 'later' as const, rows: rows.filter((r) => r.urgency.daysUntil > 7) },
+            ].filter((g) => g.rows.length > 0)
 
-              The urgency comes from commitmentUrgency, so a row here and an
-              alert about the same charge can never disagree about how close
-              it is. */}
-          <View className="overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light px-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            {upcoming.map((item, index) => {
-              const obligation = upcomingById.get(item.id)
-              if (!obligation) return null
-              const urgency = commitmentUrgency(today, obligation.due_date)
-              const chipLabel =
-                urgency.labelKey === 'inDays'
-                  ? t('home.next.inDays', { count: urgency.count })
-                  : t(`home.next.${urgency.labelKey}`)
-
-              return (
-                <View
-                  key={obligation.id}
-                  className={index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : undefined}
-                >
-                  <CommitmentRow
-                    testID={`obligation-${obligation.id}`}
-                    date={obligation.due_date}
-                    name={obligation.name}
-                    amountAgorot={obligation.amount_agorot}
-                    timeLabel={chipLabel}
-                    tone={urgency.tone}
-                    meta={obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
-                    onPress={() => router.push(`/obligations/${obligation.id}`)}
-                  />
-                </View>
-              )
-            })}
-          </View>
+            return (
+              <View className="overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light px-4 dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:border-border-light/70 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70">
+                {groups.map((group, groupIndex) => (
+                  <View key={group.key} className={groupIndex > 0 ? 'mt-1' : undefined}>
+                    <Text
+                      className={`text-meta font-heeboBold text-inkMuted-light dark:text-inkMuted-dark ${
+                        groupIndex > 0 ? 'border-t border-divider-light pb-2 pt-4 dark:border-divider-dark' : 'pb-2 pt-4'
+                      }`}
+                    >
+                      {t(`obligations.groups.${group.key}`)}
+                    </Text>
+                    {group.rows.map(({ obligation, urgency }, index) => {
+                      const chipLabel =
+                        urgency.labelKey === 'inDays'
+                          ? t('home.next.inDays', { count: urgency.count })
+                          : t(`home.next.${urgency.labelKey}`)
+                      return (
+                        <View key={obligation.id} className={index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : undefined}>
+                          <CommitmentRow
+                            testID={`obligation-${obligation.id}`}
+                            date={obligation.due_date}
+                            name={obligation.name}
+                            amountAgorot={obligation.amount_agorot}
+                            timeLabel={chipLabel}
+                            tone={urgency.tone}
+                            meta={obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
+                            onPress={() => router.push(`/obligations/${obligation.id}`)}
+                          />
+                        </View>
+                      )
+                    })}
+                  </View>
+                ))}
+              </View>
+            )
+          })()}
 
           {history.length > 0 && (
             <View className="mt-4">

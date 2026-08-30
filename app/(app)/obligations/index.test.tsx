@@ -165,8 +165,12 @@ describe('Obligations list', () => {
       hasData: true,
     })
 
-    const { getByText } = await render(<Obligations />)
-    expect(getByText(/באיחור/)).toBeTruthy()
+    const { getAllByText } = await render(<Obligations />)
+    // Checkpoint 6: rows are grouped under an "overdue" section header using
+    // the same word the row's own urgency chip already shows — both are
+    // legitimately "באיחור", so this only needs at least one match, not a
+    // single one.
+    expect(getAllByText(/באיחור/).length).toBeGreaterThan(0)
   })
 
   it('validates a missing name before creating', async () => {

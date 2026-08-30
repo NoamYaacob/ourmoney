@@ -627,6 +627,11 @@
     "empty": "עדיין אין התחייבויות מתוכננות.",
     "addButton": "הוספת התחייבות",
     "summarySubtitle": "{{count}} צפויות · {{amount}}",
+    "groups": {
+      "overdue": "באיחור",
+      "thisWeek": "השבוע",
+      "later": "בהמשך"
+    },
     "pastDue": "באיחור",
     "dueToday": "היום",
     "inDays": "בעוד {{count}} ימים",

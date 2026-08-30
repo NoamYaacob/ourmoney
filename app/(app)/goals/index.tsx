@@ -18,6 +18,7 @@ import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { Screen } from '@/components/ui/Screen'
 import { PlanningTabs } from '@/components/ui/PlanningTabs'
+import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -88,6 +89,16 @@ export default function Goals() {
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
+  // Same reduce Home's HomeGoalsSection.tsx already runs on this exact data
+  // shape — one formula, not a second one that could quietly drift from the
+  // dashboard's own headline.
+  const totalCurrentAgorot = goals.reduce(
+    (sum, goal) => sum + Math.min(resolveGoalCurrentAgorot(goal, balances), goal.target_agorot),
+    0
+  )
+  const totalTargetAgorot = goals.reduce((sum, goal) => sum + goal.target_agorot, 0)
+  const aggregatePercent = goalProgressPercent(totalCurrentAgorot, totalTargetAgorot) ?? 0
+
   return (
     <Screen onBack={() => router.back()} width="wide">
       <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
@@ -111,15 +122,53 @@ export default function Goals() {
               below already covers it (mobile-expo-reviewer finding, same
               as accounts/index.tsx and recurring/index.tsx). */}
           {goals.length === 0 && <EmptyState iconName="flag-outline" message={t('savings.empty')} />}
-          {/* Responsive/desktop pass: a 2-column card grid once there's more
-              than one goal, desktop only — same calc()-free pattern as
-              accounts/index.tsx. */}
-          {/* One column of rows inside one card, as both frames draw it —
+
+          {/* Checkpoint 6: Goals was the one Planning-tab sibling with no
+              hero card at all (design-review/FINDINGS.md — "sparsest screen
+              in the app"). Obligations and Recurring both already lead with
+              a HeroPanel summary at this same `web:tablet:` breakpoint; this
+              gives Goals visual parity with them using only real, already-
+              computed data — the exact aggregate `HomeGoalsSection.tsx`
+              already renders on Home (same reduce, same
+              goalProgressPercent, same i18n key), never a second formula.
+              Mobile is untouched — it already reads fine per-row (KEEP in
+              FINDINGS.md); this is additive at tablet/desktop only. */}
+          {goals.length > 0 && (
+            <View className="hidden web:tablet:mb-5 web:tablet:flex">
+              <HeroPanel>
+                <HeroLabel>{t('savings.title')}</HeroLabel>
+                <Text
+                  className="mt-1.5 text-[26px] font-heeboBold text-heroInk-light"
+                  style={{ fontVariant: ['tabular-nums'] }}
+                >
+                  {t('home.goals.headline', { pct: aggregatePercent })}
+                </Text>
+                <Text className="mt-0.5 text-caption font-sans text-heroInkMuted-light" style={{ fontVariant: ['tabular-nums'] }}>
+                  {t('savings.progressOf', { current: formatILS(totalCurrentAgorot), target: formatILS(totalTargetAgorot) })}
+                </Text>
+                <View className="mt-3">
+                  <ProgressBar percent={aggregatePercent} positiveAtLimit heightClass="h-2.5" />
+                </View>
+              </HeroPanel>
+            </View>
+          )}
+
+          {/* One column of rows inside one panel, as both frames draw it —
               name, pace chip and percent on the head line, the amounts and
               target date under it, the bar, then a sentence saying what the
               pace actually means. A grid of cards answered "how many goals
-              are there"; this answers "are we going to make it". */}
-          <View className={goals.length > 0 ? 'gap-4 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark' : undefined}>
+              are there"; this answers "are we going to make it". The
+              per-row progress bar is thicker (h-3, not the app-wide h-2) so
+              it reads as the row's dominant element rather than a thin
+              decorative strip (design-review/SYSTEM.md §5's own "Goals"
+              target) — every other ProgressBar caller keeps its default. */}
+          <View
+            className={
+              goals.length > 0
+                ? 'gap-5 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:border-border-light/70 web:desktop:p-6 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70'
+                : undefined
+            }
+          >
           {goals.map((goal) => {
             const currentAgorot = resolveGoalCurrentAgorot(goal, balances)
             const isCompleted = resolveGoalIsCompleted(goal, balances)
@@ -156,20 +205,24 @@ export default function Goals() {
                     pace !== null && <StatusChip label={t('savings.pace.onTrack')} tone="positive" />
                   )}
                   <Text
-                    className="ms-auto text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark"
+                    className="ms-auto text-body font-heeboBold text-ink-light dark:text-ink-dark"
                     style={{ fontVariant: ['tabular-nums'] }}
                   >
                     {percent}%
                   </Text>
                 </View>
-                <Text className="mb-1.5 mt-0.5 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                <Text className="mb-2 mt-0.5 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
                   {t('savings.progressOf', {
                     current: formatILS(currentAgorot),
                     target: formatILS(goal.target_agorot),
                   })}
                   {goal.target_date ? ` · ${t('savings.targetOn', { date: formatDateDisplay(goal.target_date) })}` : ''}
                 </Text>
-                <ProgressBar percent={percent} positiveAtLimit />
+                {/* Thicker than the app-wide default (h-2) — the progress
+                    bar is this row's dominant visual element, not a thin
+                    decorative strip beneath the real information
+                    (design-review/SYSTEM.md §5's own Goals target). */}
+                <ProgressBar percent={percent} positiveAtLimit heightClass="h-3" />
                 {/* What the pace means, in a sentence. Every figure in it
                     comes from calculateSavingsPace — the engine already
                     computes the required monthly saving and whether the

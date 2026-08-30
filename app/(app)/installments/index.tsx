@@ -42,6 +42,7 @@ import { Money } from '@/components/ui/Money'
 import { CountdownRing } from '@/components/ui/CountdownRing'
 import { DESKTOP_BREAKPOINT_PX, INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import { SurfacePanel } from '@/components/ui/SurfacePanel'
+import { InsetGroup } from '@/components/ui/InsetGroup'
 import { InstallmentPlanRow } from '@/features/installments/components/InstallmentPlanRow'
 
 export default function Installments() {
@@ -286,9 +287,18 @@ export default function Installments() {
         /* Both frames lead with these. `OurMoney - Mobile.dc.html` screen 09
            stacks one card per credit card; the desktop frame sets them side
            by side. They had been desktop-only, which left the phone opening
-           a screen called "אשראי ותשלומים" with no אשראי on it. */
-        <View className="mb-5 gap-3 web:desktop:flex-row web:desktop:gap-4">
-          {creditCardCycleCommitments.map((commitment) => {
+           a screen called "אשראי ותשלומים" with no אשראי on it.
+
+           Checkpoint 6: at desktop, both cycles now sit inside ONE
+           SurfacePanel as side-by-side InsetGroups (a divider, not a second
+           border) instead of each being its own bordered box — the exact
+           consolidation InsetGroup.tsx's own header comment names this
+           screen for. Mobile/tablet are unaffected: SurfacePanel/InsetGroup
+           are both desktop-only, so this container renders exactly as
+           before below 1200px (the outer `gap-3` still stacks the cards). */
+        <View className="mb-5">
+          <SurfacePanel className="gap-3 web:desktop:flex-row web:desktop:gap-0">
+          {creditCardCycleCommitments.map((commitment, cycleIndex) => {
             const account = creditCardAccounts.find((a) => a.id === commitment.sourceId)
             if (!account || account.billing_cycle_day === null) return null
             const range = getCurrentBillingCycleRange(account.billing_cycle_day, today)
@@ -297,7 +307,16 @@ export default function Installments() {
             const daysLeft = Math.max(0, daysBetween(today, range.end))
             const installmentAgorot = commitment.installmentAgorot ?? 0
             return (
-              <SurfacePanel key={account.id} className="web:desktop:flex-1">
+              <InsetGroup
+                key={account.id}
+                className={`web:desktop:flex-1 ${
+                  cycleIndex > 0
+                    ? 'web:desktop:border-s web:desktop:border-divider-light web:desktop:ps-4 dark:web:desktop:border-divider-dark'
+                    : cycleIndex < creditCardCycleCommitments.length - 1
+                      ? 'web:desktop:pe-4'
+                      : ''
+                }`}
+              >
                 <View className="flex-row items-center justify-between gap-3">
                   <View className="flex-1">
                     <Text className="text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
@@ -354,9 +373,10 @@ export default function Installments() {
                 <Text className="mt-3 border-t border-divider-light pt-3 text-caption font-sans text-inkMuted-light dark:border-divider-dark dark:text-inkMuted-dark">
                   {t('installments.cycleCards.range', { start: formatDateDisplay(range.start), end: formatDateDisplay(range.end) })}
                 </Text>
-              </SurfacePanel>
+              </InsetGroup>
             )
           })}
+          </SurfacePanel>
         </View>
       )}
 
@@ -402,19 +422,31 @@ export default function Installments() {
           )}
           {/* The phone stacks cards; desktop lays each plan across one line
               with its own figure columns. Both carry the same pill track —
-              a plan is a countable number of payments, not a percentage. */}
-          <View className={isDesktopWeb ? undefined : 'gap-2.5'}>
-            {plans.map((plan) => (
-              <InstallmentPlanRow
-                key={plan.id}
-                plan={plan}
-                paidCount={materializedCounts[plan.id] ?? 0}
-                categoryIcon={plan.category_id ? categories.find((c) => c.id === plan.category_id)?.icon : undefined}
-                accountName={accounts.find((a) => a.id === plan.account_id)?.name}
-                variant={isDesktopWeb ? 'row' : 'card'}
-              />
-            ))}
-          </View>
+              a plan is a countable number of payments, not a percentage.
+
+              Checkpoint 6: the desktop rows (divider-separated already, per
+              InstallmentPlanRow's own `row` variant) now sit inside their
+              own SurfacePanel — the list's own, separate Level-1 panel
+              SYSTEM.md's target calls for, distinct from the cycle-cards
+              panel above. SurfacePanel's own styling is desktop-only, so
+              mobile's stacked-card list (`gap-2.5`) is unaffected. Guarded
+              on `plans.length > 0` — SurfacePanel still paints its desktop
+              border/shadow/padding around zero children, which read as a
+              stray empty box above/below the real empty state otherwise. */}
+          {plans.length > 0 && (
+            <SurfacePanel className={isDesktopWeb ? undefined : 'gap-2.5'}>
+              {plans.map((plan) => (
+                <InstallmentPlanRow
+                  key={plan.id}
+                  plan={plan}
+                  paidCount={materializedCounts[plan.id] ?? 0}
+                  categoryIcon={plan.category_id ? categories.find((c) => c.id === plan.category_id)?.icon : undefined}
+                  accountName={accounts.find((a) => a.id === plan.account_id)?.name}
+                  variant={isDesktopWeb ? 'row' : 'card'}
+                />
+              ))}
+            </SurfacePanel>
+          )}
         </>
       )}
 

@@ -153,27 +153,33 @@ describe('Recurring list', () => {
     mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [PRICE_INCREASE_DETECTION], isLoading: false, error: null })
 
-    const { getByText } = await render(<Recurring />)
+    const { getByText, getByTestId } = await render(<Recurring />)
 
-    // Amount/percent lines interpolate formatILS, whose he-IL Intl output
-    // carries locale-dependent bidi control characters (see
+    // Checkpoint 6: the strip is now a compact one-line-per-detection
+    // notice below the total, not a leading full-detail card — the
+    // description and the real amount/percent still render (as one line,
+    // via the same recurring.priceIncrease.increaseLine key), but there is
+    // no separate section title or a visible "המחיר עלה" badge string
+    // anymore. Amount/percent lines interpolate formatILS, whose he-IL Intl
+    // output carries locale-dependent bidi control characters (see
     // lib/money/format.test.ts's own header comment) — match on the
     // digits/symbol substrings actually promised via a non-anchored regex,
     // not byte-for-byte equality with the whole rendered string.
-    expect(getByText('עליות מחיר שזוהו')).toBeTruthy()
-    expect(getByText('המחיר עלה')).toBeTruthy()
-    expect(getByText(/79\.90.*→.*89\.90/)).toBeTruthy()
+    expect(getByText('Netflix')).toBeTruthy()
     expect(getByText(/עלייה של.*10\.00.*12\.5%/)).toBeTruthy()
+    // The affected row (rec-1) itself carries the same warning, connecting
+    // the strip to the specific charge it's about.
+    expect(getByTestId('price-increase-indicator-rec-1')).toBeTruthy()
   })
 
   it('does not render the price-increase section when there are no detections', async () => {
     mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [], isLoading: false, error: null })
 
-    const { queryByText } = await render(<Recurring />)
+    const { queryByText, queryByTestId } = await render(<Recurring />)
 
-    expect(queryByText('עליות מחיר שזוהו')).toBeNull()
-    expect(queryByText('המחיר עלה')).toBeNull()
+    expect(queryByText('Netflix')).toBeNull()
+    expect(queryByTestId('price-increase-indicator-rec-1')).toBeNull()
   })
 
   // Desktop Claude Design pass: the dark summary card sums only active

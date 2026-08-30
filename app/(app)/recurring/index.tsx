@@ -15,6 +15,10 @@ import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
 import { formatDateDisplay, formatDayOfMonth } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
 import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
@@ -27,7 +31,6 @@ import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatusChip } from '@/components/ui/StatusChip'
-import { SectionLabel } from '@/components/ui/SectionLabel'
 import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
 import { Money } from '@/components/ui/Money'
 import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
@@ -39,6 +42,8 @@ const DAY_OF_MONTH_FREQUENCIES: RecurringFrequency[] = ['monthly', 'quarterly', 
 export default function Recurring() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const isDark = scheme === 'dark'
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
@@ -117,6 +122,13 @@ export default function Recurring() {
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
   const activeExpenseTemplates = recurringTransactions.filter((item) => item.is_active && item.amount_agorot < 0)
   const activeMonthlyTotalAgorot = activeExpenseTemplates.reduce((sum, item) => sum + Math.abs(item.amount_agorot), 0)
+  // Checkpoint 6: connects the warning strip to the row it's actually about
+  // — a household scanning the list sees which charge changed without
+  // having to cross-reference the strip above by name. Real data already on
+  // the page (the same detections the strip itself renders), no new query.
+  const priceIncreasedRecurringIds = new Set(
+    priceIncreaseDetections.map((d) => d.recurringId).filter((id): id is string => id !== null)
+  )
 
   return (
     <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
@@ -128,53 +140,6 @@ export default function Recurring() {
       </Text>
 
       <PlanningTabs active="recurring" />
-
-      {priceIncreaseDetections.length > 0 && (
-        // Product-quality pass (section 8/10 discipline — the same "small
-        // floating panel" pattern already fixed on this screen's own hero
-        // below, part 3A/17): this reused INLINE_FORM_WIDTH_CLASS, a token
-        // meant for narrow FORMS, for a notice card — the result was a
-        // ~600px card centered alone in a much wider canvas while every
-        // other section on this page spans the full content column. Now
-        // spans that same column, and reads as a real warning rather than a
-        // plain white card: this is genuinely a "something changed, look at
-        // it" surface, not routine content.
-        <View className="mb-4">
-          <SectionLabel className="mb-2">{t('recurring.priceIncrease.sectionTitle')}</SectionLabel>
-          <View className="overflow-hidden rounded-card border border-warningBorder-light bg-warningSurface-light dark:border-warningBorder-dark dark:bg-warningSurface-dark">
-            {priceIncreaseDetections.map((d, index) => (
-              <View key={d.identityKey}>
-                {index > 0 && <View className="h-px bg-warningBorder-light dark:bg-warningBorder-dark" />}
-                <Pressable
-                  onPress={() =>
-                    d.recurringId
-                      ? router.push(`/recurring/${d.recurringId}`)
-                      : router.push(`/transactions/${d.currentTransactionId}`)
-                  }
-                  accessibilityRole="button"
-                  className="px-4 py-3 web:hover:bg-warningTint-light/40 dark:web:hover:bg-warningTint-dark/20"
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {d.description}
-                    </Text>
-                    <StatusChip label={t('recurring.priceIncrease.badge')} tone="danger" />
-                  </View>
-                  <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(d.previousAmountAgorot)} → {formatILS(d.currentAmountAgorot)}
-                  </Text>
-                  <Text className="mt-0.5 text-caption text-danger-light dark:text-danger-dark">
-                    {t('recurring.priceIncrease.increaseLine', {
-                      amount: formatILS(d.increaseAgorot),
-                      percent: d.increasePercent,
-                    })}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
 
       {isLoading || isRecurringLoading ? (
         <SkeletonList rows={3} />
@@ -221,6 +186,38 @@ export default function Recurring() {
             </View>
           )}
 
+          {/* Checkpoint 6: demoted from a leading full-detail card to a
+              compact strip below the total — a household opens this screen
+              to see its monthly load first, "something got more expensive"
+              second (design-review/FINDINGS.md: the prior order inverted
+              that). One line per detection instead of three; the same real
+              detections, the same navigation, just less visual weight than
+              the total it now follows. */}
+          {priceIncreaseDetections.length > 0 && (
+            <View className="mb-4 gap-1.5 rounded-control border border-warningBorder-light bg-warningSurface-light px-3 py-2.5 dark:border-warningBorder-dark dark:bg-warningSurface-dark">
+              {priceIncreaseDetections.map((d) => (
+                <Pressable
+                  key={d.identityKey}
+                  onPress={() =>
+                    d.recurringId
+                      ? router.push(`/recurring/${d.recurringId}`)
+                      : router.push(`/transactions/${d.currentTransactionId}`)
+                  }
+                  accessibilityRole="button"
+                  className="flex-row items-center gap-2 rounded-control py-1 web:hover:bg-warningTint-light/40 dark:web:hover:bg-warningTint-dark/20"
+                >
+                  <Ionicons name="trending-up" size={ICON.chip} color={isDark ? colors.warning.dark : colors.warning.light} />
+                  <Text className="flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                    {d.description}
+                  </Text>
+                  <Text className="text-caption font-sansSemibold text-warningStrong-light dark:text-warningStrong-dark">
+                    {t('recurring.priceIncrease.increaseLine', { amount: formatILS(d.increaseAgorot), percent: d.increasePercent })}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
           {recurringTransactions.length === 0 && <EmptyState iconName="repeat-outline" message={t('recurring.empty')} hint={t('recurring.emptyHint')} />}
           {/* One card, hairline rows, opening with the day of the month —
               which is what both frames draw and what the list is actually
@@ -253,6 +250,11 @@ export default function Recurring() {
                       <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
                         {item.description}
                       </Text>
+                      {priceIncreasedRecurringIds.has(item.id) && (
+                        <View testID={`price-increase-indicator-${item.id}`} accessibilityLabel={t('recurring.priceIncrease.badge')}>
+                          <Ionicons name="trending-up" size={ICON.chip} color={isDark ? colors.warning.dark : colors.warning.light} />
+                        </View>
+                      )}
                       {!item.is_active && <StatusChip label={t('recurring.inactive')} />}
                     </View>
                     <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
