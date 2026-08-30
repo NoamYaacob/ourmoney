@@ -27,6 +27,10 @@
 // this and MobileHome, at TABLET_LG_BREAKPOINT_PX — see that file's own
 // comment). `web:tabletLg:` classes are this composition's tabletLg (1024)
 // treatment; `web:desktop:` overrides are desktop (1200+) only.
+//
+// A brand-new household with zero accounts is a distinct, earlier state
+// than any of the above — see the `hasNoAccounts` branch below, mirroring
+// MobileHome.tsx's own.
 
 import { useState } from 'react'
 import { Pressable, Text, View, useWindowDimensions } from 'react-native'
@@ -41,6 +45,7 @@ import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForeca
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
+import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
@@ -111,6 +116,7 @@ export function DesktopDashboard() {
     refetch: refetchGoals,
   } = useSavingsGoals(householdId)
   const { balances } = useAccountBalances(householdId)
+  const { accounts, hasData: hasAccountsData } = useAccounts(householdId)
 
   const [showAnalytics, setShowAnalytics] = useState(true)
   const periodStart = getCurrentMonthPeriodStart()
@@ -123,6 +129,34 @@ export function DesktopDashboard() {
     return (
       <Screen center>
         <LoadingSpinner />
+      </Screen>
+    )
+  }
+
+  // The true zero-account state — see MobileHome.tsx's identical branch for
+  // the full reasoning. Collapses to one restrained message + one CTA
+  // instead of a calculated-looking ₪0.00 hero next to three more empty
+  // panels; does not cover "has accounts but no goals/alerts/events yet".
+  const hasNoAccounts = hasAccountsData && accounts.length === 0
+
+  if (hasNoAccounts) {
+    return (
+      <Screen width="wide">
+        <HeroPanel>
+          <Text className="text-body font-heeboBold text-heroInk-light web:tabletLg:text-[17px]">
+            {t('home.hero.noDataTitle')}
+          </Text>
+          <HeroNote className="mt-2">{t('home.hero.noDataBody')}</HeroNote>
+          <Pressable
+            testID="home-no-data-cta"
+            onPress={() => router.push('/accounts?add=checking')}
+            accessibilityRole="button"
+            className="mt-4 self-start rounded-control bg-heroAccent-light px-4 py-2.5 active:opacity-90"
+          >
+            <Text className="text-caption font-heeboBold text-hero-light">{t('home.hero.noDataCta')}</Text>
+          </Pressable>
+          <HeroNote className="mt-3">{t('home.hero.noDataPreview')}</HeroNote>
+        </HeroPanel>
       </Screen>
     )
   }

@@ -24,6 +24,13 @@
 // app/(app)/dashboard/index.tsx picks between the two by width. That split
 // is what lets the desktop composition own its own tabletLg/desktop
 // treatment while this one is structured for a thumb.
+//
+// A brand-new household with zero accounts is a distinct, earlier state
+// than any of the above — see the `hasNoAccounts` branch below, which
+// collapses the whole screen to one restrained onboarding message and a
+// single "add your first account" CTA, per the approved design. That is
+// not the same thing as "has accounts but no goals/alerts/events yet",
+// which keeps its own real per-section empty states.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
@@ -41,6 +48,7 @@ import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForeca
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
+import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { getCurrentMonthPeriodStart, localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 import { greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
@@ -90,6 +98,7 @@ export function MobileHome() {
     refetch: refetchGoals,
   } = useSavingsGoals(householdId)
   const { balances } = useAccountBalances(householdId)
+  const { accounts, hasData: hasAccountsData } = useAccounts(householdId)
 
   const periodStart = getCurrentMonthPeriodStart()
 
@@ -112,6 +121,46 @@ export function MobileHome() {
 
   const greeting = t(`home.greeting.${greetingKey(new Date().getHours())}`, { name: displayName ?? '' })
   const alertCount = alerts.filter((alert) => alert.severity !== 'info').length
+
+  // The true zero-account state — a brand-new household with nothing
+  // connected yet — is not "every figure happens to be ₪0", it is "there is
+  // nothing to calculate from". Showing the full composition here would mean
+  // a calculated-looking ₪0.00 hero next to three more empty-state cards
+  // begging for input; the approved design instead collapses the whole
+  // screen to one message and one CTA. This does NOT cover "has accounts but
+  // nothing else yet" (no goals, no upcoming events, no alerts) — those keep
+  // their own real per-section empty states below, unchanged.
+  const hasNoAccounts = hasAccountsData && accounts.length === 0
+
+  if (hasNoAccounts) {
+    return (
+      <Screen width="wide">
+        <View className="mb-4 flex-row items-center justify-between">
+          <View className="flex-1">
+            <Text className="text-title font-heebo text-ink-light dark:text-ink-dark">{greeting}</Text>
+            {household && (
+              <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">{household.name}</Text>
+            )}
+          </View>
+          <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={38} />
+        </View>
+
+        <HeroPanel>
+          <Text className="text-body font-heeboBold text-heroInk-light">{t('home.hero.noDataTitle')}</Text>
+          <HeroNote className="mt-2">{t('home.hero.noDataBody')}</HeroNote>
+          <Pressable
+            testID="home-no-data-cta"
+            onPress={() => router.push('/accounts?add=checking')}
+            accessibilityRole="button"
+            className="mt-4 self-start rounded-control bg-heroAccent-light px-4 py-2.5 active:opacity-90"
+          >
+            <Text className="text-caption font-heeboBold text-hero-light">{t('home.hero.noDataCta')}</Text>
+          </Pressable>
+          <HeroNote className="mt-3">{t('home.hero.noDataPreview')}</HeroNote>
+        </HeroPanel>
+      </Screen>
+    )
+  }
 
   const hasShortfall = safeToSpend.safeToSpendAgorot < 0
   // Days left in the horizon, inclusive of today — a household spending the

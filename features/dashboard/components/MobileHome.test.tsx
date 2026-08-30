@@ -90,6 +90,13 @@ jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: {}, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
 }))
 
+// Defaults to "has an account" so every existing test exercises the normal
+// composition; the zero-account describe block below overrides this to [].
+let mockAccounts: unknown[] = [{ id: 'a1' }]
+jest.mock('@/features/accounts/hooks/useAccounts', () => ({
+  useAccounts: () => ({ accounts: mockAccounts, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
+}))
+
 // The analytics disclosure is closed by default, so its own six-month
 // query chain never mounts here — stubbed only so the import resolves.
 jest.mock('@/features/dashboard/components/MobileAnalyticsSection', () => ({
@@ -116,6 +123,7 @@ beforeEach(() => {
   mockForecast = { ...EMPTY_FORECAST }
   mockAlerts = []
   mockGoals = []
+  mockAccounts = [{ id: 'a1' }]
 })
 
 describe('MobileHome — the hero', () => {
@@ -223,5 +231,39 @@ describe('MobileHome — לאן אנחנו מתקדמים', () => {
   it('invites adding a first goal rather than rendering an empty aggregate', async () => {
     const { getByText } = await render(<MobileHome />)
     expect(getByText(i18n.t('home.goals.empty'))).toBeTruthy()
+  })
+})
+
+describe('MobileHome — zero accounts (true no-data state)', () => {
+  beforeEach(() => {
+    mockAccounts = []
+  })
+
+  it('collapses to one restrained message with a single CTA, no calculated ₪0 and no other panels', async () => {
+    const { getByText, queryByText, queryByTestId } = await render(<MobileHome />)
+
+    expect(getByText(i18n.t('home.hero.noDataTitle'))).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.noDataBody'))).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.noDataCta'))).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.noDataPreview'))).toBeTruthy()
+
+    // Never a calculated-looking ₪0.00 standing in for "nothing to
+    // calculate from yet".
+    expect(queryByText(formatILS(0))).toBeNull()
+
+    // None of the four sections a household WITH accounts still gets its
+    // own empty state for — this is a different, earlier state.
+    expect(queryByText(i18n.t('home.timeline.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.attention.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.goals.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.analytics.toggle'))).toBeNull()
+    expect(queryByTestId('home-hero')).toBeNull()
+  })
+
+  it('the CTA navigates straight to adding a checking account', async () => {
+    const { getByText } = await render(<MobileHome />)
+
+    fireEvent.press(getByText(i18n.t('home.hero.noDataCta')))
+    expect(mockPush).toHaveBeenCalledWith('/accounts?add=checking')
   })
 })

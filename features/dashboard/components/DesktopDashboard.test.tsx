@@ -76,6 +76,12 @@ jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
   useAccountBalances: () => ({ balances: {}, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
 }))
 
+const DEFAULT_ACCOUNTS = { accounts: [{ id: 'a1' }] as unknown[], isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
+const mockUseAccounts = jest.fn<() => typeof DEFAULT_ACCOUNTS>()
+jest.mock('@/features/accounts/hooks/useAccounts', () => ({
+  useAccounts: () => mockUseAccounts(),
+}))
+
 jest.mock('@/features/dashboard/components/MobileAnalyticsSection', () => ({
   MobileAnalyticsSection: () => null,
 }))
@@ -97,6 +103,7 @@ beforeEach(() => {
   mockUseCashFlowForecast.mockReturnValue(DEFAULT_FORECAST)
   mockUseFinancialAlerts.mockReturnValue(DEFAULT_ALERTS)
   mockUseSavingsGoals.mockReturnValue(DEFAULT_GOALS)
+  mockUseAccounts.mockReturnValue(DEFAULT_ACCOUNTS)
   mockPush.mockClear()
 })
 
@@ -310,5 +317,34 @@ describe('Dashboard — dark mode', () => {
     expect(getByText(i18n.t('dashboard.hero.label'))).toBeTruthy()
     expect(getByText(i18n.t('home.attention.title'))).toBeTruthy()
     expect(getByText(i18n.t('home.goals.title'))).toBeTruthy()
+  })
+})
+
+describe('Dashboard — zero accounts (true no-data state)', () => {
+  beforeEach(() => {
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null, hasData: true, refetch: jest.fn() })
+  })
+
+  it('collapses to one restrained message with a single CTA, no calculated ₪0 and no other panels', async () => {
+    const { getByText, queryByText } = await render(<Dashboard />)
+
+    expect(getByText(i18n.t('home.hero.noDataTitle'))).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.noDataBody'))).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.noDataCta'))).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.noDataPreview'))).toBeTruthy()
+
+    expect(queryByText(formatILS(0))).toBeNull()
+    expect(queryByText(i18n.t('dashboard.hero.label'))).toBeNull()
+    expect(queryByText(i18n.t('home.timeline.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.attention.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.goals.title'))).toBeNull()
+    expect(queryByText(i18n.t('home.analytics.toggle'))).toBeNull()
+  })
+
+  it('the CTA navigates straight to adding a checking account', async () => {
+    const { getByText } = await render(<Dashboard />)
+
+    await fireEvent.press(getByText(i18n.t('home.hero.noDataCta')))
+    expect(mockPush).toHaveBeenCalledWith('/accounts?add=checking')
   })
 })
