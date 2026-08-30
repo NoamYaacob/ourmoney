@@ -288,6 +288,35 @@ export type Database = {
           },
         ]
       }
+      financial_pulse_snapshots: {
+        Row: {
+          captured_at: string
+          household_id: string
+          safe_to_spend_agorot: number
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          household_id: string
+          safe_to_spend_agorot: number
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          household_id?: string
+          safe_to_spend_agorot?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_pulse_snapshots_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       household_members: {
         Row: {
           household_id: string

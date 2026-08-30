@@ -32,6 +32,8 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     limit: jest.Mock
     insert: jest.Mock
     update: jest.Mock
+    // CP8E: financial_pulse_snapshots' upsert-on-(household_id,user_id) write.
+    upsert: jest.Mock
     delete: jest.Mock
     single: jest.Mock
     maybeSingle: jest.Mock
@@ -54,6 +56,7 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     limit: jest.fn(() => builder),
     insert: jest.fn(() => builder),
     update: jest.fn(() => builder),
+    upsert: jest.fn(() => builder),
     delete: jest.fn(() => builder),
     single: jest.fn(() => builder),
     maybeSingle: jest.fn(() => builder),

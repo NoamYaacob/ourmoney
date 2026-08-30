@@ -5770,6 +5770,182 @@ BEGIN
 END $$;
 
 -- ============================================================================
+-- Group 14 — financial_pulse_snapshots (migration 017, CP8E). Product
+-- decision under test: "last seen" is PERSONAL, not household-shared truth
+-- — every other table's RLS asks only "is this your household"; this table
+-- additionally asks "is this your OWN row," in both directions (a member
+-- may not read another member's snapshot, and may not write a row claiming
+-- to be another member's).
+-- ============================================================================
+
+-- 14.1: User A can INSERT their own snapshot row for Household 1.
+SAVEPOINT sp_14_1;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  INSERT INTO financial_pulse_snapshots (household_id, user_id, safe_to_spend_agorot)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 491800);
+  IF NOT EXISTS (
+    SELECT 1 FROM financial_pulse_snapshots
+    WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      AND safe_to_spend_agorot = 491800
+  ) THEN
+    RAISE EXCEPTION 'FAIL 14.1: snapshot row was not inserted as expected';
+  END IF;
+  PERFORM _pass('14.1', 'User A can INSERT their own financial_pulse_snapshots row for Household 1');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_14_1;
+
+-- 14.2: User A cannot INSERT a snapshot row claiming to be User B —
+-- WITH CHECK (user_id = auth.uid()) rejects it even though both users share
+-- Household 1 and User A really is a member of it.
+SAVEPOINT sp_14_2;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO financial_pulse_snapshots (household_id, user_id, safe_to_spend_agorot)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 100000);
+    RAISE EXCEPTION 'FAIL 14.2: User A inserted a snapshot row for User B';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('14.2', 'User A cannot INSERT a financial_pulse_snapshots row for User B, even within their shared household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_14_2;
+
+-- 14.3: User A cannot INSERT a snapshot row for Household 2 (not a member).
+SAVEPOINT sp_14_3;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO financial_pulse_snapshots (household_id, user_id, safe_to_spend_agorot)
+    VALUES ('22222222-2222-2222-2222-222222222222', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 100000);
+    RAISE EXCEPTION 'FAIL 14.3: User A inserted a snapshot row for Household 2';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('14.3', 'User A cannot INSERT a financial_pulse_snapshots row for a household they do not belong to');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_14_3;
+
+-- 14.4: User D (no household at all) cannot INSERT any snapshot row.
+SAVEPOINT sp_14_4;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO financial_pulse_snapshots (household_id, user_id, safe_to_spend_agorot)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'dddddddd-dddd-dddd-dddd-dddddddddddd', 100000);
+    RAISE EXCEPTION 'FAIL 14.4: User D (no household) inserted a snapshot row';
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM _pass('14.4', 'User D (no household) cannot INSERT a financial_pulse_snapshots row for any household');
+  END;
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_14_4;
+
+-- 14.5-14.7: seeded pair (User A + User B's own rows in Household 1) for the
+-- read-isolation and UPDATE tests below.
+SAVEPOINT sp_14_seed;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+INSERT INTO financial_pulse_snapshots (household_id, user_id, safe_to_spend_agorot, captured_at)
+VALUES ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 491800, '2026-08-01T00:00:00Z');
+RESET role;
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+INSERT INTO financial_pulse_snapshots (household_id, user_id, safe_to_spend_agorot, captured_at)
+VALUES ('11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 250000, '2026-08-01T00:00:00Z');
+RESET role;
+
+-- 14.5: User A can SELECT their own row, and it alone (not User B's, even
+-- though both are in the same household — "last seen" is personal).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SELECT count(*) INTO v_count FROM financial_pulse_snapshots WHERE household_id = '11111111-1111-1111-1111-111111111111';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 14.5: expected exactly 1 visible row (User A''s own), got %', v_count;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM financial_pulse_snapshots WHERE user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND safe_to_spend_agorot = 491800) THEN
+    RAISE EXCEPTION 'FAIL 14.5: User A''s own row is not the one visible';
+  END IF;
+  PERFORM _pass('14.5', 'User A can SELECT their own financial_pulse_snapshots row, and cannot see User B''s row in the same household');
+END $$;
+RESET role;
+
+-- 14.6: User B, symmetrically, sees only their own row — proves 14.5 is
+-- real per-member RLS filtering, not merely "User A's row happens to sort
+-- first."
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_count INT;
+BEGIN
+  SELECT count(*) INTO v_count FROM financial_pulse_snapshots WHERE household_id = '11111111-1111-1111-1111-111111111111';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'FAIL 14.6: expected exactly 1 visible row (User B''s own), got %', v_count;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM financial_pulse_snapshots WHERE user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND safe_to_spend_agorot = 250000) THEN
+    RAISE EXCEPTION 'FAIL 14.6: User B''s own row is not the one visible';
+  END IF;
+  PERFORM _pass('14.6', 'User B can SELECT their own financial_pulse_snapshots row, and cannot see User A''s row in the same household');
+END $$;
+RESET role;
+
+-- 14.7: User A can UPDATE (re-capture) their own row; the new
+-- safe_to_spend_agorot/captured_at persist — this is the write half of the
+-- "read previous, render, THEN overwrite" lifecycle
+-- useFinancialPulse.ts implements client-side.
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+DO $$
+BEGIN
+  UPDATE financial_pulse_snapshots
+  SET safe_to_spend_agorot = 425900, captured_at = '2026-08-18T10:00:00Z'
+  WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  IF NOT EXISTS (
+    SELECT 1 FROM financial_pulse_snapshots
+    WHERE user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND safe_to_spend_agorot = 425900
+  ) THEN
+    RAISE EXCEPTION 'FAIL 14.7: User A''s re-capture UPDATE did not persist';
+  END IF;
+  PERFORM _pass('14.7', 'User A can UPDATE (re-capture) their own financial_pulse_snapshots row');
+END $$;
+RESET role;
+
+-- 14.8: User B cannot UPDATE User A's row (0 rows affected, not an error —
+-- RLS's USING clause simply filters it out of the UPDATE's target set).
+SET LOCAL role = authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+DO $$
+DECLARE v_rows INT;
+BEGIN
+  UPDATE financial_pulse_snapshots
+  SET safe_to_spend_agorot = 1
+  WHERE household_id = '11111111-1111-1111-1111-111111111111' AND user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'FAIL 14.8: User B''s UPDATE affected % of User A''s rows, expected 0', v_rows;
+  END IF;
+  IF EXISTS (SELECT 1 FROM financial_pulse_snapshots WHERE user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND safe_to_spend_agorot = 1) THEN
+    RAISE EXCEPTION 'FAIL 14.8: User A''s row was modified by User B''s UPDATE';
+  END IF;
+  PERFORM _pass('14.8', 'User B cannot UPDATE User A''s financial_pulse_snapshots row — RLS filters it out of the UPDATE target set, not an error, just 0 rows affected');
+END $$;
+RESET role;
+ROLLBACK TO SAVEPOINT sp_14_seed;
+
+-- ============================================================================
 -- Summary and rollback — the database is left exactly as it was.
 -- ============================================================================
 
@@ -5777,7 +5953,7 @@ DO $$
 DECLARE v_total BIGINT;
 BEGIN
   SELECT last_value INTO v_total FROM _test_seq;
-  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008; Group 10 optimistic concurrency protection, migration 009; Group 11 obligation-transaction link, migration 012; Group 12 savings goal progress source, migration 015; Group 13 credit-card + installment plans, migration 016, minus INSTALLMENT.CONCURRENT) ===', v_total;
+  RAISE NOTICE '=== % tests passed (Groups 1,2,3,4 in full; 3b,3c,5 minus 5.9,6 in full; D2/D6/VM/RPC/grants-parity Milestone 6; DB.PARITY/RECURRING/RECURRING.GRANTS/RECURRING.SKIP/RECURRING.ATOMICITY/SAVINGS.TRIGGER Milestone 7 additions, minus RECURRING.CONCURRENT; Group 7 Milestone 9 additions, minus DELETE_ACCOUNT.CONCURRENT; Group 8 leave_household additions, minus LEAVE.CONCURRENT; Group 9 internal transfers, migration 008; Group 10 optimistic concurrency protection, migration 009; Group 11 obligation-transaction link, migration 012; Group 12 savings goal progress source, migration 015; Group 13 credit-card + installment plans, migration 016, minus INSTALLMENT.CONCURRENT; Group 14 financial_pulse_snapshots, migration 017) ===', v_total;
 END $$;
 
 ROLLBACK;
