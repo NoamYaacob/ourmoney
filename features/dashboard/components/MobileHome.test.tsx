@@ -1,10 +1,10 @@
-// Screen-level tests for the mobile Home composition.
+// Screen-level tests for the mobile Home composition (Direction D).
 //
 // What they protect is the design's contract rather than its pixels: the
-// hero shows the engine's own figure and routes to the derivation, a
-// critical alert appears while an informational one does not, urgency is
-// carried by a word as well as a color, and the budget block never renders
-// a bar for a household that has no budget.
+// hero shows the engine's own figure and routes to the derivation, the
+// timeline shows a real forecast event and its resulting balance, every
+// real alert appears (not just the critical one), and a goal's progress
+// figure is the engine's own.
 //
 // The mutable fixtures below are all `mock`-prefixed because jest hoists
 // `jest.mock` factories above every declaration in the file and permits
@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import { formatILS } from '@/lib/money/format'
+import type { CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 import { MobileHome } from './MobileHome'
 
 const mockPush = jest.fn()
@@ -48,12 +49,32 @@ jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
     isLoading: false,
     error: null,
     hasData: true,
+    refetch: jest.fn(),
   }),
 }))
 
-let mockCommitments: unknown[] = []
-jest.mock('@/features/cashflow/hooks/useUpcomingCommitments', () => ({
-  useUpcomingCommitments: () => ({ commitments: mockCommitments, isLoading: false, hasPartialError: false }),
+const EMPTY_FORECAST: CashFlowForecastResult = {
+  startingBalanceAgorot: 1_310_050,
+  endingBalanceAgorot: 1_310_050,
+  totalInflowsAgorot: 0,
+  totalOutflowsAgorot: 0,
+  lowestBalanceAgorot: 1_310_050,
+  lowestBalanceDate: '2026-08-22',
+  firstShortfallDate: null,
+  upcomingObligationsCount: 0,
+  events: [],
+  dailyPoints: [],
+}
+let mockForecast: CashFlowForecastResult = { ...EMPTY_FORECAST }
+jest.mock('@/features/cashflow/hooks/useCashFlowForecast', () => ({
+  useCashFlowForecast: () => ({
+    result: mockForecast,
+    horizon: { days: 30, start: '2026-08-22', end: '2026-09-20' },
+    isLoading: false,
+    error: null,
+    hasData: true,
+    refetch: jest.fn(),
+  }),
 }))
 
 let mockAlerts: unknown[] = []
@@ -61,16 +82,12 @@ jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
   useFinancialAlerts: () => ({ alerts: mockAlerts, isLoading: false, hasPartialError: false }),
 }))
 
-const DEFAULT_BUDGET = {
-  totalAllocatedAgorot: 870_000,
-  totalSpentAgorot: 701_000,
-  isLoading: false,
-  error: null as Error | null,
-  hasData: true,
-}
-let mockBudget = { ...DEFAULT_BUDGET }
-jest.mock('@/features/budgets/hooks/useBudgetProgress', () => ({
-  useBudgetProgress: () => mockBudget,
+let mockGoals: unknown[] = []
+jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
+  useSavingsGoals: () => ({ goals: mockGoals, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
+}))
+jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
+  useAccountBalances: () => ({ balances: {}, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
 }))
 
 // The analytics disclosure is closed by default, so its own six-month
@@ -79,18 +96,16 @@ jest.mock('@/features/dashboard/components/MobileAnalyticsSection', () => ({
   MobileAnalyticsSection: () => null,
 }))
 
-function upcoming(overrides: Record<string, unknown> = {}) {
+function forecastEvent(overrides: Partial<CashFlowForecastResult['events'][number]> = {}) {
   return {
-    id: 'c1',
-    source: 'obligation',
-    sourceId: 'o1',
-    description: 'ארנונה דו־חודשית',
-    amountAgorot: 122_400,
-    sharedAgorot: 122_400,
-    personalAgorot: 0,
+    id: 'planned_obligation:o1:2026-08-28',
     date: '2026-08-28',
-    categoryId: null,
-    accountId: null,
+    amountAgorot: 122_400,
+    direction: 'outflow' as const,
+    source: 'planned_obligation' as const,
+    sourceId: 'o1',
+    title: 'ארנונה דו־חודשית',
+    pastDue: false,
     ...overrides,
   }
 }
@@ -98,9 +113,9 @@ function upcoming(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   mockPush.mockClear()
   mockSafeToSpend = { ...SAFE_TO_SPEND }
-  mockCommitments = []
+  mockForecast = { ...EMPTY_FORECAST }
   mockAlerts = []
-  mockBudget = { ...DEFAULT_BUDGET }
+  mockGoals = []
 })
 
 describe('MobileHome — the hero', () => {
@@ -127,8 +142,33 @@ describe('MobileHome — the hero', () => {
   })
 })
 
-describe('MobileHome — what needs dealing with', () => {
-  it('surfaces a critical alert', async () => {
+describe('MobileHome — מה יקרה עד אז', () => {
+  it('shows a real forecast event and the resulting balance, chronologically after today', async () => {
+    mockForecast = {
+      ...EMPTY_FORECAST,
+      events: [forecastEvent()],
+      dailyPoints: [{ date: '2026-08-28', balanceAgorot: 1_187_650, inflowsAgorot: 0, outflowsAgorot: 122_400 }],
+      lowestBalanceAgorot: 1_187_650,
+      lowestBalanceDate: '2026-08-28',
+    }
+    const { getByText } = await render(<MobileHome />)
+
+    // This event's date is also the forecast's lowest-balance date, so its
+    // cause is suffixed with the low-point marker — same as the approved
+    // artifact's "חדר כושר · שפל" treatment.
+    expect(getByText(`ארנונה דו־חודשית · ${i18n.t('home.timeline.lowSuffix')}`)).toBeTruthy()
+    expect(getByText(formatILS(1_187_650))).toBeTruthy()
+    expect(getByText(i18n.t('home.timeline.availableToday'))).toBeTruthy()
+  })
+
+  it('says so plainly when nothing is coming', async () => {
+    const { getByText } = await render(<MobileHome />)
+    expect(getByText(i18n.t('home.timeline.empty'))).toBeTruthy()
+  })
+})
+
+describe('MobileHome — מה דורש תשומת לב', () => {
+  it('surfaces every real alert, not only the critical one', async () => {
     mockAlerts = [
       {
         id: 'a1',
@@ -138,75 +178,50 @@ describe('MobileHome — what needs dealing with', () => {
         description: 'אגרת הרכב וארנונה באותו שבוע',
         date: '2026-09-04',
         amountAgorot: 61_200,
-        source: 'cash_flow_forecast',
+        source: 'cash_flow',
         sourceId: null,
         actionRoute: '/cash-flow',
+      },
+      {
+        id: 'a2',
+        type: 'excess_cash_available',
+        severity: 'info',
+        title: 'יש לכם עודף פנוי החודש',
+        description: 'אפשר להאיץ יעד בלי לסכן את החודש',
+        date: null,
+        amountAgorot: 130_000,
+        source: 'cash_flow',
+        sourceId: null,
+        actionRoute: '/goals',
       },
     ]
     const { getByText } = await render(<MobileHome />)
 
     expect(getByText('ב־04.09 היתרה תרד מתחת לאפס')).toBeTruthy()
+    // Direction D shows the full alert list on Home (up to 3 cards), not
+    // just the top-severity one the previous single-card composition kept.
+    expect(getByText('יש לכם עודף פנוי החודש')).toBeTruthy()
   })
 
-  it('leaves an informational insight to the alerts screen', async () => {
-    mockAlerts = [
-      {
-        id: 'a2',
-        severity: 'info',
-        title: 'בדצמבר יתפנו ₪399 בחודש',
-        description: 'תוכנית תשלומים מסתיימת',
-        actionRoute: '/installments',
-      },
+  it('shows the calm state when nothing needs attention', async () => {
+    const { getByText } = await render(<MobileHome />)
+    expect(getByText(i18n.t('home.attention.empty'))).toBeTruthy()
+  })
+})
+
+describe('MobileHome — לאן אנחנו מתקדמים', () => {
+  it('renders the aggregate narrative headline from the real goal figures', async () => {
+    mockGoals = [
+      { id: 'g1', name: 'חופשה ביוון', target_agorot: 1_200_000, current_agorot: 740_000, progress_source: 'manual', account_id: null, target_date: '2027-02-01', is_completed: false },
     ]
-    const { queryByText } = await render(<MobileHome />)
-
-    // Home carries the one thing that needs doing; everything else waits
-    // rather than competing for the front door.
-    expect(queryByText('בדצמבר יתפנו ₪399 בחודש')).toBeNull()
-  })
-})
-
-describe('MobileHome — what comes next', () => {
-  it('states urgency in a word, not only in a color', async () => {
-    mockCommitments = [upcoming()]
     const { getByText } = await render(<MobileHome />)
 
-    expect(getByText('ארנונה דו־חודשית')).toBeTruthy()
-    // Whichever urgency band today falls into, the row carries one of the
-    // phrasings rather than a bare colored bar. Matched as a set so the
-    // test does not depend on the date the suite happens to run.
-    expect(getByText(/בעוד|באיחור|היום|מחר/)).toBeTruthy()
+    expect(getByText('חופשה ביוון')).toBeTruthy()
+    expect(getByText(i18n.t('home.goals.headline', { pct: 61 }))).toBeTruthy()
   })
 
-  it('says so plainly when nothing is coming', async () => {
+  it('invites adding a first goal rather than rendering an empty aggregate', async () => {
     const { getByText } = await render(<MobileHome />)
-    expect(getByText(i18n.t('home.next.empty'))).toBeTruthy()
-  })
-})
-
-describe('MobileHome — the budget block', () => {
-  it('shows what is left, against the allocation, with a status word', async () => {
-    const { getByText, getAllByText } = await render(<MobileHome />)
-
-    expect(getByText(formatILS(870_000 - 701_000))).toBeTruthy()
-    expect(getByText(i18n.t('home.budget.remainingOf', { total: formatILS(870_000) }))).toBeTruthy()
-    // 701,000 of 870,000 is inside the allocation, so the state is decided
-    // by the projection rather than by the spend alone. Matched with
-    // getAllByText because the projection sentence underneath the bar can
-    // legitimately repeat the same word as the chip.
-    expect(getAllByText(/בקצב תקין|מתקרב לגבול|חריגה/).length).toBeGreaterThan(0)
-  })
-
-  it('invites setting a budget rather than rendering a zeroed bar', async () => {
-    mockBudget = { ...DEFAULT_BUDGET, totalAllocatedAgorot: 0, totalSpentAgorot: 0 }
-    const { getByText, queryByText } = await render(<MobileHome />)
-
-    expect(getByText(i18n.t('home.budget.empty'))).toBeTruthy()
-    // A household with no budget must not be shown a status for one.
-    // These are the same keys the Budget screen renders — Home and that
-    // screen share one classifier, so asserting on them here would catch a
-    // regression in either.
-    expect(queryByText(i18n.t('budgets.state.onTrack'))).toBeNull()
-    expect(queryByText(i18n.t('budgets.state.over'))).toBeNull()
+    expect(getByText(i18n.t('home.goals.empty'))).toBeTruthy()
   })
 })

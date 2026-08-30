@@ -1,16 +1,15 @@
-// Screen-level tests for the rebuilt Desktop Dashboard (Claude Design pass):
-// header row, the פנוי באמת hero + מה מגיע row, and the budget-pace /
-// needs-attention / recent-transactions row. Mirrors the mock/assert
-// structure of the pre-rebuild test file it replaces — same hook mocks,
-// same jest.fn-factory pattern — but exercises the new composition instead
-// of the removed one (no more standalone analytics/savings-goals sections;
-// alerts moved from a full-width "כל ההתראות" list into the compact
-// needsAttention card in row 2).
+// Screen-level tests for the Desktop Dashboard (Direction D — this
+// checkpoint's production implementation): the פנוי באמת hero with its own
+// horizon pills and waterfall legend, מה יקרה עד אז (the connected
+// timeline) in the SAME panel, מה דורש תשומת לב (every real alert), and
+// לאן אנחנו מתקדמים (savings goals). No Budget Pace panel and no Recent
+// Transactions panel on this screen anymore — both stay reachable at their
+// own real screens, unchanged.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
-import { DesktopDashboard as Dashboard } from './DesktopDashboard'
 import { formatILS } from '@/lib/money/format'
+import type { CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
 const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
@@ -22,29 +21,7 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
-const DEFAULT_BUDGET_PROGRESS = {
-  categories: [] as unknown[],
-  totalAllocatedAgorot: 0,
-  totalSpentAgorot: 0,
-  isLoading: false,
-  error: null as Error | null,
-  hasData: true,
-}
-const mockUseBudgetProgress = jest.fn<() => typeof DEFAULT_BUDGET_PROGRESS>()
-jest.mock('@/features/budgets/hooks/useBudgetProgress', () => ({
-  useBudgetProgress: () => mockUseBudgetProgress(),
-}))
-const DEFAULT_TRANSACTIONS = { transactions: [] as unknown[], isLoading: false, error: null as Error | null, hasData: true }
-const mockUseTransactions = jest.fn<() => typeof DEFAULT_TRANSACTIONS>()
-jest.mock('@/features/transactions/hooks/useTransactions', () => ({
-  useTransactions: () => mockUseTransactions(),
-}))
-jest.mock('@/features/categories/hooks/useCategories', () => ({
-  useCategories: () => ({ categories: [{ id: 'cat-1', name_he: 'מכולת', icon: '🛒' }] }),
-}))
-// recurringAgorot deliberately avoids 60000 — the budget-pace fixture below
-// uses a remaining figure of ₪600.00, and formatILS(60000) colliding across
-// two unrelated panels would make getByText ambiguous.
+
 const DEFAULT_SAFE_TO_SPEND_RESULT = {
   availableCashAgorot: 500000,
   plannedObligationsAgorot: 100000,
@@ -59,21 +36,50 @@ const DEFAULT_SAFE_TO_SPEND = {
   isLoading: false,
   error: null as Error | null,
   hasData: true,
+  refetch: jest.fn(),
 }
 const mockUseSafeToSpend = jest.fn<() => typeof DEFAULT_SAFE_TO_SPEND>()
 jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
   useSafeToSpend: () => mockUseSafeToSpend(),
 }))
-const DEFAULT_ALERTS = { alerts: [] as unknown[], isLoading: false }
+
+const EMPTY_FORECAST: CashFlowForecastResult = {
+  startingBalanceAgorot: 500000,
+  endingBalanceAgorot: 500000,
+  totalInflowsAgorot: 0,
+  totalOutflowsAgorot: 0,
+  lowestBalanceAgorot: 500000,
+  lowestBalanceDate: '2026-08-22',
+  firstShortfallDate: null,
+  upcomingObligationsCount: 0,
+  events: [],
+  dailyPoints: [],
+}
+const DEFAULT_FORECAST = { result: EMPTY_FORECAST, isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
+const mockUseCashFlowForecast = jest.fn<() => typeof DEFAULT_FORECAST>()
+jest.mock('@/features/cashflow/hooks/useCashFlowForecast', () => ({
+  useCashFlowForecast: () => mockUseCashFlowForecast(),
+}))
+
+const DEFAULT_ALERTS = { alerts: [] as unknown[], isLoading: false, hasPartialError: false }
 const mockUseFinancialAlerts = jest.fn<() => typeof DEFAULT_ALERTS>()
 jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
   useFinancialAlerts: () => mockUseFinancialAlerts(),
 }))
-const DEFAULT_COMMITMENTS = { commitments: [] as unknown[], isLoading: false, hasPartialError: false }
-const mockUseUpcomingCommitments = jest.fn<() => typeof DEFAULT_COMMITMENTS>()
-jest.mock('@/features/cashflow/hooks/useUpcomingCommitments', () => ({
-  useUpcomingCommitments: () => mockUseUpcomingCommitments(),
+
+const DEFAULT_GOALS = { goals: [] as unknown[], isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
+const mockUseSavingsGoals = jest.fn<() => typeof DEFAULT_GOALS>()
+jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
+  useSavingsGoals: () => mockUseSavingsGoals(),
 }))
+jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
+  useAccountBalances: () => ({ balances: {}, isLoading: false, error: null, hasData: true, refetch: jest.fn() }),
+}))
+
+jest.mock('@/features/dashboard/components/MobileAnalyticsSection', () => ({
+  MobileAnalyticsSection: () => null,
+}))
+
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
 }))
@@ -82,13 +88,15 @@ jest.mock('nativewind', () => ({
   useColorScheme: () => mockUseColorScheme(),
 }))
 
+// eslint-disable-next-line import/first -- must follow every jest.mock above
+import { DesktopDashboard as Dashboard } from './DesktopDashboard'
+
 beforeEach(() => {
-  mockUseBudgetProgress.mockReturnValue(DEFAULT_BUDGET_PROGRESS)
   mockUseColorScheme.mockReturnValue({ colorScheme: 'light' })
-  mockUseTransactions.mockReturnValue(DEFAULT_TRANSACTIONS)
   mockUseSafeToSpend.mockReturnValue(DEFAULT_SAFE_TO_SPEND)
+  mockUseCashFlowForecast.mockReturnValue(DEFAULT_FORECAST)
   mockUseFinancialAlerts.mockReturnValue(DEFAULT_ALERTS)
-  mockUseUpcomingCommitments.mockReturnValue(DEFAULT_COMMITMENTS)
+  mockUseSavingsGoals.mockReturnValue(DEFAULT_GOALS)
   mockPush.mockClear()
 })
 
@@ -137,131 +145,74 @@ describe('Dashboard פנוי באמת hero', () => {
 
     expect(getByText(i18n.t('dashboard.hero.horizonWeek'))).toBeTruthy()
   })
-})
 
-function commitment(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    id: 'obligation:ob-1',
-    source: 'obligation' as const,
-    sourceId: 'ob-1',
-    description: 'ביטוח רכב',
-    amountAgorot: 185000,
-    date: '2099-01-27',
-    ...overrides,
-  }
-}
-
-describe('Dashboard מה מגיע panel', () => {
-  it('shows a compact empty state when there are no upcoming commitments', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    expect(getByText(i18n.t('dashboard.commitments.title'))).toBeTruthy()
-    expect(getByText(i18n.t('dashboard.commitments.empty'))).toBeTruthy()
-  })
-
-  it('renders the nearest commitment and navigates to its detail screen on tap', async () => {
-    mockUseUpcomingCommitments.mockReturnValue({ commitments: [commitment()], isLoading: false, hasPartialError: false })
-
-    const { getByText } = await render(<Dashboard />)
-
-    expect(getByText('ביטוח רכב')).toBeTruthy()
-    expect(getByText(formatILS(185000))).toBeTruthy()
-
-    await fireEvent.press(getByText('ביטוח רכב'))
-
-    expect(mockPush).toHaveBeenCalledWith('/obligations/ob-1')
-  })
-
-  it('navigates to the account detail screen for a credit-card cycle commitment', async () => {
-    mockUseUpcomingCommitments.mockReturnValue({
-      commitments: [commitment({ id: 'credit_card_cycle:acc-1', source: 'credit_card_cycle', sourceId: 'acc-1', description: 'ויזה' })],
+  it('names the shortfall instead of printing it as available money', async () => {
+    // `Money` renders magnitudes, so the raw figure made "-7,600" look
+    // exactly like "7,600 available" beside a chip saying only that it was
+    // not the bank balance.
+    mockUseSafeToSpend.mockReturnValue({
+      result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: -760_000, shortfallAgorot: 760_000 },
       isLoading: false,
-      hasPartialError: false,
-    })
-
-    const { getByText } = await render(<Dashboard />)
-    await fireEvent.press(getByText('ויזה'))
-
-    expect(mockPush).toHaveBeenCalledWith('/accounts/acc-1')
-  })
-
-  it('caps the visible list at 4 and shows the count/total note', async () => {
-    mockUseUpcomingCommitments.mockReturnValue({
-      commitments: [
-        commitment({ id: 'o1', sourceId: 'o1', description: 'א', amountAgorot: 1000 }),
-        commitment({ id: 'o2', sourceId: 'o2', description: 'ב', amountAgorot: 2000 }),
-        commitment({ id: 'o3', sourceId: 'o3', description: 'ג', amountAgorot: 3000 }),
-        commitment({ id: 'o4', sourceId: 'o4', description: 'ד', amountAgorot: 4000 }),
-        commitment({ id: 'o5', sourceId: 'o5', description: 'ה', amountAgorot: 5000 }),
-      ],
-      isLoading: false,
-      hasPartialError: false,
+      error: null,
+      hasData: true,
+      refetch: jest.fn(),
     })
 
     const { getByText, queryByText } = await render(<Dashboard />)
 
-    expect(getByText('א')).toBeTruthy()
-    expect(getByText('ד')).toBeTruthy()
-    expect(queryByText('ה')).toBeNull()
-    expect(getByText(i18n.t('dashboard.commitments.countAndTotal', { count: 5, amount: formatILS(15000) }))).toBeTruthy()
-  })
-
-  it('shows the credit-card cycle countdown footer only when a card cycle is among the commitments', async () => {
-    mockUseUpcomingCommitments.mockReturnValue({
-      commitments: [commitment({ id: 'credit_card_cycle:acc-1', source: 'credit_card_cycle', sourceId: 'acc-1', description: 'ויזה', amountAgorot: 42000, date: '2099-02-01' })],
-      isLoading: false,
-      hasPartialError: false,
-    })
-
-    const { getByText } = await render(<Dashboard />)
-
-    expect(
-      getByText(i18n.t('dashboard.commitments.cardCycleClosing', { name: 'ויזה', date: '01.02.2099', amount: formatILS(42000) }))
-    ).toBeTruthy()
+    expect(getByText(i18n.t('home.hero.shortfallTag'))).toBeTruthy()
+    expect(queryByText(i18n.t('dashboard.hero.notBankBalance'))).toBeNull()
   })
 })
 
-describe('Dashboard budget-pace panel', () => {
-  it('shows the empty state when there is no budget for the month', async () => {
+function forecastEvent(overrides: Partial<CashFlowForecastResult['events'][number]> = {}) {
+  return {
+    id: 'planned_obligation:ob-1:2026-08-28',
+    date: '2026-08-28',
+    amountAgorot: 185000,
+    direction: 'outflow' as const,
+    source: 'planned_obligation' as const,
+    sourceId: 'ob-1',
+    title: 'ביטוח רכב',
+    pastDue: false,
+    ...overrides,
+  }
+}
+
+describe('Dashboard מה יקרה עד אז (same panel as the hero)', () => {
+  it('shows a compact empty state when there are no upcoming events', async () => {
     const { getByText } = await render(<Dashboard />)
 
-    expect(getByText(i18n.t('dashboard.budgetPace.title'))).toBeTruthy()
-    expect(getByText(i18n.t('dashboard.noBudgetHero'))).toBeTruthy()
+    expect(getByText(i18n.t('home.timeline.title'))).toBeTruthy()
+    expect(getByText(i18n.t('home.timeline.empty'))).toBeTruthy()
   })
 
-  it('shows the remaining figure, allocation total, and category rows once a budget exists', async () => {
-    mockUseBudgetProgress.mockReturnValue({
-      categories: [
-        {
-          categoryId: 'cat-1',
-          categoryNameHe: 'מכולת',
-          categoryIcon: '🛒',
-          allocatedAgorot: 100000,
-          spentAgorot: 40000,
-          remainingAgorot: 60000,
-          percentSpent: 40,
-        },
-      ],
-      totalAllocatedAgorot: 100000,
-      totalSpentAgorot: 40000,
+  it('renders a real event and navigates to its own detail screen when opened', async () => {
+    mockUseCashFlowForecast.mockReturnValue({
+      result: {
+        ...EMPTY_FORECAST,
+        events: [forecastEvent()],
+        dailyPoints: [{ date: '2026-08-28', balanceAgorot: 315000, inflowsAgorot: 0, outflowsAgorot: 185000 }],
+        lowestBalanceAgorot: 315000,
+        lowestBalanceDate: '2026-08-28',
+      },
       isLoading: false,
       error: null,
       hasData: true,
+      refetch: jest.fn(),
     })
 
-    const { getByText } = await render(<Dashboard />)
+    const { getByText, getByLabelText } = await render(<Dashboard />)
 
-    expect(getByText(formatILS(60000))).toBeTruthy()
-    expect(getByText(i18n.t('dashboard.budgetPace.outOf', { amount: formatILS(100000) }))).toBeTruthy()
-    expect(getByText('מכולת')).toBeTruthy()
-  })
+    expect(getByText(formatILS(315000))).toBeTruthy()
 
-  it('navigates to /budgets when "כל התקציבים" is pressed', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    await fireEvent.press(getByText(i18n.t('dashboard.budgetPace.viewAll')))
-
-    expect(mockPush).toHaveBeenCalledWith('/budgets')
+    // Tapping the bar reveals the real per-event breakdown drawer — the
+    // source label only ever renders there, so its appearance is exactly
+    // the signal that the drawer opened (the event's own title is already
+    // visible on the bar itself, so asserting on it again wouldn't tell
+    // the two states apart).
+    await fireEvent.press(getByLabelText(/ביטוח רכב/))
+    expect(getByText(i18n.t('home.timeline.source.planned_obligation'))).toBeTruthy()
   })
 })
 
@@ -277,147 +228,87 @@ function alert(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-describe('Dashboard needs-attention panel', () => {
-  it('shows a checkmark empty state with zero alerts', async () => {
+describe('Dashboard מה דורש תשומת לב panel', () => {
+  it('shows the calm empty state with zero alerts', async () => {
     const { getByText } = await render(<Dashboard />)
 
-    expect(getByText(i18n.t('dashboard.needsAttention.title'))).toBeTruthy()
-    expect(getByText(i18n.t('alerts.empty'))).toBeTruthy()
+    expect(getByText(i18n.t('home.attention.title'))).toBeTruthy()
+    expect(getByText(i18n.t('home.attention.empty'))).toBeTruthy()
   })
 
-  it('renders up to 4 alerts and navigates to an alert\'s own action route on tap', async () => {
+  it('caps the visible cards at 3 and navigates to an alert\'s own action route on tap', async () => {
     mockUseFinancialAlerts.mockReturnValue({
       alerts: [
-        alert({ id: 'a1', title: 'א', sourceId: 'a1', actionRoute: '/obligations/a1' }),
-        alert({ id: 'a2', title: 'ב', sourceId: 'a2', actionRoute: '/obligations/a2' }),
-        alert({ id: 'a3', title: 'ג', sourceId: 'a3', actionRoute: '/obligations/a3' }),
-        alert({ id: 'a4', title: 'ד', sourceId: 'a4', actionRoute: '/obligations/a4' }),
-        alert({ id: 'a5', title: 'ה', sourceId: 'a5', actionRoute: '/obligations/a5' }),
+        alert({ id: 'a1', type: 'upcoming_obligation', title: 'א', actionRoute: '/obligations/a1' }),
+        alert({ id: 'a2', type: 'upcoming_obligation', title: 'ב', actionRoute: '/obligations/a2' }),
+        alert({ id: 'a3', type: 'upcoming_obligation', title: 'ג', actionRoute: '/obligations/a3' }),
+        alert({ id: 'a4', type: 'upcoming_obligation', title: 'ד', actionRoute: '/obligations/a4' }),
       ],
       isLoading: false,
+      hasPartialError: false,
     })
 
-    const { getByText, queryByText } = await render(<Dashboard />)
+    const { getByText, queryByText, getAllByText } = await render(<Dashboard />)
 
     expect(getByText('א')).toBeTruthy()
-    expect(getByText('ד')).toBeTruthy()
-    expect(queryByText('ה')).toBeNull()
+    expect(getByText('ג')).toBeTruthy()
+    expect(queryByText('ד')).toBeNull()
 
-    await fireEvent.press(getByText('א'))
-
+    // The real, correct destination — the action route the engine itself
+    // already computed for this alert type. All 3 visible cards share the
+    // same per-type action label; the first is a1's own button.
+    const actionButtons = getAllByText(i18n.t('home.attention.action.obligation'))
+    expect(actionButtons.length).toBe(3)
+    await fireEvent.press(actionButtons[0] as unknown as Parameters<typeof fireEvent.press>[0])
     expect(mockPush).toHaveBeenCalledWith('/obligations/a1')
-  })
-
-  it('navigates to /alerts when "כל ההתראות" is pressed', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    await fireEvent.press(getByText(i18n.t('alerts.viewAll')))
-
-    expect(mockPush).toHaveBeenCalledWith('/alerts')
   })
 })
 
-describe('Dashboard recent-transactions panel', () => {
-  it('shows the empty state with no transactions', async () => {
+describe('Dashboard לאן אנחנו מתקדמים panel', () => {
+  it('invites adding a first goal when there are none', async () => {
     const { getByText } = await render(<Dashboard />)
 
-    expect(getByText(i18n.t('dashboard.noTransactions'))).toBeTruthy()
+    expect(getByText(i18n.t('home.goals.title'))).toBeTruthy()
+    expect(getByText(i18n.t('home.goals.empty'))).toBeTruthy()
   })
 
-  it('excludes internal transfer legs and shows a real transaction, navigating to its detail screen on tap', async () => {
-    mockUseTransactions.mockReturnValue({
-      transactions: [
-        { id: 'leg-source', description: 'העברה לחיסכון', amount_agorot: -50000, transfer_id: 'transfer-1', category_id: null },
-        { id: 'leg-dest', description: 'העברה לחיסכון', amount_agorot: 50000, transfer_id: 'transfer-1', category_id: null },
-        { id: 'txn-1', description: 'קפה', amount_agorot: -1500, transfer_id: null, category_id: 'cat-1' },
+  it('shows the aggregate narrative headline and navigates to a goal on tap', async () => {
+    mockUseSavingsGoals.mockReturnValue({
+      goals: [
+        {
+          id: 'g1',
+          name: 'חופשה ביוון',
+          target_agorot: 1_200_000,
+          current_agorot: 740_000,
+          progress_source: 'manual',
+          account_id: null,
+          target_date: '2027-02-01',
+          is_completed: false,
+        },
       ],
       isLoading: false,
       error: null,
       hasData: true,
-    })
-
-    const { getByText, queryByText } = await render(<Dashboard />)
-
-    expect(getByText('קפה')).toBeTruthy()
-    expect(queryByText('העברה לחיסכון')).toBeNull()
-
-    await fireEvent.press(getByText('קפה'))
-
-    expect(mockPush).toHaveBeenCalledWith('/transactions/txn-1')
-  })
-
-  it('shows an error message when the transactions query fails', async () => {
-    // Never loaded — no prior successful data.
-    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: new Error('network down'), hasData: false })
-
-    const { getAllByText } = await render(<Dashboard />)
-
-    expect(getAllByText(i18n.t('dashboard.errors.generic')).length).toBeGreaterThanOrEqual(1)
-  })
-
-  // Second visual review pass finding: this panel's own "view all" link
-  // read "כל ההתראות" (all ALERTS) — a copy-paste leftover from the alerts
-  // panel above it (dashboard.viewAll, "כל התנועות", already existed as an
-  // unused sibling key). No test navigated this specific link before, which
-  // is exactly how the wrong copy went unnoticed.
-  it('labels its own "view all" link for transactions, not the alerts panel\'s label, and navigates to /transactions', async () => {
-    mockUseTransactions.mockReturnValue({
-      transactions: [{ id: 'txn-1', description: 'קפה', amount_agorot: -1500, transfer_id: null, category_id: 'cat-1' }],
-      isLoading: false,
-      error: null,
-      hasData: true,
+      refetch: jest.fn(),
     })
 
     const { getByText } = await render(<Dashboard />)
 
-    // "כל ההתראות" legitimately exists too — it's the alerts panel's own,
-    // separate "view all" link on the same page. The regression is this
-    // panel's own link carrying that text instead of its own, so the real
-    // assertion is on what pressing THIS panel's link does.
-    await fireEvent.press(getByText(i18n.t('dashboard.viewAll')))
+    expect(getByText(i18n.t('home.goals.headline', { pct: 61 }))).toBeTruthy()
 
-    expect(mockPush).toHaveBeenCalledWith('/transactions')
+    await fireEvent.press(getByText('חופשה ביוון'))
+    expect(mockPush).toHaveBeenCalledWith('/goals/g1')
   })
 })
 
-describe('Dashboard RTL layout', () => {
-  it('uses flex-row-reverse (not plain flex-row) for the hero row, so the hero panel reads on the right', async () => {
-    const { getByText } = await render(<Dashboard />)
-
-    let node = getByText(i18n.t('dashboard.hero.label')).parent
-    while (node && !((node.props?.className as string | undefined) ?? '').split(/\s+/).includes('web:desktop:flex-row')) {
-      node = node.parent
-    }
-    expect(node).toBeTruthy()
-  })
-
+describe('Dashboard — dark mode', () => {
   it('renders the same key content in dark color scheme as in light', async () => {
     mockUseColorScheme.mockReturnValue({ colorScheme: 'dark' })
 
     const { getByText } = await render(<Dashboard />)
 
-    // The month label left with the header — it is the shell's
-    // DesktopTopBar now — so this asserts on content the screen still owns.
     expect(getByText(i18n.t('dashboard.hero.label'))).toBeTruthy()
-    expect(getByText(i18n.t('dashboard.noTransactions'))).toBeTruthy()
-  })
-})
-
-describe('Dashboard hero — a negative safe-to-spend', () => {
-  it('names the shortfall instead of printing it as available money', async () => {
-    // `Money` renders magnitudes, so the raw figure made "-7,600" look
-    // exactly like "7,600 available" beside a chip saying only that it was
-    // not the bank balance. Regression guard for that.
-    mockUseSafeToSpend.mockReturnValue({
-      result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: -760_000, shortfallAgorot: 760_000 },
-      isLoading: false,
-      error: null,
-      hasData: true,
-    })
-
-    const { getByText, queryByText } = await render(<Dashboard />)
-
-    expect(getByText(i18n.t('home.hero.shortfallTag'))).toBeTruthy()
-    expect(queryByText(i18n.t('dashboard.hero.notBankBalance'))).toBeNull()
+    expect(getByText(i18n.t('home.attention.title'))).toBeTruthy()
+    expect(getByText(i18n.t('home.goals.title'))).toBeTruthy()
   })
 })

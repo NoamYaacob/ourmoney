@@ -1,63 +1,63 @@
 // Screen 01 of the mobile design — the app's front door.
 //
-// Four blocks, in this order, and deliberately not ten cards:
+// Direction D (design-review artifact, approved across three refinement
+// rounds — this checkpoint is its production implementation): one
+// continuous financial story, not a grid of cards.
 //
-//   1. פנוי באמת, on the dark panel, as the only figure at hero size.
-//   2. The one thing that needs dealing with, if anything does.
-//   3. What comes off the account next.
-//   4. Where the month's budget stands.
+//   1. פנוי באמת, on the dark hero panel, as the only figure at hero size.
+//   2. מה יקרה עד אז — the same panel's own connected timeline: today's
+//      balance -> each real upcoming event -> the resulting balance ->
+//      ... -> the 30-day low point. A native vertical list on this
+//      breakpoint (FinancialTimelineList), not a shrunk desktop chart.
+//   3. מה דורש תשומת לב — every real financial alert, not just the one
+//      critical one this screen used to show.
+//   4. לאן אנחנו מתקדמים — savings-goal progress, new to Home.
 //
-// Everything else the desktop dashboard shows — the six-month trend, the
-// category donut, savings goals, the full alert list — is either reachable
-// from "עוד" or sits behind the analytics disclosure at the bottom. The
-// brief's rule was that a household should understand its situation in
-// about five seconds, and every card added to this screen costs some of
-// them.
+// No fixed Budget Pace card and no Recent Transactions card on Home
+// (explicit product decision, carried from the approved design) — budget
+// stays fully reachable at /budgets, recent activity at /transactions.
+// Everything else the desktop dashboard shows beyond these four —
+// the six-month trend, the category donut — sits behind the analytics
+// disclosure at the bottom, same as before this pass.
 //
 // This is a sibling of the desktop dashboard, not a narrowed copy of it:
 // app/(app)/dashboard/index.tsx picks between the two by width. That split
-// is what lets the desktop layout stay exactly as approved while this one
-// is structured for a thumb.
+// is what lets the desktop composition own its own tabletLg/desktop
+// treatment while this one is structured for a thumb.
 
 import { useState } from 'react'
-import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
-import { TABLET_BREAKPOINT_PX } from '@/constants/layout'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useProfile } from '@/features/auth/hooks/useProfile'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
-import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
+import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
-import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
-import { getCurrentMonthPeriodStart, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
-import { budgetState, BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE } from '@/features/budgets/lib/budgetState'
-import { remainingAgorot } from '@/lib/money/arithmetic'
+import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
+import { getCurrentMonthPeriodStart, localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
-import { commitmentUrgency, greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
+import { greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
+import { FinancialTimelineList, FinancialTimelineLowBadge } from '@/features/dashboard/components/FinancialTimeline'
+import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
+import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { Screen } from '@/components/ui/Screen'
 import { FAB } from '@/components/ui/FAB'
 import { Avatar } from '@/components/ui/Avatar'
 import { Money } from '@/components/ui/Money'
 import { HeroPanel, HeroLabel, HeroNote, HeroTag } from '@/components/ui/HeroPanel'
-import { CardHeading } from '@/components/ui/SectionLabel'
-import { StatusChip } from '@/components/ui/StatusChip'
-import { CommitmentRow } from '@/components/ui/CommitmentRow'
-import { BudgetBar } from '@/components/ui/BudgetBar'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
-// How many upcoming charges the Home card lists before deferring to the
-// full screen. Two, not five: the card answers "what's next", and a fifth
-// row pushes the budget block below the fold on a 375px phone.
-const HOME_COMMITMENT_ROWS = 2
+const CASH_FLOW_TIMELINE_HORIZON_DAYS = 30
 
 export function MobileHome() {
   const { t } = useTranslation()
@@ -67,16 +67,6 @@ export function MobileHome() {
   const { user } = useAuth()
   const { displayName, avatarUrl } = useProfile(user?.id)
   const { householdId, household, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  // Tablet-tier pass: this screen is deliberately curated for a phone (see
-  // the header comment — "five seconds", a thumb, not ten cards), but that
-  // rationale stops applying once there's tablet width to spend — a 768px+
-  // canvas rendering the exact same single narrow column just left ~half
-  // the width empty below the hero and a huge gap of unused height where
-  // the closed analytics disclosure used to hide the six-month trend from a
-  // phone. Both adjustments below reuse this screen's own existing content
-  // and hooks — nothing new is added, nothing desktop-only is borrowed.
-  const { width } = useWindowDimensions()
-  const isTabletOrWiderWeb = Platform.OS === 'web' && width >= TABLET_BREAKPOINT_PX
 
   const {
     result: safeToSpend,
@@ -87,37 +77,26 @@ export function MobileHome() {
     refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, 'month')
   const {
-    commitments,
-    isLoading: isCommitmentsLoading,
-    hasPartialError: hasCommitmentsPartialError,
-    refetch: refetchCommitments,
-  } = useUpcomingCommitments(householdId)
-  const { alerts } = useFinancialAlerts(householdId)
+    result: forecast,
+    isLoading: isForecastLoading,
+    hasData: hasForecastData,
+    refetch: refetchForecast,
+  } = useCashFlowForecast(householdId, CASH_FLOW_TIMELINE_HORIZON_DAYS)
+  const { alerts, isLoading: isAlertsLoading } = useFinancialAlerts(householdId)
+  const {
+    goals,
+    isLoading: isGoalsLoading,
+    hasData: hasGoalsData,
+    refetch: refetchGoals,
+  } = useSavingsGoals(householdId)
+  const { balances } = useAccountBalances(householdId)
 
   const periodStart = getCurrentMonthPeriodStart()
-  const periodEnd = getPeriodEnd(periodStart)
-  const today = localDateString()
-  const {
-    totalAllocatedAgorot,
-    totalSpentAgorot,
-    isLoading: isBudgetLoading,
-    error: budgetError,
-    hasData: hasBudgetData,
-    refetch: refetchBudget,
-  } = useBudgetProgress(householdId, periodStart)
 
-  // The six-month trend, the category donut and the top-categories list are
-  // not part of the design's Home — but they are also not part of any other
-  // mobile screen, so leaving them out entirely would make them unreachable
-  // on a phone. They sit behind this disclosure instead: closed by default
-  // so the four blocks above keep the screen, open for a household that
-  // came looking. Their queries are gated on it too, so a closed section
-  // costs nothing.
-  // Open by default from tablet width up: the "closed so the four blocks
-  // keep the screen" rationale in the comment above is specifically about
-  // phone real estate, which a tablet already has plenty of. Still a real
-  // toggle either way — a household on a tablet can still collapse it.
-  const [showAnalytics, setShowAnalytics] = useState(isTabletOrWiderWeb)
+  // Analytics, closed by default. See MobileAnalyticsSection's header for
+  // why this is a disclosure rather than a fifth block or a screen of its
+  // own.
+  const [showAnalytics, setShowAnalytics] = useState(false)
 
   // Fail-safe display, the same gate every other screen in this app uses:
   // while the household query is in flight every downstream hook is
@@ -132,14 +111,12 @@ export function MobileHome() {
   }
 
   const greeting = t(`home.greeting.${greetingKey(new Date().getHours())}`, { name: displayName ?? '' })
-  const criticalAlert = alerts.find((alert) => alert.severity === 'critical')
   const alertCount = alerts.filter((alert) => alert.severity !== 'info').length
-  const upcoming = commitments.slice(0, HOME_COMMITMENT_ROWS)
-  const upcomingTotalAgorot = commitments.reduce((sum, commitment) => sum + commitment.amountAgorot, 0)
 
   const hasShortfall = safeToSpend.safeToSpendAgorot < 0
   // Days left in the horizon, inclusive of today — a household spending the
   // "per day" figure every remaining day lands exactly on zero.
+  const today = localDateString()
   const daysLeft = Math.max(1, Math.round((Date.parse(horizon.end) - Date.parse(today)) / 86_400_000) + 1)
   const perDayAgorot = hasShortfall ? 0 : Math.floor(safeToSpend.safeToSpendAgorot / daysLeft)
 
@@ -151,20 +128,6 @@ export function MobileHome() {
   const freePercent = Math.max(0, (Math.max(0, safeToSpend.safeToSpendAgorot) / cash) * 100)
   const obligationsPercent = Math.min(100 - freePercent, (safeToSpend.plannedObligationsAgorot / cash) * 100)
   const recurringPercent = Math.max(0, 100 - freePercent - obligationsPercent)
-
-  const budgetRemaining = remainingAgorot(totalAllocatedAgorot, totalSpentAgorot)
-  // The same classifier the Budget screen and every category row use, so
-  // this block and that screen can never describe one month two ways.
-  const monthState = budgetState({
-    allocatedAgorot: totalAllocatedAgorot,
-    spentAgorot: totalSpentAgorot,
-    periodStart,
-    periodEnd,
-    today,
-  })
-  const monthLabel = new Intl.DateTimeFormat('he-IL', { month: 'long' }).format(
-    new Date(Number(periodStart.slice(0, 4)), Number(periodStart.slice(5, 7)) - 1, 1)
-  )
 
   return (
     <Screen
@@ -209,232 +172,137 @@ export function MobileHome() {
         </View>
       </View>
 
-      {/* 1 — פנוי באמת. Tapping opens the full derivation. */}
-      <HeroPanel
-        onPress={() => router.push('/safe-to-spend')}
-        accessibilityLabel={t('safeToSpendDetail.title')}
-        testID="home-hero"
-      >
-        <View className="flex-row items-center justify-between">
-          <HeroLabel>{t('home.hero.label', { horizon: t('cashFlow.horizon.month') })}</HeroLabel>
-          <View className="flex-row items-center gap-1">
-            <Text className="text-meta font-sansSemibold text-heroAccent-light">{t('home.hero.howWeCalculated')}</Text>
-            <Ionicons name="chevron-back" size={ICON.chip} color={colors.heroAccent.light} />
-          </View>
-        </View>
-
-        {isSafeToSpendLoading ? (
-          <View className="mt-2">
-            <SkeletonList rows={1} />
-          </View>
-        ) : !hasSafeToSpendData ? (
-          <View className="mt-2">
-            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
-          </View>
-        ) : (
-          <>
-            {/* A background refetch failing after a previous success must
-                not blank the hero — `hasSafeToSpendData` already confirmed
-                `safeToSpend` below is real, last-known-good data. Surface
-                the failure as a small non-blocking banner instead. */}
-            {safeToSpendError && (
-              <View className="mt-2">
-                <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
-              </View>
-            )}
-            <View className="mt-1.5">
-              <Money
-                agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
-                size="hero"
-                tone="hero"
-              />
-            </View>
-            <View className="mt-1 flex-row items-center gap-2">
-              <HeroTag>{hasShortfall ? t('home.hero.shortfallTag') : t('home.hero.notBankBalance')}</HeroTag>
-              {!hasShortfall && perDayAgorot > 0 && (
-                <HeroNote>{t('home.hero.perDay', { amount: formatILS(perDayAgorot) })}</HeroNote>
-              )}
-            </View>
-            {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
-
-            {/* The composition bar. Three segments, no legend: the panel's
-                own numbers name them, and a legend on a 4-line hero is more
-                to read than the bar saves. */}
-            {!hasShortfall && safeToSpend.availableCashAgorot > 0 && (
-              <View
-                className="mt-4 h-2.5 flex-row gap-0.5 overflow-hidden rounded-full"
-                accessibilityLabel={t('home.hero.compositionLabel', {
-                  amount: formatILS(safeToSpend.availableCashAgorot),
-                  safe: formatILS(safeToSpend.safeToSpendAgorot),
-                })}
-              >
-                <View style={{ width: `${freePercent}%`, backgroundColor: colors.accent.light }} />
-                <View style={{ width: `${obligationsPercent}%`, backgroundColor: colors.heroBorder.light }} />
-                <View style={{ width: `${recurringPercent}%`, backgroundColor: colors.inkMuted.light }} />
-              </View>
-            )}
-          </>
-        )}
-      </HeroPanel>
-
-      {/* 2 — the one thing that needs dealing with. Rendered only when the
-          engine has a critical alert; there is no "all good" card, because a
-          card that says nothing is happening is still a card competing for
-          the five seconds. */}
-      {criticalAlert && (
+      {/* 1 — פנוי באמת, and 2 — מה יקרה עד אז, in the same hero panel: the
+          number is the conclusion, the timeline is why — one story, not a
+          KPI card followed by a separate chart card. */}
+      <HeroPanel>
         <Pressable
-          onPress={() => router.push(criticalAlert.actionRoute as never)}
+          testID="home-hero"
+          onPress={() => router.push('/safe-to-spend')}
           accessibilityRole="button"
-          className="mt-3"
+          accessibilityLabel={t('safeToSpendDetail.title')}
         >
-          <View className="flex-row items-start gap-3 rounded-card border border-dangerBorder-light bg-surfaceMuted-light p-4 dark:border-dangerBorder-dark dark:bg-surfaceMuted-dark">
-            <View className="h-9 w-9 items-center justify-center rounded-row bg-dangerSurface-light dark:bg-dangerSurface-dark">
-              <Ionicons name="alert-circle" size={ICON.nav} color={isDark ? colors.danger.dark : colors.danger.light} />
+          <HeroLabel>{t('home.hero.label', { horizon: t('cashFlow.horizon.month') })}</HeroLabel>
+
+          {isSafeToSpendLoading ? (
+            <View className="mt-2">
+              <SkeletonList rows={1} />
             </View>
-            <View className="flex-1">
-              <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
-                {criticalAlert.title}
-              </Text>
-              <Text className="mt-0.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                {criticalAlert.description}
-              </Text>
+          ) : !hasSafeToSpendData ? (
+            <View className="mt-2">
+              <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
             </View>
-          </View>
-        </Pressable>
-      )}
-
-      {/* 3 — what comes off the account next — and 4 — the month's budget —
-          pair into one row from tablet width up (see the width-check
-          comment above): two cards this screen already builds, just no
-          longer stacked full-width on a canvas wide enough for both side
-          by side. Below tablet width this is a plain column, same as
-          before — `gap-3` applies to both directions regardless of
-          `flex-row`, so no separate mobile-only spacing class is needed. */}
-      <View className="mt-3 gap-3 web:tablet:flex-row web:tablet:items-start">
-      <View className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark web:tablet:flex-1">
-        <CardHeading
-          trailing={
-            commitments.length > 0 ? (
-              <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                {t('home.next.summary', { count: commitments.length, amount: formatILS(upcomingTotalAgorot) })}
-              </Text>
-            ) : undefined
-          }
-        >
-          {t('home.next.title')}
-        </CardHeading>
-
-        {hasCommitmentsPartialError && (
-          <View className="mt-2">
-            <ErrorMessage message={t('cashFlow.commitments.errors.partial')} onRetry={refetchCommitments} />
-          </View>
-        )}
-
-        {isCommitmentsLoading ? (
-          <View className="mt-2">
-            <SkeletonList rows={2} />
-          </View>
-        ) : upcoming.length === 0 ? (
-          <Text className="mt-3 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
-            {t('home.next.empty')}
-          </Text>
-        ) : (
-          <View className="mt-2">
-            {upcoming.map((commitment) => {
-              const urgency = commitmentUrgency(today, commitment.date)
-              const chipLabel =
-                urgency.labelKey === 'inDays'
-                  ? t('home.next.inDays', { count: urgency.count })
-                  : t(`home.next.${urgency.labelKey}`)
-
-              return (
-                <View key={commitment.id} className="border-t border-divider-light dark:border-divider-dark">
-                  <CommitmentRow
-                    date={commitment.date}
-                    name={commitment.description}
-                    amountAgorot={commitment.amountAgorot}
-                    timeLabel={chipLabel}
-                    tone={urgency.tone}
-                    meta={t(`cashFlow.commitments.source.${commitment.source}`)}
-                  />
-                </View>
-              )
-            })}
-
-            <Pressable
-              onPress={() => router.push('/cash-flow')}
-              accessibilityRole="button"
-              className="flex-row items-center justify-center gap-1.5 border-t border-divider-light pt-3 dark:border-divider-dark"
-            >
-              <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                {t('home.next.viewAll')}
-              </Text>
-              <Ionicons name="chevron-back" size={ICON.chip} color={isDark ? colors.accent.dark : colors.accent.light} />
-            </Pressable>
-          </View>
-        )}
-      </View>
-
-      {/* 4 — the month's budget. */}
-      <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button" className="web:tablet:flex-1">
-        <View className="rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
-          {isBudgetLoading ? (
-            <SkeletonList rows={2} />
-          ) : !hasBudgetData ? (
-            <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchBudget} />
-          ) : totalAllocatedAgorot === 0 ? (
-            <>
-              <CardHeading>{t('home.budget.title', { month: monthLabel })}</CardHeading>
-              <Text className="mt-2 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                {t('home.budget.empty')}
-              </Text>
-            </>
           ) : (
             <>
-              {/* Preserve last-known-good data through a background refetch
-                  failure — see the hero card above for the same pattern. */}
-              {budgetError && (
-                <View className="mb-2">
-                  <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchBudget} />
+              {/* A background refetch failing after a previous success must
+                  not blank the hero — `hasSafeToSpendData` already confirmed
+                  `safeToSpend` below is real, last-known-good data. Surface
+                  the failure as a small non-blocking banner instead. */}
+              {safeToSpendError && (
+                <View className="mt-2">
+                  <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
                 </View>
               )}
-              <CardHeading
-                trailing={
-                  <StatusChip
-                    label={t(BUDGET_STATE_LABEL_KEY[monthState.state])}
-                    tone={BUDGET_STATE_TONE[monthState.state]}
-                    dot
-                  />
-                }
-              >
-                {t('home.budget.title', { month: monthLabel })}
-              </CardHeading>
-              <View className="mt-2 flex-row items-baseline gap-2">
-                <Money agorot={budgetRemaining} size="large" tone={budgetRemaining < 0 ? 'danger' : 'default'} />
-                <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('home.budget.remainingOf', { total: formatILS(totalAllocatedAgorot) })}
-                </Text>
-              </View>
-              <View className="mt-2.5">
-                <BudgetBar
-                  percent={monthState.percentSpent ?? 0}
-                  pacePercent={monthState.pacePercent}
-                  state={monthState.state}
-                  height={9}
-                  accessibilityLabel={`${t(BUDGET_STATE_LABEL_KEY[monthState.state])}, ${monthState.percentSpent ?? 0}%`}
+              <View className="mt-1.5">
+                <Money
+                  agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
+                  size="hero"
+                  tone="hero"
                 />
               </View>
-              {monthState.hasProjection && (
-                <Text className="mt-2 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
-                  {monthState.projectedOverspendAgorot > 0
-                    ? t('home.budget.projectionOver', { amount: formatILS(monthState.projectedOverspendAgorot) })
-                    : t('home.budget.projectionOk')}
-                </Text>
+              <View className="mt-1 flex-row items-center gap-2">
+                <HeroTag>{hasShortfall ? t('home.hero.shortfallTag') : t('home.hero.notBankBalance')}</HeroTag>
+                {!hasShortfall && perDayAgorot > 0 && (
+                  <HeroNote>{t('home.hero.perDay', { amount: formatILS(perDayAgorot) })}</HeroNote>
+                )}
+              </View>
+              {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
+
+              {/* The composition bar. Three segments, no legend: the panel's
+                  own numbers name them, and a legend on a 4-line hero is more
+                  to read than the bar saves. */}
+              {!hasShortfall && safeToSpend.availableCashAgorot > 0 && (
+                <View
+                  className="mt-4 h-2.5 flex-row gap-0.5 overflow-hidden rounded-full"
+                  accessibilityLabel={t('home.hero.compositionLabel', {
+                    amount: formatILS(safeToSpend.availableCashAgorot),
+                    safe: formatILS(safeToSpend.safeToSpendAgorot),
+                  })}
+                >
+                  <View style={{ width: `${freePercent}%`, backgroundColor: colors.accent.light }} />
+                  <View style={{ width: `${obligationsPercent}%`, backgroundColor: colors.heroBorder.light }} />
+                  <View style={{ width: `${recurringPercent}%`, backgroundColor: colors.inkMuted.light }} />
+                </View>
               )}
             </>
           )}
+        </Pressable>
+
+        {/* The timeline: a hairline, not a card boundary, keeps this
+            reading as one panel per the approved design's own §3
+            refinement. */}
+        <View className="mt-2 border-t border-white/[0.07] pt-2">
+          <View className="mb-2 flex-row items-center justify-between">
+            <Text className="text-caption font-heeboBold text-heroInkMuted-light">{t('home.timeline.title')}</Text>
+            {hasForecastData && <FinancialTimelineLowBadge forecast={forecast} />}
+          </View>
+          {isForecastLoading ? (
+            <SkeletonList rows={2} />
+          ) : !hasForecastData ? (
+            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchForecast} />
+          ) : (
+            <FinancialTimelineList
+              forecast={forecast}
+              safeToSpendAgorot={hasSafeToSpendData ? safeToSpend.safeToSpendAgorot : null}
+            />
+          )}
         </View>
-      </Pressable>
+      </HeroPanel>
+
+      {/* 3 — מה דורש תשומת לב. Every real alert, not just the top critical
+          one this screen used to show — same severity-sorted list /alerts
+          renders in full. */}
+      <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark">
+        <View className="flex-row items-center justify-between px-4 pt-3.5">
+          <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark">{t('home.attention.title')}</Text>
+          {alerts.length > 0 && (
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('home.attention.count', { count: alerts.length })}
+            </Text>
+          )}
+        </View>
+        {isAlertsLoading ? (
+          <View className="p-4">
+            <SkeletonList rows={2} />
+          </View>
+        ) : (
+          <AttentionSection alerts={alerts} />
+        )}
+      </View>
+
+      {/* 4 — לאן אנחנו מתקדמים. New to Home. */}
+      <View className="mt-3 rounded-card border border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark">
+        <View className="flex-row items-center justify-between px-4 pt-3.5">
+          <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark">{t('home.goals.title')}</Text>
+          {goals.length > 0 && (
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('home.goals.count', { count: goals.length })}
+            </Text>
+          )}
+        </View>
+        {isGoalsLoading ? (
+          <View className="p-4">
+            <SkeletonList rows={2} />
+          </View>
+        ) : !hasGoalsData ? (
+          <View className="p-4">
+            <ErrorMessage message={t('savings.errors.generic')} onRetry={refetchGoals} />
+          </View>
+        ) : (
+          <View className="pb-1 pt-2">
+            <HomeGoalsSection goals={goals} balances={balances} />
+          </View>
+        )}
       </View>
 
       {/* Analytics, closed by default. See MobileAnalyticsSection's header

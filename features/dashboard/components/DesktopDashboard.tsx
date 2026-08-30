@@ -1,79 +1,64 @@
-// Desktop Claude Design pass. Rebuilt from scratch to match the approved
-// `OurMoney - Desktop.dc.html` Home screen composition: a dark פנוי באמת
-// hero (left column) paired with "מה מגיע" (right column), then a
-// three-panel row (budget pace / needs-attention / recent transactions).
-// The previous composition's own header comment claimed this layout WAS
-// the approved design — it wasn't; the real mockup was never built. Every
-// hook, query, and calculation below is unchanged from before this pass;
-// only what renders and how it's arranged changed.
+// Direction D (design-review artifact, approved across three refinement
+// rounds — this checkpoint is its production implementation for tabletLg
+// (1024) and desktop (1200+; the approved artifact's own "1440" tier —
+// this app's `desktop` Tailwind screen starts at 1200, see
+// tailwind.config.js). One continuous financial story, not a grid of
+// panels:
 //
-// The mockup's monthly-trend/category-donut analytics grid does not appear
-// on this screen at all — it's the Budget screen's own right column there.
-// That section (and the useTransactions/useCategories calls that only fed
-// it) moves with it in the Budget screen's own rebuild, not duplicated here.
+//   1. פנוי באמת hero, and מה יקרה עד אז — the SAME panel's own connected
+//      staircase timeline (FinancialTimelineChart), not a separate "מה
+//      מגיע" card beside it. The hero's own horizon selector (week/month/
+//      30 ימים) and its always-visible waterfall legend are a real,
+//      separately-approved desktop feature predating this checkpoint and
+//      are unchanged — only what used to sit to the hero's *side* moved
+//      *into* it, replacing the old `CommitmentTimeline` + commitment-row
+//      list.
+//   2. מה דורש תשומת לב — every real alert, 3-up from tabletLg.
+//   3. לאן אנחנו מתקדמים — savings-goal progress, new to this screen.
+//
+// No fixed Budget Pace panel and no Recent Transactions panel on Home
+// (explicit product decision, carried from the approved design) — budget
+// stays fully reachable at /budgets, recent activity at /transactions.
+// `CommitmentRow`/`useUpcomingCommitments` are untouched and keep every
+// other existing caller (Cash Flow, Installments, More); only Home stops
+// using the commitments-list card.
 //
 // Renders at >=1024px on web (app/(app)/dashboard/index.tsx picks between
-// this and MobileHome, at TABLET_LG_BREAKPOINT_PX rather than
-// DESKTOP_BREAKPOINT_PX — see that file's own comment).
-//
-// Checkpoint 4 (Home + Transactions recompose): two changes, both scoped to
-// this screen. (1) Every class below moved from `web:desktop:` to
-// `web:tabletLg:` — this is the SAME composition from 1024 up, not a
-// separate tablet design; the only place tabletLg and desktop genuinely
-// differ is the two explicitly `web:desktop:`-scoped rules noted at each
-// row below (the hero/מה מגיע row becoming a real row instead of a stack,
-// and row 2's 3-way split). (2) Row 1's hero/מה מגיע split moved from a
-// fixed 440px/flex-1 pairing (SYSTEM.md §5's own finding: the hero had a
-// large empty region right of its figure, and מה מגיע filled its column
-// edge-to-edge with no relationship between the two) to a deliberate 7/5
-// flex ratio, and row 2 reordered to needsAttention -> budgetPace -> recent
-// (rightmost/first-read in RTL) to match the user's own stated priority
-// order (position/spend -> needs attention soon -> budget tracking ->
-// recent activity) — budgetPace keeps the widest column because its
-// category list is the most content-dense of the three, but reading order
-// now ranks it below needsAttention, which the previous DOM order (budget
-// first) did not.
+// this and MobileHome, at TABLET_LG_BREAKPOINT_PX — see that file's own
+// comment). `web:tabletLg:` classes are this composition's tabletLg (1024)
+// treatment; `web:desktop:` overrides are desktop (1200+) only.
 
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
-import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
-import { useTransactions } from '@/features/transactions/hooks/useTransactions'
-import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
+import { useCashFlowForecast } from '@/features/cashflow/hooks/useCashFlowForecast'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
-import { severityIconName, severityColorToken } from '@/features/alerts/lib/alertDisplay'
-import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
-import { daysUntilDue } from '@/features/obligations/lib/upcomingObligations'
+import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
+import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
-import { budgetState, BUDGET_STATE_LABEL_KEY, BUDGET_STATE_TONE } from '@/features/budgets/lib/budgetState'
-import { usePeriodStore } from '@/store/periodStore'
-import { getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
-import { formatDateDisplay } from '@/lib/dates/format'
-import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { FinancialTimelineChart, FinancialTimelineLowBadge, type FinancialTimelineChartVariant } from '@/features/dashboard/components/FinancialTimeline'
+import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
+import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
+import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
 import { Screen } from '@/components/ui/Screen'
 import { FAB } from '@/components/ui/FAB'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { HeroPanel, HeroLabel, HeroNote, HeroTag, HeroLegendRow } from '@/components/ui/HeroPanel'
 import { Money } from '@/components/ui/Money'
-import { BudgetBar } from '@/components/ui/BudgetBar'
-import { StatusChip } from '@/components/ui/StatusChip'
-import { CommitmentRow } from '@/components/ui/CommitmentRow'
-import { CommitmentTimeline } from '@/components/ui/CommitmentTimeline'
-import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
-import { CountdownRing } from '@/components/ui/CountdownRing'
 import { colors } from '@/constants/colors'
-import { ICON } from '@/constants/icons'
-import { RESPONSIVE_PANEL_CLASS } from '@/constants/layout'
+import { RESPONSIVE_PANEL_CLASS, DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
+
+const CASH_FLOW_TIMELINE_HORIZON_DAYS = 30
 
 const HORIZON_ORDER: HorizonKind[] = ['week', 'month', 'days30']
 const HORIZON_PILL_KEY: Record<HorizonKind, string> = {
@@ -82,47 +67,22 @@ const HORIZON_PILL_KEY: Record<HorizonKind, string> = {
   days30: 'dashboard.hero.horizonDays30',
 }
 
-// Real MVP-2 dashboard, replacing the M1 placeholder. Every figure here is
-// either a direct query result or derived via lib/money — never a bare `0`
-// on a pending/failed query (fail-safe display principle, M6 plan §6).
 export function DesktopDashboard() {
   const { t } = useTranslation()
   const router = useRouter()
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
-  const {
-    categories: progress,
-    totalAllocatedAgorot,
-    totalSpentAgorot,
-    isLoading: isProgressLoading,
-    error: progressError,
-    hasData: hasProgressData,
-    refetch: refetchProgress,
-  } = useBudgetProgress(householdId, periodStart)
-  const {
-    transactions,
-    isLoading: isTransactionsLoading,
-    error: transactionsError,
-    hasData: hasTransactionsData,
-    refetch: refetchTransactions,
-  } = useTransactions(householdId, {
-    periodStart,
-  })
-  const { categories: allCategories } = useCategories(householdId)
-  const categoryNameById = Object.fromEntries(allCategories.map((c) => [c.id, c.name_he]))
-  const categoryIconById = Object.fromEntries(allCategories.map((c) => [c.id, c.icon]))
-
-  // Migration 008 (ADR-035): a transfer's two legs share one description and
-  // would otherwise render here as two separate, mis-colored rows — excluded
-  // here the same way filterForAnalytics excludes them from every other
-  // summary on this screen.
-  const recentTransactions = transactions.filter((t) => t.transfer_id === null).slice(0, 5)
+  const { colorScheme: scheme } = useColorScheme()
+  const isDark = scheme === 'dark'
+  // 1024 (tabletLg) and 1200+ (desktop, this app's own `web:desktop:`
+  // breakpoint — the approved artifact's "1440" tier) get their own chart
+  // plot sizing, not one chart scaled to fit — round-3 refinement's own
+  // explicit "1440 no longer carries more height than it needs" finding.
+  const { width } = useWindowDimensions()
+  const timelineVariant: FinancialTimelineChartVariant = width >= DESKTOP_BREAKPOINT_PX ? 'desktop' : 'tabletLg'
 
   // Matches the mockup's own שבוע/חודש/30 ימים toggle on the hero —
-  // useSafeToSpend already accepts any of the three HorizonKind values (the
-  // Cash Flow/Safe-to-Spend detail screens already use it this way); the
-  // desktop dashboard was the one caller still hard-coding 'month'.
+  // useSafeToSpend already accepts any of the three HorizonKind values.
   const [horizon, setHorizon] = useState<HorizonKind>('month')
   const {
     result: safeToSpend,
@@ -131,35 +91,29 @@ export function DesktopDashboard() {
     hasData: hasSafeToSpendData,
     refetch: refetchSafeToSpend,
   } = useSafeToSpend(householdId, horizon)
+  // The timeline always tells the 30-day story regardless of which hero
+  // horizon pill is selected — same reasoning the approved design gives for
+  // the Safe-to-Spend-matching-point marker needing a stable reference: the
+  // "what happens between today and the answer" story does not reset just
+  // because the headline figure's own window changed.
+  const {
+    result: forecast,
+    isLoading: isForecastLoading,
+    hasData: hasForecastData,
+    refetch: refetchForecast,
+  } = useCashFlowForecast(householdId, CASH_FLOW_TIMELINE_HORIZON_DAYS)
 
   const { alerts, isLoading: isAlertsLoading } = useFinancialAlerts(householdId)
-  const { colorScheme: scheme } = useColorScheme()
-  const topAlerts = isAlertsLoading ? [] : alerts.slice(0, 4)
-
   const {
-    commitments,
-    isLoading: isCommitmentsLoading,
-    hasPartialError: hasCommitmentsPartialError,
-    refetch: refetchCommitments,
-  } = useUpcomingCommitments(householdId)
-  const today = localDateString()
-  const topCommitments = commitments.slice(0, 4)
-  const totalCommitmentsAgorot = commitments.reduce((sum, c) => sum + c.amountAgorot, 0)
-  // The nearest credit-card cycle among the same commitments the panel
-  // above already lists — no second query, just picking the one entry the
-  // hero's footer note and the "מה מגיע" footer widget both want.
-  const nextCardCycle = commitments.find((c) => c.source === 'credit_card_cycle')
-  const nextCardCycleDays = nextCardCycle ? daysUntilDue(nextCardCycle.date, today) : null
+    goals,
+    isLoading: isGoalsLoading,
+    hasData: hasGoalsData,
+    refetch: refetchGoals,
+  } = useSavingsGoals(householdId)
+  const { balances } = useAccountBalances(householdId)
 
-  // A household is shown this specific warning only when it's true of their
-  // own numbers — comparing two already-computed figures (safeToSpend, the
-  // nearest commitment), not a new financial calculation.
-  const nearestCommitmentExceedsSafeToSpend =
-    !isSafeToSpendLoading &&
-    !isCommitmentsLoading &&
-    commitments.length > 0 &&
-    safeToSpend.safeToSpendAgorot >= 0 &&
-    (commitments[0]?.amountAgorot ?? 0) > safeToSpend.safeToSpendAgorot
+  const [showAnalytics, setShowAnalytics] = useState(true)
+  const periodStart = getCurrentMonthPeriodStart()
 
   // Fail-safe display: while useHousehold is still resolving, householdId
   // is null and every downstream hook below is `enabled: false` — without
@@ -173,15 +127,6 @@ export function DesktopDashboard() {
     )
   }
 
-  const periodEnd = getPeriodEnd(periodStart)
-  const pace = budgetState({
-    allocatedAgorot: totalAllocatedAgorot,
-    spentAgorot: totalSpentAgorot,
-    periodStart,
-    periodEnd,
-    today,
-  })
-  const remainingAgorotValue = totalAllocatedAgorot - totalSpentAgorot
   const hasShortfall = safeToSpend.safeToSpendAgorot < 0
 
   return (
@@ -191,486 +136,180 @@ export function DesktopDashboard() {
     >
       {/* The screen title, month stepper, search field and primary action
           that used to sit here are now the shell's DesktopTopBar
-          (components/ui/DesktopTopBar.tsx). The mockup draws them as a 68px
-          white band above the content column, identical on every desktop
-          screen — not as a row inside one screen's body, which is why no
-          other desktop screen used to have them at all. */}
+          (components/ui/DesktopTopBar.tsx). */}
 
-      {/* Row 1 — פנוי באמת hero + מה מגיע. A plain `flex-row` under this
-          app's global RTL direction already places the first JSX child
-          (the hero) on the visual right, which is where the mockup puts it
-          and where the dominant figure belongs in RTL reading order — this
-          codebase's established pattern (ContentRail.tsx, Modal.tsx carry
-          the identical reasoning); `flex-row-reverse` would push it left.
-          Product-quality pass: this row used to force both cards to the same
-          height (items-stretch + each card's own h-full) — correct when
-          מה מגיע has enough upcoming items to fill it, but with only one or
-          two it left a large, visibly empty gap under a short list next to
-          the much taller hero. items-start lets each card size to its own
-          content instead; see the מה מגיע card's own comment for how its
-          existing "card cycle closing" footer note adapts.
-          Checkpoint 4: fixed 440px/flex-1 replaced with a 7/5 flex ratio
-          (SYSTEM.md §5/§7) — the hero grows into its larger share rather
-          than leaving a blank region beside the figure, and מה מגיע no
-          longer fills whatever's left edge-to-edge with no relationship to
-          the hero beside it. Below tabletLg this never mounts (MobileHome
-          does); from tabletLg to just under desktop, the two stack — a
-          440px-fixed hero and a flexed neighbor do not both fit comfortably
-          at touch scale in the ~900-960px this screen has there, so the
-          real row (`web:desktop:flex-row`, 1200+) is the one place this
-          composition is intentionally desktop-only, not tabletLg-scaled. */}
-      <View className="web:tabletLg:gap-5 web:desktop:flex-row web:desktop:items-start">
-        <View className="web:desktop:flex-[7]">
-          <HeroPanel>
-            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
-              <HeroLabel>{t('dashboard.hero.label')}</HeroLabel>
-              <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-1.5">
-                {HORIZON_ORDER.map((value) => (
-                  <Pressable key={value} onPress={() => setHorizon(value)} accessibilityRole="button">
-                    <Text
-                      className={
-                        value === horizon
-                          ? 'text-meta font-sansSemibold text-heroInk-light'
-                          : 'text-meta font-sansMedium text-heroInkMuted-light'
-                      }
-                    >
-                      {t(HORIZON_PILL_KEY[value])}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
+      {/* 1 — פנוי באמת hero, and מה יקרה עד אז in the same panel: the
+          number is the conclusion, the timeline is why. */}
+      <HeroPanel>
+        <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+          <HeroLabel>{t('dashboard.hero.label')}</HeroLabel>
+          <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-1.5">
+            {HORIZON_ORDER.map((value) => (
+              <Pressable key={value} onPress={() => setHorizon(value)} accessibilityRole="button">
+                <Text
+                  className={
+                    value === horizon
+                      ? 'text-meta font-sansSemibold text-heroInk-light'
+                      : 'text-meta font-sansMedium text-heroInkMuted-light'
+                  }
+                >
+                  {t(HORIZON_PILL_KEY[value])}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
 
-            {isSafeToSpendLoading ? (
-              <View className="mt-2">
-                <SkeletonList rows={1} />
-              </View>
-            ) : !hasSafeToSpendData ? (
+        {isSafeToSpendLoading ? (
+          <View className="mt-2">
+            <SkeletonList rows={1} />
+          </View>
+        ) : !hasSafeToSpendData ? (
+          <View className="mt-2">
+            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
+          </View>
+        ) : (
+          <>
+            {/* A background refetch failing after a previous success must
+                not blank the hero — `hasSafeToSpendData` already confirmed
+                the figures below are real, last-known-good data. */}
+            {safeToSpendError && (
               <View className="mt-2">
                 <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
               </View>
-            ) : (
-              <>
-                {/* A background refetch failing after a previous success
-                    must not blank the hero — `hasSafeToSpendData` already
-                    confirmed the figures below are real, last-known-good
-                    data. Surface the failure non-destructively instead. */}
-                {safeToSpendError && (
-                  <View className="mt-2">
-                    <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
-                  </View>
-                )}
-                {/* A negative safe-to-spend is a SHORTFALL, and `Money`
-                    renders magnitudes — so printing the raw figure here made
-                    "-7,600" look identical to "7,600 available", next to a
-                    chip claiming it merely was not the bank balance. The
-                    shortfall is named instead, the same way the mobile hero
-                    already did. */}
-                <View className="mt-2">
-                  <Money
-                    agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
-                    size="heroXl"
-                    tone="hero"
-                  />
-                </View>
-                <View className="web:tabletLg:mt-2.5 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2.5">
-                  <HeroTag>
-                    {hasShortfall ? t('home.hero.shortfallTag') : t('dashboard.hero.notBankBalance')}
-                  </HeroTag>
-                  {!hasShortfall && safeToSpend.safeToSpendAgorot > 0 && (
-                    <HeroNote>
-                      {t('dashboard.hero.perDay', { amount: formatILS(Math.round(safeToSpend.safeToSpendAgorot / 30)) })}
-                    </HeroNote>
-                  )}
-                </View>
-                {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
-
-                <View className="web:tabletLg:mt-5 web:tabletLg:h-9 web:tabletLg:flex-row web:tabletLg:gap-0.5 web:tabletLg:overflow-hidden web:tabletLg:rounded-control">
-                  <View className="web:tabletLg:bg-accent-light dark:web:tabletLg:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
-                  <View className="web:tabletLg:bg-heroBorder-light" style={{ flexGrow: Math.max(1, safeToSpend.plannedObligationsAgorot) }} />
-                  <View className="web:tabletLg:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
-                </View>
-
-                {/* The waterfall legend, in the mockup's own order: the
-                    answer first, then each thing subtracted from the
-                    balance, then the balance itself as the closing total.
-                    Each row carries the colour of the bar segment above it —
-                    without that key the bar is just three grey blocks. */}
-                <View className="web:tabletLg:mt-4 web:tabletLg:gap-2.5">
-                  <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.accent.light} emphasis>
-                    <Money agorot={safeToSpend.safeToSpendAgorot} size="caption" tone="hero" />
-                  </HeroLegendRow>
-                  <HeroLegendRow label={t('cashFlow.plannedObligations')} swatchColor={colors.heroBorder.light}>
-                    <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
-                  </HeroLegendRow>
-                  <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.inkMuted.light}>
-                    <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
-                  </HeroLegendRow>
-                  <View className="web:tabletLg:h-px web:tabletLg:bg-heroBorder-light" />
-                  <HeroLegendRow label={t('cashFlow.availableCash')} emphasis>
-                    <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="hero" />
-                  </HeroLegendRow>
-                </View>
-
-
-                {nearestCommitmentExceedsSafeToSpend && commitments[0] && (
-                  // Same reasoning as the מה מגיע card's own footer note:
-                  // mt-auto pushed to the bottom of a height forced to match
-                  // its sibling; now that the hero sizes to its own content,
-                  // a plain top margin keeps the same visual rhythm.
-                  <Pressable
-                    onPress={() => router.push('/cash-flow')}
-                    accessibilityRole="button"
-                    className="web:tabletLg:mt-4 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2 web:tabletLg:pt-4"
-                  >
-                    <Ionicons name="alert-circle" size={ICON.row} color="#e8a79b" />
-                    <HeroNote className="web:tabletLg:flex-1">
-                      {t('dashboard.hero.overspendWarning', {
-                        date: formatDateDisplay(commitments[0].date),
-                      })}{' '}
-                      <Text className="text-caption font-sansSemibold text-heroAccent-light">{t('dashboard.hero.viewCashFlow')}</Text>
-                    </HeroNote>
-                  </Pressable>
-                )}
-              </>
             )}
-          </HeroPanel>
-        </View>
-
-        <View className="web:desktop:flex-[5]">
-          {/* Content-driven height now (see the row's own comment) — a
-              min-h floor (roughly header + 2 rows) keeps a 1-item state from
-              reading as an accidentally tiny box, without forcing it all the
-              way up to the hero's own height the way h-full did. */}
-          <View className={`web:tabletLg:min-h-[220px] ${RESPONSIVE_PANEL_CLASS}`}>
-            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
-              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
-                {t('dashboard.commitments.title')}
-              </Text>
-              {topCommitments.length > 0 && (
-                <Pressable onPress={() => router.push('/cash-flow')} accessibilityRole="button">
-                  <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                    {t('dashboard.commitments.viewAllShort')}
-                  </Text>
-                </Pressable>
+            <View className="mt-2">
+              <Money
+                agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
+                size="heroXl"
+                tone="hero"
+              />
+            </View>
+            <View className="web:tabletLg:mt-2.5 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2.5">
+              <HeroTag>{hasShortfall ? t('home.hero.shortfallTag') : t('dashboard.hero.notBankBalance')}</HeroTag>
+              {!hasShortfall && safeToSpend.safeToSpendAgorot > 0 && (
+                <HeroNote>
+                  {t('dashboard.hero.perDay', { amount: formatILS(Math.round(safeToSpend.safeToSpendAgorot / 30)) })}
+                </HeroNote>
               )}
             </View>
-            {commitments.length > 0 && (
-              <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                {t('dashboard.commitments.countAndTotal', { count: commitments.length, amount: formatILS(totalCommitmentsAgorot) })}
-              </Text>
-            )}
+            {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
 
-            {hasCommitmentsPartialError && (
-              <View className="mt-2">
-                <ErrorMessage message={t('cashFlow.commitments.errors.partial')} onRetry={refetchCommitments} />
-              </View>
-            )}
+            <View className="web:tabletLg:mt-5 web:tabletLg:h-9 web:tabletLg:flex-row web:tabletLg:gap-0.5 web:tabletLg:overflow-hidden web:tabletLg:rounded-control">
+              <View className="web:tabletLg:bg-accent-light dark:web:tabletLg:bg-accent-dark" style={{ flexGrow: Math.max(1, safeToSpend.availableCashAgorot) }} />
+              <View className="web:tabletLg:bg-heroBorder-light" style={{ flexGrow: Math.max(1, safeToSpend.plannedObligationsAgorot) }} />
+              <View className="web:tabletLg:bg-hero-dark" style={{ flexGrow: Math.max(1, safeToSpend.recurringAgorot) }} />
+            </View>
 
-            {isCommitmentsLoading ? (
-              <View className="mt-4">
-                <SkeletonList rows={3} />
-              </View>
-            ) : topCommitments.length === 0 ? (
-              <View className="mt-4">
-                <EmptyState iconName="calendar-outline" message={t('dashboard.commitments.empty')} compact />
-              </View>
-            ) : (
-              <>
-                <CommitmentTimeline
-                  items={topCommitments.map((item) => {
-                    const urgency = commitmentUrgency(today, item.date)
-                    return { id: item.id, date: item.date, daysUntil: urgency.daysUntil, tone: urgency.tone }
-                  })}
-                />
-                <View className="web:tabletLg:mt-5">
-                {topCommitments.map((item, index) => {
-                  // The same urgency banding the mobile Home uses, so one
-                  // charge cannot read as urgent on one platform and routine
-                  // on the other.
-                  const urgency = commitmentUrgency(today, item.date)
-                  const timeLabel =
-                    urgency.labelKey === 'inDays'
-                      ? t('home.next.inDays', { count: urgency.count })
-                      : t(`home.next.${urgency.labelKey}`)
-                  return (
-                    <View
-                      key={item.id}
-                      className={index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : ''}
-                    >
-                      <CommitmentRow
-                        date={item.date}
-                        name={item.description}
-                        amountAgorot={item.amountAgorot}
-                        timeLabel={timeLabel}
-                        tone={urgency.tone}
-                        meta={t(`cashFlow.commitments.source.${item.source}`)}
-                        onPress={() =>
-                          item.source === 'obligation'
-                            ? router.push(`/obligations/${item.sourceId}`)
-                            : item.source === 'recurring'
-                              ? router.push(`/recurring/${item.sourceId}`)
-                              : item.source === 'installment'
-                                ? router.push(`/installments/${item.sourceId}`)
-                                : router.push(`/accounts/${item.sourceId}`)
-                        }
-                      />
-                    </View>
-                  )
-                })}
-                </View>
-              </>
-            )}
+            {/* The waterfall legend, in the mockup's own order: the answer
+                first, then each thing subtracted from the balance, then
+                the balance itself as the closing total. */}
+            <View className="web:tabletLg:mt-4 web:tabletLg:gap-2.5">
+              <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.accent.light} emphasis>
+                <Money agorot={safeToSpend.safeToSpendAgorot} size="caption" tone="hero" />
+              </HeroLegendRow>
+              <HeroLegendRow label={t('cashFlow.plannedObligations')} swatchColor={colors.heroBorder.light}>
+                <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
+              </HeroLegendRow>
+              <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.inkMuted.light}>
+                <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
+              </HeroLegendRow>
+              <View className="web:tabletLg:h-px web:tabletLg:bg-heroBorder-light" />
+              <HeroLegendRow label={t('cashFlow.availableCash')} emphasis>
+                <Money agorot={safeToSpend.availableCashAgorot} size="caption" tone="hero" />
+              </HeroLegendRow>
+            </View>
+          </>
+        )}
 
-            {nextCardCycle && nextCardCycleDays !== null && (
-              // mt-auto only had a floor to push against back when this card
-              // was force-stretched to the hero's height — now that height is
-              // content-driven, a plain top margin keeps the same rhythm as
-              // every other section break on this card.
-              <View className="web:tabletLg:mt-5 web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-3 web:tabletLg:border-t web:tabletLg:border-border-light web:tabletLg:pt-4 dark:web:tabletLg:border-border-dark">
-                <CountdownRing percentElapsed={100 - Math.max(0, Math.min(100, (nextCardCycleDays / 30) * 100))} daysLeft={nextCardCycleDays} />
-                <Text className="web:tabletLg:flex-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('dashboard.commitments.cardCycleClosing', {
-                    name: nextCardCycle.description,
-                    date: formatDateDisplay(nextCardCycle.date),
-                    amount: formatILS(nextCardCycle.amountAgorot),
-                  })}
-                </Text>
-              </View>
-            )}
+        {/* מה יקרה עד אז — a hairline, not a card boundary, keeps this
+            reading as one panel per the approved design's own §3
+            refinement. Tablet (1024) gets its own plot sizing, not a
+            scaled-down desktop chart — that is exactly what `variant`
+            below selects. */}
+        <View className="web:tabletLg:mt-5 web:tabletLg:border-t web:tabletLg:border-white/[0.07] web:tabletLg:pt-4">
+          <View className="mb-3 web:tabletLg:flex-row web:tabletLg:items-baseline web:tabletLg:justify-between">
+            <Text className="text-caption font-heeboBold text-heroInkMuted-light">{t('home.timeline.title')}</Text>
+            {hasForecastData && <FinancialTimelineLowBadge forecast={forecast} />}
           </View>
+          {isForecastLoading ? (
+            <SkeletonList rows={3} />
+          ) : !hasForecastData ? (
+            <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchForecast} />
+          ) : (
+            <FinancialTimelineChart
+              forecast={forecast}
+              safeToSpendAgorot={hasSafeToSpendData ? safeToSpend.safeToSpendAgorot : null}
+              variant={timelineVariant}
+            />
+          )}
+        </View>
+      </HeroPanel>
+
+      {/* 2 — מה דורש תשומת לב, 3-up from tabletLg. */}
+      <View className={`web:tabletLg:mt-5 ${RESPONSIVE_PANEL_CLASS}`}>
+        <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+          <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
+            {t('home.attention.title')}
+          </Text>
+          {alerts.length > 0 && (
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('home.attention.count', { count: alerts.length })}
+            </Text>
+          )}
+        </View>
+        <View className="web:tabletLg:mt-3.5">
+          {isAlertsLoading ? <SkeletonList rows={3} /> : <AttentionSection alerts={alerts} />}
         </View>
       </View>
 
-      {/* Row 2 — דורש טיפול (DOM-first/rightmost — needs the user's own
-          priority order: position/spend above, this next) · קצב תקציב ·
-          תנועות אחרונות. Checkpoint 4: reordered from [budgetPace,
-          needsAttention, recent] — budgetPace still gets the widest column
-          (flex-1, below) since its category list is the most content-dense
-          of the three, but reading order now puts needsAttention first,
-          matching "what needs my attention soon" ranking above "how am I
-          tracking against budget" in the brief's own priority list. Stacks
-          at tabletLg (a 3-way split doesn't have room at ~900-960px); the
-          real 3-across row is desktop-only, same reasoning as row 1. */}
-      <View className="web:tabletLg:mt-5 web:tabletLg:gap-5 web:desktop:flex-row web:desktop:items-stretch">
-        <View className="web:tabletLg:w-full web:desktop:w-[300px] web:desktop:flex-none">
-          <View className={`web:tabletLg:h-full ${RESPONSIVE_PANEL_CLASS}`}>
-            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
-              <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
-                {t('dashboard.needsAttention.title')}
-              </Text>
-              <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button">
-                <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                  {t('alerts.viewAll')}
-                </Text>
-              </Pressable>
-            </View>
-            {isAlertsLoading ? (
-              <View className="web:tabletLg:mt-3.5">
-                <SkeletonList rows={3} />
-              </View>
-            ) : topAlerts.length === 0 ? (
-              <View className="web:tabletLg:mt-3.5">
-                <EmptyState icon="✅" message={t('alerts.empty')} compact />
-              </View>
-            ) : (
-              <View className="web:tabletLg:mt-3.5 web:tabletLg:gap-2.5">
-                {topAlerts.map((alert) => (
-                  <Pressable
-                    key={alert.id}
-                    onPress={() => router.push(alert.actionRoute)}
-                    accessibilityRole="button"
-                    className={`web:tabletLg:flex-row web:tabletLg:gap-2.5 web:tabletLg:rounded-row web:tabletLg:border-e-[3px] web:tabletLg:bg-surface-light web:tabletLg:p-3.5 dark:web:tabletLg:bg-surface-dark ${
-                      alert.severity === 'critical'
-                        ? 'web:tabletLg:border-danger-light dark:web:tabletLg:border-danger-dark'
-                        : alert.severity === 'warning'
-                          ? 'web:tabletLg:border-warning-light dark:web:tabletLg:border-warning-dark'
-                          : 'web:tabletLg:border-border-light dark:web:tabletLg:border-border-dark'
-                    }`}
-                  >
-                    <Ionicons
-                      name={severityIconName(alert.severity)}
-                      size={ICON.row}
-                      color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
-                    />
-                    <View className="web:tabletLg:flex-1">
-                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                        {alert.title}
-                      </Text>
-                      <Text className="web:tabletLg:mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={2}>
-                        {alert.description}
-                      </Text>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
+      {/* 3 — לאן אנחנו מתקדמים. New to this screen. */}
+      <View className={`web:tabletLg:mt-5 ${RESPONSIVE_PANEL_CLASS}`}>
+        <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
+          <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
+            {t('home.goals.title')}
+          </Text>
+          {goals.length > 0 && (
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('home.goals.count', { count: goals.length })}
+            </Text>
+          )}
         </View>
-
-        <View className="web:tabletLg:flex-1">
-          <View className={`web:tabletLg:h-full ${RESPONSIVE_PANEL_CLASS}`}>
-            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
-              <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
-                {t('dashboard.budgetPace.title')}
-              </Text>
-              <Pressable onPress={() => router.push('/budgets')} accessibilityRole="button">
-                <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                  {t('dashboard.budgetPace.viewAll')}
-                </Text>
-              </Pressable>
-            </View>
-
-            {isProgressLoading ? (
-              <View className="mt-3">
-                <SkeletonList rows={3} />
-              </View>
-            ) : !hasProgressData ? (
-              <View className="mt-3">
-                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
-              </View>
-            ) : progress.length === 0 ? (
-              <View className="mt-3">
-                <EmptyState iconName="pie-chart-outline" message={t('dashboard.noBudgetHero')} compact />
-              </View>
-            ) : (
-              <>
-                {progressError && (
-                  <View className="mt-3">
-                    <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchProgress} />
-                  </View>
-                )}
-                <View className="web:tabletLg:mt-3 web:tabletLg:flex-row web:tabletLg:items-baseline web:tabletLg:gap-2.5">
-                  <Money agorot={remainingAgorotValue} size="large" tone={remainingAgorotValue < 0 ? 'danger' : 'default'} />
-                  <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {t('dashboard.budgetPace.outOf', { amount: formatILS(totalAllocatedAgorot) })}
-                  </Text>
-                </View>
-                {pace.percentSpent !== null && (
-                  <View className="web:tabletLg:mt-2.5">
-                    <BudgetBar
-                      percent={pace.percentSpent}
-                      pacePercent={pace.pacePercent}
-                      state={pace.state}
-                      height={9}
-                      accessibilityLabel={t('dashboard.budgetPace.title')}
-                    />
-                  </View>
-                )}
-                {pace.hasProjection && pace.state !== 'healthy' && (
-                  <Text className="web:tabletLg:mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {t('dashboard.budgetPace.projection', { amount: formatILS(pace.projectedOverspendAgorot) })}
-                  </Text>
-                )}
-
-                <View className="web:tabletLg:mt-5 web:tabletLg:gap-3.5">
-                  {progress.slice(0, 4).map((category) => {
-                    const catState = budgetState({
-                      allocatedAgorot: category.allocatedAgorot,
-                      spentAgorot: category.spentAgorot,
-                      periodStart,
-                      periodEnd,
-                      today,
-                    })
-                    return (
-                      <View key={category.categoryId}>
-                        <View className="web:tabletLg:flex-row web:tabletLg:items-baseline web:tabletLg:justify-between">
-                          <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2">
-                            <CategoryIcon icon={category.categoryIcon} size="sm" />
-                            <Text className="text-body font-sansMedium text-ink-light dark:text-ink-dark">
-                              {category.categoryNameHe}
-                            </Text>
-                            {catState.percentSpent !== null && catState.state !== 'healthy' && (
-                              <StatusChip label={t(BUDGET_STATE_LABEL_KEY[catState.state])} tone={BUDGET_STATE_TONE[catState.state]} />
-                            )}
-                          </View>
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                          </Text>
-                        </View>
-                        {catState.percentSpent !== null && (
-                          <View className="web:tabletLg:mt-1.5">
-                            <BudgetBar
-                              percent={catState.percentSpent}
-                              pacePercent={catState.pacePercent}
-                              state={catState.state}
-                              accessibilityLabel={category.categoryNameHe}
-                            />
-                          </View>
-                        )}
-                      </View>
-                    )
-                  })}
-                </View>
-              </>
-            )}
-          </View>
+        <View className="web:tabletLg:mt-3.5">
+          {isGoalsLoading ? (
+            <SkeletonList rows={3} />
+          ) : !hasGoalsData ? (
+            <ErrorMessage message={t('savings.errors.generic')} onRetry={refetchGoals} />
+          ) : (
+            <HomeGoalsSection goals={goals} balances={balances} />
+          )}
         </View>
+      </View>
 
-        <View className="web:tabletLg:w-full web:desktop:w-[280px] web:desktop:flex-none">
-          <View className={`web:tabletLg:h-full ${RESPONSIVE_PANEL_CLASS}`}>
-            <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
-              <Text className="text-meta font-sansSemibold tracking-[0.08em] text-inkMuted-light dark:text-inkMuted-dark">
-                {t('dashboard.recentTitle')}
-              </Text>
-              {recentTransactions.length > 0 && (
-                <Pressable onPress={() => router.push('/transactions')} accessibilityRole="button">
-                  <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">
-                    {/* Second visual pass: this read "כל ההתראות" (all
-                        ALERTS) on a recent-transactions card's own "view
-                        all" link — a copy-paste leftover from the alerts
-                        card right above it. dashboard.viewAll ("כל
-                        התנועות") already existed as a sibling key, unused. */}
-                    {t('dashboard.viewAll')}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-            {isTransactionsLoading ? (
-              <View className="web:tabletLg:mt-3.5">
-                <SkeletonList rows={3} />
-              </View>
-            ) : !hasTransactionsData ? (
-              <View className="web:tabletLg:mt-3.5">
-                <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
-              </View>
-            ) : recentTransactions.length === 0 ? (
-              <View className="web:tabletLg:mt-3.5">
-                <EmptyState iconName="receipt-outline" message={t('dashboard.noTransactions')} compact />
-              </View>
-            ) : (
-              <View className="web:tabletLg:mt-3.5 web:tabletLg:gap-3">
-                {transactionsError && (
-                  <ErrorMessage message={t('dashboard.errors.generic')} onRetry={refetchTransactions} />
-                )}
-                {recentTransactions.map((txn) => {
-                  const categoryName = txn.category_id ? categoryNameById[txn.category_id] : undefined
-                  return (
-                    <Pressable
-                      key={txn.id}
-                      onPress={() => router.push(`/transactions/${txn.id}`)}
-                      accessibilityRole="button"
-                      className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-2.5"
-                    >
-                      <CategoryIcon icon={txn.category_id ? categoryIconById[txn.category_id] : undefined} size="sm" />
-                      <View className="web:tabletLg:flex-1">
-                        <Text className="text-body font-sansMedium text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                          {txn.description}
-                        </Text>
-                        {categoryName && (
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
-                            {categoryName}
-                          </Text>
-                        )}
-                      </View>
-                      <Money agorot={txn.amount_agorot} size="caption" tone={txn.amount_agorot > 0 ? 'positive' : 'default'} />
-                    </Pressable>
-                  )
-                })}
-              </View>
-            )}
+      {/* Analytics — open by default on tabletLg+ (real estate this screen
+          already has plenty of), same underlying data/component MobileHome
+          uses behind its own closed-by-default disclosure. */}
+      <View className={`web:tabletLg:mt-5 ${RESPONSIVE_PANEL_CLASS}`}>
+        <Pressable
+          onPress={() => setShowAnalytics((open) => !open)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showAnalytics }}
+          className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between"
+        >
+          <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">
+            {t('home.analytics.toggle')}
+          </Text>
+          <Ionicons
+            name={showAnalytics ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={isDark ? colors.inkMuted.dark : colors.inkMuted.light}
+          />
+        </Pressable>
+        {showAnalytics && (
+          <View className="web:tabletLg:mt-4">
+            <MobileAnalyticsSection householdId={householdId} periodStart={periodStart} />
           </View>
-        </View>
+        )}
       </View>
     </Screen>
   )
