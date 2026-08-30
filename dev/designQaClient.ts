@@ -95,7 +95,13 @@ const txn = (o: Record<string, unknown>) => ({
   recurring_id: null,
   installment_plan_id: null,
   installment_index: null,
-  paid_by: USER,
+  // CP8D: the real column (see transactions.payer_id, types/database.ts) —
+  // defaults to the household's own primary user, same as
+  // useCreateTransaction.ts's own real default, and explicitly overridden
+  // below on the handful of rows that are honestly someone else's (Dana's
+  // own salary, one of her own personal purchases) so the Household Lens
+  // has real, non-fabricated attribution to demonstrate.
+  payer_id: USER,
   created_by: USER,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -107,7 +113,7 @@ const txn = (o: Record<string, unknown>) => ({
 
 const TRANSACTIONS = [
   txn({ description: 'שופרסל דיל', merchant: 'שופרסל', amount_agorot: -41_280, txn_date: d(now.getDate() - 1), category_id: 'cat-super' }),
-  txn({ description: 'קפה נמרוד', amount_agorot: -9_600, txn_date: d(now.getDate() - 1), category_id: 'cat-rest', is_shared: false }),
+  txn({ description: 'קפה נמרוד', amount_agorot: -9_600, txn_date: d(now.getDate() - 1), category_id: 'cat-rest', is_shared: false, payer_id: PARTNER }),
   txn({ description: 'פז יעלון', amount_agorot: -28_740, txn_date: d(now.getDate() - 2), category_id: 'cat-car' }),
   // Elapsed instalments, as generate_installment_transactions() would have
   // already materialized them. Without these the forecaster resumes from
@@ -122,7 +128,7 @@ const TRANSACTIONS = [
   txn({ description: 'סינמה סיטי', amount_agorot: -14_000, txn_date: d(now.getDate() - 5), category_id: 'cat-fun' }),
   txn({ description: 'ארומה', amount_agorot: -4_800, txn_date: d(now.getDate() - 6), category_id: 'cat-rest' }),
   txn({ description: 'משכורת נועם', amount_agorot: 1_284_000, txn_date: d(1), category_id: 'cat-salary', account_id: 'acc-bank' }),
-  txn({ description: 'משכורת דנה', amount_agorot: 1_395_000, txn_date: d(1), category_id: 'cat-salary', account_id: 'acc-bank' }),
+  txn({ description: 'משכורת דנה', amount_agorot: 1_395_000, txn_date: d(1), category_id: 'cat-salary', account_id: 'acc-bank', payer_id: PARTNER }),
   txn({ description: 'שכר דירה', amount_agorot: -620_000, txn_date: d(2), category_id: 'cat-home', account_id: 'acc-bank' }),
   txn({ description: 'ויקטורי', amount_agorot: -18_900, txn_date: d(8), category_id: 'cat-super' }),
   txn({ description: 'תדלוק סונול', amount_agorot: -24_000, txn_date: d(9), category_id: 'cat-car' }),

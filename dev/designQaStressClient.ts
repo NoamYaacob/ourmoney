@@ -125,7 +125,13 @@ const txn = (o: Record<string, unknown>) => ({
   recurring_id: null,
   installment_plan_id: null,
   installment_index: null,
-  paid_by: USER,
+  // CP8D: the real column (see transactions.payer_id, types/database.ts).
+  // Defaults to the household's own primary user; the 130-row generator
+  // below overrides it deterministically (no Math.random, same discipline
+  // as the rest of this generator) for honest, real Household Lens
+  // attribution variety — never a fabricated value, and no financial
+  // figure changes.
+  payer_id: USER,
   created_by: USER,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -162,13 +168,14 @@ for (let i = 0; i < 130; i++) {
       category_id: catId,
       account_id: accountId,
       is_shared: i % 3 !== 0,
+      payer_id: i % 4 === 0 ? PARTNER : USER,
     })
   )
 }
 // Monthly salary rows for the last 4 months, two earners.
 for (let m = 0; m < 4; m++) {
   TRANSACTIONS.push(txn({ description: 'משכורת נועם', amount_agorot: 1_284_000, txn_date: d(1, -m), category_id: 'cat-salary', account_id: 'acc-bank-main' }))
-  TRANSACTIONS.push(txn({ description: 'משכורת דנה', amount_agorot: 1_395_000, txn_date: d(1, -m), category_id: 'cat-salary', account_id: 'acc-bank-joint' }))
+  TRANSACTIONS.push(txn({ description: 'משכורת דנה', amount_agorot: 1_395_000, txn_date: d(1, -m), category_id: 'cat-salary', account_id: 'acc-bank-joint', payer_id: PARTNER }))
 }
 
 // Checkpoint 6 visual-review follow-up: real recurring-charge history for

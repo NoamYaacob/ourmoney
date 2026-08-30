@@ -30,6 +30,15 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+// Single-member by default — the Household Lens control renders nothing,
+// matching every existing test's own baseline. The dedicated Household
+// Lens describe block below overrides this with a real second member.
+let mockMembers: { userId: string; role: 'owner' | 'member'; joinedAt: string; displayName: string; avatarUrl: string | null }[] = [
+  { userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null },
+]
+jest.mock('@/features/household/hooks/useHouseholdMembers', () => ({
+  useHouseholdMembers: () => ({ members: mockMembers, isLoading: false, error: null }),
+}))
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [{ id: 'acc-1', name: 'עו״ש לאומי' }], isLoading: false }),
 }))
@@ -70,6 +79,7 @@ function txn(overrides: Partial<Transaction> & { id: string; txn_date: string; a
     installment_plan_id: null,
     installment_index: null,
     paid_by: null,
+    payer_id: null,
     created_by: null,
     created_at: '2026-08-22T00:00:00Z',
     updated_at: '2026-08-22T00:00:00Z',
@@ -95,6 +105,7 @@ beforeEach(() => {
     txn({ id: 'קפה נמרוד', txn_date: '2026-08-21', amount_agorot: -96_00, is_shared: false }),
     txn({ id: 'פז יעלון', txn_date: '2026-08-20', amount_agorot: -287_40 }),
   ]
+  mockMembers = [{ userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null }]
 })
 
 describe('MobileTransactions — the feed', () => {
@@ -258,6 +269,38 @@ describe('MobileTransactions — bulk categorization / selection mode', () => {
     await fireEvent.press(getByTestId('uncategorized-strip'))
 
     expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
+  })
+})
+
+describe('MobileTransactions — Household Lens (CP8D)', () => {
+  it('does not render the lens control for a single-member household', async () => {
+    const { queryByText } = await render(<MobileTransactions />)
+    expect(queryByText(i18n.t('household.lens.shared'))).toBeNull()
+  })
+
+  it('renders שלנו/שלי/שלך for a real two-member household, and every row stays visible and reachable under any lens', async () => {
+    mockMembers = [
+      { userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null },
+      { userId: 'user-2', role: 'member', joinedAt: '2026-01-01', displayName: 'דנה לוי', avatarUrl: null },
+    ]
+    mockTransactions = [
+      txn({ id: 'שופרסל דיל', txn_date: '2026-08-21', amount_agorot: -412_80, payer_id: 'user-1' }),
+      txn({ id: 'קפה נמרוד', txn_date: '2026-08-21', amount_agorot: -96_00, payer_id: 'user-2' }),
+      txn({ id: 'פז יעלון', txn_date: '2026-08-20', amount_agorot: -287_40, payer_id: null }),
+    ]
+    const { getByText } = await render(<MobileTransactions />)
+
+    expect(getByText(i18n.t('household.lens.shared'))).toBeTruthy()
+    await fireEvent.press(getByText(i18n.t('household.lens.me')))
+
+    // Nothing disappears — the partner's own row and the unattributed row
+    // both remain present, real, and tappable under שלי.
+    expect(getByText('שופרסל דיל')).toBeTruthy()
+    expect(getByText('קפה נמרוד')).toBeTruthy()
+    expect(getByText('פז יעלון')).toBeTruthy()
+
+    await fireEvent.press(getByText('קפה נמרוד'))
+    expect(mockPush).toHaveBeenCalledWith('/transactions/קפה נמרוד')
   })
 })
 

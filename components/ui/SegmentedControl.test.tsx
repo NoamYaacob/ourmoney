@@ -27,4 +27,24 @@ describe('SegmentedControl', () => {
     const container = getByLabelText('type')
     expect(container.props.className as string).toContain('web:flex-row')
   })
+
+  // CP8D fix: role="radio"'s own correct ARIA state is `checked`
+  // (aria-checked), not `selected` — the two were never a valid pair, so no
+  // screen reader ever heard which segment was actually selected.
+  it('exposes the selected segment via accessibilityState.checked, the correct state for accessibilityRole="radio"', async () => {
+    const { getByLabelText } = await render(
+      <SegmentedControl
+        options={[
+          { value: 'expense', label: 'הוצאה' },
+          { value: 'income', label: 'הכנסה' },
+        ]}
+        value="income"
+        onChange={jest.fn()}
+        accessibilityLabel="type"
+      />,
+    )
+
+    expect(getByLabelText('הכנסה').props.accessibilityState.checked).toBe(true)
+    expect(getByLabelText('הוצאה').props.accessibilityState.checked).toBe(false)
+  })
 })

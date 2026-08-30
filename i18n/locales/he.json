@@ -1219,6 +1219,12 @@
       "alreadyInHousehold": "אתם כבר חברים במשק בית אחר",
       "inviteFailed": "שליחת ההזמנה נכשלה. נסו שוב",
       "bug": "משהו השתבש. נסו שוב"
+    },
+    "lens": {
+      "controlLabel": "תצוגת משק הבית",
+      "shared": "שלנו",
+      "me": "שלי",
+      "partner": "שלך"
     }
   },
   "settings": {

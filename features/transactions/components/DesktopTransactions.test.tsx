@@ -37,6 +37,15 @@ jest.mock('@/features/auth/hooks/useAuth', () => ({
 jest.mock('@/features/household/hooks/useHousehold', () => ({
   useHousehold: () => ({ householdId: 'household-1', isLoading: false }),
 }))
+// Single-member by default — the Household Lens control renders nothing,
+// matching every existing test's own baseline. The dedicated Household
+// Lens describe block below overrides this with a real second member.
+let mockMembers: { userId: string; role: 'owner' | 'member'; joinedAt: string; displayName: string; avatarUrl: string | null }[] = [
+  { userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null },
+]
+jest.mock('@/features/household/hooks/useHouseholdMembers', () => ({
+  useHouseholdMembers: () => ({ members: mockMembers, isLoading: false, error: null }),
+}))
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [{ id: 'acct-1', name: 'עו״ש' }] }),
 }))
@@ -958,5 +967,47 @@ describe('Transactions list', () => {
       await fireEvent.press(getByText('ניהול הכללים ←'))
       expect(mockPush).toHaveBeenCalledWith('/settings/categories')
     })
+  })
+})
+
+describe('Transactions — Household Lens (CP8D)', () => {
+  beforeEach(() => {
+    mockSearchParams = {}
+    mockPush.mockClear()
+  })
+
+  it('does not render the lens control for a single-member household', async () => {
+    mockUseTransactions.mockReturnValue({ transactions: [], isLoading: false, error: null, hasData: true })
+    const { queryByText } = await render(<Transactions />)
+    expect(queryByText('שלנו')).toBeNull()
+  })
+
+  it('renders שלנו/שלי/שלך for a real two-member household, and every row stays visible and reachable under any lens', async () => {
+    mockMembers = [
+      { userId: 'user-1', role: 'owner', joinedAt: '2026-01-01', displayName: 'נועם לוי', avatarUrl: null },
+      { userId: 'user-2', role: 'member', joinedAt: '2026-01-01', displayName: 'דנה לוי', avatarUrl: null },
+    ]
+    mockUseTransactions.mockReturnValue({
+      transactions: [
+        { id: 'txn-1', category_id: 'cat-1', description: 'משכורת', amount_agorot: 500000, txn_date: '2026-08-01', is_shared: true, is_excluded: false, transfer_id: null, payer_id: 'user-1' },
+        { id: 'txn-2', category_id: 'cat-1', description: 'קפה נמרוד', amount_agorot: -9600, txn_date: '2026-08-02', is_shared: false, is_excluded: false, transfer_id: null, payer_id: 'user-2' },
+        { id: 'txn-3', category_id: 'cat-1', description: 'שופרסל', amount_agorot: -41280, txn_date: '2026-08-03', is_shared: true, is_excluded: false, transfer_id: null, payer_id: null },
+      ],
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+
+    const { getByText } = await render(<Transactions />)
+    await fireEvent.press(getByText('שלי'))
+
+    // Nothing disappears — the partner's own row and the unattributed row
+    // both remain present, real, and tappable under שלי.
+    expect(getByText('משכורת')).toBeTruthy()
+    expect(getByText('קפה נמרוד')).toBeTruthy()
+    expect(getByText('שופרסל')).toBeTruthy()
+
+    await fireEvent.press(getByText('קפה נמרוד'))
+    expect(mockPush).toHaveBeenCalledWith('/transactions/txn-2')
   })
 })

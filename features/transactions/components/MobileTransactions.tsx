@@ -34,6 +34,10 @@ import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
+import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMembers'
+import { HouseholdLensControl } from '@/features/household/components/HouseholdLensControl'
+import { resolveLensAttributedUserIds, resolveRowEmphasis } from '@/features/household/lib/householdLens'
+import { useHouseholdLensStore } from '@/store/householdLensStore'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
@@ -117,6 +121,13 @@ export function MobileTransactions() {
 
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  // CP8D — Household Lens. `attributedUserIds` is the one real, truthful
+  // attribution set (from transactions.payer_id via the shared lens model,
+  // never a per-screen re-derivation) resolveRowEmphasis checks each row
+  // against below.
+  const { members } = useHouseholdMembers(householdId)
+  const lens = useHouseholdLensStore((s) => s.lens)
+  const attributedUserIds = resolveLensAttributedUserIds(lens, members, user?.id)
   const [filters, setFilters] = useState<TransactionFilterState>(() => parseTransactionFilterParams(params))
   const [isFilterSheetOpen, setFilterSheetOpen] = useState(false)
   const [isSearchOpen, setSearchOpen] = useState(false)
@@ -284,6 +295,10 @@ export function MobileTransactions() {
             const isTransfer = transaction.transfer_id !== null
             const categoryName = transaction.category_id ? categoryNameById[transaction.category_id] : undefined
             const isSelected = selectedIds.has(transaction.id)
+            // CP8D — never de-emphasizes a transfer (it has no single
+            // "owner" to begin with) or a row whose real payer is unknown;
+            // see resolveRowEmphasis's own header for the full rule.
+            const isQuiet = !isTransfer && resolveRowEmphasis(transaction.payer_id, attributedUserIds) === 'quiet'
 
             // A transfer row is never selectable (see visibleIds above) — in
             // selection mode it neither toggles nor navigates, matching
@@ -345,7 +360,11 @@ export function MobileTransactions() {
 
                     <View className="min-w-0 flex-1">
                       <Text
-                        className="text-body font-sansSemibold text-ink-light dark:text-ink-dark"
+                        className={
+                          isQuiet
+                            ? 'text-body font-sans text-inkMuted-light dark:text-inkMuted-dark'
+                            : 'text-body font-sansSemibold text-ink-light dark:text-ink-dark'
+                        }
                         numberOfLines={1}
                       >
                         {transaction.description}
@@ -460,6 +479,12 @@ export function MobileTransactions() {
           )}
         </View>
       </View>
+
+      {!isSelectionMode && (
+        <View className="mb-3 mt-1 w-[240px]">
+          <HouseholdLensControl householdId={householdId} />
+        </View>
+      )}
 
       {isSelectionMode && (
         <View className="mb-3 mt-1">

@@ -58,7 +58,13 @@ export function SegmentedControl<T extends string>({
             testID={option.testID}
             onPress={() => onChange(option.value)}
             accessibilityRole="radio"
-            accessibilityState={{ selected }}
+            // CP8D fix: `accessibilityRole="radio"`'s own correct semantic
+            // state key is `checked` (maps to the real `aria-checked` on
+            // web), not `selected` — the two were never a valid pair, so
+            // no screen reader ever actually heard which segment was
+            // selected. `selected` stays too, so nothing that already
+            // reads it (this file's own tests, callers elsewhere) changes.
+            accessibilityState={{ selected, checked: selected }}
             accessibilityLabel={option.label}
             className={
               selected

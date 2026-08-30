@@ -44,6 +44,10 @@ import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
+import { useHouseholdMembers } from '@/features/household/hooks/useHouseholdMembers'
+import { HouseholdLensControl } from '@/features/household/components/HouseholdLensControl'
+import { resolveLensAttributedUserIds, resolveRowEmphasis } from '@/features/household/lib/householdLens'
+import { useHouseholdLensStore } from '@/store/householdLensStore'
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
@@ -91,6 +95,10 @@ export function DesktopTransactions() {
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  // CP8D — Household Lens. See MobileTransactions.tsx's identical comment.
+  const { members } = useHouseholdMembers(householdId)
+  const lens = useHouseholdLensStore((s) => s.lens)
+  const attributedUserIds = resolveLensAttributedUserIds(lens, members, user?.id)
   const { accounts } = useAccounts(householdId)
   const { categories } = useCategories(householdId)
   const { rules } = useCategoryRules(householdId)
@@ -463,6 +471,12 @@ export function DesktopTransactions() {
             </View>
           )}
 
+          {!isPageLoading && !error && !isSelectionMode && (
+            <View className="mb-4 w-[240px]">
+              <HouseholdLensControl householdId={householdId} />
+            </View>
+          )}
+
           {isSelectionMode && (
             <View className="mb-4">
               <View className="mb-2 flex-row items-center justify-between web:flex-row">
@@ -657,6 +671,8 @@ export function DesktopTransactions() {
                       const isTransfer = item.transfer_id !== null
                       const categoryName = item.category_id ? categoryNameById[item.category_id] : undefined
                       const isSelected = selectedIds.has(item.id)
+                      // CP8D — see MobileTransactions.tsx's identical comment.
+                      const isQuiet = !isTransfer && resolveRowEmphasis(item.payer_id, attributedUserIds) === 'quiet'
                       const matchedRule = item.matched_rule_id ? categoryRuleById[item.matched_rule_id] : undefined
                       const installmentPlan = item.installment_plan_id ? installmentPlanById[item.installment_plan_id] : undefined
 
@@ -730,7 +746,14 @@ export function DesktopTransactions() {
                             <CategoryIcon icon={item.category_id ? categoryIconById[item.category_id] : undefined} size="sm" />
                           )}
                           <View className="web:tabletLg:flex-1">
-                            <Text className="text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                            <Text
+                              className={
+                                isQuiet
+                                  ? 'text-body text-inkMuted-light dark:text-inkMuted-dark'
+                                  : 'text-body font-medium text-ink-light dark:text-ink-dark'
+                              }
+                              numberOfLines={1}
+                            >
                               {item.description}
                             </Text>
                             <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
