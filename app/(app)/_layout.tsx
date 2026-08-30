@@ -424,6 +424,11 @@ export default function AppLayout() {
               <Tabs.Screen name="installments/[id]" options={{ href: null }} />
               <Tabs.Screen name="connections/index" options={{ href: null }} />
               <Tabs.Screen name="connections/preview" options={{ href: null }} />
+              {/* CP8B's real, production Money Journey component — its own
+                  isolated review route (app/(app)/money-journey/index.tsx's
+                  own header explains why). Not linked from any nav; reachable
+                  only by navigating directly to /money-journey. */}
+              <Tabs.Screen name="money-journey/index" options={{ href: null }} />
               {/* Temporary investigation-only screen — see
                   app/(app)/diagnostics/index.tsx's own header. Not linked
                   from any nav; reachable only by navigating directly to
