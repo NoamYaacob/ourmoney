@@ -198,11 +198,25 @@ describe('Dashboard מה יקרה עד אז (same panel as the hero)', () => {
   })
 
   it('renders a real event and navigates to its own detail screen when opened', async () => {
+    // A real, contiguous dailyPoints series — Money Journey places a step at
+    // its real INDEX into this array (genuine date-proportional geometry),
+    // so a fixture with only the event's own single day would land it at
+    // the same index as the baseline "today" marker and suppress its label
+    // (see MoneyJourney.tsx's own baseline-collision guard) rather than
+    // exercising the real per-event bar this test asserts on.
     mockUseCashFlowForecast.mockReturnValue({
       result: {
         ...EMPTY_FORECAST,
         events: [forecastEvent()],
-        dailyPoints: [{ date: '2026-08-28', balanceAgorot: 315000, inflowsAgorot: 0, outflowsAgorot: 185000 }],
+        dailyPoints: [
+          { date: '2026-08-22', balanceAgorot: 500000, inflowsAgorot: 0, outflowsAgorot: 0 },
+          { date: '2026-08-23', balanceAgorot: 500000, inflowsAgorot: 0, outflowsAgorot: 0 },
+          { date: '2026-08-24', balanceAgorot: 500000, inflowsAgorot: 0, outflowsAgorot: 0 },
+          { date: '2026-08-25', balanceAgorot: 500000, inflowsAgorot: 0, outflowsAgorot: 0 },
+          { date: '2026-08-26', balanceAgorot: 500000, inflowsAgorot: 0, outflowsAgorot: 0 },
+          { date: '2026-08-27', balanceAgorot: 500000, inflowsAgorot: 0, outflowsAgorot: 0 },
+          { date: '2026-08-28', balanceAgorot: 315000, inflowsAgorot: 0, outflowsAgorot: 185000 },
+        ],
         lowestBalanceAgorot: 315000,
         lowestBalanceDate: '2026-08-28',
       },

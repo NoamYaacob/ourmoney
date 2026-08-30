@@ -104,7 +104,6 @@
     "timeline": {
       "title": "מה יקרה עד אז",
       "today": "היום",
-      "availableToday": "הסכום שיש לכם היום",
       "low": "שפל: {{amount}} · {{date}}",
       "lowSuffix": "שפל",
       "date": "{{day}} ב{{month}}",

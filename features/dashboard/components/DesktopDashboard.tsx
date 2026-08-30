@@ -1,20 +1,25 @@
-// Direction D (design-review artifact, approved across three refinement
-// rounds — this checkpoint is its production implementation for tabletLg
-// (1024) and desktop (1200+; the approved artifact's own "1440" tier —
-// this app's `desktop` Tailwind screen starts at 1200, see
+// Living Money Home (CP8C — replaces the Direction D composition's own
+// FinancialTimelineChart with the CP8B Money Journey component, approved and
+// locked in independent production review) for tabletLg (1024) and desktop
+// (1200+; this app's `desktop` Tailwind screen starts at 1200, see
 // tailwind.config.js). One continuous financial story, not a grid of
 // panels:
 //
-//   1. פנוי באמת hero, and מה יקרה עד אז — the SAME panel's own connected
-//      staircase timeline (FinancialTimelineChart), not a separate "מה
-//      מגיע" card beside it. The hero's own horizon selector (week/month/
+//   1. NOW/WHY — פנוי באמת hero with ProtectedFreeBoundary, and WHAT WILL
+//      HAPPEN — the SAME panel's own connected Money Journey
+//      (MoneyJourney's `tabletLg`/`desktop` chart variant), not a separate
+//      card beside it. The hero's own horizon selector (week/month/
 //      30 ימים) and its always-visible waterfall legend are a real,
 //      separately-approved desktop feature predating this checkpoint and
-//      are unchanged — only what used to sit to the hero's *side* moved
-//      *into* it, replacing the old `CommitmentTimeline` + commitment-row
-//      list.
-//   2. מה דורש תשומת לב — every real alert, 3-up from tabletLg.
-//   3. לאן אנחנו מתקדמים — savings-goal progress, new to this screen.
+//      are unchanged.
+//   2. WHAT NEEDS ACTION — מה דורש תשומת לב, every real alert, 3-up from
+//      tabletLg.
+//   3. PROGRESS — לאן אנחנו מתקדמים, savings-goal progress, using only
+//      engine-truthful pace language.
+//
+// Hero, boundary and journey are deliberately ONE HeroPanel — a connected
+// canvas, not three stacked widgets. WHAT CHANGED is intentionally NOT
+// here yet (needs CP8E's persisted state).
 //
 // No fixed Budget Pace panel and no Recent Transactions panel on Home
 // (explicit product decision, carried from the approved design) — budget
@@ -49,7 +54,7 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
 import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
-import { FinancialTimelineChart, FinancialTimelineLowBadge, type FinancialTimelineChartVariant } from '@/features/dashboard/components/FinancialTimeline'
+import { MoneyJourney, MoneyJourneyLowBadge, type MoneyJourneyVariant } from '@/features/cashflow/components/MoneyJourney'
 import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
 import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
@@ -85,7 +90,7 @@ export function DesktopDashboard() {
   // plot sizing, not one chart scaled to fit — round-3 refinement's own
   // explicit "1440 no longer carries more height than it needs" finding.
   const { width } = useWindowDimensions()
-  const timelineVariant: FinancialTimelineChartVariant = width >= DESKTOP_BREAKPOINT_PX ? 'desktop' : 'tabletLg'
+  const timelineVariant: MoneyJourneyVariant = width >= DESKTOP_BREAKPOINT_PX ? 'desktop' : 'tabletLg'
 
   // Matches the mockup's own שבוע/חודש/30 ימים toggle on the hero —
   // useSafeToSpend already accepts any of the three HorizonKind values.
@@ -277,22 +282,22 @@ export function DesktopDashboard() {
           </>
         )}
 
-        {/* מה יקרה עד אז — a hairline, not a card boundary, keeps this
-            reading as one panel per the approved design's own §3
-            refinement. Tablet (1024) gets its own plot sizing, not a
+        {/* WHAT WILL HAPPEN — the Money Journey. A hairline, not a card
+            boundary, keeps this reading as one panel with the hero/boundary
+            above it. Tablet (1024) gets its own plot sizing, not a
             scaled-down desktop chart — that is exactly what `variant`
             below selects. */}
         <View className="web:tabletLg:mt-5 web:tabletLg:border-t web:tabletLg:border-white/[0.07] web:tabletLg:pt-4">
           <View className="mb-3 web:tabletLg:flex-row web:tabletLg:items-baseline web:tabletLg:justify-between">
             <Text className="text-caption font-heeboBold text-heroInkMuted-light">{t('home.timeline.title')}</Text>
-            {hasForecastData && <FinancialTimelineLowBadge forecast={forecast} />}
+            {hasForecastData && <MoneyJourneyLowBadge forecast={forecast} />}
           </View>
           {isForecastLoading ? (
             <SkeletonList rows={3} />
           ) : !hasForecastData ? (
             <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchForecast} />
           ) : (
-            <FinancialTimelineChart
+            <MoneyJourney
               forecast={forecast}
               safeToSpendAgorot={hasSafeToSpendData ? safeToSpend.safeToSpendAgorot : null}
               variant={timelineVariant}

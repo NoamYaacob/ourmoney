@@ -153,12 +153,26 @@ describe('MobileHome — the hero', () => {
   })
 })
 
-describe('MobileHome — מה יקרה עד אז', () => {
+describe('MobileHome — מה יקרה עד אז (Money Journey)', () => {
   it('shows a real forecast event and the resulting balance, chronologically after today', async () => {
+    // A real, contiguous dailyPoints series (one entry per calendar day from
+    // today through the event date) — Money Journey's own date-proportional
+    // geometry reads a step's position from its real INDEX into this array,
+    // so a fixture with only the event's own day (as the old
+    // FinancialTimeline fixture used) would not exercise the real component
+    // the same way production data does.
     mockForecast = {
       ...EMPTY_FORECAST,
       events: [forecastEvent()],
-      dailyPoints: [{ date: '2026-08-28', balanceAgorot: 1_187_650, inflowsAgorot: 0, outflowsAgorot: 122_400 }],
+      dailyPoints: [
+        { date: '2026-08-22', balanceAgorot: 1_310_050, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-23', balanceAgorot: 1_310_050, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-24', balanceAgorot: 1_310_050, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-25', balanceAgorot: 1_310_050, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-26', balanceAgorot: 1_310_050, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-27', balanceAgorot: 1_310_050, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-28', balanceAgorot: 1_187_650, inflowsAgorot: 0, outflowsAgorot: 122_400 },
+      ],
       lowestBalanceAgorot: 1_187_650,
       lowestBalanceDate: '2026-08-28',
     }
@@ -169,7 +183,7 @@ describe('MobileHome — מה יקרה עד אז', () => {
     // artifact's "חדר כושר · שפל" treatment.
     expect(getByText(`ארנונה דו־חודשית · ${i18n.t('home.timeline.lowSuffix')}`)).toBeTruthy()
     expect(getByText(formatILS(1_187_650))).toBeTruthy()
-    expect(getByText(i18n.t('home.timeline.availableToday'))).toBeTruthy()
+    expect(getByText(i18n.t('home.timeline.today'))).toBeTruthy()
   })
 
   it('says so plainly when nothing is coming', async () => {

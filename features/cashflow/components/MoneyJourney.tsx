@@ -5,23 +5,17 @@
 // than a rewrite of it — ForecastChart itself, and the whole Cash Flow
 // screen it backs, are untouched and stay exactly as approved.
 //
-// This is a deliberately NEW, from-scratch component, not a rewrite of
-// features/dashboard/components/FinancialTimeline.tsx. That file — and the
-// Home screens that render it (MobileHome.tsx/DesktopDashboard.tsx) — are
-// untouched by this checkpoint. Two reasons, both explicit in the CP8B
-// brief:
-//   1. FinancialTimelineChart spaces its steps by EVENT-INDEX, not by real
-//      date (`xFor(i) = startX + i * (usableW / (n - 1))`) — a 1-day gap
-//      and a 10-day gap occupy identical horizontal distance. That is
-//      exactly the defect this component exists to fix, so building on top
-//      of the same geometry would inherit the bug.
-//   2. Home's own composition (Direction D) is an approved checkpoint in
-//      its own right; replacing what it renders is CP8C's explicit job,
-//      not this one's ("Do not restructure Home"). This component is
-//      instead mounted on its own isolated production review route
-//      (app/(app)/money-journey/index.tsx) — real hooks, real data, not a
-//      detached prototype — so it can be production-tested before any
-//      Home migration decision is made.
+// This was originally built (CP8B) as a deliberately NEW, from-scratch
+// component rather than a rewrite of
+// features/dashboard/components/FinancialTimeline.tsx — that file spaced
+// its steps by EVENT-INDEX, not real date (`xFor(i) = startX + i *
+// (usableW / (n - 1))`, a 1-day gap and a 10-day gap occupying identical
+// horizontal distance), the exact defect this component exists to fix.
+// CP8B shipped this on its own isolated review route
+// (app/(app)/money-journey/index.tsx) precisely so it could be
+// production-tested before any Home migration decision was made — that
+// decision is CP8C: FinancialTimeline.tsx and its Home usage are gone,
+// MobileHome.tsx/DesktopDashboard.tsx render this component directly now.
 //
 // RTL: time runs right to left, exactly like ForecastChart.tsx and
 // FinancialTimelineChart already establish app-wide — TODAY sits at the
@@ -63,6 +57,28 @@ import type { CashFlowEventSource, CashFlowForecastResult } from '@/lib/engines/
 import { Money } from '@/components/ui/Money'
 
 export type MoneyJourneyVariant = 'mobile' | 'tabletLg' | 'desktop'
+
+// The header's own "שפל: ₪X · date" badge — real `lowestBalanceAgorot`/
+// `lowestBalanceDate`, already on `forecast`. Renders nothing when there is
+// nothing to warn about yet (no events at all). Mirrors
+// FinancialTimeline.tsx's own (now-removed, CP8C) `FinancialTimelineLowBadge`
+// exactly — same real figures, same i18n keys — so Home's header badge reads
+// identically before and after the CP8C migration.
+export function MoneyJourneyLowBadge({ forecast }: { forecast: CashFlowForecastResult }) {
+  const { t } = useTranslation()
+  if (forecast.events.length === 0) return null
+  return (
+    <Text className="text-meta font-sansSemibold text-heroAccent-light">
+      {t('home.timeline.low', {
+        amount: formatILS(forecast.lowestBalanceAgorot),
+        date: t('home.timeline.date', {
+          day: formatDayOfMonth(forecast.lowestBalanceDate),
+          month: shortMonth(forecast.lowestBalanceDate),
+        }),
+      })}
+    </Text>
+  )
+}
 
 interface MoneyJourneyProps {
   forecast: CashFlowForecastResult

@@ -1,17 +1,30 @@
 // Screen 01 of the mobile design — the app's front door.
 //
-// Direction D (design-review artifact, approved across three refinement
-// rounds — this checkpoint is its production implementation): one
-// continuous financial story, not a grid of cards.
+// Living Money Home (CP8C — replaces the Direction D composition's own
+// FinancialTimeline visualization with the CP8B Money Journey component,
+// approved and locked in independent production review): one continuous
+// financial story, not a grid of cards.
 //
-//   1. פנוי באמת, on the dark hero panel, as the only figure at hero size.
-//   2. מה יקרה עד אז — the same panel's own connected timeline: today's
-//      balance -> each real upcoming event -> the resulting balance ->
-//      ... -> the 30-day low point. A native vertical list on this
-//      breakpoint (FinancialTimelineList), not a shrunk desktop chart.
-//   3. מה דורש תשומת לב — every real financial alert, not just the one
-//      critical one this screen used to show.
-//   4. לאן אנחנו מתקדמים — savings-goal progress, new to Home.
+//   1. NOW — פנוי באמת, on the dark hero panel, as the only figure at hero
+//      size.
+//   2. WHY — the ProtectedFreeBoundary (CP8A) directly beneath it, still in
+//      the same panel.
+//   3. WHAT WILL HAPPEN — the same panel's own connected Money Journey:
+//      today's balance -> each real upcoming event's own BEFORE -> EVENT ±
+//      DELTA -> AFTER -> ... -> the 30-day low point. A native vertical
+//      journey on this breakpoint (MoneyJourney's own `mobile` variant),
+//      not a shrunk desktop chart.
+//   4. WHAT NEEDS ACTION — מה דורש תשומת לב, every real financial alert,
+//      not just the one critical one this screen used to show.
+//   5. PROGRESS — לאן אנחנו מתקדמים, savings-goal progress, using only
+//      engine-truthful pace language.
+//
+// Hero, boundary and journey are deliberately ONE HeroPanel with hairline
+// (not card-boundary) dividers between them — not three stacked widgets —
+// so the panel reads as one connected canvas: what's available now, what's
+// already protected, what happens to the money next. WHAT CHANGED (a
+// since-last-visit delta) is intentionally NOT here yet — it needs
+// persisted state CP8E hasn't built.
 //
 // No fixed Budget Pace card and no Recent Transactions card on Home
 // (explicit product decision, carried from the approved design) — budget
@@ -53,7 +66,7 @@ import { getCurrentMonthPeriodStart, localDateString } from '@/features/budgets/
 import { formatILS } from '@/lib/money/format'
 import { greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
-import { FinancialTimelineList, FinancialTimelineLowBadge } from '@/features/dashboard/components/FinancialTimeline'
+import { MoneyJourney, MoneyJourneyLowBadge } from '@/features/cashflow/components/MoneyJourney'
 import { AttentionSection } from '@/features/dashboard/components/AttentionSection'
 import { HomeGoalsSection } from '@/features/dashboard/components/HomeGoalsSection'
 import { Screen } from '@/components/ui/Screen'
@@ -275,22 +288,23 @@ export function MobileHome() {
           )}
         </Pressable>
 
-        {/* The timeline: a hairline, not a card boundary, keeps this
-            reading as one panel per the approved design's own §3
-            refinement. */}
+        {/* WHAT WILL HAPPEN — the Money Journey. A hairline, not a card
+            boundary, keeps this reading as one panel with the hero/boundary
+            above it, not a separate widget. */}
         <View className="mt-2 border-t border-white/[0.07] pt-2">
           <View className="mb-2 flex-row items-center justify-between">
             <Text className="text-caption font-heeboBold text-heroInkMuted-light">{t('home.timeline.title')}</Text>
-            {hasForecastData && <FinancialTimelineLowBadge forecast={forecast} />}
+            {hasForecastData && <MoneyJourneyLowBadge forecast={forecast} />}
           </View>
           {isForecastLoading ? (
             <SkeletonList rows={2} />
           ) : !hasForecastData ? (
             <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchForecast} />
           ) : (
-            <FinancialTimelineList
+            <MoneyJourney
               forecast={forecast}
               safeToSpendAgorot={hasSafeToSpendData ? safeToSpend.safeToSpendAgorot : null}
+              variant="mobile"
             />
           )}
         </View>
