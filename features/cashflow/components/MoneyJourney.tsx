@@ -89,6 +89,17 @@ interface MoneyJourneyProps {
   // `isConclusion` contract.
   safeToSpendAgorot: number | null
   variant: MoneyJourneyVariant
+  // CP8C fix: Home's own mobile presentation wants a short, curated
+  // default (the low point, the nearest meaningful event, and — when it's
+  // a genuinely different step — the single biggest change), not every
+  // non-routine step. This is presentation-only: it selects which already-
+  // computed steps show before "show all" is tapped, never a new step, a
+  // new priority tier, or a new figure (see `selectCompactHeadlineIds`
+  // below). Defaults to false so every other caller (the CP8B `/money-
+  // journey` isolated review route included) keeps its exact prior
+  // behavior unchanged. Ignored for `tabletLg`/`desktop` — the chart
+  // variant's own label-collision presentation is untouched by this prop.
+  compactDefault?: boolean
 }
 
 const SOURCE_ROUTE: Record<CashFlowEventSource, (sourceId: string) => string> = {
@@ -101,7 +112,7 @@ function shortMonth(date: string): string {
   return formatMonthAbbreviation(date).replace('׳', '')
 }
 
-export function MoneyJourney({ forecast, safeToSpendAgorot, variant }: MoneyJourneyProps) {
+export function MoneyJourney({ forecast, safeToSpendAgorot, variant, compactDefault = false }: MoneyJourneyProps) {
   const { t } = useTranslation()
   const [pinnedId, setPinnedId] = useState<string | null>(null)
 
@@ -123,7 +134,16 @@ export function MoneyJourney({ forecast, safeToSpendAgorot, variant }: MoneyJour
   }
 
   if (variant === 'mobile') {
-    return <MoneyJourneyList forecast={forecast} steps={steps} pinnedId={pinnedId} pinned={pinned} onToggle={toggle} />
+    return (
+      <MoneyJourneyList
+        forecast={forecast}
+        steps={steps}
+        pinnedId={pinnedId}
+        pinned={pinned}
+        onToggle={toggle}
+        compactDefault={compactDefault}
+      />
+    )
   }
   return <MoneyJourneyChart forecast={forecast} steps={steps} variant={variant} pinnedId={pinnedId} pinned={pinned} onToggle={toggle} />
 }
@@ -206,23 +226,64 @@ function connectorHeight(dayGap: number): number {
   return Math.min(CONNECTOR_MAX_PX, Math.max(CONNECTOR_MIN_PX, dayGap * CONNECTOR_PX_PER_DAY))
 }
 
+// CP8C fix — Home's own mobile default: at most 3 real steps, chosen
+// entirely from fields moneyJourneySteps.ts (CP8B, unchanged) already
+// computed. No new priority tier, no new figure, no invented event.
+//   1. The forecast's own low point (`isLow`) — always included when one
+//      of the real steps carries it, per the checkpoint's own "low point
+//      must always be represented" requirement. (A forecast whose true
+//      minimum falls on a day with no event has no step to represent it
+//      on regardless — the same pre-existing limitation the full,
+//      non-compact list and the desktop/tablet chart already have; this
+//      selection does not change that.)
+//   2. The nearest chronologically upcoming step that is NOT `routine`
+//      ("meaningful") — `steps` is already date-ascending (see
+//      moneyJourneySteps.ts), so this is simply the first match. Falls
+//      back to the very first step overall only if every real step
+//      happens to be routine, so "what's next" always has a real answer.
+//   3. The single biggest real change (`Math.abs(deltaAgorot)`) among the
+//      remaining non-routine steps — added only "when relevant," i.e.
+//      only when it is a genuinely different step from 1 and 2, so a
+//      forecast that already has its low point as the biggest event
+//      never pads the default view with a duplicate.
+function selectCompactHeadlineIds(steps: MoneyJourneyStep[]): Set<string> {
+  const ids = new Set<string>()
+
+  const low = steps.find((s) => s.isLow)
+  if (low) ids.add(low.id)
+
+  const nearestMeaningful = steps.find((s) => s.priority !== 'routine') ?? steps[0]
+  if (nearestMeaningful) ids.add(nearestMeaningful.id)
+
+  const biggestChange = steps
+    .filter((s) => s.priority !== 'routine' && !ids.has(s.id))
+    .sort((a, b) => Math.abs(b.deltaAgorot) - Math.abs(a.deltaAgorot))[0]
+  if (biggestChange) ids.add(biggestChange.id)
+
+  return ids
+}
+
 function MoneyJourneyList({
   forecast,
   steps,
   pinnedId,
   pinned,
   onToggle,
+  compactDefault,
 }: {
   forecast: CashFlowForecastResult
   steps: MoneyJourneyStep[]
   pinnedId: string | null
   pinned: MoneyJourneyStep | null
   onToggle: (id: string) => void
+  compactDefault: boolean
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
 
-  const headline = new Set(steps.filter((s) => s.priority !== 'routine').map((s) => s.id))
+  const headline = compactDefault
+    ? selectCompactHeadlineIds(steps)
+    : new Set(steps.filter((s) => s.priority !== 'routine').map((s) => s.id))
   const visible = expanded ? steps : steps.filter((s) => headline.has(s.id))
 
   return (
@@ -245,7 +306,11 @@ function MoneyJourneyList({
           className="mt-1 items-center border-t border-dashed border-heroBorder-light py-2.5"
         >
           <Text className="text-caption font-heeboBold text-heroAccent-light">
-            {expanded ? t('home.timeline.showLess') : t('home.timeline.showAll', { count: steps.length })}
+            {expanded
+              ? t('home.timeline.showLess')
+              : compactDefault
+                ? t('home.timeline.showAllCompact')
+                : t('home.timeline.showAll', { count: steps.length })}
           </Text>
         </Pressable>
       ) : null}
@@ -567,7 +632,20 @@ function MoneyJourneyChart({
                   <Text
                     className={`text-meta font-sans ${step.isLow ? 'text-danger-light' : 'text-heroInkMuted-light'}`}
                     numberOfLines={1}
-                    style={{ position: 'absolute', top: top + barH + 4, width: 100, right: -39, textAlign: 'center' }}
+                    // CP8C fix: react-native-web's `numberOfLines` handling
+                    // adds its own `maxWidth: '100%'` for the ellipsis to
+                    // work — for an absolutely-positioned Text, that
+                    // percentage resolves against the nearest positioned
+                    // ancestor, which here is this bar's own 18px-wide
+                    // Pressable (BAR_WIDTH), not this label's real 100px
+                    // box. The label silently clipped to ~18px, rendering
+                    // real cause text ("ביטוח רכב", "3 חיובים") as a single
+                    // truncated character. An explicit pixel `maxWidth`
+                    // matching this label's own `width` (unchanged from
+                    // before — the value resolveLabelCollisions' own
+                    // LABEL_SLOT_PX already assumes) overrides that stray
+                    // percentage without touching any collision dimension.
+                    style={{ position: 'absolute', top: top + barH + 4, width: 100, maxWidth: 100, right: -39, textAlign: 'center' }}
                   >
                     {step.cause}
                     {step.isLow ? ` · ${t('home.timeline.lowSuffix')}` : ''}

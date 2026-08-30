@@ -305,6 +305,7 @@ export function MobileHome() {
               forecast={forecast}
               safeToSpendAgorot={hasSafeToSpendData ? safeToSpend.safeToSpendAgorot : null}
               variant="mobile"
+              compactDefault
             />
           )}
         </View>

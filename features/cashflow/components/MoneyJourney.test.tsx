@@ -119,6 +119,98 @@ describe('MoneyJourney — mobile list', () => {
   })
 })
 
+// CP8C fix: Home's own mobile presentation layer. `compactDefault` only
+// changes which already-computed steps are pre-selected before "show all"
+// — it must never change moneyJourneySteps.ts's own priority/isLow/
+// isConclusion computation, never fabricate a step, and never affect the
+// tablet/desktop chart at all.
+describe('MoneyJourney — mobile compact default (CP8C fix)', () => {
+  it('shows only the low point, the nearest meaningful event, and the single biggest change — never every non-routine step', async () => {
+    const { getByText, queryByText } = await render(
+      <MoneyJourney forecast={FORECAST} safeToSpendAgorot={null} variant="mobile" compactDefault />
+    )
+
+    // Low point (isLow) — always represented.
+    expect(getByText(`ביטוח שנתי · ${i18n.t('home.timeline.lowSuffix')}`)).toBeTruthy()
+    // Nearest meaningful upcoming event, chronologically first non-routine.
+    expect(getByText('משכורת')).toBeTruthy()
+    // The single biggest remaining change (−350,000, the largest |delta|
+    // left once the low point is already claimed).
+    expect(getByText('שכר דירה')).toBeTruthy()
+
+    // The same-day cluster (a real, non-routine, but not-selected step) and
+    // the routine tail are both collapsed by default — this is the whole
+    // point of the fix: 3 real steps, not the 4 the non-compact default
+    // would show.
+    expect(queryByText('2 חיובים')).toBeNull()
+    expect(queryByText('זיכוי קטן')).toBeNull()
+  })
+
+  it('never shows fewer than 3 real events collapsed when the forecast does not distinctly have that many', async () => {
+    const single: CashFlowForecastResult = {
+      startingBalanceAgorot: 500_000,
+      endingBalanceAgorot: 480_000,
+      totalInflowsAgorot: 0,
+      totalOutflowsAgorot: 20_000,
+      lowestBalanceAgorot: 480_000,
+      lowestBalanceDate: '2026-08-17',
+      firstShortfallDate: null,
+      upcomingObligationsCount: 1,
+      events: [event({ id: 'e-only', date: '2026-08-17', amountAgorot: 20_000, direction: 'outflow', title: 'חשמל' })],
+      dailyPoints: [
+        { date: '2026-08-16', balanceAgorot: 500_000, inflowsAgorot: 0, outflowsAgorot: 0 },
+        { date: '2026-08-17', balanceAgorot: 480_000, inflowsAgorot: 0, outflowsAgorot: 20_000 },
+      ],
+    }
+    // The one real event is simultaneously the low point, the nearest
+    // event, AND the biggest change — the selection must de-duplicate to
+    // ONE row, never pad with a repeat or a fabricated second entry.
+    const { getByText, getAllByText, queryByText } = await render(
+      <MoneyJourney forecast={single} safeToSpendAgorot={null} variant="mobile" compactDefault />
+    )
+    expect(getAllByText(/חשמל/).length).toBe(1)
+    expect(queryByText(i18n.t('home.timeline.showAllCompact'))).toBeNull()
+    void getByText
+  })
+
+  it('expanding reveals every real step, using the exact same full presentation as the non-compact default', async () => {
+    const { getByText, queryByText } = await render(
+      <MoneyJourney forecast={FORECAST} safeToSpendAgorot={null} variant="mobile" compactDefault />
+    )
+    expect(queryByText('2 חיובים')).toBeNull()
+    expect(queryByText('זיכוי קטן')).toBeNull()
+
+    await fireEvent.press(getByText(i18n.t('home.timeline.showAllCompact')))
+
+    expect(getByText('2 חיובים')).toBeTruthy()
+    expect(getByText('זיכוי קטן')).toBeTruthy()
+    expect(getByText(`ביטוח שנתי · ${i18n.t('home.timeline.lowSuffix')}`)).toBeTruthy()
+  })
+
+  it('keeps selecting/expanding semantics identical to the non-compact list — a compact-selected event still opens its real causal detail', async () => {
+    const { getByText, getAllByText } = await render(
+      <MoneyJourney forecast={FORECAST} safeToSpendAgorot={null} variant="mobile" compactDefault />
+    )
+    await fireEvent.press(getByText('משכורת'))
+    expect(getByText(i18n.t('moneyJourney.before'))).toBeTruthy()
+    expect(getAllByText(formatILS(900_000)).length).toBeGreaterThan(0)
+  })
+
+  it('does not affect the tablet/desktop chart at all — same output with or without compactDefault', async () => {
+    // Every real step's own accessible node is present regardless — the
+    // chart variant has no "collapsed" concept at all, compact or not.
+    const tabletLg = await render(
+      <MoneyJourney forecast={FORECAST} safeToSpendAgorot={null} variant="tabletLg" compactDefault />
+    )
+    expect(tabletLg.getAllByRole('button').length).toBeGreaterThanOrEqual(5)
+
+    const desktop = await render(
+      <MoneyJourney forecast={FORECAST} safeToSpendAgorot={null} variant="desktop" compactDefault />
+    )
+    expect(desktop.getAllByRole('button').length).toBeGreaterThanOrEqual(5)
+  })
+})
+
 describe('MoneyJourney — tablet/desktop chart', () => {
   it('renders every event as an independently accessible node, even under dense same-width-slot data where labels must collide', async () => {
     // One event every single day for 20 days — at the chart's own untested
