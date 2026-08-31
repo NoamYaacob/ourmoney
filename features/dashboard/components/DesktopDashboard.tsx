@@ -129,11 +129,26 @@ export function DesktopDashboard() {
   const { balances } = useAccountBalances(householdId)
   const { accounts, hasData: hasAccountsData } = useAccounts(householdId)
 
-  // CP8E — Financial Pulse, composed from the SAME safeToSpend result the
-  // hero above renders — see MobileHome.tsx's identical comment.
+  // CP8E — Financial Pulse. RRR §16 P0-3: deliberately NOT composed from
+  // the `safeToSpend` result above — that one tracks the hero's own
+  // user-selectable horizon pill, and the horizon toggle is presentation
+  // state, not "which window Pulse compares." Feeding Pulse whatever
+  // horizon the hero happened to be showing the instant this query
+  // resolved let one household's baseline get permanently written from a
+  // 'week' figure (reserves almost nothing) while the very next comparison
+  // read against a 'month' figure (reserves rent/bills/obligations) — a
+  // multi-thousand-shekel discrepancy reported as a real, causally-narrated
+  // change. Pulse's own semantics ("the financial state this member last
+  // successfully saw") require a single, stable window — always month,
+  // matching MobileHome.tsx's own hardcoded 'month' (mobile has no horizon
+  // toggle at all). TanStack Query dedupes this against the hero's own
+  // call whenever horizon is already 'month' (same query key), so this is
+  // a second subscription to the SAME cached result in the common case,
+  // never a genuinely second network fetch.
+  const { result: safeToSpendMonth, hasData: hasSafeToSpendMonthData } = useSafeToSpend(householdId, 'month')
   const { pulse } = useFinancialPulse(householdId, user?.id, {
-    hasData: hasSafeToSpendData,
-    safeToSpendAgorot: safeToSpend.safeToSpendAgorot,
+    hasData: hasSafeToSpendMonthData,
+    safeToSpendAgorot: safeToSpendMonth.safeToSpendAgorot,
   })
 
   const [showAnalytics, setShowAnalytics] = useState(true)

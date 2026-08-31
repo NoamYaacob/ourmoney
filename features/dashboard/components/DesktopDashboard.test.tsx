@@ -38,9 +38,9 @@ const DEFAULT_SAFE_TO_SPEND = {
   hasData: true,
   refetch: jest.fn(),
 }
-const mockUseSafeToSpend = jest.fn<() => typeof DEFAULT_SAFE_TO_SPEND>()
+const mockUseSafeToSpend = jest.fn<(householdId?: string, horizon?: string) => typeof DEFAULT_SAFE_TO_SPEND>()
 jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
-  useSafeToSpend: () => mockUseSafeToSpend(),
+  useSafeToSpend: (householdId?: string, horizon?: string) => mockUseSafeToSpend(householdId, horizon),
 }))
 
 const EMPTY_FORECAST: CashFlowForecastResult = {
@@ -68,9 +68,17 @@ jest.mock('@/features/alerts/hooks/useFinancialAlerts', () => ({
 }))
 // CP8E — see MobileHome.test.tsx's identical mock for why this hook is
 // mocked directly rather than its real Supabase-backed dependencies.
+// The mock captures its own call arguments (RRR §16 P0-3) so a test can
+// assert on exactly what safe-to-spend figure this screen fed into Pulse,
+// independent of what the caller's own useSafeToSpend mock returns for
+// display — the whole point of the bug this section guards against.
 let mockPulse: unknown = null
+const mockUseFinancialPulse = jest.fn()
 jest.mock('@/features/pulse/hooks/useFinancialPulse', () => ({
-  useFinancialPulse: () => ({ pulse: mockPulse }),
+  useFinancialPulse: (...args: unknown[]) => {
+    mockUseFinancialPulse(...args)
+    return { pulse: mockPulse }
+  },
 }))
 
 const DEFAULT_GOALS = { goals: [] as unknown[], isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
@@ -266,6 +274,46 @@ describe('Dashboard — Financial Pulse (CP8E)', () => {
     const { getByText } = await render(<Dashboard />)
     expect(getByText(i18n.t('home.pulse.more', { amount: formatILS(40000) }))).toBeTruthy()
     expect(getByText(i18n.t('home.pulse.secondaryPriceIncrease', { description: 'Netflix', amount: formatILS(900) }))).toBeTruthy()
+  })
+
+  // RRR §16 P0-3 regression: the hero's horizon toggle (שבוע/חודש/30 ימים)
+  // is presentation state. Before this fix, the SAME useSafeToSpend(horizon)
+  // result the hero displays was also fed straight into useFinancialPulse —
+  // so whichever horizon happened to be selected the instant the query
+  // resolved got permanently written as the household's Pulse baseline. A
+  // 'week' horizon reserves almost nothing; 'month' reserves rent/bills/
+  // obligations — the two figures can differ by thousands of shekels for
+  // the same household at the same moment, and the next comparison would
+  // then report a fabricated delta across two incompatible windows. Pulse
+  // must always be fed a month-horizon figure regardless of what the
+  // visible toggle is set to.
+  it('always feeds Financial Pulse the month-horizon safe-to-spend figure, never whatever horizon the visible toggle is currently set to', async () => {
+    const WEEK_RESULT = { ...DEFAULT_SAFE_TO_SPEND, result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: 999_999 } }
+    const MONTH_RESULT = { ...DEFAULT_SAFE_TO_SPEND, result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: 330_000 } }
+    mockUseSafeToSpend.mockImplementation((_householdId, horizon) => (horizon === 'week' ? WEEK_RESULT : MONTH_RESULT))
+
+    const { getByText } = await render(<Dashboard />)
+
+    // Default horizon is 'month' — Pulse should already have been fed the
+    // month figure exactly once.
+    expect(mockUseFinancialPulse).toHaveBeenLastCalledWith('household-1', 'user-1', {
+      hasData: true,
+      safeToSpendAgorot: 330_000,
+    })
+
+    // Switch the visible hero to the week pill — a pure presentation change.
+    await fireEvent.press(getByText(i18n.t('dashboard.hero.horizonWeek')))
+
+    // Pulse must still have been fed ONLY the month figure — never the week
+    // figure, at any point, on any call.
+    for (const call of mockUseFinancialPulse.mock.calls) {
+      const safeToSpendArg = call[2] as { safeToSpendAgorot: number } | undefined
+      expect(safeToSpendArg?.safeToSpendAgorot).toBe(330_000)
+    }
+    expect(mockUseFinancialPulse).toHaveBeenLastCalledWith('household-1', 'user-1', {
+      hasData: true,
+      safeToSpendAgorot: 330_000,
+    })
   })
 })
 
