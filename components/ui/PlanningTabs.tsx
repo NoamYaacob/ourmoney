@@ -55,6 +55,10 @@ export function PlanningTabs({ active }: { active: PlanningTab }) {
             }}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
+            // RRR §16 P0-4: see SegmentedControl.tsx's note — aria-selected
+            // reaches the DOM directly, accessibilityState's object form
+            // does not.
+            aria-selected={isActive}
             accessibilityLabel={t(tab.fullKey)}
             className={`h-10 flex-1 items-center justify-center rounded-[8px] px-2 ${
               isActive ? 'bg-surfaceMuted-light dark:bg-surfaceMuted-dark' : ''

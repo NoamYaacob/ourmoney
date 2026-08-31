@@ -392,6 +392,12 @@ function ListRow({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: Boolean(selected) }}
+      // RRR §16 P0-4: this is a pin/unpin toggle, not a widget-role
+      // selection — aria-pressed is the correct ARIA state for a toggle
+      // button (aria-selected requires option/tab/row/gridcell roles).
+      // See SegmentedControl.tsx's note for why accessibilityState's
+      // object form doesn't reach the DOM on web regardless.
+      aria-pressed={Boolean(selected)}
       accessibilityLabel={step ? accessibleStepLabel(t, step) : undefined}
     >
       {body}
@@ -593,6 +599,9 @@ function MoneyJourneyChart({
               onPress={() => onToggle(step.id)}
               accessibilityRole="button"
               accessibilityState={{ selected: isPinned }}
+              // RRR §16 P0-4: see the block above's identical note —
+              // this is the same pin/unpin toggle, aria-pressed is correct.
+              aria-pressed={isPinned}
               accessibilityLabel={accessibleStepLabel(t, step)}
               style={{ position: 'absolute', top: 0, bottom: 0, right: stepRight - BAR_WIDTH / 2, width: BAR_WIDTH }}
             >

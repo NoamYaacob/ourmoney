@@ -330,6 +330,9 @@ function CalendarBody({
                   accessibilityRole="button"
                   accessibilityLabel={DAY_LABEL_FORMATTER.format(fullDate)}
                   accessibilityState={{ selected: isSelected }}
+                  // RRR §16 P0-4: see SegmentedControl.tsx's note —
+                  // aria-selected reaches the DOM directly.
+                  aria-selected={isSelected}
                   style={{
                     width: 36,
                     height: 36,

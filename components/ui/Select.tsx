@@ -162,6 +162,10 @@ export function Select({
                     }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: item.value === value }}
+                    // RRR §16 P0-4: aria-selected reaches the DOM directly
+                    // (RNW forwards it; accessibilityState's object form is
+                    // dropped) — see SegmentedControl.tsx's identical note.
+                    aria-selected={item.value === value}
                     className="flex-row items-center gap-3 px-3 py-2.5"
                   >
                     {item.iconName && (
@@ -206,6 +210,10 @@ export function Select({
                       }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: item.value === value }}
+                      // RRR §16 P0-4: aria-selected reaches the DOM directly
+                      // (RNW forwards it; accessibilityState's object form
+                      // is dropped) — see SegmentedControl.tsx's note.
+                      aria-selected={item.value === value}
                       className="flex-row items-center gap-3 px-4 py-3.5"
                     >
                       {item.iconName && (
@@ -241,6 +249,10 @@ export function Select({
                       }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: item.value === value }}
+                      // RRR §16 P0-4: aria-selected reaches the DOM directly
+                      // (RNW forwards it; accessibilityState's object form
+                      // is dropped) — see SegmentedControl.tsx's note.
+                      aria-selected={item.value === value}
                       className="flex-row items-center gap-3 py-3"
                     >
                       {item.iconName && (

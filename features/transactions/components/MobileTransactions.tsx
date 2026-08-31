@@ -439,6 +439,8 @@ export function MobileTransactions() {
             onPress={() => setSearchOpen((open) => !open)}
             accessibilityRole="button"
             accessibilityState={{ expanded: isSearchOpen }}
+            // RRR §16 P0-4: see SegmentedControl.tsx's note.
+            aria-expanded={isSearchOpen}
             accessibilityLabel={t('transactions.mobile.searchButton')}
             className="h-11 w-11 items-center justify-center"
           >

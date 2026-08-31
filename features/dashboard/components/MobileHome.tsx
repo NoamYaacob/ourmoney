@@ -390,6 +390,8 @@ export function MobileHome() {
           onPress={() => setShowAnalytics((open) => !open)}
           accessibilityRole="button"
           accessibilityState={{ expanded: showAnalytics }}
+          // RRR §16 P0-4: see SegmentedControl.tsx's note.
+          aria-expanded={showAnalytics}
           className="min-h-[52px] flex-row items-center justify-between px-4 py-3"
         >
           <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark">

@@ -105,6 +105,16 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: isDisabled, busy: loading, selected }}
+      // RRR §16 P0-4: accessibilityState's object form is dropped by
+      // react-native-web — see SegmentedControl.tsx's note. aria-selected
+      // isn't valid ARIA for role="button"; aria-pressed is the correct
+      // state for a toggleable button (this component's callers use
+      // `selected` for exactly that — a filter/choice button that stays
+      // "on"), so that's what's forwarded here, alongside the
+      // always-valid aria-disabled/aria-busy.
+      aria-disabled={isDisabled}
+      aria-busy={loading}
+      aria-pressed={selected}
       className={containerByVariant[variant]}
     >
       {loading ? (

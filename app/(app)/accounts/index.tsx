@@ -404,6 +404,8 @@ export default function Accounts() {
               onPress={() => setIsExplainerOpen((open) => !open)}
               accessibilityRole="button"
               accessibilityState={{ expanded: isExplainerOpen }}
+              // RRR §16 P0-4: see SegmentedControl.tsx's note.
+              aria-expanded={isExplainerOpen}
               className="mt-1.5 flex-row items-center gap-1 self-start web:hover:opacity-70"
             >
               <Text className="text-caption font-sansSemibold text-accent-light dark:text-accent-dark">

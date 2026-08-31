@@ -221,6 +221,9 @@ export default function Categories() {
                       accessibilityRole="button"
                       accessibilityLabel={t('categories.deleteCategoryLabel', { name: category.name_he })}
                       accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
+                      // RRR §16 P0-4: see SegmentedControl.tsx's note.
+                      aria-disabled={deleteCategory.isPending}
+                      aria-busy={deleteCategory.isPending}
                       hitSlop={HIT_SLOP}
                     >
                       <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">
@@ -395,6 +398,9 @@ export default function Categories() {
                           value: rule.value,
                         })}
                         accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
+                        // RRR §16 P0-4: see SegmentedControl.tsx's note.
+                        aria-disabled={deleteRule.isPending}
+                        aria-busy={deleteRule.isPending}
                         hitSlop={HIT_SLOP}
                       >
                         <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">

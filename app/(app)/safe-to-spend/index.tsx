@@ -202,6 +202,9 @@ export default function SafeToSpendDetail() {
                 onPress={() => setOpenGroup(isOpen ? null : group.source)}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: isOpen }}
+                // RRR §16 P0-4: aria-expanded reaches the DOM directly —
+                // see SegmentedControl.tsx's note.
+                aria-expanded={isOpen}
                 accessibilityLabel={t(group.labelKey)}
                 className="min-h-[56px] flex-row items-center gap-3 px-4 py-3.5 web:desktop:px-5 web:desktop:py-4 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40"
               >

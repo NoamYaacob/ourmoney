@@ -210,9 +210,26 @@ export function DesktopDashboard() {
       <HeroPanel>
         <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between">
           <HeroLabel>{t('dashboard.hero.label')}</HeroLabel>
-          <View className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-1.5">
+          <View
+            accessibilityRole="radiogroup"
+            className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:gap-1.5"
+          >
+            {/* RRR §16 P0-4: this pill group had NO accessibility state at
+                all — role="button" with nothing marking which of the three
+                mutually-exclusive horizons was selected. A single-choice
+                pill group is exactly SegmentedControl.tsx's own pattern
+                (role="radio" + aria-checked, its CP8D fix's precedent), so
+                that's what this now matches, plus the accessibilityLabel
+                every other Pressable in this file already gets. */}
             {HORIZON_ORDER.map((value) => (
-              <Pressable key={value} onPress={() => setHorizon(value)} accessibilityRole="button">
+              <Pressable
+                key={value}
+                onPress={() => setHorizon(value)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: value === horizon }}
+                aria-checked={value === horizon}
+                accessibilityLabel={t(HORIZON_PILL_KEY[value])}
+              >
                 <Text
                   className={
                     value === horizon
@@ -389,6 +406,8 @@ export function DesktopDashboard() {
           onPress={() => setShowAnalytics((open) => !open)}
           accessibilityRole="button"
           accessibilityState={{ expanded: showAnalytics }}
+          // RRR §16 P0-4: see SegmentedControl.tsx's note.
+          aria-expanded={showAnalytics}
           className="web:tabletLg:flex-row web:tabletLg:items-center web:tabletLg:justify-between"
         >
           <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:tabletLg:text-[18px]">

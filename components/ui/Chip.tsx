@@ -14,6 +14,11 @@ export function Chip({ label, selected, onPress, testID }: ChipProps) {
       testID={testID}
       accessibilityRole="button"
       accessibilityState={{ selected }}
+      // RRR §16 P0-4: aria-selected isn't valid ARIA for role="button";
+      // aria-pressed is the correct state for a toggle/filter chip. See
+      // SegmentedControl.tsx's note for why accessibilityState alone
+      // never reaches the DOM on web.
+      aria-pressed={selected}
       className={
         selected
           ? 'rounded-full bg-accent-light px-4 py-2 dark:bg-accent-dark'

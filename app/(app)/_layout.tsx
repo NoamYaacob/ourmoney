@@ -184,6 +184,15 @@ export function DesktopSideRail({ activeSegment }: { activeSegment: string }) {
                 onPress={() => router.push(dest.href)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: focused }}
+                // RRR §16 P0-4: this is the desktop primary navigation —
+                // one of the accessibility BLOCKER's three areas. aria-
+                // current="page" (not aria-selected, which is for widget
+                // roles like tab/option) is the correct ARIA pattern for
+                // "the destination the user is currently viewing" in a
+                // navigation list; react-native-web forwards it directly,
+                // unlike accessibilityState's object form (see
+                // SegmentedControl.tsx's identical note).
+                aria-current={focused ? 'page' : undefined}
                 // Desktop Claude Design pass: the selected row is now a
                 // flat tint fill (bg-surface, no accent tint or leading
                 // bar) matching the mockup's own selected-row treatment —
