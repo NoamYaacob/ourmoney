@@ -6,13 +6,28 @@
 // into realized spending (docs/DATABASE_SCHEMA.md's "what MVP must avoid").
 //
 // Double-count guard: forecasting starts from the FIRST not-yet-materialized
-// index (materializedCount + 1), never from installmentIndex 1. This
+// index (lastMaterializedIndex + 1), never from installmentIndex 1. This
 // mirrors recurring's own guard — generate_installment_transactions()
 // (migration 016) always materializes every instalment whose charge date has
 // already arrived, and (once mounted the same way
 // useGenerateRecurringTransactions is, in app/(app)/_layout.tsx) runs on
 // every app load — so a forecasted occurrence can never also already exist
-// as a posted transaction.
+// as a posted transaction, PROVIDED the caller passes a gap-safe
+// lastMaterializedIndex.
+//
+// RRR §14 P0-1: this field is deliberately named lastMaterializedIndex, not
+// materializedCount, and callers MUST derive it as MAX(installment_index)
+// over this plan's real transactions — never a row count. A row count
+// silently diverges from the true next index the instant any single
+// materialized instalment is deleted (transactions_delete has no
+// instalment-aware guard, migration 008), because the remaining rows keep
+// their original indices rather than collapsing to fill the gap. Feeding a
+// row count here would resume forecasting at an index that already exists
+// as a real, posted transaction — a permanent, silent double-count in every
+// engine that consumes this forecast (Safe-to-Spend, the cash-flow
+// forecast, Upcoming Commitments, Impact Check). See
+// computeInstallmentMaterializedCounts.ts's computeInstallmentMaxIndices,
+// the one function in this codebase that is safe to derive this value from.
 //
 // Date math mirrors generate_installment_transactions()'s own SQL exactly:
 // `first_charge_date + ((index - 1) * INTERVAL '1 month')`, computed fresh
@@ -56,11 +71,13 @@ export interface InstallmentPlanForecastTemplate {
   installmentCount: number
   monthlyAgorot: number
   firstChargeDate: string
-  // How many instalments already exist as real, materialized transactions
-  // for this plan (derived by the caller, e.g. count of transactions with
-  // this installment_plan_id) — the exact analogue of RecurringForecastTemplate's
-  // nextDueDate: forecasting always resumes from materializedCount + 1.
-  materializedCount: number
+  // The highest installment_index that already exists as a real,
+  // materialized transaction for this plan — MAX, never a row COUNT (see
+  // the module header comment for why the two diverge after a delete).
+  // Derived by the caller via computeInstallmentMaxIndices. The exact
+  // analogue of RecurringForecastTemplate's nextDueDate: forecasting always
+  // resumes from lastMaterializedIndex + 1.
+  lastMaterializedIndex: number
   categoryId: string | null
   accountId: string | null
 }
@@ -85,7 +102,7 @@ export function forecastInstallmentOccurrences(
   const occurrences: ForecastedInstallmentOccurrence[] = []
 
   for (const plan of plans) {
-    for (let index = plan.materializedCount + 1; index <= plan.installmentCount; index++) {
+    for (let index = plan.lastMaterializedIndex + 1; index <= plan.installmentCount; index++) {
       const date = addMonthClamped(plan.firstChargeDate, index - 1)
       if (date > horizonEnd) break
 

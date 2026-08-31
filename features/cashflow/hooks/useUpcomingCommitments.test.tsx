@@ -42,6 +42,7 @@ jest.mock('@/features/installments/hooks/useInstallmentPlans', () => ({
 
 const DEFAULT_MATERIALIZED_COUNTS = {
   materializedCounts: {} as Record<string, number>,
+  maxMaterializedIndices: {} as Record<string, number>,
   isLoading: false,
   error: null as Error | null,
   hasData: true,
@@ -115,6 +116,7 @@ describe('useUpcomingCommitments', () => {
     // installmentPlans gate above is meant to exclude.
     mockUseInstallmentMaterializedCounts.mockReturnValue({
       materializedCounts: {},
+      maxMaterializedIndices: {},
       isLoading: false,
       error: new Error('failed'),
       hasData: false,
@@ -148,7 +150,8 @@ describe('useUpcomingCommitments', () => {
       hasData: true,
     })
     mockUseInstallmentMaterializedCounts.mockReturnValue({
-      materializedCounts: { 'inst-1': 1 }, // 1 of 3 already materialized
+      materializedCounts: { 'inst-1': 1 }, // display-only row count, unused by this hook
+      maxMaterializedIndices: { 'inst-1': 1 }, // instalment 1 of 3 already materialized
       isLoading: false,
       error: null,
       hasData: true,
@@ -157,10 +160,60 @@ describe('useUpcomingCommitments', () => {
     const { result } = await renderHook(() => useUpcomingCommitments('household-1'), { wrapper })
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
-    // Occurrences 2 and 3 remain — proves the materializedCount actually
-    // reached the forecast, not just that the excluding path is silent.
+    // Occurrences 2 and 3 remain — proves the max materialized index
+    // actually reached the forecast, not just that the excluding path is
+    // silent.
     expect(result.current.commitments.filter((c) => c.source === 'installment')).toHaveLength(2)
     expect(result.current.hasPartialError).toBe(false)
+  })
+
+  // RRR §14 P0-1 regression: this hook must resolve lastMaterializedIndex
+  // from maxMaterializedIndices, never from the row-count-based
+  // materializedCounts — a deliberately mismatched mock (row count says 3,
+  // max index says 4, simulating index 2 having been deleted) proves which
+  // one the hook actually reads. If it regressed to reading the row count,
+  // this test would see the already-posted index-4 instalment re-forecast
+  // as commitment #4 — the exact double-count this fix exists to prevent.
+  it('resolves the next instalment index from maxMaterializedIndices, not the row-count materializedCounts, even when they disagree', async () => {
+    resetDefaults()
+    mockUseInstallmentPlans.mockReturnValue({
+      plans: [
+        {
+          id: 'inst-1',
+          description: 'ספה',
+          total_agorot: 1200000,
+          installment_count: 12,
+          monthly_agorot: 100000,
+          first_charge_date: '2020-01-01',
+          category_id: null,
+          account_id: null,
+          is_shared: true,
+        },
+      ],
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+    mockUseInstallmentMaterializedCounts.mockReturnValue({
+      // Deliberately mismatched: a row count of 3 (indices 1, 3, 4 exist —
+      // index 2 was deleted) vs. the true max index of 4.
+      materializedCounts: { 'inst-1': 3 },
+      maxMaterializedIndices: { 'inst-1': 4 },
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+
+    const { result } = await renderHook(() => useUpcomingCommitments('household-1'), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const installmentCommitments = result.current.commitments.filter((c) => c.source === 'installment')
+    // Forecasting must resume at index 5 (max 4 + 1), never index 4 (count
+    // 3 + 1) — index 4 already exists as a real, posted transaction. Each
+    // commitment's id encodes its installment index (`installment:{planId}:{index}`).
+    const indices = installmentCommitments.map((c) => Number(c.id.split(':')[2])).sort((a, b) => a - b)
+    expect(indices).toEqual([5, 6, 7, 8, 9, 10, 11, 12])
+    expect(indices).not.toContain(4)
   })
 
   // Regression coverage for the real-preview bug: Home's "מה מגיע" card

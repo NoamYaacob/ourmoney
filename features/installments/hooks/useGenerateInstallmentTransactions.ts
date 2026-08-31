@@ -8,7 +8,7 @@
 // Must be mounted once at app load exactly like useGenerateRecurringTransactions
 // (app/(app)/_layout.tsx) — forecastInstallmentOccurrences.ts's own
 // double-count guard (never forecasting from installmentIndex 1, only from
-// materializedCount + 1) depends on this running on every app load, the
+// lastMaterializedIndex + 1) depends on this running on every app load, the
 // same load-bearing assumption recurring's forecaster already depends on.
 
 import { useCallback, useEffect } from 'react'

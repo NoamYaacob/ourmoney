@@ -12,7 +12,9 @@
 // Double-count guard: inherited entirely from the reused primitives'
 // existing guarantees — forecastRecurringOccurrences starts from each
 // template's own next_due_date (never "today"), forecastInstallmentOccurrences
-// starts from materializedCount + 1, and an obligation only appears here
+// starts from lastMaterializedIndex + 1 (a gap-safe MAX(installment_index),
+// never a row count — see that module's own header, RRR §14 P0-1), and an
+// obligation only appears here
 // while its own status is still 'upcoming' (flipped to 'completed' once
 // marked paid — see app/(app)/obligations/[id].tsx's mark-paid flow). None
 // of these can ever also already exist as a posted transaction; see each

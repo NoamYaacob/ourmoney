@@ -96,7 +96,7 @@ describe('assembleForecastInputs', () => {
       obligations: [],
       recurringTransactions: [],
       installmentPlans: [],
-      materializedCounts: {},
+      maxMaterializedIndices: {},
     })
     expect(result.availableCashAgorot).toBe(520_000)
   })
@@ -108,7 +108,7 @@ describe('assembleForecastInputs', () => {
       obligations: [obligation({ id: 'ob-x', name: 'ביטוח', amount_agorot: 12_345, due_date: '2026-10-01', status: 'upcoming' })],
       recurringTransactions: [],
       installmentPlans: [],
-      materializedCounts: {},
+      maxMaterializedIndices: {},
     })
     expect(result.obligations).toEqual([
       { id: 'ob-x', name: 'ביטוח', amountAgorot: 12_345, dueDate: '2026-10-01', status: 'upcoming', categoryId: null, accountId: null },
@@ -122,7 +122,7 @@ describe('assembleForecastInputs', () => {
       obligations: [],
       recurringTransactions: [recurring({ id: 'rc-x', description: 'חדר כושר', amount_agorot: -9_900, day_of_month: 15 })],
       installmentPlans: [],
-      materializedCounts: {},
+      maxMaterializedIndices: {},
     })
     expect(result.recurringTemplates).toEqual([
       {
@@ -139,16 +139,16 @@ describe('assembleForecastInputs', () => {
     ])
   })
 
-  it('maps installment plan fields and resolves materializedCount from the counts map, defaulting to 0', () => {
+  it('maps installment plan fields and resolves lastMaterializedIndex from the max-indices map, defaulting to 0', () => {
     const result = assembleForecastInputs({
       accounts: [],
       balances: {},
       obligations: [],
       recurringTransactions: [],
       installmentPlans: [installmentPlan({ id: 'ip-x' }), installmentPlan({ id: 'ip-y' })],
-      materializedCounts: { 'ip-x': 5 },
+      maxMaterializedIndices: { 'ip-x': 5 },
     })
-    expect(result.installmentPlans.find((p) => p.id === 'ip-x')?.materializedCount).toBe(5)
-    expect(result.installmentPlans.find((p) => p.id === 'ip-y')?.materializedCount).toBe(0)
+    expect(result.installmentPlans.find((p) => p.id === 'ip-x')?.lastMaterializedIndex).toBe(5)
+    expect(result.installmentPlans.find((p) => p.id === 'ip-y')?.lastMaterializedIndex).toBe(0)
   })
 })

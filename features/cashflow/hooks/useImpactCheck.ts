@@ -79,7 +79,7 @@ export function useImpactCheck(householdId: string | null | undefined): UseImpac
     refetch: refetchInstallmentPlans,
   } = useInstallmentPlans(householdId)
   const {
-    materializedCounts,
+    maxMaterializedIndices,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
     hasData: hasMaterializedCountsData,
@@ -94,7 +94,7 @@ export function useImpactCheck(householdId: string | null | undefined): UseImpac
     obligations,
     recurringTransactions,
     installmentPlans,
-    materializedCounts,
+    maxMaterializedIndices,
   })
 
   return {

@@ -44,7 +44,14 @@ jest.mock('@/features/installments/hooks/useInstallmentPlans', () => ({
   useInstallmentPlans: () => mockUseInstallmentPlans(),
 }))
 
-const DEFAULT_MATERIALIZED = { materializedCounts: {} as Record<string, number>, isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
+const DEFAULT_MATERIALIZED = {
+  materializedCounts: {} as Record<string, number>,
+  maxMaterializedIndices: {} as Record<string, number>,
+  isLoading: false,
+  error: null as Error | null,
+  hasData: true,
+  refetch: jest.fn(),
+}
 const mockUseInstallmentMaterializedCounts = jest.fn(() => DEFAULT_MATERIALIZED)
 jest.mock('@/features/installments/hooks/useInstallmentMaterializedCounts', () => ({
   useInstallmentMaterializedCounts: () => mockUseInstallmentMaterializedCounts(),

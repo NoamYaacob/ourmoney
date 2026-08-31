@@ -61,7 +61,7 @@ function installmentPlan(overrides: Partial<CommitmentInstallmentTemplate> = {})
     installmentCount: 3,
     monthlyAgorot: 100000,
     firstChargeDate: '2026-08-01',
-    materializedCount: 1,
+    lastMaterializedIndex: 1,
     categoryId: null,
     accountId: null,
     isShared: true,
@@ -143,9 +143,9 @@ describe('buildUpcomingCommitments', () => {
     expect(items.filter((i) => i.source === 'recurring').length).toBeGreaterThan(1)
   })
 
-  it('forecasts installment occurrences, resuming from materializedCount', () => {
+  it('forecasts installment occurrences, resuming from lastMaterializedIndex', () => {
     const items = buildUpcomingCommitments(baseInput({ installmentPlans: [installmentPlan()] }))
-    // materializedCount 1 of 3 -> occurrence 2 (2026-09-01) is the next one
+    // lastMaterializedIndex 1 of 3 -> occurrence 2 (2026-09-01) is the next one
     // and falls within the horizon; occurrence 3 (2026-10-01) does not.
     expect(items.filter((i) => i.source === 'installment')).toHaveLength(1)
     expect(items.find((i) => i.source === 'installment')?.amountAgorot).toBe(100000)
@@ -155,7 +155,7 @@ describe('buildUpcomingCommitments', () => {
     const items = buildUpcomingCommitments(
       baseInput({
         horizonEnd: '2026-12-31',
-        installmentPlans: [installmentPlan({ totalAgorot: 300001, materializedCount: 1 })],
+        installmentPlans: [installmentPlan({ totalAgorot: 300001, lastMaterializedIndex: 1 })],
       })
     )
     const installmentItems = items.filter((i) => i.source === 'installment')

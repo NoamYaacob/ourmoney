@@ -39,7 +39,7 @@ function installmentPlan(overrides: Partial<InstallmentPlanForecastTemplate> = {
     installmentCount: 3,
     monthlyAgorot: 100000,
     firstChargeDate: '2026-09-10',
-    materializedCount: 0,
+    lastMaterializedIndex: 0,
     categoryId: null,
     accountId: null,
     ...overrides,
@@ -101,16 +101,16 @@ describe('calculateSafeToSpend', () => {
     expect(result.items).toHaveLength(3)
   })
 
-  it('does not double count an already-materialized instalment (resumes from materializedCount + 1)', () => {
+  it('does not double count an already-materialized instalment (resumes from lastMaterializedIndex + 1)', () => {
     const result = calculateSafeToSpend(
-      baseInput({ installmentPlans: [installmentPlan({ materializedCount: 1, firstChargeDate: '2026-08-10' })] })
+      baseInput({ installmentPlans: [installmentPlan({ lastMaterializedIndex: 1, firstChargeDate: '2026-08-10' })] })
     )
     expect(result.items).toHaveLength(1)
     expect(result.items[0]?.date).toBe('2026-09-10')
   })
 
   it('excludes an instalment plan fully materialized already (nothing left to forecast)', () => {
-    const result = calculateSafeToSpend(baseInput({ installmentPlans: [installmentPlan({ materializedCount: 3 })] }))
+    const result = calculateSafeToSpend(baseInput({ installmentPlans: [installmentPlan({ lastMaterializedIndex: 3 })] }))
     expect(result.items).toEqual([])
   })
 

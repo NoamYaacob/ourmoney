@@ -69,7 +69,7 @@ export function useCashFlowForecast(
     refetch: refetchInstallmentPlans,
   } = useInstallmentPlans(householdId)
   const {
-    materializedCounts,
+    maxMaterializedIndices,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
     hasData: hasMaterializedCountsData,
@@ -83,7 +83,7 @@ export function useCashFlowForecast(
     obligations,
     recurringTransactions,
     installmentPlans,
-    materializedCounts,
+    maxMaterializedIndices,
   })
 
   const result = calculateCashFlowForecast({

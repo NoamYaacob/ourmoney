@@ -9,7 +9,7 @@ function plan(overrides: Partial<InstallmentPlanForecastTemplate> = {}): Install
     installmentCount: 3,
     monthlyAgorot: 100000,
     firstChargeDate: '2026-08-10',
-    materializedCount: 0,
+    lastMaterializedIndex: 0,
     categoryId: 'cat-1',
     accountId: 'acc-1',
     ...overrides,
@@ -35,14 +35,14 @@ describe('forecastInstallmentOccurrences', () => {
     expect(result.reduce((sum, o) => sum - o.amountAgorot, 0)).toBe(100000)
   })
 
-  it('resumes forecasting from materializedCount + 1, never re-reporting an already-generated instalment', () => {
-    const result = forecastInstallmentOccurrences([plan({ materializedCount: 1 })], '2026-10-31')
+  it('resumes forecasting from lastMaterializedIndex + 1, never re-reporting an already-generated instalment', () => {
+    const result = forecastInstallmentOccurrences([plan({ lastMaterializedIndex: 1 })], '2026-10-31')
     expect(result.map((o) => o.installmentIndex)).toEqual([2, 3])
     expect(result.map((o) => o.date)).toEqual(['2026-09-10', '2026-10-10'])
   })
 
   it('returns nothing once every instalment has already materialized', () => {
-    const result = forecastInstallmentOccurrences([plan({ materializedCount: 3 })], '2026-12-31')
+    const result = forecastInstallmentOccurrences([plan({ lastMaterializedIndex: 3 })], '2026-12-31')
     expect(result).toEqual([])
   })
 

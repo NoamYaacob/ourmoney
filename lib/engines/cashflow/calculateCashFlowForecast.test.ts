@@ -43,7 +43,7 @@ function installmentPlan(overrides: Partial<InstallmentPlanForecastTemplate> = {
     installmentCount: 3,
     monthlyAgorot: 100000,
     firstChargeDate: '2026-08-20',
-    materializedCount: 0,
+    lastMaterializedIndex: 0,
     categoryId: null,
     accountId: null,
     ...overrides,
@@ -385,7 +385,7 @@ describe('calculateCashFlowForecast', () => {
   })
 
   it('ignores an instalment plan that is already fully materialized', () => {
-    const result = calculateCashFlowForecast(baseInput({ installmentPlans: [installmentPlan({ materializedCount: 3 })] }))
+    const result = calculateCashFlowForecast(baseInput({ installmentPlans: [installmentPlan({ lastMaterializedIndex: 3 })] }))
     expect(result.events).toEqual([])
   })
 

@@ -221,9 +221,10 @@ TRANSACTIONS.push(
 // since each plan's first_charge_date — exactly the same reason
 // designQaClient.ts's own TRANSACTIONS seeds these (see its header
 // comment): forecastInstallmentOccurrences.ts always resumes forecasting
-// from materializedCount + 1 (computeInstallmentMaterializedCounts.ts
-// counts real transaction rows carrying installment_plan_id/
-// installment_index), so a plan with a first_charge_date months in the
+// from lastMaterializedIndex + 1 (computeInstallmentMaterializedCounts.ts's
+// computeInstallmentMaxIndices derives MAX(installment_index) from real
+// transaction rows carrying installment_plan_id/installment_index — never a
+// row count, RRR §14 P0-1), so a plan with a first_charge_date months in the
 // past and zero backing transactions gets every one of its already-elapsed
 // months forecast as still-upcoming — and, since those forecast dates land
 // in the past, badged "באיחור" (overdue) on Home's "מה מגיע" card. That's

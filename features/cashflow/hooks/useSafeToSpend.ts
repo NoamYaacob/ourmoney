@@ -79,7 +79,7 @@ export function useSafeToSpend(
     refetch: refetchInstallmentPlans,
   } = useInstallmentPlans(householdId)
   const {
-    materializedCounts,
+    maxMaterializedIndices,
     isLoading: isMaterializedCountsLoading,
     error: materializedCountsError,
     hasData: hasMaterializedCountsData,
@@ -93,7 +93,7 @@ export function useSafeToSpend(
     obligations,
     recurringTransactions,
     installmentPlans,
-    materializedCounts,
+    maxMaterializedIndices,
   })
 
   const result = calculateSafeToSpend({

@@ -24,7 +24,13 @@ export interface ForecastEngineSources {
   obligations: readonly PlannedObligation[]
   recurringTransactions: readonly RecurringTransaction[]
   installmentPlans: readonly InstallmentPlan[]
-  materializedCounts: Readonly<Record<string, number>>
+  // MAX(installment_index) per plan — NOT a row count. See
+  // forecastInstallmentOccurrences.ts's module header (RRR §14 P0-1) for why
+  // a row count silently diverges from the true next-forecast index once any
+  // materialized instalment has been deleted. Callers should derive this via
+  // useInstallmentMaterializedCounts's maxMaterializedIndices, never its
+  // materializedCounts (which stays a row count, for display only).
+  maxMaterializedIndices: Readonly<Record<string, number>>
 }
 
 // The fields calculateSafeToSpend's SafeToSpendInput and
@@ -68,7 +74,7 @@ export function assembleForecastInputs(sources: ForecastEngineSources): Forecast
       installmentCount: p.installment_count,
       monthlyAgorot: p.monthly_agorot,
       firstChargeDate: p.first_charge_date,
-      materializedCount: sources.materializedCounts[p.id] ?? 0,
+      lastMaterializedIndex: sources.maxMaterializedIndices[p.id] ?? 0,
       categoryId: p.category_id,
       accountId: p.account_id,
     })),

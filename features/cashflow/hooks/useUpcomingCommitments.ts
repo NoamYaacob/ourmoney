@@ -105,19 +105,27 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
     // installmentPlans.hasData: useInstallmentMaterializedCounts.ts
     // degrades to an empty {} object whenever it has never successfully
     // loaded (never throws), so without this guard every plan's
-    // materializedCount would silently read as 0 the first time that query
-    // has never succeeded — re-forecasting already-materialized,
+    // lastMaterializedIndex would silently read as 0 the first time that
+    // query has never succeeded — re-forecasting already-materialized,
     // already-posted instalments as still-upcoming (qa-adversarial-reviewer
     // finding: a real double-count, not just a display gap). Keyed on
     // `hasData` rather than `error` (previously `installmentPlans.error ||
     // materializedCounts.error`): a background refetch failure on an
     // already-loaded query still has its last-known-good data sitting in
-    // `installmentPlans.plans`/`materializedCounts.materializedCounts` —
+    // `installmentPlans.plans`/`materializedCounts.maxMaterializedIndices` —
     // discarding it on every transient failure is exactly the bug that
     // made the "מה מגיע" card go from showing real commitments to
     // completely empty on a later render (see useAccounts.ts's `hasData`
     // for why `.error` alone can't tell "never loaded" apart from "loaded
     // before, this refetch just failed").
+    //
+    // RRR §14 P0-1: lastMaterializedIndex is resolved from
+    // materializedCounts.maxMaterializedIndices — MAX(installment_index),
+    // never .materializedCounts (a row count). Feeding the row count here
+    // was the exact mechanism that let a deleted materialized instalment
+    // make this card re-forecast a charge that already posted. See
+    // forecastInstallmentOccurrences.ts's module header for the full
+    // explanation.
     installmentPlans: installmentPlans.hasData && materializedCounts.hasData
       ? installmentPlans.plans.map((p) => ({
           id: p.id,
@@ -126,7 +134,7 @@ export function useUpcomingCommitments(householdId: string | null | undefined): 
           installmentCount: p.installment_count,
           monthlyAgorot: p.monthly_agorot,
           firstChargeDate: p.first_charge_date,
-          materializedCount: materializedCounts.materializedCounts[p.id] ?? 0,
+          lastMaterializedIndex: materializedCounts.maxMaterializedIndices[p.id] ?? 0,
           categoryId: p.category_id,
           accountId: p.account_id,
           isShared: p.is_shared,
