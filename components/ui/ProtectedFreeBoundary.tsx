@@ -62,7 +62,15 @@ export function ProtectedFreeBoundary({ protectedAgorot, freeAgorot, totalAgorot
     <View>
       <View
         className="w-full overflow-hidden rounded-full"
-        style={{ height, backgroundColor: colors.heroBorder.light }}
+        // RRR §16 P0-5: heroBorder measured 1.47:1 (light hero) / 1.26:1
+        // (dark hero) — nowhere near WCAG 1.4.11's 3:1 floor for meaningful
+        // non-text UI, which made the entire protected/free split (this
+        // component's whole purpose) nearly invisible. heroInkMuted is the
+        // existing, already-audited token that passes on both hero
+        // backgrounds (7.14:1 / 6.11:1) and is already used for text
+        // elsewhere in the hero, so this reuses a token already proven safe
+        // here rather than inventing a new one.
+        style={{ height, backgroundColor: colors.heroInkMuted.light }}
         // Decorative: the label row below is the accessible description of
         // this split, so a screen reader is not also handed an unlabeled
         // colored box to interpret on its own.
@@ -73,8 +81,15 @@ export function ProtectedFreeBoundary({ protectedAgorot, freeAgorot, totalAgorot
           <Svg width="100%" height={height}>
             <Defs>
               <Pattern id="protectedHatch" width={8} height={8} patternUnits="userSpaceOnUse">
-                <Rect width={8} height={8} fill={colors.heroBorder.light} />
-                <Line x1={0} y1={8} x2={8} y2={0} stroke={colors.heroInkMuted.light} strokeWidth={1.5} opacity={0.5} />
+                <Rect width={8} height={8} fill={colors.heroInkMuted.light} />
+                {/* The diagonal lines now provide the hatch TEXTURE against
+                    the passing heroInkMuted base above — heroBorder is dark
+                    enough for that purpose even though (per this file's own
+                    earlier fix) it fails contrast as a dominant fill in its
+                    own right; here it's a minority-area accent line, not
+                    the segment's overall color, so 1.4.11 doesn't apply to
+                    it the way it did to the base fill. */}
+                <Line x1={0} y1={8} x2={8} y2={0} stroke={colors.heroBorder.light} strokeWidth={1.5} opacity={0.6} />
               </Pattern>
             </Defs>
             <Rect width="100%" height={height} fill="url(#protectedHatch)" />

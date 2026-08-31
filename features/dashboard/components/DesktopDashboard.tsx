@@ -307,14 +307,20 @@ export function DesktopDashboard() {
               <HeroLegendRow label={t('cashFlow.safeToSpend')} swatchColor={colors.heroAccent.light} emphasis>
                 <Money agorot={safeToSpend.safeToSpendAgorot} size="caption" tone="hero" />
               </HeroLegendRow>
-              <HeroLegendRow label={t('cashFlow.plannedObligations')} swatchColor={colors.heroBorder.light}>
+              {/* RRR §16 P0-5: heroBorder measured 1.47:1/1.26:1 against the
+                  hero backgrounds — far under the 3:1 floor for meaningful
+                  non-text UI, making these legend swatches effectively
+                  invisible. heroInkMuted (7.14:1/6.11:1) is the same
+                  already-audited token ProtectedFreeBoundary.tsx now uses
+                  for the same reason. */}
+              <HeroLegendRow label={t('cashFlow.plannedObligations')} swatchColor={colors.heroInkMuted.light}>
                 <Money agorot={safeToSpend.plannedObligationsAgorot} size="caption" tone="heroMuted" />
               </HeroLegendRow>
-              <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.heroBorder.light}>
+              <HeroLegendRow label={t('cashFlow.recurringCharges')} swatchColor={colors.heroInkMuted.light}>
                 <Money agorot={safeToSpend.recurringAgorot} size="caption" tone="heroMuted" />
               </HeroLegendRow>
               {safeToSpend.installmentsAgorot > 0 && (
-                <HeroLegendRow label={t('cashFlow.installmentCharges')} swatchColor={colors.heroBorder.light}>
+                <HeroLegendRow label={t('cashFlow.installmentCharges')} swatchColor={colors.heroInkMuted.light}>
                   <Money agorot={safeToSpend.installmentsAgorot} size="caption" tone="heroMuted" />
                 </HeroLegendRow>
               )}

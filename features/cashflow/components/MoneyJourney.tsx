@@ -168,7 +168,14 @@ function CausalDetail({ step }: { step: MoneyJourneyStep }) {
           <Money agorot={step.beforeBalanceAgorot} size="caption" tone="heroMuted" />
         </View>
         <View className="items-center gap-0.5">
-          <Text className={`text-caption font-heeboBold ${up ? 'text-positive-light' : 'text-heroInk-light'}`}>
+          {/* RRR §16 P0-5: positive.light measures 3.05:1 (non-text OK,
+              text FAIL) on hero.light and 2.61:1 FAIL on hero.dark — this
+              entire component only ever renders on the hero surface, which
+              (per constants/colors.ts's own header) does not invert with
+              the app theme, so a `-light` semantic token is a real,
+              app-theme-independent contrast bug here, not a stale style.
+              positive.dark passes both hero backgrounds (10.2:1/8.72:1). */}
+          <Text className={`text-caption font-heeboBold ${up ? 'text-positive-dark' : 'text-heroInk-light'}`}>
             {up ? '+' : '−'}
             {formatILS(step.deltaAgorot)}
           </Text>
@@ -335,14 +342,18 @@ function ListRow({
 }) {
   const { t } = useTranslation()
   const up = step ? step.deltaAgorot >= 0 : null
+  // RRR §16 P0-5: danger/warning/positive `-light` variants fail contrast
+  // against the hero surface (this row only ever renders on hero), so the
+  // dot colors below use the `-dark` variant unconditionally, matching the
+  // hero-context fix in ProtectedFreeBoundary.tsx/DesktopDashboard.tsx.
   const dotClass = isBaseline
     ? 'bg-heroInk-light'
     : step?.isLow
-      ? 'bg-danger-light'
+      ? 'bg-danger-dark'
       : up
-        ? 'bg-positive-light'
+        ? 'bg-positive-dark'
         : step?.severe
-          ? 'bg-warning-light'
+          ? 'bg-warning-dark'
           : 'bg-heroAccent-light'
 
   const body = (
@@ -354,15 +365,15 @@ function ListRow({
           so "this is the floor" reads through geometry, not color alone. */}
       {step?.isLow ? (
         <View className="h-2.5 w-2.5 items-center justify-center">
-          <View className="absolute h-4 w-4 rounded-full bg-danger-light opacity-20" />
-          <View className="h-2.5 w-2.5 rounded-full bg-danger-light" />
+          <View className="absolute h-4 w-4 rounded-full bg-danger-dark opacity-20" />
+          <View className="h-2.5 w-2.5 rounded-full bg-danger-dark" />
         </View>
       ) : (
         <View className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
       )}
       <View className="flex-1">
         <Text
-          className={`text-body font-sansSemibold ${step?.isLow ? 'text-danger-light' : 'text-heroInk-light'}`}
+          className={`text-body font-sansSemibold ${step?.isLow ? 'text-danger-dark' : 'text-heroInk-light'}`}
           numberOfLines={1}
         >
           {isBaseline ? label : step?.cause}
@@ -541,7 +552,13 @@ function MoneyJourneyChart({
                 cx={svgX(s.index)}
                 cy={toY(s.afterBalanceAgorot)}
                 r={11}
-                fill={isDark ? colors.danger.dark : colors.danger.light}
+                // RRR §16 P0-5: this halo renders on the hero surface,
+                // which does not invert with `isDark` (constants/colors.ts's
+                // own header comment) — danger.light fails contrast here in
+                // BOTH app themes (2.68:1/2.29:1), so the fill is now the
+                // hero-safe `.dark` variant unconditionally, not gated on
+                // the app's own color scheme.
+                fill={colors.danger.dark}
                 fillOpacity={0.18}
               />
             ))}
@@ -577,18 +594,19 @@ function MoneyJourneyChart({
           const showLabel = shownLabels.has(step.id)
           const isPinned = pinnedId === step.id
 
+          // RRR §16 P0-5: same hero-surface-doesn't-invert fix as the halo
+          // above — danger/warning/positive always resolve to their `.dark`
+          // variant here regardless of `isDark`, since that's the variant
+          // proven to pass against the hero background in both app themes.
+          // heroAccent is untouched: colors.heroAccent.light ===
+          // colors.heroAccent.dark already (constants/colors.ts), so its
+          // ternary was never a bug.
           const barColor = step.isLow
-            ? isDark
-              ? colors.danger.dark
-              : colors.danger.light
+            ? colors.danger.dark
             : up
-              ? isDark
-                ? colors.positive.dark
-                : colors.positive.light
+              ? colors.positive.dark
               : step.severe
-                ? isDark
-                  ? colors.warning.dark
-                  : colors.warning.light
+                ? colors.warning.dark
                 : isDark
                   ? colors.heroAccent.dark
                   : colors.heroAccent.light
@@ -623,7 +641,7 @@ function MoneyJourneyChart({
                   adjacent suppressed badges could themselves overlap. */}
               {step.clusterCount > 1 && showLabel && (
                 <View
-                  className="items-center justify-center rounded-full bg-danger-light"
+                  className="items-center justify-center rounded-full bg-danger-dark"
                   style={{ position: 'absolute', top: top - 9, right: -3, width: 14, height: 14 }}
                 >
                   <Text className="text-[9px] font-heeboBold text-white">{step.clusterCount}</Text>
@@ -632,14 +650,14 @@ function MoneyJourneyChart({
               {showLabel ? (
                 <>
                   <Text
-                    className={`text-meta font-heeboBold ${step.isLow ? 'text-danger-light' : up ? 'text-positive-light' : step.severe ? 'text-warning-light' : 'text-heroAccent-light'}`}
+                    className={`text-meta font-heeboBold ${step.isLow ? 'text-danger-dark' : up ? 'text-positive-dark' : step.severe ? 'text-warning-dark' : 'text-heroAccent-light'}`}
                     style={{ position: 'absolute', top: top - 16, width: 100, right: -39, textAlign: 'center', fontVariant: ['tabular-nums'] }}
                   >
                     {up ? '+' : '−'}
                     {formatILS(step.deltaAgorot)}
                   </Text>
                   <Text
-                    className={`text-meta font-sans ${step.isLow ? 'text-danger-light' : 'text-heroInkMuted-light'}`}
+                    className={`text-meta font-sans ${step.isLow ? 'text-danger-dark' : 'text-heroInkMuted-light'}`}
                     numberOfLines={1}
                     // CP8C fix: react-native-web's `numberOfLines` handling
                     // adds its own `maxWidth: '100%'` for the ellipsis to
