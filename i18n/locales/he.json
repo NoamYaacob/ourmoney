@@ -183,6 +183,26 @@
     "recurringSubtitle": "{{count}} חיובים קבועים שעוד לא ירדו",
     "installmentsSubtitle": "{{count}} תשלומים בתוכניות פעילות"
   },
+  "impactCheck": {
+    "entryLabel": "אפשר להרשות לעצמנו את זה?",
+    "entrySubtitle": "בדקו מה קורה לתחזית אם מוציאים סכום נוסף עכשיו",
+    "sectionLabel": "בדיקת השפעת הוצאה",
+    "amountLabel": "כמה ההוצאה?",
+    "amountPlaceholder": "0",
+    "close": "סגירה",
+    "clear": "ניקוי",
+    "assumption": "החישוב מניח שההוצאה מתבצעת עכשיו וששאר הנתונים הידועים אינם משתנים.",
+    "currentLabel": "פנוי באמת היום",
+    "postPurchaseLabel": "פנוי באמת אחרי ההוצאה",
+    "lowPointLabel": "הנקודה הנמוכה הצפויה",
+    "lowPointDate": "ב־{{date}}",
+    "verdict": {
+      "safeTitle": "כן, זה נכנס",
+      "safeBody": "גם אחרי ההוצאה וההתחייבויות הידועות, הנקודה הנמוכה הצפויה נשארת {{amount}}.",
+      "unsafeTitle": "ההוצאה תכניס את התחזית למינוס",
+      "unsafeBody": "בהנחה שההוצאה מתבצעת עכשיו וששאר התחזית לא משתנה, הנקודה הנמוכה הצפויה היא {{amount}} {{date}}."
+    }
+  },
   "more": {
     "title": "עוד",
     "householdSubtitle": "{{household}} · {{count}} חברים",

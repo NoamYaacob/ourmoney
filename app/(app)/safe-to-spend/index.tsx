@@ -30,6 +30,7 @@ import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useSafeToSpend } from '@/features/cashflow/hooks/useSafeToSpend'
+import { ImpactCheckPanel } from '@/features/cashflow/components/ImpactCheckPanel'
 import type { SafeToSpendItem, SafeToSpendItemSource } from '@/lib/engines/cashflow/calculateSafeToSpend'
 import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
@@ -287,6 +288,13 @@ export default function SafeToSpendDetail() {
           {t('safeToSpendDetail.excludedBody')}
         </Text>
       </View>
+
+      {/* CP8F — Single Purchase Impact Check: a deliberately-invoked
+          secondary action, not a second hero. This screen is already the
+          household's own "why" for the figure above, so "what if I spend
+          more" belongs here rather than on Home — see this checkpoint's
+          own brief, section 6. */}
+      <ImpactCheckPanel householdId={householdId} />
 
       <View className="h-4" />
     </Screen>

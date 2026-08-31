@@ -59,6 +59,30 @@ jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
   }),
 }))
 
+// CP8F — this screen now also mounts ImpactCheckPanel, which composes its
+// own useImpactCheck. Mocked at the same module boundary as useSafeToSpend
+// above so this screen's own tests never reach the real Supabase client —
+// ImpactCheckPanel's own behavior is covered by its own test file.
+jest.mock('@/features/cashflow/hooks/useImpactCheck', () => ({
+  useImpactCheck: () => ({
+    isLoading: false,
+    error: null,
+    hasData: true,
+    refetch: jest.fn(),
+    calculate: () => ({
+      hypotheticalExpenseAgorot: 0,
+      currentSafeToSpendAgorot: 0,
+      postPurchaseSafeToSpendAgorot: 0,
+      currentLowPointAgorot: 0,
+      currentLowPointDate: '2026-09-01',
+      postPurchaseLowPointAgorot: 0,
+      postPurchaseLowPointDate: '2026-09-01',
+      crossesBelowZero: false,
+      verdict: 'SAFE',
+    }),
+  }),
+}))
+
 beforeEach(() => {
   mockBack.mockClear()
   mockResult = { ...BASE }
@@ -134,5 +158,10 @@ describe('safe-to-spend breakdown', () => {
     // paragraph, so this matches the body's own opening rather than the
     // whole concatenated string.
     expect(getByText(/חיסכון, השקעות וכרטיסי האשראי/)).toBeTruthy()
+  })
+
+  it('offers Impact Check as a secondary action, collapsed by default (CP8F)', async () => {
+    const { getByText } = await render(<SafeToSpendDetail />)
+    expect(getByText(i18n.t('impactCheck.entryLabel'))).toBeTruthy()
   })
 })
