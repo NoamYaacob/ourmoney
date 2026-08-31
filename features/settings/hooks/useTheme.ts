@@ -22,8 +22,26 @@
 // isLoading flips to false. A layout effect flushes synchronously before that
 // paint, closing the gap between "preference resolved" and "NativeWind
 // applied it."
-
+//
+// RRR §6 P0-2 — 'system' preference on web needs its own branch, not a bare
+// colorScheme.set(preference) pass-through:
+// tailwind.config.js sets `darkMode: 'class'` (chosen so the explicit
+// light/dark override above can work at all — NativeWind's web runtime
+// throws from colorScheme.set() outright under `darkMode: 'media'`, which
+// only supports the OS following automatically, with no manual override).
+// Under `class` strategy, react-native-css-interop's web runtime
+// (runtime/web/color-scheme.ts) treats `.set('system')` as "clear the
+// manual override" — it REMOVES the `dark` class from <html> and does
+// nothing else. It does not re-add that class for a dark OS/browser
+// preference, because doing so is exclusively `media` strategy's job via a
+// generated `@media (prefers-color-scheme: dark)` rule, which `class`
+// strategy never emits. The result: a 'system' preference silently renders
+// the light theme on web, for every user who never touches the in-app
+// toggle — the app's default state. On native there is no DOM class to
+// keep in sync; `.set('system')` already delegates correctly to
+// `Appearance.setColorScheme(null)`, so this branch is web-only.
 import { useLayoutEffect } from 'react'
+import { Appearance, Platform } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { colorScheme, useColorScheme as useNativeWindColorScheme } from 'nativewind'
 import {
@@ -43,7 +61,26 @@ export function useTheme() {
   const { colorScheme: resolvedTheme } = useNativeWindColorScheme()
 
   useLayoutEffect(() => {
-    if (preference) colorScheme.set(preference)
+    if (!preference) return
+
+    if (Platform.OS !== 'web' || preference !== 'system') {
+      colorScheme.set(preference)
+      return
+    }
+
+    // Web + 'system': resolve the real, live OS/browser preference
+    // ourselves and apply it as a concrete value, since colorScheme.set
+    // ('system') alone would only clear the class (see header comment).
+    // react-native-web's Appearance module wraps
+    // window.matchMedia('(prefers-color-scheme: dark)') for both the
+    // initial read and the change listener, so this also keeps the applied
+    // theme correct across a live OS preference change without a reload.
+    const applyLiveSystemPreference = () => {
+      colorScheme.set(Appearance.getColorScheme() === 'dark' ? 'dark' : 'light')
+    }
+    applyLiveSystemPreference()
+    const subscription = Appearance.addChangeListener(applyLiveSystemPreference)
+    return () => subscription.remove()
   }, [preference])
 
   async function setPreference(next: AppearancePreference): Promise<void> {
