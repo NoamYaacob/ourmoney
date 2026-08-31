@@ -1,9 +1,17 @@
-// Supabase-aware composition layer only — every actual computation happens
-// in lib/engines/cashflow/ (pure, unit-tested, no network). This hook's only
-// job is: fetch the household's accounts/balances/obligations/recurring
-// templates via the existing, unmodified hooks (no new Supabase query is
-// added here), adapt each row's snake_case shape to the engine's input
-// shape, and call the engine.
+// CP8F — Supabase-aware composition layer for Single Purchase Impact Check,
+// same shape as useSafeToSpend.ts/useCashFlowForecast.ts: fetches the
+// household's data via the same six existing, unmodified hooks (same
+// TanStack Query keys, so this hook never issues a duplicate network
+// request alongside useSafeToSpend/useCashFlowForecast on the same screen),
+// assembles the shared engine input shape via assembleForecastInputs, and
+// exposes `calculate` — a pure, synchronous function of one hypothetical
+// amount, closed over the already-fetched data.
+//
+// Deliberately exposes a FUNCTION, not a stored result: this checkpoint's
+// brief is explicit that Impact Check has no saved scenarios and no
+// persistence — calling `calculate` a second time with a different amount
+// must never depend on, or leave behind, anything from the first call.
+// Nothing here writes to Supabase, nothing is cached keyed by amount.
 
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
@@ -12,37 +20,29 @@ import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurrin
 import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
 import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
 import { assembleForecastInputs } from '@/lib/engines/cashflow/assembleForecastInputs'
-import { getHorizonRange, type HorizonKind, type HorizonRange } from '@/lib/engines/cashflow/horizonRange'
-import { calculateSafeToSpend, type SafeToSpendResult } from '@/lib/engines/cashflow/calculateSafeToSpend'
+import { getHorizonRange, getDayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { calculateImpactCheck, type ImpactCheckResult } from '@/lib/engines/cashflow/calculateImpactCheck'
 
-export interface UseSafeToSpendResult {
-  result: SafeToSpendResult
-  horizon: HorizonRange
+// Matches the Safe-to-Spend detail screen's own horizon ('month' —
+// app/(app)/safe-to-spend/index.tsx) and Home's own cash-flow timeline
+// horizon (30 days — MobileHome.tsx/DesktopDashboard.tsx's own
+// CASH_FLOW_TIMELINE_HORIZON_DAYS) since Impact Check is reached FROM that
+// screen and must answer against the same figures it already shows, not a
+// third, divergent horizon.
+const FORECAST_HORIZON_DAYS = 30
+
+export interface UseImpactCheckResult {
   isLoading: boolean
   error: Error | null
-  // True only once EVERY one of the six composed sources has resolved with
-  // data at least once. `result` is always a fully-computed value (it maps
-  // over each source's own `data ?? []`/`{}` default), so it can never be
-  // used by itself to tell "genuinely nothing has loaded yet" apart from
-  // "everything loaded, `result` just happens to be all zeros" — this flag
-  // is that signal. Once true it stays true through any later background
-  // refetch failure (see useAccounts.ts's `hasData` for why), so a caller
-  // can keep showing `result` and treat `error` as a non-blocking, "could
-  // not refresh" signal instead of discarding good data.
+  // Same "every one of the six composed sources has resolved with data at
+  // least once" contract as useSafeToSpend.ts/useCashFlowForecast.ts's own
+  // `hasData` — see either file's header for the full rationale.
   hasData: boolean
-  // Re-runs every one of the six composed queries. This is the Home hero's
-  // own data source — the exact screen the intermittent "משהו השתבש" error
-  // was reported on — so a household that still hits a genuine failure
-  // (not the focus-refetch race lib/queryClient.ts now guards against; a
-  // real network/server error) has a way to ask again without navigating
-  // away and back.
   refetch: () => void
+  calculate: (hypotheticalExpenseAgorot: number) => ImpactCheckResult
 }
 
-export function useSafeToSpend(
-  householdId: string | null | undefined,
-  horizonKind: HorizonKind
-): UseSafeToSpendResult {
+export function useImpactCheck(householdId: string | null | undefined): UseImpactCheckResult {
   const {
     accounts,
     isLoading: isAccountsLoading,
@@ -86,7 +86,8 @@ export function useSafeToSpend(
     refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
-  const horizon = getHorizonRange(horizonKind)
+  const safeToSpendHorizon = getHorizonRange('month')
+  const forecastHorizon = getDayRangeHorizon(FORECAST_HORIZON_DAYS)
   const engineInputs = assembleForecastInputs({
     accounts,
     balances,
@@ -96,14 +97,7 @@ export function useSafeToSpend(
     materializedCounts,
   })
 
-  const result = calculateSafeToSpend({
-    ...engineInputs,
-    horizonEnd: horizon.end,
-  })
-
   return {
-    result,
-    horizon,
     isLoading:
       isAccountsLoading ||
       isBalancesLoading ||
@@ -127,5 +121,13 @@ export function useSafeToSpend(
       void refetchInstallmentPlans()
       void refetchMaterializedCounts()
     },
+    calculate: (hypotheticalExpenseAgorot: number) =>
+      calculateImpactCheck({
+        ...engineInputs,
+        safeToSpendHorizonEnd: safeToSpendHorizon.end,
+        forecastStartDate: forecastHorizon.start,
+        forecastEndDate: forecastHorizon.end,
+        hypotheticalExpenseAgorot,
+      }),
   }
 }

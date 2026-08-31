@@ -10,7 +10,7 @@ import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedOb
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
 import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
-import { sumEligibleCashAgorot } from '@/lib/engines/cashflow/eligibleCashAccounts'
+import { assembleForecastInputs } from '@/lib/engines/cashflow/assembleForecastInputs'
 import { getDayRangeHorizon, type DayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
 import { calculateCashFlowForecast, type CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
@@ -77,43 +77,20 @@ export function useCashFlowForecast(
   } = useInstallmentMaterializedCounts(householdId)
 
   const horizon = getDayRangeHorizon(horizonDays)
-  const startingBalanceAgorot = sumEligibleCashAgorot(accounts, balances)
+  const { availableCashAgorot: startingBalanceAgorot, ...engineInputs } = assembleForecastInputs({
+    accounts,
+    balances,
+    obligations,
+    recurringTransactions,
+    installmentPlans,
+    materializedCounts,
+  })
 
   const result = calculateCashFlowForecast({
+    ...engineInputs,
     startingBalanceAgorot,
     startDate: horizon.start,
     endDate: horizon.end,
-    obligations: obligations.map((o) => ({
-      id: o.id,
-      name: o.name,
-      amountAgorot: o.amount_agorot,
-      dueDate: o.due_date,
-      status: o.status,
-      categoryId: o.category_id,
-      accountId: o.account_id,
-    })),
-    recurringTemplates: recurringTransactions.map((r) => ({
-      id: r.id,
-      description: r.description,
-      amountAgorot: r.amount_agorot,
-      frequency: r.frequency,
-      dayOfMonth: r.day_of_month,
-      nextDueDate: r.next_due_date,
-      isActive: r.is_active,
-      categoryId: r.category_id,
-      accountId: r.account_id,
-    })),
-    installmentPlans: installmentPlans.map((p) => ({
-      id: p.id,
-      description: p.description,
-      totalAgorot: p.total_agorot,
-      installmentCount: p.installment_count,
-      monthlyAgorot: p.monthly_agorot,
-      firstChargeDate: p.first_charge_date,
-      materializedCount: materializedCounts[p.id] ?? 0,
-      categoryId: p.category_id,
-      accountId: p.account_id,
-    })),
   })
 
   return {
