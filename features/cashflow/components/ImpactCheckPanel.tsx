@@ -25,6 +25,17 @@
 // section 13 instruction (semantic reinforcement is allowed for the
 // negative case, but never neon, never automatic red for anything less
 // than actually negative).
+//
+// CP8F correction (post-independent-review): the original SAFE headline
+// ("כן, זה נכנס" — "yes, it fits") was too easy to misread as purchase
+// approval rather than a report of what the forecast does. Both verdict
+// headlines now describe MODEL OUTPUT only ("התחזית לא יורדת מתחת לאפס" /
+// "התחזית יורדת מתחת לאפס" — the forecast does/doesn't drop below zero),
+// worded to stay literally true at the exact-zero boundary the verdict
+// rule itself treats as SAFE. The cash-equivalent assumption is also now
+// stated to the user explicitly (not just in code comments) and moved to
+// sit between the amount field and the result it explains, instead of
+// after the verdict — see the assumption text below the amount field.
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
@@ -111,6 +122,18 @@ export function ImpactCheckPanel({ householdId }: ImpactCheckPanelProps) {
         </Text>
       )}
 
+      {/* CP8F correction: the modeling assumption sits between the amount
+          field and the result it explains — not after the verdict — so a
+          household reads what the number means before it reads the number
+          itself. Two short sentences, no modal, no checkbox, no extra tap:
+          (1) the cash-equivalent contract this checkpoint's own brief
+          required surfacing to the user (a credit-card household should
+          never assume payment-method precision this tool doesn't have),
+          (2) the pre-existing "nothing else changes" assumption. */}
+      <Text className="mb-3 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+        {t('impactCheck.assumptionCashEquivalent')} {t('impactCheck.assumptionDataUnchanged')}
+      </Text>
+
       {impact && (
         <View accessibilityLiveRegion="polite">
           <View className="gap-2">
@@ -165,8 +188,6 @@ export function ImpactCheckPanel({ householdId }: ImpactCheckPanelProps) {
           </View>
         </View>
       )}
-
-      <Text className="mt-3 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">{t('impactCheck.assumption')}</Text>
 
       {trimmed !== '' && (
         <Pressable onPress={handleClear} accessibilityRole="button" accessibilityLabel={t('impactCheck.clear')} className="mt-3 self-start">

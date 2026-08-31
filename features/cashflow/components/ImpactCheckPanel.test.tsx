@@ -38,6 +38,18 @@ const SAFE_RESULT: ImpactCheckResult = {
   verdict: 'SAFE',
 }
 
+const SAFE_AT_EXACT_ZERO_RESULT: ImpactCheckResult = {
+  hypotheticalExpenseAgorot: 134_000,
+  currentSafeToSpendAgorot: 138_450,
+  postPurchaseSafeToSpendAgorot: 4_450,
+  currentLowPointAgorot: 134_000,
+  currentLowPointDate: '2026-09-20',
+  postPurchaseLowPointAgorot: 0,
+  postPurchaseLowPointDate: '2026-09-20',
+  crossesBelowZero: false,
+  verdict: 'SAFE',
+}
+
 const UNSAFE_RESULT: ImpactCheckResult = {
   hypotheticalExpenseAgorot: 400_000,
   currentSafeToSpendAgorot: 138_450,
@@ -101,7 +113,7 @@ describe('ImpactCheckPanel', () => {
     expect(mockCalculate).not.toHaveBeenCalled()
   })
 
-  it('renders the SAFE state with correlation-free, deterministic copy and no danger tint', async () => {
+  it('renders the SAFE state with factual model-output copy, no purchase-approval language, and no danger tint', async () => {
     mockCalculate.mockReturnValue(SAFE_RESULT)
     const { getByText, getByLabelText } = await render(<ImpactCheckPanel householdId="hh-1" />)
     await fireEvent.press(getByLabelText(i18n.t('impactCheck.entryLabel')))
@@ -112,10 +124,31 @@ describe('ImpactCheckPanel', () => {
     expect(
       getByText(i18n.t('impactCheck.verdict.safeBody', { amount: formatILS(SAFE_RESULT.postPurchaseLowPointAgorot) }))
     ).toBeTruthy()
-    expect(getByText(i18n.t('impactCheck.assumption'))).toBeTruthy()
+    // Never purchase-approval/advice language — the modeled consequence only.
+    const safeCopy = i18n.t('impactCheck.verdict.safeTitle') + ' ' + i18n.t('impactCheck.verdict.safeBody', { amount: '' })
+    for (const forbidden of ['כדאי', 'אפשר לקנות', 'מתאים לכם', 'בטוח', 'מומלץ']) {
+      expect(safeCopy).not.toMatch(forbidden)
+    }
   })
 
-  it('renders the UNSAFE state with the factual, non-advisory headline and the low-point date', async () => {
+  it('SAFE headline remains true at the exact-zero post-purchase low point (the verdict boundary itself)', async () => {
+    mockCalculate.mockReturnValue(SAFE_AT_EXACT_ZERO_RESULT)
+    const { getByText, getByLabelText } = await render(<ImpactCheckPanel householdId="hh-1" />)
+    await fireEvent.press(getByLabelText(i18n.t('impactCheck.entryLabel')))
+    await fireEvent.changeText(getByLabelText(i18n.t('impactCheck.amountLabel')), '1340')
+
+    // "התחזית לא יורדת מתחת לאפס" ("the forecast does not drop below zero")
+    // is still literally true when the low point IS zero — unlike a
+    // "stays above zero" phrasing, which would be false at this exact
+    // boundary. See calculateImpactCheck.ts: the verdict rule itself is
+    // >= 0 is SAFE, so the copy must hold at exactly 0, not just above it.
+    expect(getByText(i18n.t('impactCheck.verdict.safeTitle'))).toBeTruthy()
+    expect(
+      getByText(i18n.t('impactCheck.verdict.safeBody', { amount: formatILS(0) }))
+    ).toBeTruthy()
+  })
+
+  it('renders the UNSAFE state with forecast/model-output language, never advice, and the low-point date', async () => {
     mockCalculate.mockReturnValue(UNSAFE_RESULT)
     const { getByText, getByLabelText } = await render(<ImpactCheckPanel householdId="hh-1" />)
     await fireEvent.press(getByLabelText(i18n.t('impactCheck.entryLabel')))
@@ -129,15 +162,25 @@ describe('ImpactCheckPanel', () => {
     })
     expect(getByText(expectedBody)).toBeTruthy()
     // Never a lifestyle-advice headline — the deterministic consequence only.
-    expect(i18n.t('impactCheck.verdict.unsafeTitle')).not.toMatch(/לא כדאי/)
+    const unsafeCopy = i18n.t('impactCheck.verdict.unsafeTitle') + ' ' + expectedBody
+    for (const forbidden of ['לא כדאי', 'כדאי', 'אפשר לקנות', 'מתאים לכם', 'בטוח', 'מומלץ']) {
+      expect(unsafeCopy).not.toMatch(forbidden)
+    }
   })
 
-  it('always discloses the immediate-outflow assumption, regardless of verdict', async () => {
+  it('states the cash-equivalent modeling assumption in user-visible copy', async () => {
+    const { getByText, getByLabelText } = await render(<ImpactCheckPanel householdId="hh-1" />)
+    await fireEvent.press(getByLabelText(i18n.t('impactCheck.entryLabel')))
+    expect(getByText(new RegExp(i18n.t('impactCheck.assumptionCashEquivalent')))).toBeTruthy()
+  })
+
+  it('always discloses both assumption sentences with every valid calculated result', async () => {
     mockCalculate.mockReturnValue(SAFE_RESULT)
     const { getByText, getByLabelText } = await render(<ImpactCheckPanel householdId="hh-1" />)
     await fireEvent.press(getByLabelText(i18n.t('impactCheck.entryLabel')))
     await fireEvent.changeText(getByLabelText(i18n.t('impactCheck.amountLabel')), '200')
-    expect(getByText(i18n.t('impactCheck.assumption'))).toBeTruthy()
+    expect(getByText(new RegExp(i18n.t('impactCheck.assumptionCashEquivalent')))).toBeTruthy()
+    expect(getByText(new RegExp(i18n.t('impactCheck.assumptionDataUnchanged')))).toBeTruthy()
   })
 
   it('clearing the amount removes the result and returns to the entry prompt', async () => {
