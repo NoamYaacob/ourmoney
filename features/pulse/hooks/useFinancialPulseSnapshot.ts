@@ -88,11 +88,24 @@ export interface RecordFinancialPulseSnapshotInput {
 export function useRecordFinancialPulseSnapshot() {
   return useMutation({
     mutationFn: async (input: RecordFinancialPulseSnapshotInput) => {
+      // RRR P1 finding #3 fix: captured_at's `DEFAULT NOW()` (migration 017)
+      // only ever fires on INSERT — an upsert's ON CONFLICT DO UPDATE branch
+      // sets exactly the columns present in this payload, nothing more.
+      // Omitting captured_at here meant every write after a household
+      // member's first-ever snapshot silently left it exactly as it was on
+      // that first write, forever: "since last time" would keep meaning
+      // "since our very first-ever session," never "since the previous
+      // visit," growing more wrong with every subsequent write. Setting it
+      // explicitly on every call is what makes captured_at actually BE "the
+      // moment THIS row's safe_to_spend_agorot was captured," matching this
+      // column's own comment in migration 017 (left unchanged — the fix
+      // belongs entirely in this client-side payload).
       const { error } = await supabase.from('financial_pulse_snapshots').upsert(
         {
           household_id: input.householdId,
           user_id: input.userId,
           safe_to_spend_agorot: input.safeToSpendAgorot,
+          captured_at: new Date().toISOString(),
         },
         { onConflict: 'household_id,user_id' }
       )
