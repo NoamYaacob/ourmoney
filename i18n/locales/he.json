@@ -110,7 +110,7 @@
       "less": "{{amount}} פחות פנויים",
       "more": "{{amount}} יותר פנויים",
       "causeTransaction": "מאז הבדיקה הקודמת נרשם גם חיוב של {{amount}} · {{description}}",
-      "causeGeneric": "מאז הבדיקה הקודמת נרשמו חיובים משמעותיים",
+      "causeGeneric": "לא זוהה חיוב בודד שמסביר את השינוי",
       "secondaryPriceIncrease": "{{description}} התייקר ב־{{amount}}"
     },
     "timeline": {

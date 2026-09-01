@@ -116,6 +116,31 @@ describe('FinancialPulseCard', () => {
     expect(getByText(i18n.t('home.pulse.causeGeneric'))).toBeTruthy()
   })
 
+  // RRR P1 finding #4 regression coverage: computeFinancialPulse.ts's own
+  // resolveCause() returns { kind: 'generic' } for three different
+  // underlying truths — zero new expense transactions since the previous
+  // snapshot (the delta can come from a forecast/obligation/recurring-
+  // template change with NO transaction involved at all — see that file's
+  // own header comment), multiple new expenses (something spent, but not
+  // attributable to one), or a lone expense whose size doesn't plausibly
+  // explain the delta. The copy shown for all three must therefore never
+  // assert that any charge was actually recorded — that claim is simply
+  // false in the zero-transactions case, which is a real, documented,
+  // expected path, not an edge case being defended against speculatively.
+  it('the generic cause line never asserts that charges were recorded, since it also covers the zero-new-transactions case (P1-4)', async () => {
+    const pulse: FinancialPulseResult = {
+      safeToSpendDeltaAgorot: -62000,
+      previousSafeToSpendAgorot: 200450,
+      currentSafeToSpendAgorot: 138450,
+      hasPrimaryChange: true,
+      cause: { kind: 'generic' },
+      secondaryItems: [],
+    }
+    const { getByText } = await render(<FinancialPulseCard pulse={pulse} />)
+    const rendered = getByText(i18n.t('home.pulse.causeGeneric'))
+    expect(rendered.props.children).not.toEqual(expect.stringMatching(/נרשמ(ו|ה) חיוב/))
+  })
+
   it('renders up to two secondary items, each its own line', async () => {
     const pulse: FinancialPulseResult = {
       safeToSpendDeltaAgorot: -1000,

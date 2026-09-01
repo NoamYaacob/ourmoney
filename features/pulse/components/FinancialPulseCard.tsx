@@ -60,6 +60,11 @@ export function FinancialPulseCard({ pulse, className = 'mt-2 border-t border-wh
           {t('home.pulse.causeTransaction', { description: pulse.cause.description, amount: formatILS(Math.abs(pulse.cause.amountAgorot)) })}
         </HeroNote>
       )}
+      {/* RRR P1 finding #4: computeFinancialPulse's resolveCause() returns
+          'generic' for zero new transactions too (the delta can come from a
+          forecast/obligation/recurring-template change with no transaction
+          involved at all), not only "multiple/unclear charges" — the copy
+          key must never assert that a charge was actually recorded. */}
       {pulse.cause?.kind === 'generic' && <HeroNote className={headline ? 'mt-1.5' : ''}>{t('home.pulse.causeGeneric')}</HeroNote>}
 
       {pulse.secondaryItems.length > 0 && (
