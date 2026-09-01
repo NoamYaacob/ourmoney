@@ -164,6 +164,22 @@ export default function NewTransaction() {
   }
 
   const accountOptions = activeAccounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
+  // RRR §16 P1-9: this screen previously had no guard at all for a
+  // brand-new household with zero accounts — the account picker's sheet
+  // rendered completely empty, and Save stayed blocked with no way out.
+  // Reuses the accounts screen's own existing copy (accounts.empty/
+  // addButton) rather than inventing new strings, and its own established
+  // `?add=checking` deep-link (already used from MobileHome's empty-state
+  // CTA) so this doesn't add a second "how do I add an account" path.
+  const accountEmptyState =
+    accountOptions.length === 0
+      ? {
+          message: t('accounts.empty'),
+          hint: t('transactions.form.accountEmptyHint'),
+          actionLabel: t('accounts.addButton'),
+          onAction: () => router.push('/accounts?add=checking'),
+        }
+      : undefined
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
@@ -263,6 +279,7 @@ export default function NewTransaction() {
                       onChange={setAccountIdOverride}
                       placeholder={t('transactions.form.fromAccountPlaceholder')}
                       sheetTitle={t('transactions.form.fromAccountLabel')}
+                      emptyState={accountEmptyState}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
                           <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />
@@ -283,6 +300,7 @@ export default function NewTransaction() {
                       onChange={setToAccountIdOverride}
                       placeholder={t('transactions.form.toAccountPlaceholder')}
                       sheetTitle={t('transactions.form.toAccountLabel')}
+                      emptyState={accountEmptyState}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
                           <Ionicons name={accountIconName(selectedToAccount?.type)} size={ICON.row} color={mutedColor} />
@@ -308,6 +326,7 @@ export default function NewTransaction() {
                       onChange={setAccountIdOverride}
                       placeholder={t('transactions.form.accountPlaceholder')}
                       sheetTitle={t('transactions.form.accountLabel')}
+                      emptyState={accountEmptyState}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
                           <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />

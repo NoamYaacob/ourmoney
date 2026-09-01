@@ -24,8 +24,9 @@ function climbToClass(node: any, substring: string) {
   return current
 }
 
+const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: mockPush }),
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -89,6 +90,7 @@ async function fillRequiredFields(getByLabelText: Awaited<ReturnType<typeof rend
 
 describe('NewTransaction (Add Transaction)', () => {
   beforeEach(() => {
+    mockPush.mockClear()
     mockCreateMutate.mockClear()
     mockIsPending = false
     mockIsError = false
@@ -130,6 +132,24 @@ describe('NewTransaction (Add Transaction)', () => {
     // The archived account never appears as a choosable option at all.
     await fireEvent.press(getByLabelText('חשבון'))
     expect(queryByText('עו״ש')).toBeNull()
+  })
+
+  // RRR §16 P1-9: a brand-new household with zero accounts previously hit
+  // a completely blank account-picker sheet on this exact screen — the
+  // single most obvious first action ("add a transaction") dead-ended with
+  // no way out. Reproduces that fixture directly (zero accounts, matching
+  // useAccounts' own real empty-array shape) and proves the sheet now
+  // offers a real recovery path that actually navigates.
+  it('offers a working "add an account" recovery path when the household has zero accounts', async () => {
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false })
+    const { getByLabelText, getByText } = await render(<NewTransaction />)
+
+    await fireEvent.press(getByLabelText('חשבון'))
+
+    expect(getByText('עדיין אין חשבונות.')).toBeTruthy()
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(mockPush).toHaveBeenCalledWith('/accounts?add=checking')
   })
 
   it('defaults to expense, and submits a negative signed amount', async () => {

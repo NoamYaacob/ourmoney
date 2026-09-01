@@ -3,10 +3,12 @@ import { FlatList, Modal, Platform, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
+import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
 import { ICON } from '@/constants/icons'
 import { DIALOG_WIDTH_CLASS } from '@/constants/layout'
 import { usePopoverAnchor } from '@/hooks/usePopoverAnchor'
+import { EmptyState } from './EmptyState'
 
 export interface SelectOption {
   value: string
@@ -34,6 +36,20 @@ interface SelectProps {
   variant?: 'box' | 'row'
   leadingIcon?: ReactNode
   sheetTitle?: string
+  // RRR §16 P1-9: an empty `options` list previously rendered the sheet
+  // with nothing in it — no message, no way out, dead-ending a brand-new
+  // household's very first "add a transaction" attempt at the account
+  // picker specifically (no accounts yet). Every field here is optional —
+  // omitting this prop entirely still renders a real message (never a
+  // blank sheet), just not an actionable one; a caller that DOES know the
+  // specific next step (e.g. "add an account") passes hint/actionLabel/
+  // onAction for a genuine recovery path.
+  emptyState?: {
+    message?: string
+    hint?: string
+    actionLabel?: string
+    onAction?: () => void
+  }
 }
 
 const POPOVER_MAX_HEIGHT = 320
@@ -48,14 +64,32 @@ export function Select({
   variant = 'box',
   leadingIcon,
   sheetTitle,
+  emptyState,
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { triggerRef, anchor, isDesktopWeb, measure, style: anchorStyle } = usePopoverAnchor()
   const { colorScheme: scheme } = useColorScheme()
+  const { t } = useTranslation()
   const selectedOption = options.find((option) => option.value === value)
   const selectedLabel = selectedOption?.label
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
+
+  // RRR §16 P1-9: rendered whenever `options` is empty, in place of the
+  // FlatList — never nothing. `message` always resolves (falls back to a
+  // generic i18n string) even when the caller passes no `emptyState` at
+  // all; `hint`/`actionLabel`/`onAction` stay undefined unless the caller
+  // supplied them, so EmptyState's own action button only appears where a
+  // real next step exists.
+  const emptyStateBody = (
+    <EmptyState
+      compact
+      message={emptyState?.message ?? t('common.select.empty')}
+      hint={emptyState?.hint}
+      actionLabel={emptyState?.actionLabel}
+      onAction={emptyState?.onAction}
+    />
+  )
 
   function openSelect() {
     // Opening never waits on measurement — see usePopoverAnchor's own
@@ -150,36 +184,40 @@ export function Select({
                   {sheetTitle}
                 </Text>
               )}
-              <FlatList
-                data={options}
-                keyExtractor={(item) => item.value}
-                ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() => {
-                      onChange(item.value)
-                      setIsOpen(false)
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: item.value === value }}
-                    // RRR §16 P0-4: aria-selected reaches the DOM directly
-                    // (RNW forwards it; accessibilityState's object form is
-                    // dropped) — see SegmentedControl.tsx's identical note.
-                    aria-selected={item.value === value}
-                    className="flex-row items-center gap-3 px-3 py-2.5"
-                  >
-                    {item.iconName && (
-                      <View className="h-7 w-7 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                        <Ionicons name={item.iconName} size={ICON.chip} color={mutedColor} />
-                      </View>
-                    )}
-                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {item.label}
-                    </Text>
-                    {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
-                  </Pressable>
-                )}
-              />
+              {options.length === 0 ? (
+                <View className="p-3">{emptyStateBody}</View>
+              ) : (
+                <FlatList
+                  data={options}
+                  keyExtractor={(item) => item.value}
+                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      onPress={() => {
+                        onChange(item.value)
+                        setIsOpen(false)
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: item.value === value }}
+                      // RRR §16 P0-4: aria-selected reaches the DOM directly
+                      // (RNW forwards it; accessibilityState's object form is
+                      // dropped) — see SegmentedControl.tsx's identical note.
+                      aria-selected={item.value === value}
+                      className="flex-row items-center gap-3 px-3 py-2.5"
+                    >
+                      {item.iconName && (
+                        <View className="h-7 w-7 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={item.iconName} size={ICON.chip} color={mutedColor} />
+                        </View>
+                      )}
+                      <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                      {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
+                    </Pressable>
+                  )}
+                />
+              )}
             </View>
           </Pressable>
         ) : (
@@ -197,74 +235,82 @@ export function Select({
                     {sheetTitle}
                   </Text>
                 )}
-                <FlatList
-                  data={options}
-                  keyExtractor={(item) => item.value}
-                  contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 8 : 16 }}
-                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      onPress={() => {
-                        onChange(item.value)
-                        setIsOpen(false)
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: item.value === value }}
-                      // RRR §16 P0-4: aria-selected reaches the DOM directly
-                      // (RNW forwards it; accessibilityState's object form
-                      // is dropped) — see SegmentedControl.tsx's note.
-                      aria-selected={item.value === value}
-                      className="flex-row items-center gap-3 px-4 py-3.5"
-                    >
-                      {item.iconName && (
-                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
-                        </View>
-                      )}
-                      <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
-                      {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
-                    </Pressable>
-                  )}
-                />
+                {options.length === 0 ? (
+                  <View className="px-4 pb-4">{emptyStateBody}</View>
+                ) : (
+                  <FlatList
+                    data={options}
+                    keyExtractor={(item) => item.value}
+                    contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 8 : 16 }}
+                    ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => {
+                          onChange(item.value)
+                          setIsOpen(false)
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: item.value === value }}
+                        // RRR §16 P0-4: aria-selected reaches the DOM directly
+                        // (RNW forwards it; accessibilityState's object form
+                        // is dropped) — see SegmentedControl.tsx's note.
+                        aria-selected={item.value === value}
+                        className="flex-row items-center gap-3 px-4 py-3.5"
+                      >
+                        {item.iconName && (
+                          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                            <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
+                          </View>
+                        )}
+                        <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
+                        {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
+                      </Pressable>
+                    )}
+                  />
+                )}
                 <SafeAreaView edges={['bottom']} />
               </View>
             ) : (
               <View className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark`}>
-                <FlatList
-                  data={options}
-                  keyExtractor={(item) => item.value}
-                  // Visual QA pass: this variant had no bottom padding and no
-                  // safe-area handling at all — the 'row' variant's own
-                  // trailing `<SafeAreaView edges={['bottom']} />` below is
-                  // what this was missing, on the one variant every
-                  // pre-existing caller (Accounts, Budgets, Recurring,
-                  // Settings, Import, edit-transaction) still uses.
-                  contentContainerStyle={{ paddingBottom: 8 }}
-                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      onPress={() => {
-                        onChange(item.value)
-                        setIsOpen(false)
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: item.value === value }}
-                      // RRR §16 P0-4: aria-selected reaches the DOM directly
-                      // (RNW forwards it; accessibilityState's object form
-                      // is dropped) — see SegmentedControl.tsx's note.
-                      aria-selected={item.value === value}
-                      className="flex-row items-center gap-3 py-3"
-                    >
-                      {item.iconName && (
-                        <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
-                        </View>
-                      )}
-                      <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
-                      {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
-                    </Pressable>
-                  )}
-                />
+                {options.length === 0 ? (
+                  emptyStateBody
+                ) : (
+                  <FlatList
+                    data={options}
+                    keyExtractor={(item) => item.value}
+                    // Visual QA pass: this variant had no bottom padding and no
+                    // safe-area handling at all — the 'row' variant's own
+                    // trailing `<SafeAreaView edges={['bottom']} />` below is
+                    // what this was missing, on the one variant every
+                    // pre-existing caller (Accounts, Budgets, Recurring,
+                    // Settings, Import, edit-transaction) still uses.
+                    contentContainerStyle={{ paddingBottom: 8 }}
+                    ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => {
+                          onChange(item.value)
+                          setIsOpen(false)
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: item.value === value }}
+                        // RRR §16 P0-4: aria-selected reaches the DOM directly
+                        // (RNW forwards it; accessibilityState's object form
+                        // is dropped) — see SegmentedControl.tsx's note.
+                        aria-selected={item.value === value}
+                        className="flex-row items-center gap-3 py-3"
+                      >
+                        {item.iconName && (
+                          <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                            <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
+                          </View>
+                        )}
+                        <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
+                        {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
+                      </Pressable>
+                    )}
+                  />
+                )}
                 <SafeAreaView edges={['bottom']} />
               </View>
             )}
