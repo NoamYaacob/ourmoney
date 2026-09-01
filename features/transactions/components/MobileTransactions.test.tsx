@@ -197,6 +197,36 @@ describe('MobileTransactions — bulk categorization / selection mode', () => {
     expect(getByText(i18n.t('transactions.selection.selectedCount', { count: 0 }))).toBeTruthy()
   })
 
+  // Final merge gate, blocker 1 (P0-4 residual): a selectable row exposes
+  // its checked state via accessibilityRole="checkbox" + accessibilityState
+  // — the correct React-level pair, matching DesktopTransactions.test.tsx's
+  // identical assertion. This alone can't prove the raw `aria-checked` prop
+  // this fix adds actually reaches the DOM on web: jest-expo renders
+  // through react-native CORE's View.js, which merges aria-checked into
+  // accessibilityState.checked before these props even reach the host tree
+  // (see SegmentedControl.test.tsx's identical note on this exact
+  // limitation) — a `props['aria-checked']` assertion here would read
+  // undefined regardless of whether the fix is present. The decisive proof
+  // is the live Playwright DOM capture in the final-merge-gate evidence
+  // artifact.
+  it('gives a selectable row a real accessibilityRole/State checked pair, not color alone', async () => {
+    const { getByText, getByLabelText } = await render(<MobileTransactions />)
+    await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))
+
+    const unselected = getByLabelText(
+      i18n.t('transactions.selection.rowLabel', { description: 'שופרסל דיל', state: i18n.t('transactions.selection.notSelected') })
+    )
+    expect(unselected.props.accessibilityRole).toBe('checkbox')
+    expect(unselected.props.accessibilityState).toEqual({ checked: false })
+
+    await fireEvent.press(getByText('שופרסל דיל'))
+
+    const selected = getByLabelText(
+      i18n.t('transactions.selection.rowLabel', { description: 'שופרסל דיל', state: i18n.t('transactions.selection.selected') })
+    )
+    expect(selected.props.accessibilityState).toEqual({ checked: true })
+  })
+
   it('"select all" selects every visible transaction, "deselect all" clears it without leaving selection mode', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await render(<MobileTransactions />)
     await fireEvent.press(getByLabelText(i18n.t('transactions.selection.enterButton')))

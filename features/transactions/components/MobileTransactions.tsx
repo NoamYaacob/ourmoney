@@ -322,6 +322,14 @@ export function MobileTransactions() {
                   disabled={isSelectionMode && isTransfer ? true : undefined}
                   accessibilityRole={isSelectionMode && !isTransfer ? 'checkbox' : 'button'}
                   accessibilityState={isSelectionMode && !isTransfer ? { checked: isSelected } : undefined}
+                  // Final merge gate, blocker 1 (P0-4 residual): accessibilityState's
+                  // object form is silently dropped by react-native-web's own DOM-prop
+                  // whitelist — it never reaches aria-checked on web, the same gap
+                  // SegmentedControl.tsx's own P0-4 fix already closed elsewhere. A raw
+                  // aria-checked prop survives that whitelist and is forwarded straight
+                  // to the DOM attribute; undefined outside selection mode so a plain
+                  // "button" row never gets a stray aria-checked.
+                  aria-checked={isSelectionMode && !isTransfer ? isSelected : undefined}
                   accessibilityLabel={
                     isSelectionMode && !isTransfer
                       ? t('transactions.selection.rowLabel', {

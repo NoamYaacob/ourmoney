@@ -845,6 +845,14 @@ describe('Transactions list', () => {
       expect(trigger.props.accessibilityState.busy).toBe(true)
     })
 
+    // Final merge gate, blocker 1 (P0-4 residual): this proves the
+    // React-level accessibilityRole/State pair is correct, but can't prove
+    // the raw `aria-checked` prop the fix adds actually reaches the DOM on
+    // web — jest-expo renders through react-native CORE's View.js, which
+    // merges aria-checked into accessibilityState.checked before these
+    // props even reach the host tree (see SegmentedControl.test.tsx's
+    // identical note). The decisive proof is the live Playwright DOM
+    // capture in the final-merge-gate evidence artifact.
     it('gives a selected row a non-color-only, screen-reader-visible selected state (accessibilityRole/State, not color alone)', async () => {
       mockUseTransactions.mockReturnValue({ transactions: [TXN_1], isLoading: false, error: null, hasData: true })
 
