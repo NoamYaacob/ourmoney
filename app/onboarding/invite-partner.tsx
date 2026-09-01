@@ -25,10 +25,21 @@ function buildInviteFallbackLink(token: string): string {
   return Linking.createURL(`/invite/${token}`)
 }
 
-function copyToClipboard(text: string): boolean {
+// Hostile re-review correction (P1-8): navigator.clipboard.writeText can
+// reject (permission denied, the page lost focus, an insecure context) —
+// not just resolve. The original version fired the write with `void` and
+// returned true synchronously regardless of the outcome, so a household
+// could be told "copied!" with nothing actually on their clipboard. Now
+// async and honest: the caller only shows the "copied" confirmation once
+// the write has genuinely resolved.
+async function copyToClipboard(text: string): Promise<boolean> {
   if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-    void navigator.clipboard.writeText(text)
-    return true
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      return false
+    }
   }
   return false
 }
@@ -65,11 +76,10 @@ export default function InvitePartner() {
     })
   }
 
-  function handleCopyLink() {
+  async function handleCopyLink() {
     if (!failedToken) return
-    if (copyToClipboard(buildInviteFallbackLink(failedToken))) {
-      setJustCopied(true)
-    }
+    const copied = await copyToClipboard(buildInviteFallbackLink(failedToken))
+    if (copied) setJustCopied(true)
   }
 
   function handleSkip() {

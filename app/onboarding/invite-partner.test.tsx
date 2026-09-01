@@ -102,6 +102,33 @@ describe('InvitePartner — share failure recovery (P1-8)', () => {
 
     expect(writeText).toHaveBeenCalledTimes(1)
     expect(writeText.mock.calls[0]?.[0]).toEqual(expect.stringContaining(mockToken))
-    expect(getByText('הקישור הועתק')).toBeTruthy()
+    await waitFor(() => expect(getByText('הקישור הועתק')).toBeTruthy())
+  })
+
+  // Hostile re-review finding (P1-8 correction): navigator.clipboard.writeText
+  // can reject — e.g. the clipboard permission is denied, or the page lost
+  // focus — not just resolve. The original fix fired the write with `void`
+  // and reported success synchronously regardless of the outcome, so a
+  // household could tap "copy," be told "הקישור הועתק" (copied!), and have
+  // nothing on their clipboard at all — the exact class of false-success
+  // claim this whole remediation pass exists to eliminate (see finding #2's
+  // and #4's identical truthfulness discipline).
+  it('never claims "copied" when the clipboard write actually fails', async () => {
+    jest.spyOn(Share, 'share').mockRejectedValue(new Error('no share target'))
+    const writeText = jest.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('clipboard permission denied'))
+    Object.defineProperty(global, 'navigator', {
+      value: { clipboard: { writeText } },
+      configurable: true,
+    })
+
+    const { getByText, queryByText } = await render(<InvitePartner />)
+    await fireEvent.press(getByText('שליחת הזמנה'))
+    await waitFor(() => expect(Share.share).toHaveBeenCalled())
+
+    await fireEvent.press(getByText('העתקת קישור ההזמנה'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+
+    expect(queryByText('הקישור הועתק')).toBeNull()
+    expect(getByText('העתקת קישור ההזמנה')).toBeTruthy()
   })
 })

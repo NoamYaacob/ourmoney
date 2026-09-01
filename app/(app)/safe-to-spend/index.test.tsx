@@ -183,7 +183,38 @@ describe('safe-to-spend breakdown', () => {
     // The bolded lead-in and the body are separate Text nodes inside one
     // paragraph, so this matches the body's own opening rather than the
     // whole concatenated string.
-    expect(getByText(/חיסכון, השקעות וכרטיסי האשראי/)).toBeTruthy()
+    expect(getByText(/חיסכון, השקעות ויתרת כרטיס האשראי עצמה/)).toBeTruthy()
+  })
+
+  // Hostile re-review finding (P1-7 correction): this note used to say
+  // "כרטיסי האשראי" (credit cards) flatly don't enter the calculation —
+  // true of a card's own BALANCE, but no longer true of its current-cycle
+  // SPEND once that became its own visible, subtracted group above. A
+  // household reading both statements on the same screen could reasonably
+  // read them as contradicting each other, the same class of self-
+  // contradiction finding #2 (Budgets) already named. The note must be
+  // specific about the card's BALANCE, and must not appear anywhere the
+  // credit-card-cycle group is also shown claiming the opposite.
+  it('the "not included" note is specific to the card\'s own balance, never contradicting the visible credit-card-cycle group', async () => {
+    mockResult = {
+      ...BASE,
+      creditCardCycleAgorot: 41_280,
+      reservedAgorot: BASE.reservedAgorot + 41_280,
+      safeToSpendAgorot: BASE.safeToSpendAgorot - 41_280,
+      items: [
+        ...BASE.items,
+        item({ sourceType: 'credit_card_cycle', sourceId: 'acc-card', description: 'ויזה כאל', amountAgorot: 41_280, date: '2026-09-10' }),
+      ],
+    }
+    const { getByText, queryByText } = await render(<SafeToSpendDetail />)
+
+    // The credit-card-cycle group is visible...
+    expect(getByText(i18n.t('safeToSpendDetail.creditCardCycle'))).toBeTruthy()
+    // ...and the note never claims credit cards broadly are excluded —
+    // only the card's own balance is, which does not contradict a group
+    // that subtracts the card's SPEND.
+    expect(queryByText(/וכרטיסי האשראי\. הם קיימים/)).toBeNull()
+    expect(getByText(/יתרת כרטיס האשראי עצמה/)).toBeTruthy()
   })
 
   it('offers Impact Check as a secondary action, collapsed by default (CP8F)', async () => {
