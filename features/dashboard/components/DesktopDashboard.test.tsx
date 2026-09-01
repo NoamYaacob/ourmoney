@@ -10,6 +10,7 @@ import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import { formatILS } from '@/lib/money/format'
 import type { CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
+import type { HorizonRange } from '@/lib/engines/cashflow/horizonRange'
 
 const mockPush = jest.fn()
 jest.mock('expo-router', () => ({
@@ -33,6 +34,13 @@ const DEFAULT_SAFE_TO_SPEND_RESULT = {
 }
 const DEFAULT_SAFE_TO_SPEND = {
   result: DEFAULT_SAFE_TO_SPEND_RESULT,
+  // RRR P1 #5: a real HorizonRange. `end` is deliberately far in the future
+  // (not tied to any DESIGN_QA reference date) so the real-day-count per-day
+  // figure this now feeds stays a small, stable value regardless of the
+  // actual wall-clock date a test runs on — never large enough to coincide
+  // with another figure this suite asserts on. Tests needing a specific
+  // per-day value override this per-case with fake timers + explicit dates.
+  horizon: { kind: 'month', start: '2026-08-16', end: '2099-12-31' } as HorizonRange,
   isLoading: false,
   error: null as Error | null,
   hasData: true,
@@ -171,16 +179,43 @@ describe('Dashboard פנוי באמת hero', () => {
     expect(getByText(i18n.t('dashboard.hero.horizonWeek'))).toBeTruthy()
   })
 
+  // RRR P1 #5: desktop hardcoded a `/ 30` divisor for "safe to spend per
+  // day" regardless of the selected horizon or real days remaining, while
+  // MobileHome.tsx correctly derives the real day count — live-measured in
+  // the Release Readiness Review as a ~30× discrepancy for the same
+  // household at the same instant (כ-566.20 ₪ ליום desktop vs 16,986.00 ₪
+  // ליום mobile). A 7-day week horizon must show a materially higher
+  // per-day figure than a 30-day horizon for the identical safeToSpendAgorot
+  // — the old hardcoded /30 produced the same value regardless of horizon.
+  it('divides safe-to-spend by the real days remaining in the selected horizon, not a fixed 30', async () => {
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(2026, 7, 16)) // 2026-08-16
+    try {
+      mockUseSafeToSpend.mockReturnValue({
+        ...DEFAULT_SAFE_TO_SPEND,
+        result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: 1_698_600 },
+        // Week horizon: 2026-08-16 (today, Sunday) through 2026-08-22
+        // (Saturday) — 7 days remaining, inclusive.
+        horizon: { kind: 'week' as const, start: '2026-08-16', end: '2026-08-22' },
+      })
+
+      const { getByText } = await render(<Dashboard />)
+
+      // floor(1_698_600 / 7) = 242657 agorot = ₪2,426.57 — NOT
+      // Math.round(1_698_600 / 30) = ₪566.20, the old hardcoded figure.
+      expect(getByText(/2,426\.57/)).toBeTruthy()
+      expect(() => getByText(/566\.20/)).toThrow()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('names the shortfall instead of printing it as available money', async () => {
     // `Money` renders magnitudes, so the raw figure made "-7,600" look
     // exactly like "7,600 available" beside a chip saying only that it was
     // not the bank balance.
     mockUseSafeToSpend.mockReturnValue({
+      ...DEFAULT_SAFE_TO_SPEND,
       result: { ...DEFAULT_SAFE_TO_SPEND_RESULT, safeToSpendAgorot: -760_000, shortfallAgorot: 760_000 },
-      isLoading: false,
-      error: null,
-      hasData: true,
-      refetch: jest.fn(),
     })
 
     const { getByText, queryByText } = await render(<Dashboard />)

@@ -66,7 +66,8 @@ import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
 import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
-import { getCurrentMonthPeriodStart, localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
+import { computeSafeToSpendPerDayAgorot } from '@/lib/engines/cashflow/safeToSpendPerDay'
 import { formatILS } from '@/lib/money/format'
 import { greetingKey } from '@/features/dashboard/lib/commitmentUrgency'
 import { MobileAnalyticsSection } from '@/features/dashboard/components/MobileAnalyticsSection'
@@ -194,11 +195,11 @@ export function MobileHome() {
   }
 
   const hasShortfall = safeToSpend.safeToSpendAgorot < 0
-  // Days left in the horizon, inclusive of today — a household spending the
-  // "per day" figure every remaining day lands exactly on zero.
-  const today = localDateString()
-  const daysLeft = Math.max(1, Math.round((Date.parse(horizon.end) - Date.parse(today)) / 86_400_000) + 1)
-  const perDayAgorot = hasShortfall ? 0 : Math.floor(safeToSpend.safeToSpendAgorot / daysLeft)
+  // RRR §16 P1-5: now the same shared function DesktopDashboard.tsx calls —
+  // this file's own real-day-count division was already correct and is
+  // exactly what that fix reused, so this line changes only its own
+  // duplication, not its behavior.
+  const perDayAgorot = hasShortfall ? 0 : computeSafeToSpendPerDayAgorot(safeToSpend.safeToSpendAgorot, horizon.end)
 
   return (
     <Screen

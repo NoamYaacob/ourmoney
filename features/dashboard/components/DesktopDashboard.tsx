@@ -55,6 +55,7 @@ import { useSavingsGoals } from '@/features/savings/hooks/useSavingsGoals'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import type { HorizonKind } from '@/lib/engines/cashflow/horizonRange'
+import { computeSafeToSpendPerDayAgorot } from '@/lib/engines/cashflow/safeToSpendPerDay'
 import { getCurrentMonthPeriodStart } from '@/features/budgets/lib/budgetPeriod'
 import { formatILS } from '@/lib/money/format'
 import { MoneyJourney, MoneyJourneyLowBadge, type MoneyJourneyVariant } from '@/features/cashflow/components/MoneyJourney'
@@ -102,6 +103,7 @@ export function DesktopDashboard() {
   const [horizon, setHorizon] = useState<HorizonKind>('month')
   const {
     result: safeToSpend,
+    horizon: safeToSpendHorizonRange,
     isLoading: isSafeToSpendLoading,
     error: safeToSpendError,
     hasData: hasSafeToSpendData,
@@ -273,7 +275,14 @@ export function DesktopDashboard() {
               <HeroTag>{hasShortfall ? t('home.hero.shortfallTag') : t('dashboard.hero.notBankBalance')}</HeroTag>
               {!hasShortfall && safeToSpend.safeToSpendAgorot > 0 && (
                 <HeroNote>
-                  {t('dashboard.hero.perDay', { amount: formatILS(Math.round(safeToSpend.safeToSpendAgorot / 30)) })}
+                  {/* RRR §16 P1-5: was hardcoded / 30 regardless of the
+                      selected horizon or real days remaining — the exact
+                      same real-day-count division MobileHome.tsx already
+                      used, now shared via one function so the two screens
+                      can never diverge on this figure again. */}
+                  {t('dashboard.hero.perDay', {
+                    amount: formatILS(computeSafeToSpendPerDayAgorot(safeToSpend.safeToSpendAgorot, safeToSpendHorizonRange.end)),
+                  })}
                 </HeroNote>
               )}
             </View>
