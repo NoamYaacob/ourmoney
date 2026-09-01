@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals'
 import { calculateSafeToSpend, type PlannedObligationForecastInput, type SafeToSpendInput } from './calculateSafeToSpend'
 import type { RecurringForecastTemplate } from './forecastRecurringOccurrences'
 import type { InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
+import type { CreditCardCycleReservationItem } from './creditCardCycleReservation'
 
 function obligation(overrides: Partial<PlannedObligationForecastInput> = {}): PlannedObligationForecastInput {
   return {
@@ -46,12 +47,23 @@ function installmentPlan(overrides: Partial<InstallmentPlanForecastTemplate> = {
   }
 }
 
+function creditCardCycleItem(overrides: Partial<CreditCardCycleReservationItem> = {}): CreditCardCycleReservationItem {
+  return {
+    accountId: 'acc-card',
+    description: 'ויזה כאל',
+    amountAgorot: 41280,
+    date: '2026-09-10',
+    ...overrides,
+  }
+}
+
 function baseInput(overrides: Partial<SafeToSpendInput> = {}): SafeToSpendInput {
   return {
     availableCashAgorot: 830000,
     obligations: [],
     recurringTemplates: [],
     installmentPlans: [],
+    creditCardCycleItems: [],
     horizonEnd: '2026-09-30',
     ...overrides,
   }
@@ -65,10 +77,90 @@ describe('calculateSafeToSpend', () => {
       plannedObligationsAgorot: 0,
       recurringAgorot: 0,
       installmentsAgorot: 0,
+      creditCardCycleAgorot: 0,
       reservedAgorot: 0,
       safeToSpendAgorot: 500000,
       shortfallAgorot: 0,
       items: [],
+    })
+  })
+
+  // RRR P1 finding #7: a credit card's posted CURRENT-CYCLE spend (an
+  // already-committed future claim on cash — the household will pay it via
+  // a transfer once the statement settles, ADR-037) must be reserved
+  // exactly like an instalment's forecasted future charge already is
+  // (see this file's own header comment on why instalments are reserved
+  // even though the card itself is never counted as available cash).
+  describe('credit card current-cycle reservation (P1-7)', () => {
+    it('reserves an ordinary posted credit-card purchase this cycle, exactly like an identical instalment purchase', () => {
+      const viaOrdinaryPurchase = calculateSafeToSpend(
+        baseInput({ availableCashAgorot: 500000, creditCardCycleItems: [creditCardCycleItem({ amountAgorot: 100000 })] })
+      )
+      const viaInstallment = calculateSafeToSpend(
+        baseInput({ availableCashAgorot: 500000, installmentPlans: [installmentPlan({ monthlyAgorot: 100000 })] })
+      )
+      // The whole point of this finding: an ordinary posted purchase this
+      // cycle and an instalment purchase of the identical amount must
+      // reserve the household's Safe-to-Spend figure identically — neither
+      // "isSafeToSpend the exact same number" was true before this fix.
+      expect(viaOrdinaryPurchase.safeToSpendAgorot).toBe(viaInstallment.safeToSpendAgorot)
+      expect(viaOrdinaryPurchase.creditCardCycleAgorot).toBe(100000)
+      expect(viaOrdinaryPurchase.reservedAgorot).toBe(100000)
+      expect(viaOrdinaryPurchase.safeToSpendAgorot).toBe(400000)
+    })
+
+    it('sums multiple posted purchases in the same cycle (and across multiple cards) into reservedAgorot', () => {
+      const result = calculateSafeToSpend(
+        baseInput({
+          availableCashAgorot: 500000,
+          creditCardCycleItems: [
+            creditCardCycleItem({ accountId: 'acc-card-1', amountAgorot: 41280 }),
+            creditCardCycleItem({ accountId: 'acc-card-2', description: 'ישראכרט', amountAgorot: 32450 }),
+          ],
+        })
+      )
+      expect(result.creditCardCycleAgorot).toBe(73730)
+      expect(result.reservedAgorot).toBe(73730)
+      expect(result.items).toHaveLength(2)
+    })
+
+    it('combines credit-card cycle reservations with obligations/recurring/instalments into one total, with no double reservation', () => {
+      const result = calculateSafeToSpend(
+        baseInput({
+          availableCashAgorot: 830000,
+          obligations: [obligation()],
+          recurringTemplates: [recurring()],
+          installmentPlans: [installmentPlan()],
+          creditCardCycleItems: [creditCardCycleItem()],
+        })
+      )
+      expect(result.plannedObligationsAgorot).toBe(47500)
+      expect(result.recurringAgorot).toBe(15000)
+      expect(result.installmentsAgorot).toBe(100000)
+      expect(result.creditCardCycleAgorot).toBe(41280)
+      expect(result.reservedAgorot).toBe(47500 + 15000 + 100000 + 41280)
+      expect(result.items).toHaveLength(4)
+    })
+
+    it('produces the item with sourceType "credit_card_cycle", carrying the account id and the card\'s own name as description', () => {
+      const result = calculateSafeToSpend(baseInput({ creditCardCycleItems: [creditCardCycleItem()] }))
+      expect(result.items).toEqual([
+        {
+          sourceType: 'credit_card_cycle',
+          sourceId: 'acc-card',
+          description: 'ויזה כאל',
+          amountAgorot: 41280,
+          date: '2026-09-10',
+          categoryId: null,
+          accountId: 'acc-card',
+        },
+      ])
+    })
+
+    it('reserves nothing when no card has posted spend this cycle', () => {
+      const result = calculateSafeToSpend(baseInput({ creditCardCycleItems: [] }))
+      expect(result.creditCardCycleAgorot).toBe(0)
+      expect(result.items).toEqual([])
     })
   })
 
@@ -261,6 +353,7 @@ describe('calculateSafeToSpend', () => {
       result.plannedObligationsAgorot,
       result.recurringAgorot,
       result.installmentsAgorot,
+      result.creditCardCycleAgorot,
       result.reservedAgorot,
       result.safeToSpendAgorot,
       result.shortfallAgorot,

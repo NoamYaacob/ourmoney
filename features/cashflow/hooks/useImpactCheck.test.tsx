@@ -7,9 +7,11 @@
 import { describe, expect, it, jest } from '@jest/globals'
 import { renderHook } from '@testing-library/react-native'
 import { useImpactCheck } from './useImpactCheck'
+import { getCurrentBillingCycleRange } from '@/features/accounts/lib/creditCardCycle'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 
 const DEFAULT_ACCOUNTS = {
-  accounts: [{ id: 'acc-bank', type: 'checking', is_active: true, include_in_total: true }],
+  accounts: [{ id: 'acc-bank', name: 'עו״ש', type: 'checking', is_active: true, include_in_total: true, billing_cycle_day: null as number | null }],
   isLoading: false,
   error: null as Error | null,
   hasData: true,
@@ -57,6 +59,17 @@ jest.mock('@/features/installments/hooks/useInstallmentMaterializedCounts', () =
   useInstallmentMaterializedCounts: () => mockUseInstallmentMaterializedCounts(),
 }))
 
+// RRR P1 finding #7: the seventh composed source, fetched bounded to a
+// recent window and used only to compute each credit card's own current-
+// cycle spend (assembleForecastInputs.ts). Empty by default here — no card
+// in this suite's fixtures — so every pre-existing test's figures are
+// unaffected unless a test explicitly sets transactions.
+const DEFAULT_TRANSACTIONS = { transactions: [] as unknown[], isLoading: false, error: null as Error | null, hasData: true, refetch: jest.fn() }
+const mockUseTransactions = jest.fn(() => DEFAULT_TRANSACTIONS)
+jest.mock('@/features/transactions/hooks/useTransactions', () => ({
+  useTransactions: () => mockUseTransactions(),
+}))
+
 function resetDefaults() {
   mockUseAccounts.mockReturnValue(DEFAULT_ACCOUNTS)
   mockUseAccountBalances.mockReturnValue(DEFAULT_BALANCES)
@@ -64,10 +77,11 @@ function resetDefaults() {
   mockUseRecurringTransactions.mockReturnValue(DEFAULT_RECURRING)
   mockUseInstallmentPlans.mockReturnValue(DEFAULT_PLANS)
   mockUseInstallmentMaterializedCounts.mockReturnValue(DEFAULT_MATERIALIZED)
+  mockUseTransactions.mockReturnValue(DEFAULT_TRANSACTIONS)
 }
 
 describe('useImpactCheck', () => {
-  it('hasData is true only once every one of the six composed sources has resolved', async () => {
+  it('hasData is true only once every one of the seven composed sources has resolved', async () => {
     resetDefaults()
     mockUseAccounts.mockReturnValue({ ...DEFAULT_ACCOUNTS, hasData: false })
     const { result, unmount } = await renderHook(() => useImpactCheck('household-1'))
@@ -90,8 +104,8 @@ describe('useImpactCheck', () => {
     mockUseAccounts.mockReturnValue({
       ...DEFAULT_ACCOUNTS,
       accounts: [
-        { id: 'acc-bank', type: 'checking', is_active: true, include_in_total: true },
-        { id: 'acc-card', type: 'credit_card', is_active: true, include_in_total: true },
+        { id: 'acc-bank', name: 'עו״ש', type: 'checking', is_active: true, include_in_total: true, billing_cycle_day: null },
+        { id: 'acc-card', name: 'ויזה כאל', type: 'credit_card', is_active: true, include_in_total: true, billing_cycle_day: null },
       ],
     })
     mockUseAccountBalances.mockReturnValue({ ...DEFAULT_BALANCES, balances: { 'acc-bank': 500_000, 'acc-card': -80_000 } })
@@ -112,7 +126,7 @@ describe('useImpactCheck', () => {
     await unmount()
   })
 
-  it('refetch re-invokes every one of the six composed refetch functions', async () => {
+  it('refetch re-invokes every one of the seven composed refetch functions', async () => {
     resetDefaults()
     const { result, unmount } = await renderHook(() => useImpactCheck('household-1'))
     result.current.refetch()
@@ -122,6 +136,35 @@ describe('useImpactCheck', () => {
     expect(DEFAULT_RECURRING.refetch).toHaveBeenCalled()
     expect(DEFAULT_PLANS.refetch).toHaveBeenCalled()
     expect(DEFAULT_MATERIALIZED.refetch).toHaveBeenCalled()
+    expect(DEFAULT_TRANSACTIONS.refetch).toHaveBeenCalled()
+    await unmount()
+  })
+
+  // RRR P1 finding #7 regression: proves the wiring reaches useImpactCheck,
+  // not just the pure engine (already covered by calculateImpactCheck.test.ts).
+  it('reserves a credit card\'s current-cycle posted spend in calculate()\'s result', async () => {
+    resetDefaults()
+    mockUseAccounts.mockReturnValue({
+      ...DEFAULT_ACCOUNTS,
+      accounts: [
+        { id: 'acc-bank', name: 'עו״ש', type: 'checking', is_active: true, include_in_total: true, billing_cycle_day: null },
+        { id: 'acc-card', name: 'ויזה כאל', type: 'credit_card', is_active: true, include_in_total: true, billing_cycle_day: 10 },
+      ],
+    })
+    // The hook derives "today" from the real clock (localDateString()), so
+    // the fixture transaction's date is computed relative to that same real
+    // "today" — never a hardcoded date — to stay inside the current cycle
+    // regardless of which real date this test happens to run on.
+    const currentCycle = getCurrentBillingCycleRange(10, localDateString())
+    mockUseTransactions.mockReturnValue({
+      ...DEFAULT_TRANSACTIONS,
+      transactions: [
+        { account_id: 'acc-card', amount_agorot: -41_280, txn_date: currentCycle.start, transfer_id: null, is_excluded: false },
+      ],
+    })
+    const { result, unmount } = await renderHook(() => useImpactCheck('household-1'))
+    const impact = result.current.calculate(0)
+    expect(impact.currentSafeToSpendAgorot).toBe(500_000 - 41_280)
     await unmount()
   })
 })

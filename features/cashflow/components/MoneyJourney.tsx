@@ -106,6 +106,9 @@ const SOURCE_ROUTE: Record<CashFlowEventSource, (sourceId: string) => string> = 
   planned_obligation: (id) => `/obligations/${id}`,
   recurring: (id) => `/recurring/${id}`,
   installment_plan: (id) => `/installments/${id}`,
+  // RRR P1 finding #7: sourceId for a credit_card_cycle event IS the
+  // account id (calculateSafeToSpend.ts) — its own screen.
+  credit_card_cycle: (id) => `/accounts/${id}`,
 }
 
 function shortMonth(date: string): string {

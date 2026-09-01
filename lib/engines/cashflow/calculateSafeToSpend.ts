@@ -10,15 +10,21 @@
 //   − upcoming instalments (not-yet-materialized installment_plans charges,
 //                            forecasted within the horizon — migration 016,
 //                            ADR-037)
+//   − credit-card cycles   (each credit card's own posted, not-yet-settled
+//                            CURRENT billing-cycle spend — RRR P1 finding #7,
+//                            creditCardCycleReservation.ts)
 //   = safe to spend
 //
-// Instalments are reserved here even though the credit-card account itself
-// is never in availableCashAgorot (eligibleCashAccounts.ts excludes
-// 'credit_card'): the instalment is charged to the card today, but the
-// household's own cash eventually settles that statement via an ordinary
-// transfer (ADR-037's settlement-as-transfer decision). Not reserving it
-// would let Safe-to-Spend ignore a real, already-committed future claim on
-// cash purely because of which account type happened to record it.
+// Instalments and credit-card cycle spend are both reserved here even
+// though the credit-card account itself is never in availableCashAgorot
+// (eligibleCashAccounts.ts excludes 'credit_card'): the charge lands on the
+// card today, but the household's own cash eventually settles that
+// statement via an ordinary transfer (ADR-037's settlement-as-transfer
+// decision). Not reserving it would let Safe-to-Spend ignore a real,
+// already-committed future claim on cash purely because of which account
+// type happened to record it — this used to be true only for a not-yet-
+// materialized instalment charge; an ordinary posted card purchase this
+// cycle is exactly as real a claim and now gets the same treatment.
 //
 // Deliberately excludes budget-remaining from the formula. Subtracting both
 // a specific planned obligation/recurring charge AND the full remaining
@@ -56,6 +62,7 @@
 
 import { forecastRecurringOccurrences, type RecurringForecastTemplate } from './forecastRecurringOccurrences'
 import { forecastInstallmentOccurrences, type InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
+import type { CreditCardCycleReservationItem } from './creditCardCycleReservation'
 import type { PlannedObligationStatus } from '@/types/app'
 
 export interface PlannedObligationForecastInput {
@@ -69,7 +76,7 @@ export interface PlannedObligationForecastInput {
   accountId: string | null
 }
 
-export type SafeToSpendItemSource = 'obligation' | 'recurring' | 'installment'
+export type SafeToSpendItemSource = 'obligation' | 'recurring' | 'installment' | 'credit_card_cycle'
 
 export interface SafeToSpendItem {
   sourceType: SafeToSpendItemSource
@@ -86,6 +93,14 @@ export interface SafeToSpendInput {
   obligations: readonly PlannedObligationForecastInput[]
   recurringTemplates: readonly RecurringForecastTemplate[]
   installmentPlans: readonly InstallmentPlanForecastTemplate[]
+  // RRR P1 finding #7 — already-resolved reservation items (one per credit
+  // card with posted spend in its current, still-open billing cycle), built
+  // by computeCreditCardCycleReservations (creditCardCycleReservation.ts)
+  // via assembleForecastInputs.ts. Passed in pre-computed, the same shape
+  // `obligations` already is — this engine sums/dates them, it never
+  // re-derives a card's cycle boundaries or spend total itself (no second
+  // financial calculation).
+  creditCardCycleItems: readonly CreditCardCycleReservationItem[]
   horizonEnd: string
 }
 
@@ -94,6 +109,12 @@ export interface SafeToSpendResult {
   plannedObligationsAgorot: number
   recurringAgorot: number
   installmentsAgorot: number
+  // RRR P1 finding #7: the sum of every credit card's posted, not-yet-
+  // settled CURRENT cycle spend — reserved for the same reason an
+  // instalment's forecasted future charge already is (see this file's own
+  // header comment): it is a real, already-committed future claim on cash,
+  // regardless of which account type happened to record it.
+  creditCardCycleAgorot: number
   reservedAgorot: number
   safeToSpendAgorot: number
   // 0 unless safeToSpendAgorot is negative, in which case its positive
@@ -156,13 +177,28 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
     })
   )
 
+  // Already a resolved, positive-magnitude reservation per card — no
+  // forecasting needed here, unlike obligations/recurring/instalments,
+  // since a current, still-open billing cycle has exactly one reservation,
+  // not a recurring series of future occurrences.
+  const creditCardCycleItemsResult: SafeToSpendItem[] = input.creditCardCycleItems.map((item) => ({
+    sourceType: 'credit_card_cycle',
+    sourceId: item.accountId,
+    description: item.description,
+    amountAgorot: item.amountAgorot,
+    date: item.date,
+    categoryId: null,
+    accountId: item.accountId,
+  }))
+
   const plannedObligationsAgorot = sumAgorot(obligationItems)
   const recurringAgorot = sumAgorot(recurringItems)
   const installmentsAgorot = sumAgorot(installmentItems)
-  const reservedAgorot = plannedObligationsAgorot + recurringAgorot + installmentsAgorot
+  const creditCardCycleAgorot = sumAgorot(creditCardCycleItemsResult)
+  const reservedAgorot = plannedObligationsAgorot + recurringAgorot + installmentsAgorot + creditCardCycleAgorot
   const safeToSpendAgorot = input.availableCashAgorot - reservedAgorot
 
-  const items = [...obligationItems, ...recurringItems, ...installmentItems].sort(
+  const items = [...obligationItems, ...recurringItems, ...installmentItems, ...creditCardCycleItemsResult].sort(
     (a, b) => a.date.localeCompare(b.date) || a.sourceId.localeCompare(b.sourceId)
   )
 
@@ -171,6 +207,7 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
     plannedObligationsAgorot,
     recurringAgorot,
     installmentsAgorot,
+    creditCardCycleAgorot,
     reservedAgorot,
     safeToSpendAgorot,
     shortfallAgorot: safeToSpendAgorot < 0 ? -safeToSpendAgorot : 0,

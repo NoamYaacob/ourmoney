@@ -78,7 +78,22 @@ import { useCashFlowStore } from '@/store/cashFlowStore'
 function eventRoute(event: CashFlowForecastEvent): string {
   if (event.source === 'planned_obligation') return `/obligations/${event.sourceId}`
   if (event.source === 'installment_plan') return `/installments/${event.sourceId}`
+  // RRR P1 finding #7: sourceId for a credit_card_cycle event IS the
+  // account id (calculateSafeToSpend.ts) — its own screen, never the
+  // recurring-template route the old fallback silently sent every
+  // non-obligation/non-installment source to.
+  if (event.source === 'credit_card_cycle') return `/accounts/${event.sourceId}`
   return `/recurring/${event.sourceId}`
+}
+
+// RRR P1 finding #7: explicit per-source mapping — the ternary this
+// replaced silently fell through to 'recurring' for a credit_card_cycle
+// event, mislabeling a card's own reservation as a recurring charge.
+function eventSourceLabelKey(source: CashFlowForecastEvent['source']): string {
+  if (source === 'planned_obligation') return 'cashFlow.commitments.source.obligation'
+  if (source === 'installment_plan') return 'cashFlow.commitments.source.installment'
+  if (source === 'credit_card_cycle') return 'cashFlow.commitments.source.credit_card_cycle'
+  return 'cashFlow.commitments.source.recurring'
 }
 
 export function DesktopCashFlow() {
@@ -287,11 +302,7 @@ export function DesktopCashFlow() {
                           </View>
                         ) : (
                           <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {event.pastDue
-                              ? t('cashFlow.forecast.pastDue')
-                              : t(
-                                  `cashFlow.commitments.source.${event.source === 'planned_obligation' ? 'obligation' : event.source === 'installment_plan' ? 'installment' : 'recurring'}`
-                                )}
+                            {event.pastDue ? t('cashFlow.forecast.pastDue') : t(eventSourceLabelKey(event.source))}
                           </Text>
                         )}
                       </View>

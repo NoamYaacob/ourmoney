@@ -97,6 +97,7 @@ export function calculateImpactCheck(input: ImpactCheckInput): ImpactCheckResult
     obligations: input.obligations,
     recurringTemplates: input.recurringTemplates,
     installmentPlans: input.installmentPlans,
+    creditCardCycleItems: input.creditCardCycleItems,
   }
 
   const currentSafeToSpend = calculateSafeToSpend({

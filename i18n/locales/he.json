@@ -130,7 +130,8 @@
       "source": {
         "planned_obligation": "התחייבות",
         "recurring": "חיוב קבוע",
-        "installment_plan": "תשלום"
+        "installment_plan": "תשלום",
+        "credit_card_cycle": "חיוב אשראי"
       }
     },
     "attention": {
@@ -184,7 +185,9 @@
     "empty": "אין חיובים ידועים בטווח הזה",
     "obligationsSubtitle": "{{count}} חיובים חד־פעמיים עד סוף התקופה",
     "recurringSubtitle": "{{count}} חיובים קבועים שעוד לא ירדו",
-    "installmentsSubtitle": "{{count}} תשלומים בתוכניות פעילות"
+    "installmentsSubtitle": "{{count}} תשלומים בתוכניות פעילות",
+    "creditCardCycle": "חיובים בכרטיס האשראי",
+    "creditCardCycleSubtitle": "{{count}} כרטיסי אשראי עם חיובים במחזור הנוכחי"
   },
   "impactCheck": {
     "entryLabel": "אפשר להרשות לעצמנו את זה?",

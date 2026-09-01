@@ -105,6 +105,18 @@ export default function SafeToSpendDetail() {
       amountAgorot: result.installmentsAgorot,
       items: itemsBySource('installment'),
     },
+    {
+      // RRR P1 finding #7: a credit card's posted current-cycle spend is
+      // its own reserved component now (calculateSafeToSpend.ts), same as
+      // the three above — a household reading the top figure must be able
+      // to open every row and see the full arithmetic, never a reservation
+      // this screen's own total includes but its breakdown hides.
+      source: 'credit_card_cycle',
+      labelKey: 'safeToSpendDetail.creditCardCycle',
+      subtitleKey: 'safeToSpendDetail.creditCardCycleSubtitle',
+      amountAgorot: result.creditCardCycleAgorot,
+      items: itemsBySource('credit_card_cycle'),
+    },
   ]
   // A group with nothing in it is not a zero to render — it is a line the
   // household does not have. Dropping it keeps the arithmetic honest (every

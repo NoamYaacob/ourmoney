@@ -1,13 +1,19 @@
 // "Next 30 days" financial commitments summary — a unified, deterministic
-// view over the SAME canonical event sources Safe-to-Spend already reserves
-// against (planned_obligations, recurring_transactions, installment_plans),
-// plus one additional source Safe-to-Spend does not surface as its own line
-// item: a credit card's current open billing cycle. Deliberately computes
-// NOTHING itself that another engine doesn't already own — it only calls
-// the existing forecastRecurringOccurrences/forecastInstallmentOccurrences/
-// getCurrentBillingCycleRange/computeCurrentCycleSpendAgorot primitives and
-// re-shapes their output for display, the same "no second parallel engine"
-// discipline lib/engines/alerts/buildFinancialAlerts.ts already documents.
+// view over the SAME canonical event sources Safe-to-Spend reserves against
+// (planned_obligations, recurring_transactions, installment_plans, and —
+// since RRR P1 finding #7 — a credit card's current open billing cycle too,
+// lib/engines/cashflow/calculateSafeToSpend.ts's own creditCardCycleAgorot).
+// Deliberately computes NOTHING itself that another engine doesn't already
+// own — it only calls the existing forecastRecurringOccurrences/
+// forecastInstallmentOccurrences/getCurrentBillingCycleRange/
+// computeCurrentCycleSpendAgorot primitives and re-shapes their output for
+// this widget's own display purpose (a flat "what's coming" list, richer
+// per-item fields like the shared/personal split), the same "no second
+// parallel engine" discipline lib/engines/alerts/buildFinancialAlerts.ts
+// already documents — showing the same real commitment in both this
+// informational list and Safe-to-Spend's own reservation total is not a
+// double COUNT (nothing is subtracted twice from any figure); it is the
+// same precedent obligations/recurring/instalments already set here.
 //
 // Double-count guard: inherited entirely from the reused primitives'
 // existing guarantees — forecastRecurringOccurrences starts from each

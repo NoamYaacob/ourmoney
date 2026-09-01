@@ -22,6 +22,7 @@ const baseInput: ImpactCheckInput = {
     },
   ],
   installmentPlans: [],
+  creditCardCycleItems: [],
   safeToSpendHorizonEnd: '2026-09-30',
   forecastStartDate: '2026-09-01',
   forecastEndDate: '2026-09-30',
@@ -37,6 +38,7 @@ describe('calculateImpactCheck — reuses existing engines, does not reimplement
       obligations: baseInput.obligations,
       recurringTemplates: baseInput.recurringTemplates,
       installmentPlans: baseInput.installmentPlans,
+      creditCardCycleItems: baseInput.creditCardCycleItems,
       horizonEnd: baseInput.safeToSpendHorizonEnd,
     })
     const directForecast = calculateCashFlowForecast({
@@ -46,6 +48,7 @@ describe('calculateImpactCheck — reuses existing engines, does not reimplement
       obligations: baseInput.obligations,
       recurringTemplates: baseInput.recurringTemplates,
       installmentPlans: baseInput.installmentPlans,
+      creditCardCycleItems: baseInput.creditCardCycleItems,
     })
 
     expect(result.currentSafeToSpendAgorot).toBe(directSafeToSpend.safeToSpendAgorot)
@@ -62,6 +65,7 @@ describe('calculateImpactCheck — reuses existing engines, does not reimplement
       obligations: baseInput.obligations,
       recurringTemplates: baseInput.recurringTemplates,
       installmentPlans: baseInput.installmentPlans,
+      creditCardCycleItems: baseInput.creditCardCycleItems,
       horizonEnd: baseInput.safeToSpendHorizonEnd,
     })
     const directForecast = calculateCashFlowForecast({
@@ -71,6 +75,7 @@ describe('calculateImpactCheck — reuses existing engines, does not reimplement
       obligations: baseInput.obligations,
       recurringTemplates: baseInput.recurringTemplates,
       installmentPlans: baseInput.installmentPlans,
+      creditCardCycleItems: baseInput.creditCardCycleItems,
     })
 
     expect(result.postPurchaseSafeToSpendAgorot).toBe(directSafeToSpend.safeToSpendAgorot)
@@ -148,6 +153,24 @@ describe('calculateImpactCheck — amount edge cases', () => {
     expect(() => calculateImpactCheck({ ...baseInput, hypotheticalExpenseAgorot: baseInput.availableCashAgorot + 1 })).not.toThrow()
     const result = calculateImpactCheck({ ...baseInput, hypotheticalExpenseAgorot: baseInput.availableCashAgorot + 1 })
     expect(result.postPurchaseSafeToSpendAgorot).toBeLessThan(0)
+  })
+})
+
+describe('calculateImpactCheck — credit card current-cycle reservation (P1-7)', () => {
+  it('reflects a credit card\'s posted current-cycle spend in both current and post-purchase figures identically (no new financial logic)', () => {
+    const withCardSpend: ImpactCheckInput = {
+      ...baseInput,
+      creditCardCycleItems: [{ accountId: 'acc-card', description: 'ויזה כאל', amountAgorot: 41_280, date: '2026-09-10' }],
+    }
+    const withoutCardSpend = calculateImpactCheck(baseInput)
+    const result = calculateImpactCheck(withCardSpend)
+
+    // The exact same reservation must reduce both the current AND the
+    // post-purchase Safe-to-Spend figure by the identical amount — Impact
+    // Check adds no purchase-method-specific modeling of its own (this
+    // file's own header contract), it only reruns the same two engines.
+    expect(result.currentSafeToSpendAgorot).toBe(withoutCardSpend.currentSafeToSpendAgorot - 41_280)
+    expect(result.postPurchaseSafeToSpendAgorot).toBe(withoutCardSpend.postPurchaseSafeToSpendAgorot - 41_280)
   })
 })
 

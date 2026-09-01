@@ -62,8 +62,9 @@ import { forecastInstallmentOccurrences, type InstallmentPlanForecastTemplate } 
 import { addDays } from './horizonRange'
 import { isPastDue } from '@/features/obligations/lib/upcomingObligations'
 import type { PlannedObligationForecastInput } from './calculateSafeToSpend'
+import type { CreditCardCycleReservationItem } from './creditCardCycleReservation'
 
-export type CashFlowEventSource = 'planned_obligation' | 'recurring' | 'installment_plan'
+export type CashFlowEventSource = 'planned_obligation' | 'recurring' | 'installment_plan' | 'credit_card_cycle'
 export type CashFlowEventDirection = 'inflow' | 'outflow'
 
 export interface CashFlowForecastEvent {
@@ -97,6 +98,11 @@ export interface CashFlowForecastInput {
   obligations: readonly PlannedObligationForecastInput[]
   recurringTemplates: readonly RecurringForecastTemplate[]
   installmentPlans: readonly InstallmentPlanForecastTemplate[]
+  // RRR P1 finding #7 — same already-resolved reservation items
+  // calculateSafeToSpend.ts's own SafeToSpendInput.creditCardCycleItems
+  // consumes; see that file's header for why they're pre-computed rather
+  // than re-derived here.
+  creditCardCycleItems: readonly CreditCardCycleReservationItem[]
 }
 
 export interface CashFlowForecastResult {
@@ -179,11 +185,34 @@ function buildInstallmentEvents(
   })
 }
 
+function buildCreditCardCycleEvents(
+  items: readonly CreditCardCycleReservationItem[],
+  startDate: string,
+  endDate: string
+): CashFlowForecastEvent[] {
+  return items
+    .filter((item) => item.date <= endDate)
+    .map((item) => {
+      const pastDue = isPastDue(item.date, startDate)
+      return {
+        id: `credit_card_cycle:${item.accountId}:${item.date}`,
+        date: pastDue ? startDate : item.date,
+        amountAgorot: item.amountAgorot,
+        direction: 'outflow' as const,
+        source: 'credit_card_cycle' as const,
+        sourceId: item.accountId,
+        title: item.description,
+        pastDue,
+      }
+    })
+}
+
 export function calculateCashFlowForecast(input: CashFlowForecastInput): CashFlowForecastResult {
   const events = [
     ...buildObligationEvents(input.obligations, input.startDate, input.endDate),
     ...buildRecurringEvents(input.recurringTemplates, input.startDate, input.endDate),
     ...buildInstallmentEvents(input.installmentPlans, input.startDate, input.endDate),
+    ...buildCreditCardCycleEvents(input.creditCardCycleItems, input.startDate, input.endDate),
   ].sort((a, b) => a.date.localeCompare(b.date) || a.sourceId.localeCompare(b.sourceId))
 
   // Group by (already-clamped) date first — the same-day aggregation

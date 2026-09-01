@@ -97,7 +97,8 @@ describe('assembleForecastInputs', () => {
       recurringTransactions: [],
       installmentPlans: [],
       maxMaterializedIndices: {},
-    })
+      transactions: [],
+    }, '2026-08-18')
     expect(result.availableCashAgorot).toBe(520_000)
   })
 
@@ -109,7 +110,8 @@ describe('assembleForecastInputs', () => {
       recurringTransactions: [],
       installmentPlans: [],
       maxMaterializedIndices: {},
-    })
+      transactions: [],
+    }, '2026-08-18')
     expect(result.obligations).toEqual([
       { id: 'ob-x', name: 'ביטוח', amountAgorot: 12_345, dueDate: '2026-10-01', status: 'upcoming', categoryId: null, accountId: null },
     ])
@@ -123,7 +125,8 @@ describe('assembleForecastInputs', () => {
       recurringTransactions: [recurring({ id: 'rc-x', description: 'חדר כושר', amount_agorot: -9_900, day_of_month: 15 })],
       installmentPlans: [],
       maxMaterializedIndices: {},
-    })
+      transactions: [],
+    }, '2026-08-18')
     expect(result.recurringTemplates).toEqual([
       {
         id: 'rc-x',
@@ -147,8 +150,34 @@ describe('assembleForecastInputs', () => {
       recurringTransactions: [],
       installmentPlans: [installmentPlan({ id: 'ip-x' }), installmentPlan({ id: 'ip-y' })],
       maxMaterializedIndices: { 'ip-x': 5 },
-    })
+      transactions: [],
+    }, '2026-08-18')
     expect(result.installmentPlans.find((p) => p.id === 'ip-x')?.lastMaterializedIndex).toBe(5)
     expect(result.installmentPlans.find((p) => p.id === 'ip-y')?.lastMaterializedIndex).toBe(0)
+  })
+
+  // RRR P1 finding #7: this is the ONE place credit-card cycle reservations
+  // get computed for calculateSafeToSpend/calculateCashFlowForecast/
+  // calculateImpactCheck alike — proving it here proves it for all three.
+  it('computes creditCardCycleItems from each credit card\'s own posted spend in its current cycle', () => {
+    const result = assembleForecastInputs(
+      {
+        accounts: [account({ id: 'acc-card', name: 'ויזה כאל', type: 'credit_card', billing_cycle_day: 10 })],
+        balances: {},
+        obligations: [],
+        recurringTransactions: [],
+        installmentPlans: [],
+        maxMaterializedIndices: {},
+        transactions: [
+          { account_id: 'acc-card', amount_agorot: -41_280, txn_date: '2026-08-16', transfer_id: null, is_excluded: false },
+          // Outside the current cycle (closed 2026-08-10) — must not be reserved.
+          { account_id: 'acc-card', amount_agorot: -20_000, txn_date: '2026-08-05', transfer_id: null, is_excluded: false },
+        ],
+      },
+      '2026-08-18'
+    )
+    expect(result.creditCardCycleItems).toEqual([
+      { accountId: 'acc-card', description: 'ויזה כאל', amountAgorot: 41_280, date: '2026-09-10' },
+    ])
   })
 })

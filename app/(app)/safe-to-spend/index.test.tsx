@@ -39,6 +39,7 @@ const BASE = {
   plannedObligationsAgorot: 347_000,
   recurringAgorot: 824_600,
   installmentsAgorot: 0,
+  creditCardCycleAgorot: 0,
   reservedAgorot: 1_171_600,
   safeToSpendAgorot: 138_450,
   shortfallAgorot: 0,
@@ -142,6 +143,31 @@ describe('safe-to-spend breakdown', () => {
 
     expect(getByText(i18n.t('safeToSpendDetail.installments'))).toBeTruthy()
     expect(getByText(formatILS(59_900))).toBeTruthy()
+  })
+
+  // RRR P1 finding #7: a credit card's current-cycle spend is its own
+  // fourth/fifth reserved component now (calculateSafeToSpend.ts) — this
+  // screen's whole documented purpose is "every subtraction the hero
+  // implies has a visible row behind it," so this reservation must open to
+  // its own group exactly like instalments already does above, never be
+  // folded silently into the total with nothing to show for it.
+  it('shows the credit-card-cycle group whenever the engine reserved for it, with the card\'s own name and amount', async () => {
+    mockResult = {
+      ...BASE,
+      creditCardCycleAgorot: 41_280,
+      reservedAgorot: BASE.reservedAgorot + 41_280,
+      safeToSpendAgorot: BASE.safeToSpendAgorot - 41_280,
+      items: [
+        ...BASE.items,
+        item({ sourceType: 'credit_card_cycle', sourceId: 'acc-card', description: 'ויזה כאל', amountAgorot: 41_280, date: '2026-09-10' }),
+      ],
+    }
+    const { getByText } = await render(<SafeToSpendDetail />)
+
+    expect(getByText(i18n.t('safeToSpendDetail.creditCardCycle'))).toBeTruthy()
+    expect(getByText(formatILS(41_280))).toBeTruthy()
+    fireEvent.press(getByText(i18n.t('safeToSpendDetail.creditCardCycle')))
+    await waitFor(() => expect(getByText(/ויזה כאל/)).toBeTruthy())
   })
 
   it('names the shortfall instead of printing a negative available figure', async () => {

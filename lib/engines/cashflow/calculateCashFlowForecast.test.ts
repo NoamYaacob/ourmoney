@@ -6,6 +6,7 @@ import { getDayRangeHorizon } from './horizonRange'
 import type { PlannedObligationForecastInput } from './calculateSafeToSpend'
 import type { RecurringForecastTemplate } from './forecastRecurringOccurrences'
 import type { InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
+import type { CreditCardCycleReservationItem } from './creditCardCycleReservation'
 
 function obligation(overrides: Partial<PlannedObligationForecastInput> = {}): PlannedObligationForecastInput {
   return {
@@ -50,6 +51,16 @@ function installmentPlan(overrides: Partial<InstallmentPlanForecastTemplate> = {
   }
 }
 
+function creditCardCycleItem(overrides: Partial<CreditCardCycleReservationItem> = {}): CreditCardCycleReservationItem {
+  return {
+    accountId: 'acc-card',
+    description: 'ויזה כאל',
+    amountAgorot: 41280,
+    date: '2026-08-20',
+    ...overrides,
+  }
+}
+
 function baseInput(overrides: Partial<CashFlowForecastInput> = {}): CashFlowForecastInput {
   return {
     startingBalanceAgorot: 500000,
@@ -58,6 +69,7 @@ function baseInput(overrides: Partial<CashFlowForecastInput> = {}): CashFlowFore
     obligations: [],
     recurringTemplates: [],
     installmentPlans: [],
+    creditCardCycleItems: [],
     ...overrides,
   }
 }
@@ -413,6 +425,7 @@ describe('calculateCashFlowForecast', () => {
         obligations: [obligation()],
         recurringTemplates: [recurring()],
         installmentPlans: [],
+        creditCardCycleItems: [],
         horizonEnd: '2026-08-31',
       })
       const forecast = calculateCashFlowForecast({
@@ -422,12 +435,54 @@ describe('calculateCashFlowForecast', () => {
         obligations: [obligation()],
         recurringTemplates: [recurring()],
         installmentPlans: [],
+        creditCardCycleItems: [],
       })
 
       expect(safeToSpend.availableCashAgorot).toBe(availableCashAgorot)
       expect(forecast.startingBalanceAgorot).toBe(availableCashAgorot)
       expect(forecast.startingBalanceAgorot).toBe(safeToSpend.availableCashAgorot)
       expect(forecast.dailyPoints[0]?.balanceAgorot).not.toBeUndefined()
+    })
+  })
+
+  // RRR P1 finding #7: a credit card's posted current-cycle spend must land
+  // in the day-by-day balance walk exactly like any other outflow — the
+  // Money Journey chart (built from these events) must show it, not just
+  // Safe-to-Spend's own lump-sum total.
+  describe('credit card current-cycle reservation (P1-7)', () => {
+    it('produces one outflow event on the reservation\'s own date, reducing the running balance from that day forward', () => {
+      const result = calculateCashFlowForecast(
+        baseInput({ creditCardCycleItems: [creditCardCycleItem({ amountAgorot: 41280, date: '2026-08-20' })] })
+      )
+      const event = result.events.find((e) => e.source === 'credit_card_cycle')
+      expect(event).toEqual({
+        id: 'credit_card_cycle:acc-card:2026-08-20',
+        date: '2026-08-20',
+        amountAgorot: 41280,
+        direction: 'outflow',
+        source: 'credit_card_cycle',
+        sourceId: 'acc-card',
+        title: 'ויזה כאל',
+        pastDue: false,
+      })
+      expect(result.totalOutflowsAgorot).toBe(41280)
+      const pointOnDate = result.dailyPoints.find((p) => p.date === '2026-08-20')
+      expect(pointOnDate?.balanceAgorot).toBe(500000 - 41280)
+      const pointAfter = result.dailyPoints.find((p) => p.date === '2026-08-21')
+      expect(pointAfter?.balanceAgorot).toBe(500000 - 41280)
+    })
+
+    it('combines with obligations/recurring/instalments into the same daily walk, with no double reservation', () => {
+      const result = calculateCashFlowForecast(
+        baseInput({
+          obligations: [obligation()],
+          recurringTemplates: [recurring()],
+          installmentPlans: [installmentPlan()],
+          creditCardCycleItems: [creditCardCycleItem()],
+        })
+      )
+      expect(result.events).toHaveLength(4)
+      expect(result.totalOutflowsAgorot).toBe(47500 + 15000 + 100000 + 41280)
     })
   })
 })

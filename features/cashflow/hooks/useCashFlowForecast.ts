@@ -1,5 +1,5 @@
 // Supabase-aware composition layer only — same shape as useSafeToSpend.ts,
-// reusing the exact same six hooks (same TanStack Query keys, so calling
+// reusing the exact same seven hooks (same TanStack Query keys, so calling
 // both this hook and useSafeToSpend on one screen never issues a duplicate
 // network request — they share the same cache entries). All computation
 // happens in lib/engines/cashflow/calculateCashFlowForecast.ts.
@@ -10,8 +10,11 @@ import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedOb
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
 import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { assembleForecastInputs } from '@/lib/engines/cashflow/assembleForecastInputs'
-import { getDayRangeHorizon, type DayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { CREDIT_CARD_CYCLE_LOOKBACK_DAYS } from '@/lib/engines/cashflow/creditCardCycleReservation'
+import { addDays, getDayRangeHorizon, type DayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { calculateCashFlowForecast, type CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
 export interface UseCashFlowForecastResult {
@@ -22,7 +25,7 @@ export interface UseCashFlowForecastResult {
   // See useSafeToSpend.ts's identical field for the full rationale: `result`
   // is always fully computed from each source's own defaulted data, so it
   // can never distinguish "nothing has loaded yet" from "loaded, and
-  // happens to be all zeros." True only once every one of the six composed
+  // happens to be all zeros." True only once every one of the seven composed
   // sources has resolved with data at least once; stays true through a
   // later background refetch failure.
   hasData: boolean
@@ -76,15 +79,28 @@ export function useCashFlowForecast(
     refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
+  const today = localDateString()
+  const {
+    transactions: recentTransactions,
+    isLoading: isRecentTransactionsLoading,
+    error: recentTransactionsError,
+    hasData: hasRecentTransactionsData,
+    refetch: refetchRecentTransactions,
+  } = useTransactions(householdId, { periodStart: addDays(today, -CREDIT_CARD_CYCLE_LOOKBACK_DAYS), periodEnd: today })
+
   const horizon = getDayRangeHorizon(horizonDays)
-  const { availableCashAgorot: startingBalanceAgorot, ...engineInputs } = assembleForecastInputs({
-    accounts,
-    balances,
-    obligations,
-    recurringTransactions,
-    installmentPlans,
-    maxMaterializedIndices,
-  })
+  const { availableCashAgorot: startingBalanceAgorot, ...engineInputs } = assembleForecastInputs(
+    {
+      accounts,
+      balances,
+      obligations,
+      recurringTransactions,
+      installmentPlans,
+      maxMaterializedIndices,
+      transactions: recentTransactions,
+    },
+    today
+  )
 
   const result = calculateCashFlowForecast({
     ...engineInputs,
@@ -102,15 +118,24 @@ export function useCashFlowForecast(
       isObligationsLoading ||
       isRecurringLoading ||
       isInstallmentPlansLoading ||
-      isMaterializedCountsLoading,
-    error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+      isMaterializedCountsLoading ||
+      isRecentTransactionsLoading,
+    error:
+      accountsError ??
+      balancesError ??
+      obligationsError ??
+      recurringError ??
+      installmentPlansError ??
+      materializedCountsError ??
+      recentTransactionsError,
     hasData:
       hasAccountsData &&
       hasBalancesData &&
       hasObligationsData &&
       hasRecurringData &&
       hasInstallmentPlansData &&
-      hasMaterializedCountsData,
+      hasMaterializedCountsData &&
+      hasRecentTransactionsData,
     refetch: () => {
       void refetchAccounts()
       void refetchBalances()
@@ -118,6 +143,7 @@ export function useCashFlowForecast(
       void refetchRecurring()
       void refetchInstallmentPlans()
       void refetchMaterializedCounts()
+      void refetchRecentTransactions()
     },
   }
 }

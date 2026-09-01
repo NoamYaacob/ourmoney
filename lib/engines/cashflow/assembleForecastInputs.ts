@@ -12,8 +12,9 @@
 // No new calculation happens here — every actual number crunching still
 // lives only inside the two engine files this feeds.
 
-import type { Account, InstallmentPlan, PlannedObligation, RecurringTransaction } from '@/types/app'
+import type { Account, InstallmentPlan, PlannedObligation, RecurringTransaction, Transaction } from '@/types/app'
 import { sumEligibleCashAgorot } from './eligibleCashAccounts'
+import { computeCreditCardCycleReservations, type CreditCardCycleReservationItem } from './creditCardCycleReservation'
 import type { PlannedObligationForecastInput } from './calculateSafeToSpend'
 import type { RecurringForecastTemplate } from './forecastRecurringOccurrences'
 import type { InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
@@ -31,6 +32,13 @@ export interface ForecastEngineSources {
   // useInstallmentMaterializedCounts's maxMaterializedIndices, never its
   // materializedCounts (which stays a row count, for display only).
   maxMaterializedIndices: Readonly<Record<string, number>>
+  // RRR P1 finding #7 — recent transactions, used ONLY to compute each
+  // credit card's own current (still-open) billing-cycle spend
+  // (creditCardCycleReservation.ts). Callers only need a bounded recent
+  // window (any possible cycle start is at most ~31 days back), not the
+  // household's full transaction history — see each hook's own fetch for
+  // the exact bound used.
+  transactions: readonly Pick<Transaction, 'account_id' | 'amount_agorot' | 'txn_date' | 'transfer_id' | 'is_excluded'>[]
 }
 
 // The fields calculateSafeToSpend's SafeToSpendInput and
@@ -42,11 +50,20 @@ export interface ForecastEngineInputs {
   obligations: PlannedObligationForecastInput[]
   recurringTemplates: RecurringForecastTemplate[]
   installmentPlans: InstallmentPlanForecastTemplate[]
+  creditCardCycleItems: CreditCardCycleReservationItem[]
 }
 
-export function assembleForecastInputs(sources: ForecastEngineSources): ForecastEngineInputs {
+// `today` is a second, explicit argument (not folded into `sources`) for
+// the same reason horizonEnd/startDate are passed alongside `...engineInputs`
+// at every call site rather than being a "data source": it is a "when," not
+// household data, and keeping it out of ForecastEngineSources means this
+// function never reaches for the clock itself (CLAUDE.md's deterministic-
+// engine discipline — every date comparison here is over an already-known
+// string the caller supplied, same as computeFinancialPulse.ts's).
+export function assembleForecastInputs(sources: ForecastEngineSources, today: string): ForecastEngineInputs {
   return {
     availableCashAgorot: sumEligibleCashAgorot(sources.accounts, sources.balances),
+    creditCardCycleItems: computeCreditCardCycleReservations(sources.accounts, sources.transactions, today),
     obligations: sources.obligations.map((o) => ({
       id: o.id,
       name: o.name,

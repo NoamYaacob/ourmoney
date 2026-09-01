@@ -1,9 +1,16 @@
 // Supabase-aware composition layer only — every actual computation happens
 // in lib/engines/cashflow/ (pure, unit-tested, no network). This hook's only
 // job is: fetch the household's accounts/balances/obligations/recurring
-// templates via the existing, unmodified hooks (no new Supabase query is
-// added here), adapt each row's snake_case shape to the engine's input
-// shape, and call the engine.
+// templates via the existing, unmodified hooks, adapt each row's snake_case
+// shape to the engine's input shape, and call the engine.
+//
+// RRR P1 finding #7: adds ONE new query, a bounded-recent-window
+// useTransactions call (CREDIT_CARD_CYCLE_LOOKBACK_DAYS back from today),
+// used only to compute each credit card's own current-cycle spend
+// (assembleForecastInputs.ts -> creditCardCycleReservation.ts). Same
+// TanStack Query key shape (['transactions', householdId, filters]) other
+// screens already use, so this dedupes with any other bounded fetch on the
+// same screen using the identical filters.
 
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
@@ -11,8 +18,11 @@ import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedOb
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
 import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { assembleForecastInputs } from '@/lib/engines/cashflow/assembleForecastInputs'
-import { getHorizonRange, type HorizonKind, type HorizonRange } from '@/lib/engines/cashflow/horizonRange'
+import { CREDIT_CARD_CYCLE_LOOKBACK_DAYS } from '@/lib/engines/cashflow/creditCardCycleReservation'
+import { addDays, getHorizonRange, type HorizonKind, type HorizonRange } from '@/lib/engines/cashflow/horizonRange'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { calculateSafeToSpend, type SafeToSpendResult } from '@/lib/engines/cashflow/calculateSafeToSpend'
 
 export interface UseSafeToSpendResult {
@@ -20,8 +30,9 @@ export interface UseSafeToSpendResult {
   horizon: HorizonRange
   isLoading: boolean
   error: Error | null
-  // True only once EVERY one of the six composed sources has resolved with
-  // data at least once. `result` is always a fully-computed value (it maps
+  // True only once EVERY one of the seven composed sources has resolved
+  // with data at least once. `result` is always a fully-computed value (it
+  // maps
   // over each source's own `data ?? []`/`{}` default), so it can never be
   // used by itself to tell "genuinely nothing has loaded yet" apart from
   // "everything loaded, `result` just happens to be all zeros" — this flag
@@ -30,7 +41,7 @@ export interface UseSafeToSpendResult {
   // can keep showing `result` and treat `error` as a non-blocking, "could
   // not refresh" signal instead of discarding good data.
   hasData: boolean
-  // Re-runs every one of the six composed queries. This is the Home hero's
+  // Re-runs every one of the seven composed queries. This is the Home hero's
   // own data source — the exact screen the intermittent "משהו השתבש" error
   // was reported on — so a household that still hits a genuine failure
   // (not the focus-refetch race lib/queryClient.ts now guards against; a
@@ -86,15 +97,28 @@ export function useSafeToSpend(
     refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
+  const today = localDateString()
+  const {
+    transactions: recentTransactions,
+    isLoading: isRecentTransactionsLoading,
+    error: recentTransactionsError,
+    hasData: hasRecentTransactionsData,
+    refetch: refetchRecentTransactions,
+  } = useTransactions(householdId, { periodStart: addDays(today, -CREDIT_CARD_CYCLE_LOOKBACK_DAYS), periodEnd: today })
+
   const horizon = getHorizonRange(horizonKind)
-  const engineInputs = assembleForecastInputs({
-    accounts,
-    balances,
-    obligations,
-    recurringTransactions,
-    installmentPlans,
-    maxMaterializedIndices,
-  })
+  const engineInputs = assembleForecastInputs(
+    {
+      accounts,
+      balances,
+      obligations,
+      recurringTransactions,
+      installmentPlans,
+      maxMaterializedIndices,
+      transactions: recentTransactions,
+    },
+    today
+  )
 
   const result = calculateSafeToSpend({
     ...engineInputs,
@@ -110,15 +134,24 @@ export function useSafeToSpend(
       isObligationsLoading ||
       isRecurringLoading ||
       isInstallmentPlansLoading ||
-      isMaterializedCountsLoading,
-    error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+      isMaterializedCountsLoading ||
+      isRecentTransactionsLoading,
+    error:
+      accountsError ??
+      balancesError ??
+      obligationsError ??
+      recurringError ??
+      installmentPlansError ??
+      materializedCountsError ??
+      recentTransactionsError,
     hasData:
       hasAccountsData &&
       hasBalancesData &&
       hasObligationsData &&
       hasRecurringData &&
       hasInstallmentPlansData &&
-      hasMaterializedCountsData,
+      hasMaterializedCountsData &&
+      hasRecentTransactionsData,
     refetch: () => {
       void refetchAccounts()
       void refetchBalances()
@@ -126,6 +159,7 @@ export function useSafeToSpend(
       void refetchRecurring()
       void refetchInstallmentPlans()
       void refetchMaterializedCounts()
+      void refetchRecentTransactions()
     },
   }
 }

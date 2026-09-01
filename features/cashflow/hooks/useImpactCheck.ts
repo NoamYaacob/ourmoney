@@ -1,6 +1,6 @@
 // CP8F — Supabase-aware composition layer for Single Purchase Impact Check,
 // same shape as useSafeToSpend.ts/useCashFlowForecast.ts: fetches the
-// household's data via the same six existing, unmodified hooks (same
+// household's data via the same seven existing, unmodified hooks (same
 // TanStack Query keys, so this hook never issues a duplicate network
 // request alongside useSafeToSpend/useCashFlowForecast on the same screen),
 // assembles the shared engine input shape via assembleForecastInputs, and
@@ -19,8 +19,11 @@ import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedOb
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
 import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
 import { assembleForecastInputs } from '@/lib/engines/cashflow/assembleForecastInputs'
-import { getHorizonRange, getDayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { CREDIT_CARD_CYCLE_LOOKBACK_DAYS } from '@/lib/engines/cashflow/creditCardCycleReservation'
+import { addDays, getHorizonRange, getDayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { calculateImpactCheck, type ImpactCheckResult } from '@/lib/engines/cashflow/calculateImpactCheck'
 
 // Matches the Safe-to-Spend detail screen's own horizon ('month' —
@@ -34,7 +37,7 @@ const FORECAST_HORIZON_DAYS = 30
 export interface UseImpactCheckResult {
   isLoading: boolean
   error: Error | null
-  // Same "every one of the six composed sources has resolved with data at
+  // Same "every one of the seven composed sources has resolved with data at
   // least once" contract as useSafeToSpend.ts/useCashFlowForecast.ts's own
   // `hasData` — see either file's header for the full rationale.
   hasData: boolean
@@ -86,16 +89,29 @@ export function useImpactCheck(householdId: string | null | undefined): UseImpac
     refetch: refetchMaterializedCounts,
   } = useInstallmentMaterializedCounts(householdId)
 
+  const today = localDateString()
+  const {
+    transactions: recentTransactions,
+    isLoading: isRecentTransactionsLoading,
+    error: recentTransactionsError,
+    hasData: hasRecentTransactionsData,
+    refetch: refetchRecentTransactions,
+  } = useTransactions(householdId, { periodStart: addDays(today, -CREDIT_CARD_CYCLE_LOOKBACK_DAYS), periodEnd: today })
+
   const safeToSpendHorizon = getHorizonRange('month')
   const forecastHorizon = getDayRangeHorizon(FORECAST_HORIZON_DAYS)
-  const engineInputs = assembleForecastInputs({
-    accounts,
-    balances,
-    obligations,
-    recurringTransactions,
-    installmentPlans,
-    maxMaterializedIndices,
-  })
+  const engineInputs = assembleForecastInputs(
+    {
+      accounts,
+      balances,
+      obligations,
+      recurringTransactions,
+      installmentPlans,
+      maxMaterializedIndices,
+      transactions: recentTransactions,
+    },
+    today
+  )
 
   return {
     isLoading:
@@ -104,15 +120,24 @@ export function useImpactCheck(householdId: string | null | undefined): UseImpac
       isObligationsLoading ||
       isRecurringLoading ||
       isInstallmentPlansLoading ||
-      isMaterializedCountsLoading,
-    error: accountsError ?? balancesError ?? obligationsError ?? recurringError ?? installmentPlansError ?? materializedCountsError,
+      isMaterializedCountsLoading ||
+      isRecentTransactionsLoading,
+    error:
+      accountsError ??
+      balancesError ??
+      obligationsError ??
+      recurringError ??
+      installmentPlansError ??
+      materializedCountsError ??
+      recentTransactionsError,
     hasData:
       hasAccountsData &&
       hasBalancesData &&
       hasObligationsData &&
       hasRecurringData &&
       hasInstallmentPlansData &&
-      hasMaterializedCountsData,
+      hasMaterializedCountsData &&
+      hasRecentTransactionsData,
     refetch: () => {
       void refetchAccounts()
       void refetchBalances()
@@ -120,6 +145,7 @@ export function useImpactCheck(householdId: string | null | undefined): UseImpac
       void refetchRecurring()
       void refetchInstallmentPlans()
       void refetchMaterializedCounts()
+      void refetchRecentTransactions()
     },
     calculate: (hypotheticalExpenseAgorot: number) =>
       calculateImpactCheck({
