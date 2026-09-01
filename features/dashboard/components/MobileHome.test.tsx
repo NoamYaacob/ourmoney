@@ -41,14 +41,21 @@ const SAFE_TO_SPEND = {
   items: [] as unknown[],
 }
 let mockSafeToSpend = { ...SAFE_TO_SPEND }
+// hasData/error/isLoading are mutable (unlike the other hooks' fixed-object
+// mocks below) specifically for the final-merge-gate blocker 2 regression
+// suite, which needs to reach the hero's ErrorMessage branches.
+let mockSafeToSpendHasData = true
+let mockSafeToSpendError: Error | null = null
+let mockSafeToSpendLoading = false
+const mockRefetchSafeToSpend = jest.fn()
 jest.mock('@/features/cashflow/hooks/useSafeToSpend', () => ({
   useSafeToSpend: () => ({
     result: mockSafeToSpend,
     horizon: { start: '2026-08-22', end: '2026-08-31' },
-    isLoading: false,
-    error: null,
-    hasData: true,
-    refetch: jest.fn(),
+    isLoading: mockSafeToSpendLoading,
+    error: mockSafeToSpendError,
+    hasData: mockSafeToSpendHasData,
+    refetch: mockRefetchSafeToSpend,
   }),
 }))
 
@@ -128,6 +135,10 @@ function forecastEvent(overrides: Partial<CashFlowForecastResult['events'][numbe
 beforeEach(() => {
   mockPush.mockClear()
   mockSafeToSpend = { ...SAFE_TO_SPEND }
+  mockSafeToSpendHasData = true
+  mockSafeToSpendError = null
+  mockSafeToSpendLoading = false
+  mockRefetchSafeToSpend.mockClear()
   mockForecast = { ...EMPTY_FORECAST }
   mockAlerts = []
   mockGoals = []
@@ -159,6 +170,81 @@ describe('MobileHome — the hero', () => {
     // "not the bank balance" reassures about a healthy figure; it has no
     // business sitting beside a shortfall.
     expect(queryByText(i18n.t('home.hero.notBankBalance'))).toBeNull()
+  })
+})
+
+// Final merge gate, blocker 2: when the hero's own data fetch fails, it
+// used to stay a Pressable (accessibilityRole="button") wrapping
+// ErrorMessage's own retry Pressable (also accessibilityRole="button") —
+// real nested interactive elements, an invalid <button> inside a <button>
+// on web with a confirmed hydration warning. Neither RNTL's own renderer
+// nor jsdom reproduces that DOM nesting (jest-expo renders through
+// react-native core, not react-native-web — same limitation
+// SegmentedControl.test.tsx documents for its own P0-4 fix), so what these
+// tests CAN prove and do prove: the hero stops being a navigation target
+// exactly while an ErrorMessage-with-retry is showing (accessibilityRole
+// is no longer "button", pressing it does not navigate), and the retry
+// control keeps working regardless. The decisive DOM-nesting proof is the
+// live Playwright capture in the final-merge-gate evidence artifact.
+describe('MobileHome — the hero stops being a nav target while it shows a retryable error (blocker 2)', () => {
+  it('a hard failure (no data at all) shows only the error, is not a nav target, and retry works', async () => {
+    mockSafeToSpendHasData = false
+    mockSafeToSpendError = new Error('network')
+    const { getByText, queryByText, getByTestId, queryByTestId } = await render(<MobileHome />)
+
+    expect(getByText(i18n.t('cashFlow.errors.generic'))).toBeTruthy()
+    // Nothing from the success branch renders alongside the error.
+    expect(queryByText(i18n.t('home.hero.notBankBalance'))).toBeNull()
+
+    const hero = getByTestId('home-hero')
+    expect(hero.props.accessibilityRole).not.toBe('button')
+    fireEvent.press(hero)
+    expect(mockPush).not.toHaveBeenCalledWith('/safe-to-spend')
+
+    fireEvent.press(getByText(i18n.t('common.retry')))
+    expect(mockRefetchSafeToSpend).toHaveBeenCalledTimes(1)
+    // Retry itself must never be mistaken for hero navigation either.
+    expect(mockPush).not.toHaveBeenCalledWith('/safe-to-spend')
+    expect(queryByTestId('home-hero')?.props.accessibilityRole).not.toBe('button')
+  })
+
+  it('a background refetch failure keeps showing last-known-good data, and still is not a nav target', async () => {
+    mockSafeToSpendHasData = true
+    mockSafeToSpendError = new Error('stale')
+    const { getAllByText, getByText, getByTestId } = await render(<MobileHome />)
+
+    // Last-known-good figure is still visible (twice, same as the plain
+    // success case — hero + the boundary's own "free" label) — a
+    // background failure must not blank the hero.
+    expect(getAllByText(formatILS(SAFE_TO_SPEND.safeToSpendAgorot)).length).toBe(2)
+    expect(getByText(i18n.t('cashFlow.errors.generic'))).toBeTruthy()
+
+    const hero = getByTestId('home-hero')
+    expect(hero.props.accessibilityRole).not.toBe('button')
+    fireEvent.press(hero)
+    expect(mockPush).not.toHaveBeenCalledWith('/safe-to-spend')
+
+    fireEvent.press(getByText(i18n.t('common.retry')))
+    expect(mockRefetchSafeToSpend).toHaveBeenCalledTimes(1)
+  })
+
+  it('a successful load with no error is a nav target again, exactly like before this fix', async () => {
+    const { getByTestId } = await render(<MobileHome />)
+
+    const hero = getByTestId('home-hero')
+    expect(hero.props.accessibilityRole).toBe('button')
+    fireEvent.press(hero)
+    expect(mockPush).toHaveBeenCalledWith('/safe-to-spend')
+  })
+
+  it('the loading state is unaffected — still a nav target, matching pre-fix behavior', async () => {
+    mockSafeToSpendLoading = true
+    const { getByTestId } = await render(<MobileHome />)
+
+    const hero = getByTestId('home-hero')
+    expect(hero.props.accessibilityRole).toBe('button')
+    fireEvent.press(hero)
+    expect(mockPush).toHaveBeenCalledWith('/safe-to-spend')
   })
 })
 

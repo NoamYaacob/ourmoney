@@ -194,6 +194,15 @@ export function MobileHome() {
     )
   }
 
+  // Final merge gate, blocker 2: the hero is only a navigation target when
+  // it has real content to hand off to (loading, or a genuinely successful
+  // read) — never while it's showing an ErrorMessage with its own retry
+  // button. That keeps the hero's own Pressable from ever wrapping another
+  // interactive control (invalid <button> nested in <button> on web,
+  // confirmed via a real hydration warning) without touching ErrorMessage
+  // itself, which plenty of other, non-nested callers still use as-is.
+  const isHeroInteractive = isSafeToSpendLoading || (hasSafeToSpendData && !safeToSpendError)
+
   const hasShortfall = safeToSpend.safeToSpendAgorot < 0
   // RRR §16 P1-5: now the same shared function DesktopDashboard.tsx calls —
   // this file's own real-day-count division was already correct and is
@@ -248,63 +257,79 @@ export function MobileHome() {
           number is the conclusion, the timeline is why — one story, not a
           KPI card followed by a separate chart card. */}
       <HeroPanel>
-        <Pressable
-          testID="home-hero"
-          onPress={() => router.push('/safe-to-spend')}
-          accessibilityRole="button"
-          accessibilityLabel={t('safeToSpendDetail.title')}
-        >
-          <HeroLabel>{t('home.hero.label', { horizon: t('cashFlow.horizon.month') })}</HeroLabel>
-
-          {isSafeToSpendLoading ? (
-            <View className="mt-2">
-              <SkeletonList rows={1} />
-            </View>
-          ) : !hasSafeToSpendData ? (
-            <View className="mt-2">
-              <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
-            </View>
-          ) : (
+        {(() => {
+          // Extracted once so the interactive and non-interactive wrappers
+          // below render the identical content — no visual difference
+          // between them, only whether the outer element is itself a
+          // Pressable.
+          const heroContent = (
             <>
-              {/* A background refetch failing after a previous success must
-                  not blank the hero — `hasSafeToSpendData` already confirmed
-                  `safeToSpend` below is real, last-known-good data. Surface
-                  the failure as a small non-blocking banner instead. */}
-              {safeToSpendError && (
+              <HeroLabel>{t('home.hero.label', { horizon: t('cashFlow.horizon.month') })}</HeroLabel>
+
+              {isSafeToSpendLoading ? (
+                <View className="mt-2">
+                  <SkeletonList rows={1} />
+                </View>
+              ) : !hasSafeToSpendData ? (
                 <View className="mt-2">
                   <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
                 </View>
-              )}
-              <View className="mt-1.5">
-                <Money
-                  agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
-                  size="hero"
-                  tone="hero"
-                />
-              </View>
-              <View className="mt-1 flex-row items-center gap-2">
-                <HeroTag>{hasShortfall ? t('home.hero.shortfallTag') : t('home.hero.notBankBalance')}</HeroTag>
-                {!hasShortfall && perDayAgorot > 0 && (
-                  <HeroNote>{t('home.hero.perDay', { amount: formatILS(perDayAgorot) })}</HeroNote>
-                )}
-              </View>
-              {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
+              ) : (
+                <>
+                  {/* A background refetch failing after a previous success must
+                      not blank the hero — `hasSafeToSpendData` already confirmed
+                      `safeToSpend` below is real, last-known-good data. Surface
+                      the failure as a small non-blocking banner instead. */}
+                  {safeToSpendError && (
+                    <View className="mt-2">
+                      <ErrorMessage message={t('cashFlow.errors.generic')} onRetry={refetchSafeToSpend} />
+                    </View>
+                  )}
+                  <View className="mt-1.5">
+                    <Money
+                      agorot={hasShortfall ? safeToSpend.shortfallAgorot : safeToSpend.safeToSpendAgorot}
+                      size="hero"
+                      tone="hero"
+                    />
+                  </View>
+                  <View className="mt-1 flex-row items-center gap-2">
+                    <HeroTag>{hasShortfall ? t('home.hero.shortfallTag') : t('home.hero.notBankBalance')}</HeroTag>
+                    {!hasShortfall && perDayAgorot > 0 && (
+                      <HeroNote>{t('home.hero.perDay', { amount: formatILS(perDayAgorot) })}</HeroNote>
+                    )}
+                  </View>
+                  {hasShortfall && <HeroNote className="mt-2">{t('home.hero.shortfallNote')}</HeroNote>}
 
-              {/* The protected/free boundary — the approved Living Money
-                  treatment (CP8A), replacing the old free-first 3-segment
-                  bar. */}
-              {!hasShortfall && safeToSpend.availableCashAgorot > 0 && (
-                <View className="mt-4">
-                  <ProtectedFreeBoundary
-                    protectedAgorot={safeToSpend.reservedAgorot}
-                    freeAgorot={safeToSpend.safeToSpendAgorot}
-                    totalAgorot={safeToSpend.availableCashAgorot}
-                  />
-                </View>
+                  {/* The protected/free boundary — the approved Living Money
+                      treatment (CP8A), replacing the old free-first 3-segment
+                      bar. */}
+                  {!hasShortfall && safeToSpend.availableCashAgorot > 0 && (
+                    <View className="mt-4">
+                      <ProtectedFreeBoundary
+                        protectedAgorot={safeToSpend.reservedAgorot}
+                        freeAgorot={safeToSpend.safeToSpendAgorot}
+                        totalAgorot={safeToSpend.availableCashAgorot}
+                      />
+                    </View>
+                  )}
+                </>
               )}
             </>
-          )}
-        </Pressable>
+          )
+
+          return isHeroInteractive ? (
+            <Pressable
+              testID="home-hero"
+              onPress={() => router.push('/safe-to-spend')}
+              accessibilityRole="button"
+              accessibilityLabel={t('safeToSpendDetail.title')}
+            >
+              {heroContent}
+            </Pressable>
+          ) : (
+            <View testID="home-hero">{heroContent}</View>
+          )
+        })()}
 
         {/* WHAT CHANGED — Financial Pulse (CP8E). A compact narrative
             bridge, in the SAME panel, between the hero above and the Money
