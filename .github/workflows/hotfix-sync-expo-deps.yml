@@ -1,0 +1,39 @@
+name: Hotfix — align Expo SDK dependencies
+
+on:
+  push:
+    branches:
+      - hotfix/ci-release-gates
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/ci-release-gates
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Align packages to Expo SDK 57
+        run: npx expo install --fix
+      - name: Verify Expo Doctor
+        run: npx expo-doctor
+      - name: Commit generated dependency alignment
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "No dependency changes needed."
+            exit 0
+          fi
+          git commit -m "fix(ci): align Expo SDK 57 patch versions"
+          git push origin HEAD:hotfix/ci-release-gates
