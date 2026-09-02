@@ -61,8 +61,17 @@ export function Modal({
               either Button, so unbounded font scaling at iOS's largest
               accessibility sizes (~310%) could overflow the dialog's fixed
               width — the one place in the app this cap applies (Button's
-              own default is uncapped; see its prop comment). */}
-          <View className="flex-row-reverse gap-2">
+              own default is uncapped; see its prop comment).
+              Visual QA pass: was `flex-row-reverse`, put here to keep the
+              confirm button from visually landing first — but global.css's
+              `direction: rtl` on html/body/#root already mirrors plain
+              `flex-row` (verified directly; see MonthNavigator.tsx's header
+              comment for the full explanation and how it was checked).
+              `flex-row-reverse` flips a second time, which is exactly what
+              put Cancel on the right and Confirm on the left — backwards
+              from this component's own evident intent. Plain flex-row
+              keeps Confirm (first child) on the right. */}
+          <View className="flex-row gap-2">
             <Button
               title={confirmLabel}
               onPress={onConfirm}

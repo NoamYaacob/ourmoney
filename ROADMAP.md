@@ -46,6 +46,23 @@ PRODUCT_VISION.md or FEATURES.md enters this phase. See [ADR-021](docs/DECISIONS
 >   ([ADR-029](docs/DECISIONS.md#adr-029)). No installment, charge-date or visibility columns land in
 >   MVP. What must hold instead: **one transaction row = one movement of money**, never "a purchase".
 
+> **Later amendment — features pulled forward from INTELLIGENCE into MVP.**
+> The bullet above and [INT-1 below](#phase-intelligence) originally planned installment/charge-date
+> columns, the committed-expense model, Safe-to-Spend, and monthly cash-flow forecasting for the
+> INTELLIGENCE phase, gated on Open Banking shipping first. In practice, all of these were built and
+> shipped in MVP instead — each through its own design-review-gate process (architecture-reviewer +
+> product-scope-guardian sign-off before implementation, qa-adversarial-reviewer after), the same
+> gate every other MVP feature goes through. Also pulled forward the same way: credit-card billing
+> cycles and instalment purchases (migration 016, ADR-037), planned/future obligations
+> (migration 007), savings-goal required-monthly-saving pace, and a Smart Financial Alerts engine.
+> None of this required Open Banking or synced bank history — every figure is computed from the
+> household's own manually/CSV-entered transactions, the same deterministic-engine discipline
+> INT-1..INT-4 below describe, just running on hand-entered data instead of bank-synced data. See
+> CLAUDE.md's "Implemented Product Pillars" section for what exists today and where. The original
+> INTELLIGENCE-phase entry conditions and scope below are left as written — they still describe what
+> Open Banking-gated intelligence work remains (balance-sheet modelling, benchmarks, health score),
+> which genuinely has not been pulled forward.
+
 ## MVP-1 — Foundation & Auth
 
 Detailed plan: [docs/PHASE_1_PLAN.md](docs/PHASE_1_PLAN.md)

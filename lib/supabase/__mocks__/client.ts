@@ -23,12 +23,17 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     gt: jest.Mock
     is: jest.Mock
     or: jest.Mock
+    // Credit-card instalment purchases milestone: materialized-count query
+    // chains this.
+    not: jest.Mock
     // Bulk Categorization milestone: bulk update/select queries chain this.
     in: jest.Mock
     order: jest.Mock
     limit: jest.Mock
     insert: jest.Mock
     update: jest.Mock
+    // CP8E: financial_pulse_snapshots' upsert-on-(household_id,user_id) write.
+    upsert: jest.Mock
     delete: jest.Mock
     single: jest.Mock
     maybeSingle: jest.Mock
@@ -45,11 +50,13 @@ export function createQueryBuilderMock(result: { data: unknown; error: unknown }
     gt: jest.fn(() => builder),
     is: jest.fn(() => builder),
     or: jest.fn(() => builder),
+    not: jest.fn(() => builder),
     in: jest.fn(() => builder),
     order: jest.fn(() => builder),
     limit: jest.fn(() => builder),
     insert: jest.fn(() => builder),
     update: jest.fn(() => builder),
+    upsert: jest.fn(() => builder),
     delete: jest.fn(() => builder),
     single: jest.fn(() => builder),
     maybeSingle: jest.fn(() => builder),

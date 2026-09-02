@@ -204,20 +204,34 @@ ourmoney/
 ├── features/               # Domain feature slices
 │   ├── auth/
 │   ├── household/
-│   ├── accounts/
+│   ├── accounts/           # incl. credit-card billing-cycle logic (lib/creditCardCycle.ts)
 │   ├── transactions/
 │   ├── categories/
 │   ├── budgets/
 │   ├── recurring/
-│   └── savings/
+│   ├── obligations/        # planned (one-off/annual) obligations
+│   ├── installments/       # credit-card instalment purchases
+│   ├── savings/
+│   ├── cashflow/           # Safe-to-Spend, cash-flow forecast, upcoming commitments
+│   ├── alerts/             # Smart Financial Alerts composition hook
+│   ├── analytics/          # category breakdown, monthly trend
+│   └── import/             # CSV import
 ├── hooks/                  # App-wide hooks (useAuth, useHousehold, useRTL)
 ├── store/                  # Zustand — local UI state only (authStore, householdStore)
 ├── lib/
 │   ├── supabase/           # Client init, shared query helpers
 │   ├── money/              # ILS formatting, agorot arithmetic
+│   ├── dates/              # formatDateDisplay — the one place a date becomes display text
 │   ├── events/             # Domain event types + in-process dispatcher
 │   ├── notifications/      # Event → member → channel routing
 │   │   └── channels/       # push.ts (MVP). Others are future.
+│   ├── engines/            # Pure, deterministic financial calculations — see
+│   │   │                   # "Implemented Product Pillars" below for what lives here
+│   │   ├── budgets/        # end-of-month spending-pace projection
+│   │   ├── savings/        # required-monthly-saving pace
+│   │   ├── cashflow/       # Safe-to-Spend, cash-flow forecast, recurring/instalment forecasting
+│   │   ├── commitments/    # unified "next 30 days" upcoming-commitments summary
+│   │   └── alerts/         # Smart Financial Alerts aggregation + detectors
 │   ├── queryClient.ts      # TanStack Query configuration
 │   └── utils/
 ├── i18n/
@@ -279,8 +293,14 @@ These must not be introduced until explicitly approved:
 - No transactional email provider (invitations use the native share sheet).
 - No LLM or AI integration of any kind.
 
-**Financial intelligence** — none of these exist in MVP
-- No Safe-to-Spend, cash-flow forecasting, or committed-expense model.
+**Financial intelligence still out of scope**
+> Safe-to-Spend, cash-flow forecasting, and the committed-expense model (planned obligations,
+> recurring charges, instalments) were originally scoped for the later INTELLIGENCE phase
+> (see [ROADMAP.md](ROADMAP.md#phase-intelligence)) but were pulled forward and shipped in MVP,
+> each through the normal design-review-gate process (architecture-reviewer +
+> product-scope-guardian sign-off before implementation, qa-adversarial-reviewer after). They are
+> real, implemented, and documented under "Implemented Product Pillars" below — this is not a
+> pending or aspirational item. What is genuinely still out of scope:
 - No benchmark engine, financial health score, or action engine.
 - No debt, mortgage, pension, or insurance models.
 - No eligibility or tax-rights engine.
@@ -292,6 +312,77 @@ These must not be introduced until explicitly approved:
 - No multi-household support.
 - No floating point money math.
 - No hardcoded Hebrew strings in components.
+
+## Implemented Product Pillars
+
+These exist today, are load-bearing, and are what differentiate OurMoney from a plain expense
+tracker (see the household-first / Safe-to-Spend / forecasting / double-counting-prevention
+framing in the product context every session on this repo has worked from). Each was built through
+the same review-gate process as everything else in this file — none is a shortcut around
+CLAUDE.md's other rules, and every figure below is still a pure, deterministic calculation
+(no AI ever originates a number — see "Deterministic Financial Logic vs. AI" above).
+
+- **Safe-to-Spend / פנוי באמת** — `lib/engines/cashflow/calculateSafeToSpend.ts`. Available cash
+  (checking/cash accounts only — a credit card's own balance is never counted as available cash)
+  minus every upcoming obligation, recurring charge, and instalment reservation within the chosen
+  horizon. Shown on the Dashboard hero card and `/cash-flow`.
+- **Cash-flow forecast** — `lib/engines/cashflow/calculateCashFlowForecast.ts`. A day-by-day
+  projected balance over a selectable horizon (30/60/90 days), built from the same recurring/
+  instalment/obligation forecasting primitives Safe-to-Spend uses — never a second, divergent
+  projection. Shown on `/cash-flow`.
+- **Recurring charges** — `recurring_transactions` + `features/recurring/`. Auto-generates
+  transactions on their due date; forecast occurrences (not-yet-generated future charges) are
+  produced by `lib/engines/cashflow/forecastRecurringOccurrences.ts`, reused by every engine that
+  needs "what recurring charges are coming."
+- **Future/planned obligations** — `planned_obligations` + `features/obligations/`. One-off or
+  annual known future expenses (ארנונה, ביטוח, etc.), each with a `status` of `upcoming` /
+  `completed` / `cancelled`. "Mark paid" atomically links the obligation to the real transaction it
+  produced and flips its status in the same write (migration 012) — a paid obligation can never
+  simultaneously still be reserved by Safe-to-Spend and also reduce the account balance twice.
+- **Credit-card billing cycles** — `features/accounts/lib/creditCardCycle.ts`. A card's current (and
+  previous) statement period is computed live from `accounts.billing_cycle_day` — never persisted,
+  never a separate `card_statements` table (ADR-037). "Current cycle spend" excludes transfer legs
+  (a statement payment is money paid *toward* the card, never a purchase) and `is_excluded`
+  transactions, matching every other spend total in the app.
+- **Instalments** — `installment_plans` + `features/installments/` (migration 016, ADR-037). An
+  instalment plan is the economic event; individual instalment transactions materialize on their own
+  charge dates via a generator, the same "one row = one movement of money" discipline every
+  transaction in this app follows (see "Transaction Identity" above). Not-yet-materialized
+  instalments are forecast by `lib/engines/cashflow/forecastInstallmentOccurrences.ts`, starting
+  strictly from `materializedCount + 1` — this is the specific mechanism that keeps an instalment
+  from ever being forecast AND counted as posted spend at the same time.
+- **Savings goals** — `savings_goals` + `features/savings/`. Progress is either `manual` (a stored
+  `current_agorot`) or `linked_account` (derived live from the linked account's own balance — never
+  a second, independently-updated number). `lib/engines/savings/calculateSavingsPace.ts` derives the
+  required monthly saving and on-track/overdue status toward a target date, when one is set.
+- **Household / shared vs. personal ownership** — `is_shared` on every financial row, always and
+  only budget-attribution (never visibility, never installment status — see "Never overload a
+  boolean" above). MVP shows every row to every household member regardless of `is_shared`; the
+  shared/personal split is a display and totals concept only.
+- **Double-counting prevention** — the specific, load-bearing invariants that let five different
+  sources (planned obligations, recurring charges, instalments, a credit card's posted spend, and
+  transfers) all feed Safe-to-Spend / the cash-flow forecast / the "next 30 days" commitments
+  summary (`lib/engines/commitments/buildUpcomingCommitments.ts`) without ever double-counting the
+  same real movement of money:
+  - A forecast occurrence (recurring or instalment) is only ever produced for a date/index that has
+    **not yet** been materialized into a real transaction row (`next_due_date` /
+    `materializedCount + 1` — see the two files above).
+  - A transfer's two linked transaction legs (`transfers` + migration 008/ADR-035) are excluded from
+    every spend total, budget figure, and category baseline — a statement payment or an internal
+    move between accounts is never "spend."
+  - A `credit_card`-type account is never counted in "available cash" (`eligibleCashAccounts.ts`);
+    its current cycle's posted spend is reserved as its own, separate line item instead of being
+    double-reserved as cash.
+  - A known, accepted V1 limitation (not a bug): a household that enters the same real bill as both
+    a `planned_obligations` row and a `recurring_transactions` template will see it reserved twice —
+    there is no cross-table fuzzy matching, by design (see `calculateSafeToSpend.ts`'s own header
+    comment). Do not "fix" this with heuristic matching; it is a documented, explicit trade-off.
+- **Smart Financial Alerts** — `lib/engines/alerts/buildFinancialAlerts.ts`. A deterministic,
+  severity-sorted list combining nine independent sources (forecast shortfall, upcoming obligations,
+  recurring price increases, budget risk, high credit-card cycle spend, category spend above
+  typical, savings goal behind schedule, excess cash available, low balance warning). Composes
+  already-computed figures from the engines above — this file never originates a new calculation of
+  its own.
 
 ## Project-Local Agents & Skills
 

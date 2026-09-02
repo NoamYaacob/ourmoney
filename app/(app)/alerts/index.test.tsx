@@ -88,7 +88,10 @@ describe('Alerts screen', () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [], isLoading: false, hasPartialError: false })
   })
 
-  it('groups alerts by severity under the correct Hebrew headings', async () => {
+  // Headings carry their count now ("דורש טיפול · 2"), which is what both
+  // design frames draw — a household sees how much is waiting before
+  // reading a card.
+  it('groups alerts by tier under the correct Hebrew headings, each with its count', async () => {
     mockUseFinancialAlerts.mockReturnValue({
       alerts: [FORECAST_ALERT, alert(), BUDGET_ALERT],
       isLoading: false,
@@ -97,9 +100,9 @@ describe('Alerts screen', () => {
 
     const { getByText } = await render(<Alerts />)
 
-    expect(getByText(i18n.t('alerts.groups.critical'))).toBeTruthy()
-    expect(getByText(i18n.t('alerts.groups.warning'))).toBeTruthy()
-    expect(getByText(i18n.t('alerts.groups.info'))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.groupCount', { label: i18n.t('alerts.groups.critical'), count: 1 }))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.groupCount', { label: i18n.t('alerts.groups.warning'), count: 1 }))).toBeTruthy()
+    expect(getByText(i18n.t('alerts.groupCount', { label: i18n.t('alerts.groups.info'), count: 1 }))).toBeTruthy()
   })
 
   it('does not render a severity group heading with zero alerts in it', async () => {
@@ -107,27 +110,30 @@ describe('Alerts screen', () => {
 
     const { queryByText } = await render(<Alerts />)
 
-    expect(queryByText(i18n.t('alerts.groups.critical'))).toBeNull()
-    expect(queryByText(i18n.t('alerts.groups.info'))).toBeNull()
+    expect(queryByText(new RegExp(i18n.t('alerts.groups.critical')))).toBeNull()
+    expect(queryByText(new RegExp(i18n.t('alerts.groups.info')))).toBeNull()
   })
 
   it('renders a forecast_shortfall alert with its date and amount in the description', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [FORECAST_ALERT], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText('צפוי חוסר בכיסוי')).toBeTruthy()
-    expect(getByText(/2026-08-18/)).toBeTruthy()
-    expect(getByText(/124/)).toBeTruthy()
+    // Desktop Claude Design pass: each alert now renders twice (mobile
+    // Card grouping + desktop bordered-card grouping) — see index.tsx's
+    // own comment on why both legitimately exist in the tree at once.
+    expect(getAllByText('צפוי חוסר בכיסוי').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/2026-08-18/).length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/124/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders an upcoming_obligation alert', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText('ארנונה בעוד 3 ימים')).toBeTruthy()
-    expect(getByText(/475/)).toBeTruthy()
+    expect(getAllByText('ארנונה בעוד 3 ימים').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/475/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders a recurring_price_increase alert with the exact before/after amounts', async () => {
@@ -137,18 +143,18 @@ describe('Alerts screen', () => {
       hasPartialError: false,
     })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText('המחיר עלה')).toBeTruthy()
-    expect(getByText(/99.*119/)).toBeTruthy()
+    expect(getAllByText('המחיר עלה').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText(/99.*119/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders a budget_risk alert with the category name and percent', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [BUDGET_ALERT], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText(/מכולת.*85%/)).toBeTruthy()
+    expect(getAllByText(/מכולת.*85%/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('navigates to the alert-specific actionRoute when a row is tapped', async () => {
@@ -158,9 +164,9 @@ describe('Alerts screen', () => {
       hasPartialError: false,
     })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    await fireEvent.press(getByText('המחיר עלה'))
+    await fireEvent.press(getAllByText('המחיר עלה')[0]!)
 
     expect(mockPush).toHaveBeenCalledWith('/recurring/rec-1')
   })
@@ -168,18 +174,23 @@ describe('Alerts screen', () => {
   it('shows a non-blocking note when a source partially failed, while still showing the alerts that succeeded', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [alert()], isLoading: false, hasPartialError: true })
 
-    const { getByText } = await render(<Alerts />)
+    const { getByText, getAllByText } = await render(<Alerts />)
 
     expect(getByText(i18n.t('alerts.errors.partial'))).toBeTruthy()
-    expect(getByText('ארנונה בעוד 3 ימים')).toBeTruthy()
+    expect(getAllByText('ארנונה בעוד 3 ימים').length).toBeGreaterThanOrEqual(1)
   })
 
+  // Visual QA + Desktop Polish pass: the empty state now renders twice
+  // (compact mobile + full desktop, same dual-render pattern Budgets/
+  // Transactions already use for their true-empty states) — getAllByText,
+  // not getByText, so this doesn't assume how many of those two elements
+  // render in this test's non-web render environment.
   it('shows the empty state when there are zero alerts', async () => {
     mockUseFinancialAlerts.mockReturnValue({ alerts: [], isLoading: false, hasPartialError: false })
 
-    const { getByText } = await render(<Alerts />)
+    const { getAllByText } = await render(<Alerts />)
 
-    expect(getByText(i18n.t('alerts.empty'))).toBeTruthy()
+    expect(getAllByText(i18n.t('alerts.empty')).length).toBeGreaterThan(0)
   })
 
   it('shows a loading state while alerts are being gathered', async () => {

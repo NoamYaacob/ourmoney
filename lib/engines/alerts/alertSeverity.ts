@@ -71,6 +71,45 @@ export function budgetRiskSeverity(percentSpent: number | null): FinancialAlertS
   return null
 }
 
+// ── High credit-card cycle spend ─────────────────────────────────────────
+// detectHighCreditCardCycleSpend.ts's own dual absolute+percent threshold
+// already establishes "meaningful" before this is ever called — every
+// detection it returns cleared that bar. This tier only distinguishes an
+// ordinary heads-up from a genuinely alarming excess.
+export const CREDIT_CARD_CYCLE_CRITICAL_EXCESS_PERCENT = 50
+
+export function creditCardCycleSeverity(excessPercent: number): FinancialAlertSeverity {
+  return excessPercent >= CREDIT_CARD_CYCLE_CRITICAL_EXCESS_PERCENT ? 'critical' : 'warning'
+}
+
+// ── Category spend above typical ─────────────────────────────────────────
+// Always 'warning' — detectCategorySpendAboveTypical.ts's own dual threshold
+// already filters to meaningful excesses only, the same "always warning,
+// the detector already cleared the bar" reasoning
+// buildPriceIncreaseAlerts uses for recurring_price_increase.
+
+// ── Savings goal behind schedule ─────────────────────────────────────────
+// Always 'warning' — a passed target date on an incomplete goal is a fact
+// worth surfacing, not (by itself) a household emergency the way an
+// over-committed cash position is.
+
+// ── Excess cash available to accelerate a savings goal ───────────────────
+// A positive suggestion, never a warning/critical tier — always 'info'.
+export const EXCESS_CASH_MEANINGFUL_AGOROT = 200_000 // ₪2,000.00
+
+// ── Low-balance warning (current state, before going negative) ──────────
+// Deliberately distinct from FORECAST_SHORTFALL above: this reads
+// SafeToSpendResult.safeToSpendAgorot as of RIGHT NOW, not a future
+// projected date — "warn before going negative," not only "warn once a
+// future shortfall date is projected."
+export const LOW_BALANCE_WARNING_AGOROT = 50_000 // ₪500.00
+
+export function lowBalanceSeverity(safeToSpendAgorot: number): FinancialAlertSeverity | null {
+  if (safeToSpendAgorot < 0) return 'critical'
+  if (safeToSpendAgorot < LOW_BALANCE_WARNING_AGOROT) return 'warning'
+  return null
+}
+
 // Local-calendar-date day difference (toDate - fromDate, in whole days),
 // matching lib/engines/cashflow/horizonRange.ts's own local-Date-getter
 // style — never a UTC/ISO parse, and never re-derived per call site here.

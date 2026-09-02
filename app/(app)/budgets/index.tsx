@@ -10,7 +10,8 @@
 // behavior below is unchanged from Phase 1 — this is presentation only.
 
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -20,40 +21,76 @@ import { useCategories } from '@/features/categories/hooks/useCategories'
 import { useBudgetProgress } from '@/features/budgets/hooks/useBudgetProgress'
 import { useSaveBudgetAllocations } from '@/features/budgets/hooks/useSaveBudgetAllocations'
 import { useUncategorizedTransactions } from '@/features/budgets/hooks/useUncategorizedTransactions'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
+import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
 import { MonthNavigator } from '@/features/budgets/components/MonthNavigator'
 import { CopyPreviousMonthBudgetModal } from '@/features/budgets/components/CopyPreviousMonthBudgetModal'
 import { planCopyPreviousMonthBudget } from '@/features/budgets/lib/copyPreviousMonthBudget'
-import { shiftMonth, formatMonthLabel } from '@/features/budgets/lib/budgetPeriod'
+import { shiftMonth, formatMonthLabel, getPeriodEnd, localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { budgetState } from '@/features/budgets/lib/budgetState'
+import { Money } from '@/components/ui/Money'
+import { BudgetSummaryCard } from '@/features/budgets/components/BudgetSummaryCard'
+import { BudgetCategoryRow } from '@/features/budgets/components/BudgetCategoryRow'
+import { computeCategoryBreakdown } from '@/features/analytics/lib/categoryBreakdown'
+import { computeMonthlyTrend } from '@/features/analytics/lib/monthlyTrend'
+import { computeTopCategories } from '@/features/analytics/lib/topCategories'
+import { CategoryDonutChart, SEGMENT_COLORS } from '@/features/analytics/components/CategoryDonutChart'
+import { MonthlyTrendChart } from '@/features/analytics/components/MonthlyTrendChart'
 import { usePeriodStore } from '@/store/periodStore'
 import { formatILS, agorotFromILS } from '@/lib/money/format'
-import { spentPercent } from '@/lib/money/arithmetic'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
-import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DesktopPanelHeader } from '@/components/ui/DesktopPanelHeader'
-import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
+import { TABLET_LG_BREAKPOINT_PX, RESPONSIVE_PANEL_CLASS } from '@/constants/layout'
 import { useUpdateTransaction } from '@/features/transactions/hooks/useUpdateTransaction'
 
-const DESKTOP_PANEL = `web:desktop:min-h-[300px] ${DESKTOP_PANEL_CLASS}`
+// Checkpoint 5 (Cash Flow + Budget + Accounts): every `web:desktop:` class
+// below moved to `web:tabletLg:`, and DESKTOP_PANEL_CLASS became
+// RESPONSIVE_PANEL_CLASS — the same move Checkpoint 4 made for Home/
+// Transactions and Checkpoint 5 made for Cash Flow. This screen is a single
+// unconditional tree (not a Desktop*/Mobile* split), so unlike those three
+// there is no separate mobile component to leave untouched — the mobile
+// rows are simply the unprefixed classes throughout, which this move never
+// touches.
+//
+// Deliberately NOT migrated to ContentRail here (design-review's own
+// Checkpoint 3 primitive Transactions now uses): this row+sidebar grid is
+// already the strongest desktop composition in the app (Checkpoint 1's own
+// verdict — "POLISH, do not restructure") and its sidebar is a deliberately
+// tuned 300px, not ContentRail's 280/320 — swapping it would have been
+// exactly the kind of change the Checkpoint 5 brief warns against ("do not
+// force primitives where the screen's own architecture says otherwise").
+const DESKTOP_PANEL = `web:tabletLg:min-h-[300px] ${RESPONSIVE_PANEL_CLASS}`
+// Desktop Claude Design pass: 6 calendar months ending at the currently
+// viewed month — matches the mockup's own "מגמה · 6 חודשים" trend card.
+const TREND_MONTHS = 6
 
 export default function Budgets() {
   const { t } = useTranslation()
+  const router = useRouter()
+  // The two design files draw the category list differently enough that a
+  // utility override cannot express it — desktop pulls the ratio onto the
+  // name line and drops the card chrome. Same route split the dashboard,
+  // transactions and cash-flow screens already make.
+  const { width } = useWindowDimensions()
+  const isRichWeb = Platform.OS === 'web' && width >= TABLET_LG_BREAKPOINT_PX
   const { user } = useAuth()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
+  const { recurringTransactions } = useRecurringTransactions(householdId)
   const periodStart = usePeriodStore((s) => s.selectedPeriodStart)
   const setPeriodStart = usePeriodStore((s) => s.setSelectedPeriodStart)
   const {
@@ -62,6 +99,7 @@ export default function Budgets() {
     totalSpentAgorot,
     isLoading: isProgressLoading,
     error,
+    hasData: hasProgressData,
     refetch: refetchProgress,
   } = useBudgetProgress(householdId, periodStart)
   // Folds in isHouseholdLoading (mobile-expo-reviewer finding — see
@@ -72,6 +110,8 @@ export default function Budgets() {
     uncategorized,
     isLoading: isUncategorizedLoading,
     error: uncategorizedError,
+    hasData: hasUncategorizedData,
+    refetch: refetchUncategorized,
   } = useUncategorizedTransactions(householdId)
   const updateTransaction = useUpdateTransaction(householdId)
 
@@ -264,88 +304,115 @@ export default function Budgets() {
     )
   }
 
-  const overallPercent = spentPercent(totalSpentAgorot, totalAllocatedAgorot)
-  const isOverBudget = totalAllocatedAgorot > 0 && totalSpentAgorot > totalAllocatedAgorot
   const addableCategories = categories.filter((c) => !progress.some((p) => p.categoryId === c.id))
+  const periodEnd = getPeriodEnd(periodStart)
+  const today = localDateString()
+  // Mobile redesign: the month's state and each category's state now come
+  // from one classifier (features/budgets/lib/budgetState.ts), which the
+  // Home block uses too — the three surfaces used to derive it separately,
+  // so a household could be told "בקצב" on Home and "מתקרב לגבול" here
+  // about the same month. Its projection is still calculateBudgetPace's;
+  // budgetState only classifies what that engine returns, and reports no
+  // projection at all for a month too young (or too old) to extrapolate.
+  const monthState = budgetState({
+    allocatedAgorot: totalAllocatedAgorot,
+    spentAgorot: totalSpentAgorot,
+    periodStart,
+    periodEnd,
+    today,
+  })
+
+  // Desktop Claude Design pass: the "לאן הלך הכסף" donut + "מגמה" 6-month
+  // trend the mockup places in the Budget screen's own right column — moved
+  // here from the pre-redesign Dashboard, which showed this same analytics
+  // window but the mockup's Home screen never does. One query, two derived
+  // views (this-month breakdown, 6-month trend) — the same
+  // filterForAnalytics boundary (excludes transfers, matches
+  // useBudgetProgress's is_shared/is_excluded convention) both already
+  // shared before this move.
+  const trendPeriodStarts = Array.from({ length: TREND_MONTHS }, (_, i) => shiftMonth(periodStart, i - (TREND_MONTHS - 1)))
+  const { transactions: analyticsTransactionsRaw, isLoading: isAnalyticsLoading } = useTransactions(householdId, {
+    periodStart: trendPeriodStarts[0],
+    periodEnd,
+  })
+  const analyticsTransactions = analyticsTransactionsRaw.map((t) => ({
+    categoryId: t.category_id,
+    amountAgorot: t.amount_agorot,
+    txnDate: t.txn_date,
+    isShared: t.is_shared,
+    isExcluded: t.is_excluded,
+    transferId: t.transfer_id,
+  }))
+  const categoryBreakdown = computeCategoryBreakdown(analyticsTransactions, periodStart)
+  const totalBreakdownAgorot = categoryBreakdown.reduce((sum, entry) => sum + entry.spentAgorot, 0)
+  const topBreakdownEntries = computeTopCategories(categoryBreakdown, 5)
+  const otherBreakdownAgorot = totalBreakdownAgorot - topBreakdownEntries.reduce((sum, entry) => sum + entry.spentAgorot, 0)
+  const monthlyTrend = computeMonthlyTrend(analyticsTransactions, trendPeriodStarts)
+  const categoryNameById = Object.fromEntries(categories.map((c) => [c.id, c.name_he]))
+
+  // Active recurring EXPENSE templates whose category has no allocation in
+  // the month being viewed — including the ones with no category at all,
+  // which by definition cannot be in any budget. Biggest first.
+  const allocatedCategoryIds = new Set(progress.map((p) => p.categoryId))
+  const outsideBudgetRecurring = recurringTransactions
+    .filter((r) => r.is_active && r.amount_agorot < 0 && !(r.category_id && allocatedCategoryIds.has(r.category_id)))
+    .sort((a, b) => a.amount_agorot - b.amount_agorot)
 
   return (
-    <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
-        {t('budgets.title')}
-      </Text>
+    <Screen width="wideRail">
+      {/* Title and month on one 44px row, as the phone frame draws them.
+          Desktop draws both in the shell header band instead, so the whole
+          row is hidden there rather than duplicating the controls. */}
+      <View className="mb-3 min-h-[44px] flex-row items-center justify-between gap-3 web:tabletLg:hidden">
+        <Text className="text-title font-heebo text-ink-light dark:text-ink-dark">{t('budgets.title')}</Text>
+        <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
+      </View>
 
-      <MonthNavigator periodStart={periodStart} onChange={handleMonthChange} />
-
-      {error ? (
-        <ErrorMessage message={t('budgets.errors.generic')} />
-      ) : isLoading ? (
+      {isLoading ? (
         <SkeletonList rows={4} />
+      ) : !hasProgressData ? (
+        <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchProgress} />
       ) : (
         <>
-          {/* Overview — same visual language as Dashboard's hero (Card +
-              hero figure + progress + two-stat row), but the hero figure
-              here is the planned budget itself, not "remaining": this
-              screen's job is reviewing/setting the plan, not just
-              monitoring it, so the two screens read as related, not
-              identical. */}
-          <Card className="rounded-card border border-border-light bg-surfaceMuted-light p-4 web:desktop:p-8 dark:border-border-dark dark:bg-surfaceMuted-dark">
-            <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-              {t('budgets.totalAllocated')}
-            </Text>
-            <Text className="mt-1 text-display font-bold text-ink-light dark:text-ink-dark web:desktop:text-[52px] web:desktop:leading-[58px]">
-              {formatILS(totalAllocatedAgorot)}
-            </Text>
-
-            {overallPercent !== null && (
-              <>
-                <View className="mt-4 web:desktop:mt-6">
-                  <ProgressBar percent={overallPercent} overBudget={isOverBudget} />
-                </View>
-                <Text className="mt-2 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                  {t('dashboard.percentUsed', { percent: overallPercent })}
-                </Text>
-              </>
-            )}
-
-            <View className="mt-4 web:desktop:mt-6 flex-row items-center">
-              <View className="flex-1">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('dashboard.spent')}</Text>
-                <Text className="mt-0.5 text-heading font-semibold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
-                  {formatILS(totalSpentAgorot)}
-                </Text>
-              </View>
-              <View className="mx-4 h-8 w-px bg-border-light dark:bg-border-dark" />
-              <View className="flex-1">
-                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{t('budgets.remaining')}</Text>
-                <Text
-                  className={`mt-0.5 text-heading font-semibold web:desktop:text-[19px] ${
-                    isOverBudget ? 'text-danger-light dark:text-danger-dark' : 'text-ink-light dark:text-ink-dark'
-                  }`}
-                >
-                  {formatILS(totalAllocatedAgorot - totalSpentAgorot)}
-                </Text>
-              </View>
+          {/* A background refetch failing after a previous success must not
+              blank the whole screen — `hasProgressData` already confirmed
+              `progress`/totals below are real, last-known-good data. */}
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchProgress} />
             </View>
-          </Card>
+          )}
+          <BudgetSummaryCard
+            totalAllocatedAgorot={totalAllocatedAgorot}
+            totalSpentAgorot={totalSpentAgorot}
+            state={monthState}
+            variant={isRichWeb ? 'row' : 'stacked'}
+            testID="budget-summary"
+          />
 
           {/* Desktop polish pass: each column below now renders as its own
               bordered panel (see below), which already reads as clearly
               grouped away from the hero — a plain spacer replaces the
               earlier standalone divider line, matching Dashboard's
               identical treatment. Desktop-only; mobile/tablet untouched. */}
-          <View className="hidden web:desktop:mt-6 web:desktop:flex" />
+          <View className="hidden web:tabletLg:mt-6 web:tabletLg:flex" />
 
           {/* Responsive/desktop pass: category budgets and the uncategorized
               queue sit side by side at desktop
-              (`web:desktop:flex-row-reverse` — see _layout.tsx's
+              (`web:tabletLg:flex-row` — see _layout.tsx's
               DesktopSideRail comment for why `-reverse` is needed on web).
               Reversing keeps source/DOM order as [categories,
               uncategorized] while visually placing categories (primary) on
               the right and uncategorized (secondary) on the left — the
-              correct RTL reading order. Mobile/tablet stay stacked in the
-              original order (plain View column default). */}
-          <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
-          <View className="web:desktop:flex-1">
+              correct RTL reading order. Visual QA + Desktop Polish pass:
+              this had silently regressed to plain `flex-row` — the
+              dedicated regression test only checked
+              `.toContain('web:desktop:flex-row')`, satisfied by both forms,
+              so the drift went uncaught. Restored to `-reverse` and the
+              test tightened to exact-token matching. Mobile/tablet stay
+              stacked in the original order (plain View column default). */}
+          <View className="web:tabletLg:flex-row web:tabletLg:items-start web:tabletLg:gap-6">
+          <View className="web:tabletLg:flex-1">
           {/* Desktop polish pass: the category-budgets column (list + the
               add-category control) becomes one bounded panel, so it reads
               as a single coherent area rather than a list with an isolated
@@ -394,8 +461,8 @@ export default function Budgets() {
                   a bigger, non-compact EmptyState at desktop keeps a
                   min-height panel from reading as an oversized empty box
                   around a tiny icon. Mobile keeps the original compact one. */}
-              <View className="web:desktop:hidden">
-                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} compact />
+              <View className="web:tabletLg:hidden">
+                <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} hint={t('budgets.noCategoriesHint')} />
               </View>
               {/* Desktop Visual/Responsive Design pass: the zero-allocation
                   desktop state previously read as broken — a small icon +
@@ -411,85 +478,83 @@ export default function Budgets() {
                   control isn't duplicated (mobile is untouched: it still
                   only ever renders the control in the one place it always
                   has). */}
-              <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:py-10">
-                <View className="web:desktop:w-full web:desktop:max-w-[360px]">
-                  <EmptyState iconName="pie-chart-outline" message={t('budgets.noCategories')} />
-                  <Text className="-mt-2 mb-4 text-center text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                    {t('budgets.noCategoriesHint')}
-                  </Text>
+              <View className="hidden web:tabletLg:flex web:tabletLg:items-center web:tabletLg:py-10">
+                <View className="web:tabletLg:w-full web:tabletLg:max-w-[360px]">
+                  <View className="mb-4">
+                    <EmptyState
+                      iconName="pie-chart-outline"
+                      message={t('budgets.noCategories')}
+                      hint={t('budgets.noCategoriesHint')}
+                    />
+                  </View>
                   {addableCategories.length > 0 && (
-                    <Card>
-                      <Select
-                        variant="row"
-                        label={t('budgets.addCategoryLabel')}
-                        options={addableCategories.map((c) => ({
-                          value: c.id,
-                          label: c.name_he,
-                          iconName: categoryIconName(c.icon),
-                        }))}
-                        value={null}
-                        onChange={(value) => {
-                          setEditingCategoryId(value)
-                          setEditingAmount('')
-                        }}
-                        placeholder={t('budgets.addCategoryPlaceholder')}
-                        sheetTitle={t('budgets.addCategoryLabel')}
-                        leadingIcon={
-                          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                            <Ionicons name="add-circle-outline" size={18} color={accentColor} />
-                          </View>
-                        }
-                      />
-                    </Card>
+                    // Product-quality pass: Select's own 'row' variant
+                    // already draws a bordered/filled box — wrapping it in a
+                    // <Card> (a second, identical border+background) is what
+                    // made this read as "a large empty box" rather than a
+                    // single deliberate control. Same fix as the other
+                    // double-bordered-select instance this pass found in
+                    // Transactions' filter toolbar.
+                    <Select
+                      variant="row"
+                      label={t('budgets.addCategoryLabel')}
+                      options={addableCategories.map((c) => ({
+                        value: c.id,
+                        label: c.name_he,
+                        iconName: categoryIconName(c.icon),
+                      }))}
+                      value={null}
+                      onChange={(value) => {
+                        setEditingCategoryId(value)
+                        setEditingAmount('')
+                      }}
+                      placeholder={t('budgets.addCategoryPlaceholder')}
+                      sheetTitle={t('budgets.addCategoryLabel')}
+                      leadingIcon={
+                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name="add-circle-outline" size={ICON.row} color={accentColor} />
+                        </View>
+                      }
+                    />
                   )}
                 </View>
               </View>
             </>
           ) : (
-            <Card>
-              {progress.map((category, index) => {
-                const categoryOverBudget = category.remainingAgorot < 0
+            <View className="gap-2.5">
+              {progress.map((category) => {
+                const categoryState = budgetState({
+                  allocatedAgorot: category.allocatedAgorot,
+                  spentAgorot: category.spentAgorot,
+                  periodStart,
+                  periodEnd,
+                  today,
+                })
                 return (
                   <View key={category.categoryId}>
-                    {index > 0 && (
-                      <View className="my-3">
-                        <Divider />
-                      </View>
-                    )}
-                    <Pressable
+                    <BudgetCategoryRow
+                      category={category}
+                      state={categoryState}
+                      variant={isRichWeb ? 'plain' : 'card'}
+                      testID={`budget-category-${category.categoryId}`}
                       onPress={() => {
                         setEditingCategoryId(category.categoryId)
                         setEditingAmount(String(category.allocatedAgorot / 100))
                       }}
-                      accessibilityRole="button"
-                      className="flex-row items-start gap-3"
-                    >
-                      <CategoryIcon icon={category.categoryIcon} size="sm" />
-                      <View className="flex-1">
-                        <View className="flex-row items-center justify-between">
-                          <Text className="text-body text-ink-light dark:text-ink-dark">{category.categoryNameHe}</Text>
-                          <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {formatILS(category.spentAgorot)} / {formatILS(category.allocatedAgorot)}
-                          </Text>
-                        </View>
-                        <View className="mt-1.5">
-                          <ProgressBar percent={category.percentSpent} overBudget={categoryOverBudget} />
-                        </View>
-                        <Text
-                          className={`mt-1 text-caption ${
-                            categoryOverBudget
-                              ? 'text-danger-light dark:text-danger-dark'
-                              : 'text-positive-light dark:text-positive-dark'
-                          }`}
-                        >
-                          {categoryOverBudget
-                            ? t('dashboard.categoryExceeded', { amount: formatILS(Math.abs(category.remainingAgorot)) })
-                            : t('dashboard.categoryRemaining', { amount: formatILS(category.remainingAgorot) })}
-                        </Text>
-                      </View>
-                    </Pressable>
+                      // The phone's chevron opens the category's own screen —
+                      // "מהתקציב לתנועות של אותה קטגוריה". The row itself
+                      // still opens the amount editor, which is the only
+                      // place an allocation can be set: the save is a
+                      // true-replace RPC over every allocation at once, so
+                      // moving it to a single-category screen would mean a
+                      // second copy of that flow. The desktop frame has no
+                      // per-category screen and gets no chevron.
+                      onOpenDetail={
+                        isRichWeb ? undefined : () => router.push(`/budgets/${category.categoryId}`)
+                      }
+                    />
                     {editingCategoryId === category.categoryId && (
-                      <View className="mt-3 ps-11">
+                      <View className="mt-2 rounded-card border border-border-light bg-surfaceMuted-light p-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
                         <Input
                           label={t('budgets.allocationLabel')}
                           value={editingAmount}
@@ -497,7 +562,7 @@ export default function Budgets() {
                           keyboardType="decimal-pad"
                         />
                         {saveError && <ErrorMessage message={saveError} />}
-                        <View className="flex-row gap-2 web:flex-row-reverse">
+                        <View className="flex-row gap-2 web:flex-row">
                           <View className="flex-1">
                             <Button
                               title={t('budgets.saveAllocation')}
@@ -540,7 +605,47 @@ export default function Budgets() {
                   </View>
                 )
               })}
-            </Card>
+            </View>
+          )}
+
+          {/* "לא בתקציב · חיובים קבועים" — the design's chip strip under the
+              category list. A household reading "8,700 ₪ מתוך" needs to know
+              that the mortgage and the kindergarten are not in that number.
+
+              "Not in this budget" needed no new rule: it is a recurring
+              expense template whose category has no allocation in the period
+              being viewed — a join over two things this screen already has.
+              Ordered by amount so the largest lead, which is what the frame's
+              own example shows.
+
+              The frame heads this strip "חיובים קבועים גדולים". "Large" is
+              dropped deliberately: no engine, column or ADR in this product
+              defines a threshold above which a recurring charge is large, and
+              inventing one here would put a number in a household's face that
+              nothing else in the app agrees with. Every uncovered recurring
+              charge is listed instead, biggest first. */}
+          {outsideBudgetRecurring.length > 0 && (
+            <View className="mt-5">
+              <Text className="mb-1 text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                {t('budgets.outsideBudgetTitle')}
+              </Text>
+              <Text className="mb-2.5 text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('budgets.outsideBudgetNote')}
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {outsideBudgetRecurring.map((item) => (
+                  <View
+                    key={item.id}
+                    className="flex-row items-center gap-2 rounded-row border border-border-light bg-surface-light px-3 py-2.5 dark:border-border-dark dark:bg-surface-dark"
+                  >
+                    <Text className="text-caption font-sans text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                      {item.description}
+                    </Text>
+                    <Money agorot={Math.abs(item.amount_agorot)} size="caption" />
+                  </View>
+                ))}
+              </View>
+            </View>
           )}
 
           {editingCategoryId === null && addableCategories.length > 0 && (
@@ -555,59 +660,143 @@ export default function Budgets() {
             // (unchanged), and it still renders here at desktop too once
             // progress.length > 0 (the empty-state card above no longer
             // exists in that case).
-            <View className={`mt-3 web:desktop:mt-2 ${progress.length === 0 ? 'web:desktop:hidden' : ''}`}>
-              <Card>
-                <Select
-                  variant="row"
-                  label={t('budgets.addCategoryLabel')}
-                  options={addableCategories.map((c) => ({
-                    value: c.id,
-                    label: c.name_he,
-                    iconName: categoryIconName(c.icon),
-                  }))}
-                  value={null}
-                  onChange={(value) => {
-                    setEditingCategoryId(value)
-                    setEditingAmount('')
-                  }}
-                  placeholder={t('budgets.addCategoryPlaceholder')}
-                  sheetTitle={t('budgets.addCategoryLabel')}
-                  leadingIcon={
-                    <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                      <Ionicons name="add-circle-outline" size={18} color={accentColor} />
-                    </View>
-                  }
-                />
-              </Card>
+            <View className={`mt-3 web:tabletLg:mt-2 ${progress.length === 0 ? 'web:tabletLg:hidden' : ''}`}>
+              {/* Product-quality pass: same double-bordered-box fix as the
+                  identical control above — Select's own 'row' variant
+                  already IS the bordered control; no outer <Card> needed. */}
+              <Select
+                variant="row"
+                label={t('budgets.addCategoryLabel')}
+                options={addableCategories.map((c) => ({
+                  value: c.id,
+                  label: c.name_he,
+                  iconName: categoryIconName(c.icon),
+                }))}
+                value={null}
+                onChange={(value) => {
+                  setEditingCategoryId(value)
+                  setEditingAmount('')
+                }}
+                placeholder={t('budgets.addCategoryPlaceholder')}
+                sheetTitle={t('budgets.addCategoryLabel')}
+                leadingIcon={
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                    <Ionicons name="add-circle-outline" size={ICON.row} color={accentColor} />
+                  </View>
+                }
+              />
             </View>
           )}
           </View>
           </View>
 
-          <View className="web:desktop:flex-1">
-          {/* Desktop polish pass: the uncategorized-transactions column
-              gets the same bounded panel treatment as the category column
-              beside it — so it reads as an intentional secondary panel
-              instead of nearly-empty space next to a fuller primary
-              column, even when the queue itself is empty. */}
-          <View className={DESKTOP_PANEL}>
-          {/* Uncategorized transactions queue */}
-          <DesktopPanelHeader icon="receipt-outline" title={t('budgets.uncategorizedTitle')} />
-          {uncategorizedError ? (
-            <ErrorMessage message={t('budgets.errors.generic')} />
-          ) : isUncategorizedLoading ? (
+          {/* Desktop Claude Design pass: a 300px sidebar (donut + 6-month
+              trend + a compact uncategorized queue), matching the mockup's
+              own right column — replacing the equal-width uncategorized
+              panel this used to be. The donut/trend analytics moved here
+              from the pre-redesign Dashboard, which showed this exact
+              window but the approved Home mockup never does (see the
+              trendPeriodStarts comment above). Desktop-only; mobile is
+              entirely unaffected (this whole block was `web:desktop:`-only,
+              and the uncategorized queue's own mobile rendering is
+              untouched below). */}
+          <View className="web:tabletLg:w-[300px] web:tabletLg:flex-none web:tabletLg:gap-3.5">
+            {analyticsTransactionsRaw.length > 0 && !isAnalyticsLoading && totalBreakdownAgorot > 0 && (
+              <View className={RESPONSIVE_PANEL_CLASS}>
+                <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.analytics.breakdownTitle')}
+                </Text>
+                {/* Checkpoint 5: 132 -> 160 — Checkpoint 1's own finding
+                    was that this chart reads visually plainer/smaller than
+                    the panel around it; the sidebar column has the width to
+                    spare (see this file's own RESPONSIVE_PANEL_CLASS
+                    padding). */}
+                <View className="mt-4 items-center">
+                  <CategoryDonutChart breakdown={topBreakdownEntries} categoryNameById={categoryNameById} size={160} />
+                </View>
+                {/* The colour key. Every class here was `web:desktop:`-only,
+                    including the swatch's own width and height — so on a
+                    phone the legend rendered as bare names and percentages
+                    with no swatch at all, which leaves the donut beside it
+                    unreadable. A chart's legend is not a desktop
+                    enhancement. */}
+                <View className="mt-4 gap-2">
+                  {topBreakdownEntries.map((entry, index) => (
+                    <View key={entry.categoryId} className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }} />
+                      <Text className="flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {categoryNameById[entry.categoryId] ?? ''}
+                      </Text>
+                      <Text
+                        className="text-caption text-inkMuted-light dark:text-inkMuted-dark"
+                        style={{ fontVariant: ['tabular-nums'] }}
+                      >
+                        {Math.round((entry.spentAgorot / totalBreakdownAgorot) * 100)}%
+                      </Text>
+                    </View>
+                  ))}
+                  {otherBreakdownAgorot > 0 && (
+                    <View className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-[3px] bg-border-light dark:bg-border-dark" />
+                      <Text className="flex-1 text-caption text-ink-light dark:text-ink-dark">
+                        {t('budgets.analytics.otherCategories')}
+                      </Text>
+                      <Text
+                        className="text-caption text-inkMuted-light dark:text-inkMuted-dark"
+                        style={{ fontVariant: ['tabular-nums'] }}
+                      >
+                        {Math.round((otherBreakdownAgorot / totalBreakdownAgorot) * 100)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {!isAnalyticsLoading && monthlyTrend.some((point) => point.incomeAgorot > 0 || point.expenseAgorot > 0) && (
+              <View className={RESPONSIVE_PANEL_CLASS}>
+                <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('budgets.analytics.trendTitle')}
+                </Text>
+                <View className="web:tabletLg:mt-4">
+                  <MonthlyTrendChart points={monthlyTrend} />
+                </View>
+              </View>
+            )}
+
+          <View className={RESPONSIVE_PANEL_CLASS}>
+          {/* Uncategorized transactions queue — the same real feature the
+              pre-redesign equal-width column offered, condensed into a
+              sidebar card matching the mockup's own compact treatment. */}
+          <Text className="text-meta font-sansSemibold tracking-[0.06em] text-inkMuted-light dark:text-inkMuted-dark">
+            {t('budgets.uncategorizedTitle')}
+          </Text>
+          {isUncategorizedLoading ? (
             <SkeletonList rows={3} />
+          ) : !hasUncategorizedData ? (
+            <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
           ) : uncategorized.length === 0 ? (
             <>
-              <View className="web:desktop:hidden">
+              <View className="web:tabletLg:hidden">
                 <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} compact />
               </View>
-              <View className="hidden web:desktop:flex">
+              <View className="hidden web:tabletLg:flex">
                 <EmptyState iconName="checkmark-done-outline" message={t('budgets.uncategorizedEmpty')} />
               </View>
             </>
           ) : (
-            <Card>
+            // Product-quality pass: this used to be a <Card> nested directly
+            // inside the sidebar's own panel — the same bordered/filled
+            // surface drawn twice, one inside the other, the exact "card
+            // overuse" pattern the rest of this pass corrected in
+            // Transactions' filter selects. A plain View carries the same
+            // spacing without a second, redundant border.
+            <View className="web:tabletLg:mt-4">
+              {uncategorizedError && (
+                <View className="mb-3">
+                  <ErrorMessage message={t('budgets.errors.generic')} onRetry={refetchUncategorized} />
+                </View>
+              )}
               {uncategorized.map((txn, index) => (
                 <View key={txn.id}>
                   {index > 0 && (
@@ -615,7 +804,7 @@ export default function Budgets() {
                       <Divider />
                     </View>
                   )}
-                  <View className="flex-row items-center justify-between web:flex-row-reverse">
+                  <View className="flex-row items-center justify-between web:flex-row">
                     <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
                       {txn.description}
                     </Text>
@@ -644,7 +833,7 @@ export default function Budgets() {
                           />
                         }
                       />
-                      <View className="mt-2 flex-row gap-2 web:flex-row-reverse">
+                      <View className="mt-2 flex-row gap-2 web:flex-row">
                         <View className="flex-1">
                           <Button
                             title={t('budgets.assignCategorySubmit')}
@@ -685,7 +874,7 @@ export default function Budgets() {
                   )}
                 </View>
               ))}
-            </Card>
+            </View>
           )}
           </View>
           </View>

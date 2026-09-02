@@ -22,5 +22,11 @@ export function clearHouseholdScopedQueries(queryClient: QueryClient): void {
   // Milestone 7 additions — same registry, same reasoning.
   void queryClient.removeQueries({ queryKey: ['recurringTransactions'] })
   void queryClient.removeQueries({ queryKey: ['savingsGoals'] })
+  // CP8E — not required for correctness (the query key already includes
+  // userId, so a different signed-in user always gets their own cache
+  // entry) but kept here for the same hygiene every other entry in this
+  // list already gets: no stale, unused snapshot sitting in memory past
+  // sign-out.
+  void queryClient.removeQueries({ queryKey: ['financialPulseSnapshot'] })
   usePeriodStore.getState().resetToCurrentMonth()
 }

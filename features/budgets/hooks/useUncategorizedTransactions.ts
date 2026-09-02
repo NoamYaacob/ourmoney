@@ -38,5 +38,10 @@ export function useUncategorizedTransactions(householdId: string | null | undefi
     // render the same "all categorized" success state as a real empty
     // queue (see app/(app)/budgets/index.tsx's uncategorizedError branch).
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
+    refetch: query.refetch,
   }
 }

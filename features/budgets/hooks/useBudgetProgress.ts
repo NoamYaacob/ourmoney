@@ -87,8 +87,21 @@ export function useBudgetProgress(householdId: string | null | undefined, period
         }
       })
 
+      // RRR P1 finding #2 fix: totalSpentAgorot used to sum EVERY matched
+      // household transaction in the period, including spend in categories
+      // with no budget allocation at all. totalAllocatedAgorot and every row
+      // in `categories` only ever cover budgeted categories (PROJECT_SPEC.md
+      // §Budgets: "Budget progress per category (only categories with an
+      // allocation)") — so the header's "remaining" figure could go deep
+      // into overspend purely from unbudgeted spending that no visible
+      // category row could explain. Summing the per-category totals instead
+      // keeps the header a true aggregate of exactly what's shown below it;
+      // spending outside any budgeted category is a different, already-
+      // surfaced concept (the uncategorized-transactions queue and the
+      // "outside budget" recurring-charges strip on the Budgets screen), not
+      // silently folded into "budget spent."
       const totalAllocatedAgorot = sumAgorot(categories.map((c) => c.allocatedAgorot))
-      const totalSpentAgorot = spentAgorotFromExpenses((transactions ?? []).map((t) => t.amount_agorot))
+      const totalSpentAgorot = sumAgorot(categories.map((c) => c.spentAgorot))
 
       return { categories, totalAllocatedAgorot, totalSpentAgorot }
     },
@@ -101,6 +114,10 @@ export function useBudgetProgress(householdId: string | null | undefined, period
     totalSpentAgorot: query.data?.totalSpentAgorot ?? 0,
     isLoading: !!householdId && !!periodStart && query.isPending,
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
     // Exposed for app/(app)/budgets/index.tsx's save flow — see its own
     // comment for why refetching immediately before constructing a
     // save_budget_allocations() payload matters (qa-adversarial-reviewer

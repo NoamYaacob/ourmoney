@@ -45,6 +45,8 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 export default function NewTransaction() {
   const { t } = useTranslation()
@@ -162,11 +164,27 @@ export default function NewTransaction() {
   }
 
   const accountOptions = activeAccounts.map((a) => ({ value: a.id, label: a.name, iconName: accountIconName(a.type) }))
+  // RRR §16 P1-9: this screen previously had no guard at all for a
+  // brand-new household with zero accounts — the account picker's sheet
+  // rendered completely empty, and Save stayed blocked with no way out.
+  // Reuses the accounts screen's own existing copy (accounts.empty/
+  // addButton) rather than inventing new strings, and its own established
+  // `?add=checking` deep-link (already used from MobileHome's empty-state
+  // CTA) so this doesn't add a second "how do I add an account" path.
+  const accountEmptyState =
+    accountOptions.length === 0
+      ? {
+          message: t('accounts.empty'),
+          hint: t('transactions.form.accountEmptyHint'),
+          actionLabel: t('accounts.addButton'),
+          onAction: () => router.push('/accounts?add=checking'),
+        }
+      : undefined
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
   const payerOptions = members.map((m) => ({ value: m.userId, label: m.displayName }))
 
   return (
-    <Screen keyboardAvoiding width="form">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
         {t('transactions.form.title')}
       </Text>
@@ -174,7 +192,15 @@ export default function NewTransaction() {
       {isHouseholdLoading || isAccountsLoading || isCategoriesLoading ? (
         <LoadingSpinner />
       ) : (
-        <>
+        // Visual QA + Desktop Polish pass: the whole form now shares one
+        // bounded panel at desktop (the same DESKTOP_PANEL_CLASS token
+        // Dashboard/Budgets/Settings already use) instead of the amount
+        // hero, description/merchant row, and account/category Card reading
+        // as three loose, differently-framed sections floating on an
+        // otherwise-empty page. Mobile/tablet are untouched — the panel
+        // class only ever applies its border/shadow/padding at
+        // `web:desktop:`.
+        <View className={DESKTOP_PANEL_CLASS}>
           <View className="mb-5">
             <SegmentedControl
               accessibilityLabel={t('transactions.form.title')}
@@ -202,7 +228,7 @@ export default function NewTransaction() {
               only once there's room for it (`web:desktop:`), stacked
               exactly as before on mobile/tablet and in transfer mode
               (merchant doesn't apply there, so nothing to pair with). */}
-          <View className={isTransfer ? undefined : 'web:desktop:flex-row-reverse web:desktop:gap-4'}>
+          <View className={isTransfer ? undefined : 'web:desktop:flex-row web:desktop:gap-4'}>
             <View className={isTransfer ? undefined : 'web:desktop:flex-1'}>
               <Input
                 label={t('transactions.form.descriptionLabel')}
@@ -243,7 +269,7 @@ export default function NewTransaction() {
                     use (a manual w-px bar, since Divider.tsx has no
                     vertical variant to extend). Stacked with the existing
                     horizontal Divider on mobile/tablet, unchanged. */}
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                <View className="web:desktop:flex-row web:desktop:items-center">
                   <View className="web:desktop:flex-1">
                     <Select
                       variant="row"
@@ -253,9 +279,10 @@ export default function NewTransaction() {
                       onChange={setAccountIdOverride}
                       placeholder={t('transactions.form.fromAccountPlaceholder')}
                       sheetTitle={t('transactions.form.fromAccountLabel')}
+                      emptyState={accountEmptyState}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />
                         </View>
                       }
                     />
@@ -273,9 +300,10 @@ export default function NewTransaction() {
                       onChange={setToAccountIdOverride}
                       placeholder={t('transactions.form.toAccountPlaceholder')}
                       sheetTitle={t('transactions.form.toAccountLabel')}
+                      emptyState={accountEmptyState}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
+                          <Ionicons name={accountIconName(selectedToAccount?.type)} size={ICON.row} color={mutedColor} />
                         </View>
                       }
                     />
@@ -288,7 +316,7 @@ export default function NewTransaction() {
               <Card>
                 {/* Same account/category pairing at desktop as the
                     from/to-account block above. */}
-                <View className="web:desktop:flex-row-reverse web:desktop:items-center">
+                <View className="web:desktop:flex-row web:desktop:items-center">
                   <View className="web:desktop:flex-1">
                     <Select
                       variant="row"
@@ -298,9 +326,10 @@ export default function NewTransaction() {
                       onChange={setAccountIdOverride}
                       placeholder={t('transactions.form.accountPlaceholder')}
                       sheetTitle={t('transactions.form.accountLabel')}
+                      emptyState={accountEmptyState}
                       leadingIcon={
                         <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={accountIconName(selectedAccount?.type)} size={17} color={mutedColor} />
+                          <Ionicons name={accountIconName(selectedAccount?.type)} size={ICON.row} color={mutedColor} />
                         </View>
                       }
                     />
@@ -327,33 +356,44 @@ export default function NewTransaction() {
           )}
 
           {!isTransfer && (
-            <>
-              <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
-                {t('transactions.form.sharedLabel')}
-              </Text>
-              <SegmentedControl
-                accessibilityLabel={t('transactions.form.sharedLabel')}
-                options={[
-                  { value: 'shared', label: t('transactions.form.shared') },
-                  { value: 'personal', label: t('transactions.form.personal') },
-                ]}
-                value={isShared ? 'shared' : 'personal'}
-                onChange={(v) => setIsShared(v === 'shared')}
-              />
-              <Text className="mb-4 mt-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                {t('transactions.form.sharedHint')}
-              </Text>
+            // Visual QA + Desktop Polish pass: shared/personal + payer paired
+            // side by side at desktop, same reasoning as the description/
+            // merchant and account/category rows above — only when payer is
+            // actually shown (`payerOptions.length > 1`), so a single-member
+            // household doesn't get a half-empty row. `items-start` (not
+            // stretch): the segmented control carries its own hint text
+            // below it and is taller than the bare payer Select beside it.
+            <View className={payerOptions.length > 1 ? 'web:desktop:flex-row web:desktop:items-start web:desktop:gap-4' : undefined}>
+              <View className={payerOptions.length > 1 ? 'web:desktop:flex-1' : undefined}>
+                <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('transactions.form.sharedLabel')}
+                </Text>
+                <SegmentedControl
+                  accessibilityLabel={t('transactions.form.sharedLabel')}
+                  options={[
+                    { value: 'shared', label: t('transactions.form.shared') },
+                    { value: 'personal', label: t('transactions.form.personal') },
+                  ]}
+                  value={isShared ? 'shared' : 'personal'}
+                  onChange={(v) => setIsShared(v === 'shared')}
+                />
+                <Text className="mb-4 mt-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
+                  {t('transactions.form.sharedHint')}
+                </Text>
+              </View>
 
               {payerOptions.length > 1 && (
-                <Select
-                  label={t('transactions.form.payerLabel')}
-                  options={payerOptions}
-                  value={payerId}
-                  onChange={setPayerIdOverride}
-                  placeholder={t('transactions.form.payerPlaceholder')}
-                />
+                <View className="web:desktop:flex-1">
+                  <Select
+                    label={t('transactions.form.payerLabel')}
+                    options={payerOptions}
+                    value={payerId}
+                    onChange={setPayerIdOverride}
+                    placeholder={t('transactions.form.payerPlaceholder')}
+                  />
+                </View>
               )}
-            </>
+            </View>
           )}
 
           {(validationError || createTransaction.isError || createTransfer.isError) && (
@@ -367,7 +407,7 @@ export default function NewTransaction() {
               loading={createTransaction.isPending || createTransfer.isPending}
             />
           </View>
-        </>
+        </View>
       )}
     </Screen>
   )

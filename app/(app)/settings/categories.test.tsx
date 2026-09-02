@@ -192,6 +192,61 @@ describe('Categories settings screen', () => {
     expect(queryByDisplayValue('קפה')).toBeNull()
   })
 
+  // Release-readiness pass: both delete buttons used to call mutate()
+  // directly on press, with no confirmation at all — every other
+  // destructive action in the app confirms first.
+  it('requires confirmation before deleting a category, and does not delete on cancel', async () => {
+    mockDeleteCategoryMutate.mockClear()
+    const { getByText, getByLabelText, queryByText } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('מחיקת קטגוריית תחביבים'))
+    expect(mockDeleteCategoryMutate).not.toHaveBeenCalled()
+    expect(getByText('מחיקת קטגוריה')).toBeTruthy()
+
+    await fireEvent.press(getByText('ביטול'))
+    expect(mockDeleteCategoryMutate).not.toHaveBeenCalled()
+    expect(queryByText('מחיקת קטגוריה')).toBeNull()
+  })
+
+  it('deletes a category via useDeleteCategory only after the confirm dialog is accepted', async () => {
+    mockDeleteCategoryMutate.mockClear()
+    const { getAllByText, getByLabelText } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('מחיקת קטגוריית תחביבים'))
+    // "מחיקה" (Delete) also labels both rows' own delete affordances (one
+    // per category, one per rule), so the dialog's confirm button — added
+    // last in the component's own render order — is the last match once
+    // the dialog is open.
+    const deleteTexts = getAllByText('מחיקה')
+    await fireEvent.press(deleteTexts[deleteTexts.length - 1]!)
+
+    expect(mockDeleteCategoryMutate).toHaveBeenCalledWith('cat-1', expect.anything())
+  })
+
+  it('requires confirmation before deleting a category rule, and does not delete on cancel', async () => {
+    mockDeleteRuleMutate.mockClear()
+    const { getByText, getByLabelText, queryByText } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('מחיקת כלל: תיאור מכיל קפה'))
+    expect(mockDeleteRuleMutate).not.toHaveBeenCalled()
+    expect(getByText('מחיקת כלל סיווג')).toBeTruthy()
+
+    await fireEvent.press(getByText('ביטול'))
+    expect(mockDeleteRuleMutate).not.toHaveBeenCalled()
+    expect(queryByText('מחיקת כלל סיווג')).toBeNull()
+  })
+
+  it('deletes a category rule via useDeleteCategoryRule only after the confirm dialog is accepted', async () => {
+    mockDeleteRuleMutate.mockClear()
+    const { getAllByText, getByLabelText } = await render(<Categories />)
+
+    await fireEvent.press(getByLabelText('מחיקת כלל: תיאור מכיל קפה'))
+    const deleteTexts = getAllByText('מחיקה')
+    await fireEvent.press(deleteTexts[deleteTexts.length - 1]!)
+
+    expect(mockDeleteRuleMutate).toHaveBeenCalledWith('rule-1', expect.anything())
+  })
+
   // Desktop/RTL polish pass (real-browser regression): this split was
   // missed by the earlier sweep that fixed Dashboard/Budgets/Settings —
   // it declared plain flex-row (not flex-row-reverse), which native
@@ -199,12 +254,19 @@ describe('Categories settings screen', () => {
   // web-compiled CSS does not. Categories (source-order-first, the primary
   // column) must render on the right, matching every other desktop grid
   // in this app.
-  it('reverses the categories/rules desktop split so categories (primary) render on the right', async () => {
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:desktop:flex-row')`, a substring satisfied by BOTH the
+  // reversed and unreversed forms — so it silently kept passing through a
+  // real regression where the split reverted to plain `flex-row`. Rewritten
+  // to exact whitespace-token membership.
+  it('lays the categories/rules desktop split out as a plain row so categories (primary) render on the right', async () => {
     const { getByText } = await render(<Categories />)
 
     const categoriesColumn = getByText('קטגוריות מותאמות אישית').parent
     const splitContainer = categoriesColumn?.parent
-    expect(splitContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    const tokens = ((splitContainer?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:desktop:flex-row')
+    expect(tokens).not.toContain('web:desktop:flex-row-reverse')
 
     const rulesColumn = getByText('כללי סיווג').parent
     expect(rulesColumn?.parent).toBe(splitContainer)

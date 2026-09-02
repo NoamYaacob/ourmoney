@@ -8,6 +8,7 @@ import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useRTL } from '@/hooks/useRTL'
 
 interface SettingsRowProps {
@@ -40,11 +41,11 @@ export function SettingsRow({ iconName, label, value, onPress, trailing, destruc
   const content = (
     <View className="flex-row items-center gap-3 py-3">
       <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-        <Ionicons name={iconName} size={18} color={iconColor} />
+        <Ionicons name={iconName} size={ICON.row} color={iconColor} />
       </View>
       <Text className={labelClassName}>{label}</Text>
       {value && <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">{value}</Text>}
-      {trailing ?? (onPress && <Ionicons name={flip('chevron-forward', 'chevron-back')} size={18} color={mutedColor} />)}
+      {trailing ?? (onPress && <Ionicons name={flip('chevron-forward', 'chevron-back')} size={ICON.row} color={mutedColor} />)}
     </View>
   )
 
@@ -56,7 +57,10 @@ export function SettingsRow({ iconName, label, value, onPress, trailing, destruc
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={value ? `${label}, ${value}` : label}
-      className="active:opacity-70"
+      // Insets exactly match the parent Card's own responsive padding
+      // (`p-4 web:desktop:p-5` — Card.tsx's default) so the hover fill
+      // reaches the card's edges instead of stopping short of them.
+      className="rounded-control -mx-4 px-4 web:desktop:-mx-5 web:desktop:px-5 web:hover:bg-surface-light/60 active:opacity-70 dark:web:hover:bg-surface-dark/40"
     >
       {content}
     </Pressable>

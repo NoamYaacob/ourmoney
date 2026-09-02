@@ -12,8 +12,10 @@ import '@/i18n'
 import { formatILS } from '@/lib/money/format'
 import Accounts from './index'
 
+const mockUseLocalSearchParams = jest.fn<() => Record<string, string>>().mockReturnValue({})
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
+  useLocalSearchParams: () => mockUseLocalSearchParams(),
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -51,19 +53,45 @@ const mockUseAccounts = jest.fn()
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => mockUseAccounts(),
 }))
+const mockUseAccountBalances = jest.fn()
 jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
-  useAccountBalances: () => ({ balances: { 'acct-1': 543200 }, isLoading: false }),
+  useAccountBalances: () => mockUseAccountBalances(),
 }))
 
 describe('Accounts list', () => {
   beforeEach(() => {
     mockCreateAccountMutate.mockClear()
-    mockUseAccounts.mockReturnValue({ accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT], isLoading: false, error: null })
+    mockUseLocalSearchParams.mockReturnValue({})
+    mockUseAccounts.mockReturnValue({ accounts: [ACTIVE_ACCOUNT, ARCHIVED_ACCOUNT], isLoading: false, error: null, hasData: true })
+    mockUseAccountBalances.mockReturnValue({ balances: { 'acct-1': 543200 }, isLoading: false })
+  })
+
+  // Credit & Payments' redesigned onboarding empty state (part 56 of the
+  // product-quality pass) links here with `?add=credit_card` so the
+  // household lands straight in the pre-typed form instead of an empty list.
+  it('opens the add form pre-set to the given type when arriving with ?add=<type>', async () => {
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null, hasData: true })
+    mockUseLocalSearchParams.mockReturnValue({ add: 'credit_card' })
+
+    const { getByText } = await render(<Accounts />)
+
+    expect(getByText('ביטול')).toBeTruthy()
+    // The type Select's own trigger shows its selected option's label as
+    // visible text (Select.tsx `variant="row"`) — confirms the form opened
+    // pre-set to credit_card, not just opened.
+    expect(getByText('כרטיס אשראי')).toBeTruthy()
   })
 
   it('shows the live computed balance for an account, not the dead balance_agorot column', async () => {
-    const { getByText } = await render(<Accounts />)
-    expect(getByText(formatILS(543200))).toBeTruthy()
+    const { getAllByText } = await render(<Accounts />)
+    // Visual QA + Desktop Polish pass: the desktop-only total-balance
+    // summary card (accounts/index.tsx) sums the same active-account
+    // balances as the row below it, so with a single active account the
+    // identical formatted figure can legitimately appear twice (row +
+    // summary) — getAllByText, not getByText, so this doesn't assume
+    // whether that second desktop-only element renders in this test's
+    // non-web render environment.
+    expect(getAllByText(formatILS(543200)).length).toBeGreaterThan(0)
   })
 
   it('defaults an account with no transactions to a zero balance rather than nothing', async () => {
@@ -74,8 +102,10 @@ describe('Accounts list', () => {
 
   it('shows an archived badge for the inactive account only — the active account renders with none', async () => {
     const { getAllByText } = await render(<Accounts />)
-    // Two accounts are rendered (one active, one archived); exactly one
-    // "archived" badge must appear, proving the active account gets none.
+    // One rendering now, not two. The screen used to draw a flat list for
+    // the phone and grouped sections for desktop, so every account appeared
+    // twice in the tree; both design files group them identically, so the
+    // grouping is shared and each account is rendered exactly once.
     expect(getAllByText('בארכיון').length).toBe(1)
   })
 
@@ -83,7 +113,7 @@ describe('Accounts list', () => {
   // (name validation + type selection via the polished bottom sheet)
   // weren't covered before this phase.
   it('shows the empty state (and still offers the persistent add-account CTA) when there are no accounts', async () => {
-    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null })
+    mockUseAccounts.mockReturnValue({ accounts: [], isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Accounts />)
 
@@ -100,6 +130,21 @@ describe('Accounts list', () => {
     expect(mockCreateAccountMutate).not.toHaveBeenCalled()
   })
 
+  // Part 4/21 of the product-quality audit: this form had no way back once
+  // opened — every sibling add-form (Obligations, Recurring, Installments,
+  // Goals) pairs submit with a cancel that closes the form.
+  it('offers a way to cancel out of the add form without creating anything', async () => {
+    const { getByText, getByLabelText, queryByText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'קופת חיסכון')
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
+    expect(queryByText('ביטול')).toBeNull()
+    expect(getByText('הוספת חשבון')).toBeTruthy()
+  })
+
   it('creates an account with the selected type from the type picker sheet', async () => {
     const { getByText, getByLabelText } = await render(<Accounts />)
 
@@ -112,9 +157,60 @@ describe('Accounts list', () => {
     await fireEvent.press(getByText('הוספת חשבון'))
 
     expect(mockCreateAccountMutate).toHaveBeenCalledWith(
-      { householdId: 'household-1', name: 'קופת חיסכון', type: 'investment' },
+      { householdId: 'household-1', name: 'קופת חיסכון', type: 'investment', billingCycleDay: null },
       expect.anything()
     )
+  })
+
+  it('does not show a billing-cycle-day field for a non-credit_card type', async () => {
+    const { getByText, queryByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    expect(queryByLabelText('יום סגירת מחזור חיוב')).toBeNull()
+  })
+
+  it('creates a credit_card account with the entered billing cycle day', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'ויזה כאל')
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '10')
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(mockCreateAccountMutate).toHaveBeenCalledWith(
+      { householdId: 'household-1', name: 'ויזה כאל', type: 'credit_card', billingCycleDay: 10 },
+      expect.anything()
+    )
+  })
+
+  it('rejects a billing cycle day outside 1-28 without creating the account', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'ויזה כאל')
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '40')
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(getByText('יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28')).toBeTruthy()
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-plain-digit billing cycle day (e.g. scientific notation) rather than silently coercing it via Number(...)', async () => {
+    const { getByText, getByLabelText } = await render(<Accounts />)
+
+    await fireEvent.press(getByText('הוספת חשבון'))
+    await fireEvent.changeText(getByLabelText('שם החשבון'), 'ויזה כאל')
+    await fireEvent.press(getByLabelText('סוג חשבון'))
+    await fireEvent.press(getByText('כרטיס אשראי'))
+    await fireEvent.changeText(getByLabelText('יום סגירת מחזור חיוב'), '1e1')
+    await fireEvent.press(getByText('הוספת חשבון'))
+
+    expect(getByText('יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28')).toBeTruthy()
+    expect(mockCreateAccountMutate).not.toHaveBeenCalled()
   })
 
   // Desktop/RTL polish pass (real-browser regression): the 2-column wrap
@@ -122,17 +218,55 @@ describe('Accounts list', () => {
   // auto-mirrors via Yoga under the forced-RTL flag but NativeWind's
   // web-compiled CSS does not — the first account (source order) must
   // render top-right, continuing the RTL reading order into the wrap.
-  it('reverses the desktop 2-column account grid so the first account renders on the right', async () => {
-    const { getByText } = await render(<Accounts />)
+  // Desktop Claude Design pass: the pre-redesign desktop screen used a flat
+  // 2-column card grid; the mockup instead groups accounts by what they
+  // mean financially — liquid (checking/cash), owed (credit cards),
+  // illiquid (everything else) — matching the exact same
+  // isEligibleCashAccount boundary Safe-to-Spend already uses for
+  // "liquid." ACTIVE_ACCOUNT (type: checking) belongs in the liquid group.
+  it('groups the account list by liquid/owed/illiquid on both platforms', async () => {
+    const { getAllByText } = await render(<Accounts />)
 
-    // Climb from the account name up to its grid-item wrapper (the
-    // Pressable carrying the w-[48%] column width), then one more level
-    // to the shared grid container.
-    let node = getByText(ACTIVE_ACCOUNT.name).parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    const liquidHeadings = getAllByText(/כסף נוזלי/)
+    const accountNames = getAllByText(ACTIVE_ACCOUNT.name)
+    // One heading, and the checking account under it exactly once.
+    expect(liquidHeadings).toHaveLength(1)
+    expect(accountNames).toHaveLength(1)
+  })
+
+  it('never shows the "owed" (credit card) heading when the household has no credit-card accounts', async () => {
+    const { queryByText } = await render(<Accounts />)
+
+    expect(queryByText(/כסף שחייבים/)).toBeNull()
+  })
+
+  // Visual QA + Desktop Polish pass: the desktop-only total-balance summary
+  // card sums `balances` over active accounts only. A fixture with a single
+  // active account (the suite's default) can't distinguish "correctly
+  // excludes archived" from "incorrectly includes archived with a balance
+  // that happens to default to 0" — this uses two active accounts plus an
+  // archived account with a large, distinct nonzero balance so an
+  // archived-inclusive bug would produce a visibly wrong, distinguishable sum.
+  it('sums only active accounts into the desktop summary card\'s net-worth line, excluding the archived account', async () => {
+    mockUseAccounts.mockReturnValue({
+      accounts: [
+        { ...ACTIVE_ACCOUNT, id: 'acct-1' },
+        { ...ACTIVE_ACCOUNT, id: 'acct-4', name: 'עו״ש בנק הפועלים' },
+        ARCHIVED_ACCOUNT,
+      ],
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+    mockUseAccountBalances.mockReturnValue({
+      balances: { 'acct-1': 10000, 'acct-4': 20000, 'acct-2': 999900 },
+      isLoading: false,
+    })
+
+    const { getByText, queryByText } = await render(<Accounts />)
+
+    expect(getByText(formatILS(30000), { exact: false })).toBeTruthy()
+    // The archived-account-inclusive (wrong) sum would be 1029900 — must never appear.
+    expect(queryByText(formatILS(1029900), { exact: false })).toBeNull()
   })
 })

@@ -8,6 +8,10 @@ import { useMemo, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useAccounts } from '@/features/accounts/hooks/useAccounts'
@@ -21,6 +25,7 @@ import { mapCsvColumns, type CsvColumnRole } from '@/features/import/lib/mapCsvC
 import { validateImportRow, type ValidatedImportRow } from '@/features/import/lib/validateImportRow'
 import { isDuplicateCandidate, type ExistingTransactionForDedup } from '@/features/import/lib/detectDuplicates'
 import { formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
@@ -29,8 +34,10 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { DESKTOP_PANEL_CLASS } from '@/constants/layout'
 
 const COLUMN_ROLES: CsvColumnRole[] = ['ignore', 'date', 'description', 'merchant', 'amount', 'debit', 'credit']
+const STEPS: ('pick' | 'map' | 'preview' | 'done')[] = ['pick', 'map', 'preview', 'done']
 
 interface PreviewRow {
   index: number
@@ -46,6 +53,8 @@ export default function TransactionsImport() {
   const { householdId } = useHousehold(user?.id)
   const { accounts } = useAccounts(householdId)
   const createTransaction = useCreateTransaction(householdId)
+  const { colorScheme: scheme } = useColorScheme()
+  const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
 
   const [step, setStep] = useState<'pick' | 'map' | 'preview' | 'done'>('pick')
   const [pickError, setPickError] = useState<string | null>(null)
@@ -236,48 +245,138 @@ export default function TransactionsImport() {
 
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
+  const currentStepIndex = STEPS.indexOf(step)
+
   return (
-    <Screen>
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('import.title')}</Text>
+    <Screen onBack={() => router.back()} width="form">
+      <Text className="mb-2 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+        {t('import.title')}
+      </Text>
+
+      {/* Visual QA + Desktop Polish pass: a compact step indicator — the
+          screen previously gave no sense of where "pick a file" sits within
+          the larger pick->map->preview->done flow, especially once the
+          drop-zone below replaced a single bare button. Desktop-only
+          (`hidden web:desktop:flex`): mobile keeps its original, simpler
+          per-step text-only flow untouched. Purely presentational — reads
+          off the same `step` state the flow itself already drives, no new
+          state or step semantics. */}
+      <View className="mb-6 hidden web:desktop:flex web:desktop:flex-row web:desktop:items-center">
+        {STEPS.map((s, index) => {
+          const isDone = index < currentStepIndex
+          const isCurrent = index === currentStepIndex
+          return (
+            <View key={s} className="flex-row items-center">
+              <View className="flex-row items-center gap-1.5">
+                <View
+                  className={`h-5 w-5 items-center justify-center rounded-full ${
+                    isDone || isCurrent
+                      ? 'bg-accent-light dark:bg-accent-dark'
+                      : 'border border-border-light bg-surfaceMuted-light dark:border-border-dark dark:bg-surfaceMuted-dark'
+                  }`}
+                >
+                  {isDone ? (
+                    <Ionicons name="checkmark" size={12} color="#ffffff" />
+                  ) : (
+                    <Text
+                      className={`text-xs font-semibold ${
+                        isCurrent ? 'text-white' : 'text-inkMuted-light dark:text-inkMuted-dark'
+                      }`}
+                    >
+                      {index + 1}
+                    </Text>
+                  )}
+                </View>
+                <Text
+                  className={
+                    isCurrent
+                      ? 'text-caption font-semibold text-ink-light dark:text-ink-dark'
+                      : 'text-caption text-inkMuted-light dark:text-inkMuted-dark'
+                  }
+                >
+                  {t(`import.steps.${s}`)}
+                </Text>
+              </View>
+              {index < STEPS.length - 1 && (
+                <View className="mx-3 h-px w-8 bg-border-light dark:bg-border-dark" />
+              )}
+            </View>
+          )
+        })}
+      </View>
 
       {step === 'pick' && (
         <View>
-          <Text className="mb-4 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('import.pickHint')}</Text>
-          {pickError && <ErrorMessage message={pickError} />}
-          <Button title={t('import.pickButton')} onPress={() => void handlePickFile()} />
+          {/* Visual QA + Desktop Polish pass: a drop-zone-styled prompt
+              instead of a bare "pick a file" button + caption — this was
+              the single most-cited "essentially an empty page" screen in
+              the desktop review. Still exactly one action
+              (handlePickFile via the native file picker; there is no actual
+              drag-and-drop handling here, so the copy says "choose a file,"
+              never "drag and drop," and nothing about the pick flow itself
+              changed). */}
+          <View className="items-center rounded-card border-2 border-dashed border-border-light bg-surfaceMuted-light px-6 py-10 web:desktop:py-14 dark:border-border-dark dark:bg-surfaceMuted-dark">
+            <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-light/10 dark:bg-accent-dark/10">
+              <Ionicons name="cloud-upload-outline" size={ICON.hero} color={accentColor} />
+            </View>
+            <Text className="mt-4 text-body font-semibold text-ink-light dark:text-ink-dark">
+              {t('import.pickHint')}
+            </Text>
+            <Text className="mt-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">
+              {t('import.pickFormatHint')}
+            </Text>
+            <View className="mt-5">
+              <Button title={t('import.pickButton')} onPress={() => void handlePickFile()} />
+            </View>
+          </View>
+          {pickError && (
+            <View className="mt-4">
+              <ErrorMessage message={pickError} />
+            </View>
+          )}
         </View>
       )}
 
+      {/* Visual QA + Desktop Polish pass: map/preview/done now share the
+          same bounded desktop panel token as the pick step (and every other
+          screen) — previously only the pick step had any desktop framing,
+          so the wizard read as one polished screen followed by three plain
+          ones. Mobile/tablet untouched. */}
       {step === 'map' && (
-        <View>
+        <View className={DESKTOP_PANEL_CLASS}>
           <Text className="mb-2 text-sm text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.fileLabel')} {fileName}
             {detectedEncoding ? ` (${detectedEncoding})` : ''}
           </Text>
 
-          <Select
-            label={t('import.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountId}
-            placeholder={t('import.accountLabel')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('import.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountId}
+                placeholder={t('import.accountLabel')}
+              />
+            </View>
+            {/* Generic preamble tolerance (Milestone A) — no bank
+                auto-detection, just a user-specified "rows before the real
+                header" count. Re-slices fullTable, which already holds the
+                whole parsed file. */}
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('import.headerOffsetLabel')}
+                value={String(headerOffset)}
+                onChangeText={handleHeaderOffsetChange}
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
           {isLoadingExistingTransactions && (
             <Text className="mb-2 text-xs text-inkMuted-light dark:text-inkMuted-dark">
               {t('import.checkingExistingTransactions')}
             </Text>
           )}
-
-          {/* Generic preamble tolerance (Milestone A) — no bank
-              auto-detection, just a user-specified "rows before the real
-              header" count. Re-slices fullTable, which already holds the
-              whole parsed file. */}
-          <Input
-            label={t('import.headerOffsetLabel')}
-            value={String(headerOffset)}
-            onChangeText={handleHeaderOffsetChange}
-            keyboardType="number-pad"
-          />
           <Text className="-mt-2 mb-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.headerOffsetHint')}
           </Text>
@@ -314,7 +413,7 @@ export default function TransactionsImport() {
       )}
 
       {step === 'preview' && (
-        <View className="flex-1">
+        <View className={`flex-1 ${DESKTOP_PANEL_CLASS}`}>
           <Text className="mb-4 text-sm font-semibold text-inkMuted-light dark:text-inkMuted-dark">
             {t('import.previewCount', { selected: selectedCount, total: previewRows.length })}
           </Text>
@@ -330,7 +429,7 @@ export default function TransactionsImport() {
                           {row.validation.row.merchantName ? ` · ${row.validation.row.merchantName}` : ''}
                         </Text>
                         <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                          {row.validation.row.txnDate} · {formatILS(row.validation.row.amountAgorot)}
+                          {formatDateDisplay(row.validation.row.txnDate)} · {formatILS(row.validation.row.amountAgorot)}
                           {row.isDuplicate ? ` · ${t('import.duplicateFlag')}` : ''}
                         </Text>
                       </View>
@@ -361,7 +460,7 @@ export default function TransactionsImport() {
       )}
 
       {step === 'done' && (
-        <View>
+        <View className={`web:desktop:items-center ${DESKTOP_PANEL_CLASS}`}>
           <Text className="mb-4 text-base text-ink-light dark:text-ink-dark">
             {t('import.doneMessage', { count: importedCount })}
           </Text>
@@ -371,7 +470,9 @@ export default function TransactionsImport() {
             </Text>
           )}
           {commitError && <ErrorMessage message={commitError} />}
-          <Button title={t('import.backToTransactions')} onPress={() => router.back()} />
+          <View className="web:desktop:w-full web:desktop:max-w-[280px]">
+            <Button title={t('import.backToTransactions')} onPress={() => router.back()} />
+          </View>
         </View>
       )}
 

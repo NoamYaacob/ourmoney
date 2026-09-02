@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
-import '@/i18n'
+import i18n from '@/i18n'
 import Obligations from './index'
+import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -84,7 +85,7 @@ const OBLIGATIONS = [
 describe('Obligations list', () => {
   beforeEach(() => {
     mockCreateMutate.mockClear()
-    mockUsePlannedObligations.mockReturnValue({ obligations: OBLIGATIONS, isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: OBLIGATIONS, isLoading: false, error: null, hasData: true })
   })
 
   it('lists upcoming obligations sorted by nearest due date first, excluding completed ones', async () => {
@@ -113,7 +114,7 @@ describe('Obligations list', () => {
   })
 
   it('hides the history toggle entirely when there is no completed/cancelled history', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [OBLIGATIONS[0], OBLIGATIONS[1]], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [OBLIGATIONS[0], OBLIGATIONS[1]], isLoading: false, error: null, hasData: true })
     const { queryByText } = await render(<Obligations />)
 
     expect(queryByText('היסטוריית התחייבויות')).toBeNull()
@@ -129,18 +130,19 @@ describe('Obligations list', () => {
     expect(queryByText('התחייבות ששולמה')).toBeNull()
   })
 
-  // UX-completeness audit P2 fix: obligations was the one list among
-  // accounts/recurring/goals/obligations that never got the shared
-  // 2-column desktop grid treatment.
-  it('reverses the desktop 2-column obligations grid so the first (nearest-due) item renders on the right', async () => {
-    const { getByText } = await render(<Obligations />)
+  // The 2-column desktop grid is gone. Both design files draw upcoming
+  // obligations as one column of hairline-separated rows inside a single
+  // card — the design system's own "מה מגיע" shape (§07), shared with the
+  // dashboard — not as a grid of cards. A row that is one of a pair reads as
+  // an object; a row in a dated column reads as a date, which is the whole
+  // point of a list you scan for what is next.
+  it('draws upcoming obligations as one dated list, in the shared commitment shape', async () => {
+    const { getByTestId, getByText } = await render(<Obligations />)
 
-    let node = getByText('ארנונה').parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    // The day numeral and its month abbreviation are the row's opening —
+    // the shape a plain card-with-a-category-tile did not have.
+    expect(getByTestId('obligation-ob-1')).toBeTruthy()
+    expect(getByText('ארנונה')).toBeTruthy()
   })
 
   it('shows an empty state when there are no upcoming obligations', async () => {
@@ -148,6 +150,7 @@ describe('Obligations list', () => {
       obligations: [{ ...OBLIGATIONS[2] }],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText } = await render(<Obligations />)
@@ -159,14 +162,19 @@ describe('Obligations list', () => {
       obligations: [{ ...OBLIGATIONS[1], due_date: '2020-01-01' }],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
-    const { getByText } = await render(<Obligations />)
-    expect(getByText(/באיחור/)).toBeTruthy()
+    const { getAllByText } = await render(<Obligations />)
+    // Checkpoint 6: rows are grouped under an "overdue" section header using
+    // the same word the row's own urgency chip already shows — both are
+    // legitimately "באיחור", so this only needs at least one match, not a
+    // single one.
+    expect(getAllByText(/באיחור/).length).toBeGreaterThan(0)
   })
 
   it('validates a missing name before creating', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -177,7 +185,7 @@ describe('Obligations list', () => {
   })
 
   it('validates a non-positive amount before creating', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -189,7 +197,7 @@ describe('Obligations list', () => {
   })
 
   it('creates a shared obligation with the entered fields, defaulting to no category/account when not chosen', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -209,7 +217,7 @@ describe('Obligations list', () => {
   })
 
   it('creates a personal obligation when the personal chip is selected', async () => {
-    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null })
+    mockUsePlannedObligations.mockReturnValue({ obligations: [], isLoading: false, error: null, hasData: true })
     const { getByText, getByLabelText } = await render(<Obligations />)
 
     await fireEvent.press(getByText('הוספת התחייבות'))
@@ -221,5 +229,15 @@ describe('Obligations list', () => {
     expect(mockCreateMutate).toHaveBeenCalledTimes(1)
     const [variables] = mockCreateMutate.mock.calls[0] as [{ isShared: boolean }]
     expect(variables.isShared).toBe(false)
+  })
+
+  // Desktop Claude Design pass: the dark summary card sums only the
+  // upcoming obligations already listed below it (135000 + 180000 agorot),
+  // excluding the completed one — the same set filterUpcomingObligations
+  // already produces, not a second count.
+  it('shows a summary card totaling the upcoming obligations, excluding completed ones', async () => {
+    const { getByText } = await render(<Obligations />)
+
+    expect(getByText(i18n.t('obligations.summarySubtitle', { count: 2, amount: formatILS(315000) }))).toBeTruthy()
   })
 })

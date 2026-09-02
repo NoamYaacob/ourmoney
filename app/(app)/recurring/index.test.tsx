@@ -5,9 +5,11 @@
 // render top-right, continuing the RTL reading order into the wrap. First
 // test coverage for this screen.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
-import { render } from '@testing-library/react-native'
-import '@/i18n'
+import { fireEvent, render } from '@testing-library/react-native'
+import i18n from '@/i18n'
 import Recurring from './index'
+import { formatDayOfMonth } from '@/lib/dates/format'
+import { formatILS } from '@/lib/money/format'
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -27,8 +29,9 @@ jest.mock('@/features/accounts/hooks/useAccounts', () => ({
 jest.mock('@/features/categories/hooks/useCategories', () => ({
   useCategories: () => ({ categories: [], isLoading: false }),
 }))
+const mockCreateRecurringMutate = jest.fn()
 jest.mock('@/features/recurring/hooks/useCreateRecurringTransaction', () => ({
-  useCreateRecurringTransaction: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  useCreateRecurringTransaction: () => ({ mutate: mockCreateRecurringMutate, isPending: false, isError: false }),
 }))
 
 const RECURRING = [
@@ -81,34 +84,56 @@ const PRICE_INCREASE_DETECTION = {
 describe('Recurring list', () => {
   beforeEach(() => {
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [], isLoading: false, error: null })
+    mockCreateRecurringMutate.mockClear()
   })
 
-  it('reverses the desktop 2-column recurring grid so the first item renders on the right', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+  // Part 4/21 of the product-quality audit: this form had no way back once
+  // opened — every sibling add-form (Obligations, Installments, Goals,
+  // Accounts) pairs submit with a cancel that closes the form.
+  it('offers a way to cancel out of the add form without creating anything', async () => {
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: [], isLoading: false, error: null, hasData: true })
+
+    const { getByText, getByPlaceholderText, queryByText } = await render(<Recurring />)
+
+    await fireEvent.press(getByText('הוספת חיוב קבוע'))
+    await fireEvent.changeText(getByPlaceholderText('לדוגמה: קניות בסופר'), 'מנוי')
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockCreateRecurringMutate).not.toHaveBeenCalled()
+    expect(queryByText('ביטול')).toBeNull()
+    expect(getByText('הוספת חיוב קבוע')).toBeTruthy()
+  })
+
+  // The 2-column grid is gone. Both frames draw one dated column: the day
+  // of the month a charge comes off, then what it is, then how much. A grid
+  // of cards answered "how many templates do we have", which is not a
+  // question anyone opens this screen to ask.
+  it('opens each row with the day of the month the charge comes off', async () => {
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Recurring />)
 
-    let node = getByText('שכירות').parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(getByText('שכירות')).toBeTruthy()
+    // RECURRING[0].next_due_date's day, standing alone as the row's opening.
+    expect(getByText(formatDayOfMonth(RECURRING[0]!.next_due_date))).toBeTruthy()
   })
 
   // UX-completeness audit P2 fix: a paused (is_active: false) card rendered
   // with the exact same styling as an active one, indistinguishable at a
-  // glance beyond the small "· מושהית" text suffix.
-  it('gives a paused template a visually muted card and a bold inactive suffix, leaving an active one untouched', async () => {
+  // glance beyond a status badge. Mobile redesign: the plain "· מושהה" text
+  // suffix became a StatusChip, matching every other status readout in the
+  // app (never color alone — see StatusChip.tsx's own header comment).
+  it('gives a paused template a visually muted card and an inactive status chip, leaving an active one untouched', async () => {
     mockUseRecurringTransactions.mockReturnValue({
       recurringTransactions: [{ ...RECURRING[0], id: 'rec-1', is_active: false }, RECURRING[1]],
       isLoading: false,
       error: null,
+      hasData: true,
     })
 
     const { getByText } = await render(<Recurring />)
 
-    expect(getByText('· מושהית').props.className).toContain('font-semibold')
+    expect(getByText('מושהה')).toBeTruthy()
 
     let pausedCard = getByText('שכירות').parent
     while (pausedCard && !(pausedCard.props.className as string | undefined)?.includes('opacity-60')) {
@@ -125,29 +150,67 @@ describe('Recurring list', () => {
   })
 
   it('renders a detected price increase with previous/current amounts and percent', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [PRICE_INCREASE_DETECTION], isLoading: false, error: null })
 
-    const { getByText } = await render(<Recurring />)
+    const { getByText, getByTestId } = await render(<Recurring />)
 
-    // Amount/percent lines interpolate formatILS, whose he-IL Intl output
-    // carries locale-dependent bidi control characters (see
+    // Checkpoint 6: the strip is now a compact one-line-per-detection
+    // notice below the total, not a leading full-detail card — the
+    // description and the real amount/percent still render (as one line,
+    // via the same recurring.priceIncrease.increaseLine key), but there is
+    // no separate section title or a visible "המחיר עלה" badge string
+    // anymore. Amount/percent lines interpolate formatILS, whose he-IL Intl
+    // output carries locale-dependent bidi control characters (see
     // lib/money/format.test.ts's own header comment) — match on the
     // digits/symbol substrings actually promised via a non-anchored regex,
     // not byte-for-byte equality with the whole rendered string.
-    expect(getByText('עליות מחיר שזוהו')).toBeTruthy()
-    expect(getByText('המחיר עלה')).toBeTruthy()
-    expect(getByText(/79\.90.*→.*89\.90/)).toBeTruthy()
+    expect(getByText('Netflix')).toBeTruthy()
     expect(getByText(/עלייה של.*10\.00.*12\.5%/)).toBeTruthy()
+    // The affected row (rec-1) itself carries the same warning, connecting
+    // the strip to the specific charge it's about.
+    expect(getByTestId('price-increase-indicator-rec-1')).toBeTruthy()
   })
 
   it('does not render the price-increase section when there are no detections', async () => {
-    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null })
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
     mockUsePriceIncreaseDetections.mockReturnValue({ detections: [], isLoading: false, error: null })
 
-    const { queryByText } = await render(<Recurring />)
+    const { queryByText, queryByTestId } = await render(<Recurring />)
 
-    expect(queryByText('עליות מחיר שזוהו')).toBeNull()
-    expect(queryByText('המחיר עלה')).toBeNull()
+    expect(queryByText('Netflix')).toBeNull()
+    expect(queryByTestId('price-increase-indicator-rec-1')).toBeNull()
+  })
+
+  // Desktop Claude Design pass: the dark summary card sums only active
+  // expense templates (350000 + 12000 agorot) — a paused or income template
+  // must not count toward "what this household is committed to paying."
+  it('shows a summary card totaling active expense templates only', async () => {
+    mockUseRecurringTransactions.mockReturnValue({ recurringTransactions: RECURRING, isLoading: false, error: null, hasData: true })
+
+    const { getByText } = await render(<Recurring />)
+
+    expect(getByText(i18n.t('recurring.summarySubtitle', { count: 2, amount: formatILS(362000) }))).toBeTruthy()
+  })
+
+  it('hides the summary card entirely when nothing qualifies (a paused template and an income template)', async () => {
+    mockUseRecurringTransactions.mockReturnValue({
+      recurringTransactions: [
+        { ...RECURRING[0], id: 'rec-paused', is_active: false },
+        { ...RECURRING[1], id: 'rec-income', amount_agorot: 500000 },
+      ],
+      isLoading: false,
+      error: null,
+      hasData: true,
+    })
+
+    const { getAllByText } = await render(<Recurring />)
+
+    // "חיובים קבועים" renders once (the page's own title) — twice would
+    // mean the summary card's HeroLabel rendered despite having nothing
+    // to show.
+    // Once: the screen title. The Planning tab strip beside it uses the
+    // short label ("קבועים"), so it no longer collides with this string.
+    expect(getAllByText(i18n.t('recurring.title')).length).toBe(1)
   })
 })

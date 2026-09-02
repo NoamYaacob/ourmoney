@@ -13,7 +13,7 @@
 
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
@@ -31,12 +31,14 @@ import { useApplyRulesRetroactively } from '@/features/categories/hooks/useApply
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -48,6 +50,7 @@ const OPERATOR_OPTIONS: CategoryRuleOperator[] = ['contains', 'equals', 'starts_
 
 export default function Categories() {
   const { t } = useTranslation()
+  const router = useRouter()
   const { editRuleId } = useLocalSearchParams<{ editRuleId?: string }>()
   const { colorScheme: scheme } = useColorScheme()
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
@@ -66,6 +69,25 @@ export default function Categories() {
   const updateRule = useUpdateCategoryRule(householdId)
   const deleteRule = useDeleteCategoryRule(householdId)
   const applyRetroactively = useApplyRulesRetroactively(householdId)
+
+  // Release-readiness pass finding: both delete buttons below used to fire
+  // deleteCategory.mutate/deleteRule.mutate directly on press, with no
+  // confirmation step at all — every other destructive action in the app
+  // (transaction/account/recurring/goal/obligation/instalment delete) goes
+  // through components/ui/Modal's destructive confirm dialog first. Same
+  // pattern here now, not a vague "are you sure?" but wording that names
+  // the specific item and states its actual, checked consequences (a
+  // category delete cascades any rule pointing to it and fails outright if
+  // transactions still reference it; a rule delete never touches
+  // already-categorized transactions, only future auto-categorization —
+  // see the migration/hook comments this copy was verified against).
+  const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<{ id: string; name: string } | null>(null)
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState<{
+    id: string
+    field: CategoryRuleField
+    operator: CategoryRuleOperator
+    value: string
+  } | null>(null)
 
   const [newCategoryName, setNewCategoryName] = useState('')
   const [ruleCategoryId, setRuleCategoryId] = useState<string | null>(null)
@@ -109,13 +131,17 @@ export default function Categories() {
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
 
   return (
-    <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark">{t('categories.title')}</Text>
+    <Screen onBack={() => router.back()} width="wide">
+      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">{t('categories.title')}</Text>
 
       {/* Responsive/desktop pass: categories in one column, rules in a
-          second column — desktop only (`web:desktop:flex-row`). Mobile/
-          tablet stay a single stacked column in the original order. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+          second column — desktop only (`web:desktop:flex-row`; see
+          _layout.tsx's DesktopSideRail comment for why `-reverse` is
+          needed on web). Reversing keeps source/DOM order as [categories,
+          rules] while visually placing categories (primary) on the right,
+          matching every other desktop grid in this app. Mobile/tablet stay
+          a single stacked column in the original order. */}
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <Text className="mb-2 text-heading font-semibold text-inkMuted-light dark:text-inkMuted-dark">
         {t('categories.customTitle')}
@@ -189,12 +215,15 @@ export default function Categories() {
                     <Pressable
                       onPress={() => {
                         if (deleteCategory.isPending) return
-                        deleteCategory.mutate(category.id)
+                        setConfirmDeleteCategory({ id: category.id, name: category.name_he })
                       }}
                       disabled={deleteCategory.isPending}
                       accessibilityRole="button"
                       accessibilityLabel={t('categories.deleteCategoryLabel', { name: category.name_he })}
                       accessibilityState={{ disabled: deleteCategory.isPending, busy: deleteCategory.isPending }}
+                      // RRR §16 P0-4: see SegmentedControl.tsx's note.
+                      aria-disabled={deleteCategory.isPending}
+                      aria-busy={deleteCategory.isPending}
                       hitSlop={HIT_SLOP}
                     >
                       <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">
@@ -359,7 +388,7 @@ export default function Categories() {
                       <Pressable
                         onPress={() => {
                           if (deleteRule.isPending) return
-                          deleteRule.mutate(rule.id)
+                          setConfirmDeleteRule({ id: rule.id, field: rule.field, operator: rule.operator, value: rule.value })
                         }}
                         disabled={deleteRule.isPending}
                         accessibilityRole="button"
@@ -369,6 +398,9 @@ export default function Categories() {
                           value: rule.value,
                         })}
                         accessibilityState={{ disabled: deleteRule.isPending, busy: deleteRule.isPending }}
+                        // RRR §16 P0-4: see SegmentedControl.tsx's note.
+                        aria-disabled={deleteRule.isPending}
+                        aria-busy={deleteRule.isPending}
                         hitSlop={HIT_SLOP}
                       >
                         <Text className="text-caption font-medium text-danger-light dark:text-danger-dark">
@@ -397,7 +429,7 @@ export default function Categories() {
             sheetTitle={t('categories.rules.form.categoryLabel')}
             leadingIcon={
               <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                <Ionicons name="pricetag-outline" size={17} color={accentColor} />
+                <Ionicons name="pricetag-outline" size={ICON.row} color={accentColor} />
               </View>
             }
           />
@@ -449,6 +481,44 @@ export default function Categories() {
       </View>
       </View>
       </View>
+
+      <Modal
+        visible={confirmDeleteCategory !== null}
+        title={t('categories.deleteConfirmTitle')}
+        message={confirmDeleteCategory ? t('categories.deleteConfirmMessage', { name: confirmDeleteCategory.name }) : undefined}
+        confirmLabel={t('categories.delete')}
+        cancelLabel={t('common.cancel')}
+        destructive
+        loading={deleteCategory.isPending}
+        onCancel={() => setConfirmDeleteCategory(null)}
+        onConfirm={() => {
+          if (!confirmDeleteCategory) return
+          deleteCategory.mutate(confirmDeleteCategory.id, { onSuccess: () => setConfirmDeleteCategory(null) })
+        }}
+      />
+
+      <Modal
+        visible={confirmDeleteRule !== null}
+        title={t('categories.rules.deleteConfirmTitle')}
+        message={
+          confirmDeleteRule
+            ? t('categories.rules.deleteConfirmMessage', {
+                field: t(`categories.rules.field.${confirmDeleteRule.field}`),
+                operator: t(`categories.rules.operator.${confirmDeleteRule.operator}`),
+                value: confirmDeleteRule.value,
+              })
+            : undefined
+        }
+        confirmLabel={t('categories.delete')}
+        cancelLabel={t('common.cancel')}
+        destructive
+        loading={deleteRule.isPending}
+        onCancel={() => setConfirmDeleteRule(null)}
+        onConfirm={() => {
+          if (!confirmDeleteRule) return
+          deleteRule.mutate(confirmDeleteRule.id, { onSuccess: () => setConfirmDeleteRule(null) })
+        }}
+      />
     </Screen>
   )
 }

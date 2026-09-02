@@ -19,6 +19,39 @@ export const CONTENT_WIDTH = {
   // (every detail/edit screen that renders a bare `<Screen>` with no width
   // prop) — a call this milestone's scope never asked for.
   form: 'w-full web:tablet:max-w-[600px] web:tablet:mx-auto web:desktop:max-w-[760px]',
+  // Checkpoint 3 (product-quality visual-refinement pass, round 2): Shape B's
+  // "richer" tier from design-review/SYSTEM.md §5 — Cash Flow and Accounts,
+  // the two single-column screens whose content (a scaling chart; a 3-group
+  // account grid) genuinely benefits from more width than `wide`'s 1150px
+  // desktop cap deliberately restrains list/table screens to, without adding
+  // a second column. `wide` is unchanged and keeps its ~16 existing callers;
+  // this is a new, opt-in tier, not a redefinition. Goals/Obligations/
+  // Recurring's "compact" tier (~760–820px, SYSTEM.md §5) reuses the
+  // existing `medium` token below instead of adding a third — the numbers
+  // already match.
+  richSingle: 'w-full web:tablet:max-w-[900px] web:tablet:mx-auto web:desktop:max-w-[960px]',
+  // Checkpoint 4: for a screen whose OWN wrapper (ContentRail's exported
+  // CONTENT_RAIL_WIDTH_CLASS, components/ui/ContentRail.tsx) already caps
+  // and centers its content starting at `tabletLg` — Screen's own clamp
+  // would just double-cap it at a *narrower* value (`wide`'s 820/1150) than
+  // Shape A's own 1050/1390, silently shrinking the rail layout back down.
+  // `full` is deliberately the only CONTENT_WIDTH entry with no clamp of its
+  // own — every other tier assumes Screen itself owns the width decision;
+  // this one hands that decision entirely to the caller's own content.
+  full: 'w-full',
+  // Checkpoint 5 (Cash Flow + Budget + Accounts): Budget's own category-
+  // list+sidebar row (a hand-built Shape-A-like grid, not ContentRail — see
+  // budgets/index.tsx's own comment for why) now activates from `tabletLg`
+  // instead of `desktop`, but `wide`'s own tablet-tier cap (820px) does not
+  // grow until `desktop` (1200px) — at 1024-1199 that left a 300px sidebar
+  // and a multi-stat summary row trying to fit inside a container that
+  // never got wider, overflowing the page (`BudgetSummaryCard`'s row
+  // variant, `ms-auto` positioned, was the visible symptom). Same 820px
+  // tablet-tier cap as `wide` (1024-1199 still isn't the rail's territory
+  // per SYSTEM.md §2's own table below `tabletLg`); same 1150px final value
+  // as `wide` too (no visual change at 1200+, where this screen already
+  // worked) — the only difference is *when* 1150px is reached.
+  wideRail: 'w-full web:tablet:max-w-[820px] web:tablet:mx-auto web:tabletLg:max-w-[1150px] web:desktop:max-w-[1150px]',
 } as const
 
 export type ContentWidth = keyof typeof CONTENT_WIDTH
@@ -29,6 +62,28 @@ export type ContentWidth = keyof typeof CONTENT_WIDTH
 // animationType, etc.) instead of via className.
 export const DESKTOP_BREAKPOINT_PX = 1200
 
+// Shared with the `tablet` Tailwind screen (tailwind.config.js) — same
+// reasoning as DESKTOP_BREAKPOINT_PX above, for the handful of call sites
+// that need to know "at least tablet width" in JS (an initial-state
+// default, a native style object) rather than via `web:tablet:` className.
+export const TABLET_BREAKPOINT_PX = 768
+
+// Checkpoint 4 (Home + Transactions recompose): shared with the `tabletLg`
+// Tailwind screen (tailwind.config.js, added Checkpoint 3). Every screen's
+// JS mobile/desktop switch used DESKTOP_BREAKPOINT_PX (1200) until now,
+// which is exactly why `tabletLg` had no live effect anywhere — Checkpoint 3
+// found and documented this gap rather than papering over it. Home and
+// Transactions are the first two screens whose own switch moves to this
+// constant instead, so their richer composition starts at 1024 rather than
+// 1200. This is a **per-screen** opt-in, not a global rename of
+// DESKTOP_BREAKPOINT_PX: every other screen's switch (and the shared
+// DESKTOP_PANEL_CLASS/SurfacePanel constants below, which several
+// screens outside this checkpoint's scope also render unconditionally, not
+// behind their own width switch) must stay exactly as they are until each
+// is deliberately moved in its own checkpoint — see RESPONSIVE_PANEL_CLASS's
+// own comment for why a shared constant couldn't just be widened instead.
+export const TABLET_LG_BREAKPOINT_PX = 1024
+
 // Shared web width clamp for centered dialogs/sheets (Select's bottom
 // sheet, the confirm Modal) — was duplicated as a literal in each caller.
 // Applies at every web width (not just tablet/desktop): on a narrow mobile
@@ -37,9 +92,71 @@ export const DESKTOP_BREAKPOINT_PX = 1200
 // bottom-sheet behavior is untouched (no `web:` match off-web).
 export const DIALOG_WIDTH_CLASS = 'web:max-w-[560px] web:self-center'
 
+// Checkpoint 3 (product-quality visual-refinement pass, round 2): the
+// `rounded-hero`/full-border/no-shadow Level-1 treatment that used to live
+// here (DESKTOP_CARD_CLASS) is retired — its last 3 callers (Installments,
+// DesktopCashFlow x2) migrated to `<SurfacePanel>`
+// (components/ui/SurfacePanel.tsx), which uses DESKTOP_PANEL_CLASS's values
+// below, the treatment every other desktop screen had already converged on.
+// One Level-1 visual treatment now, not two near-identical ones a future
+// screen could pick between by accident.
+
 // Desktop polish pass: the bounded-panel treatment shared by Dashboard's
 // and Budgets' lower-section columns — border/radius/fill/padding only.
 // Each caller appends its own `web:desktop:min-h-[...]` (panel count and
 // content differ per screen, so one shared floor height doesn't fit both).
+//
+// Visual QA + Desktop Polish pass: the border was previously full-strength
+// (`border-border-light`, the same token used for hairline dividers) with
+// no shadow at all — every panel on Dashboard/Budgets/Settings read as a
+// heavy outlined box. Softened to a lighter border tint plus the same
+// `shadow-sm` Card.tsx already carries (BASE_CARD_CLASS), so panels read as
+// subtle depth/elevation rather than a hard outline — matching the rest of
+// the app's card language instead of predating it.
 export const DESKTOP_PANEL_CLASS =
-  'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:p-6 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark'
+  'web:desktop:rounded-card web:desktop:border web:desktop:border-border-light/70 web:desktop:bg-surfaceMuted-light web:desktop:p-6 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70 dark:web:desktop:bg-surfaceMuted-dark'
+
+// Checkpoint 4: the same Level-1 panel treatment as DESKTOP_PANEL_CLASS
+// above, `web:tabletLg:`-scoped instead of `web:desktop:`-scoped, for Home
+// and Transactions now that their own JS switch mounts the rich composition
+// starting at 1024 (TABLET_LG_BREAKPOINT_PX) rather than 1200.
+//
+// This is a NEW constant, not a widened DESKTOP_PANEL_CLASS, because that
+// constant is not safely widenable: most of its other callers
+// (transactions/new.tsx, transactions/import.tsx, transactions/[id].tsx,
+// goals/[id].tsx, recurring/[id].tsx, obligations/[id].tsx,
+// installments/[id].tsx, settings/index.tsx) are single-tree screens with no
+// JS width switch at all — they render unconditionally and rely entirely on
+// DESKTOP_PANEL_CLASS's own `web:desktop:` scoping to stay unstyled below
+// 1200. Widening that scoping would have silently redesigned eight
+// unrelated screens this checkpoint never reviewed. budgets/index.tsx does
+// have its own switch, but still at 1200 (unchanged this checkpoint) — its
+// own DESKTOP_PANEL_CLASS usage must stay desktop-only until Checkpoint 5
+// deliberately moves it. Same reasoning applies to `SurfacePanel`
+// (components/ui/SurfacePanel.tsx): Installments renders it unconditionally
+// (no JS switch of its own), so it was not touched either.
+export const RESPONSIVE_PANEL_CLASS =
+  'web:tabletLg:rounded-card web:tabletLg:border web:tabletLg:border-border-light/70 web:tabletLg:bg-surfaceMuted-light web:tabletLg:p-6 web:tabletLg:shadow-sm dark:web:tabletLg:border-border-dark/70 dark:web:tabletLg:bg-surfaceMuted-dark'
+
+// Visual QA + Desktop Polish pass: the same `web:desktop:max-w-[600px]`
+// literal was independently duplicated across Recurring/Goals/Obligations/
+// Alerts/Accounts (each wrapping its own inline add/edit form or list,
+// never the whole `<Screen>`) — a per-screen magic number, not a shared
+// token. This is deliberately NOT one of the CONTENT_WIDTH tiers above:
+// those clamp a `<Screen>`'s own root content column (`w-full ... mx-auto`,
+// active from `tablet` up), while every one of these call sites wraps an
+// inner `<View>` that already sits inside a wider `Screen` (`wide`) and
+// only ever needs the desktop-only cap itself.
+//
+// Product-quality pass: a real-browser review of Accounts' inline "add
+// account" state (the clearest example of the problem, but structurally
+// identical on every other caller) found a narrow, edge-aligned form
+// sitting in a huge blank desktop canvas — a mobile-width block dropped
+// onto a wide screen, not a composed desktop panel. `mx-auto` centers it
+// as a deliberate, self-contained panel instead; the width itself is
+// unchanged; every caller's <Card> already gives it the bordered/radiused
+// surface a centered panel needs; the same rule now applies to the
+// collapsed "add" button too (the sibling state on every one of these
+// screens), so opening the form doesn't visually jump from one alignment
+// to another.
+export const INLINE_FORM_WIDTH_CLASS = 'web:desktop:max-w-[600px] web:desktop:mx-auto'

@@ -8,7 +8,7 @@
 //   2. Uncategorized-transactions fetch errors were silently hidden: the
 //      hook's data falls back to [] on error, which rendered the exact same
 //      "all categorized" success EmptyState as a genuinely empty queue.
-import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import i18n from '@/i18n'
 import Budgets from './index'
@@ -23,6 +23,7 @@ interface MockBudgetProgressResult {
   totalSpentAgorot: number
   isLoading: boolean
   error: Error | null
+  hasData: boolean
   refetch: () => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>
 }
 
@@ -31,7 +32,23 @@ interface MockBudgetProgressResult {
 // resilient to the DesktopPanelHeader's icon-chip + title nesting.
 function climbToPanel(textNode: any) {
   let current = textNode
-  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:desktop:min-h-[300px]')) {
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:tabletLg:min-h-[300px]')) {
+    current = current.parent
+  }
+  return current
+}
+
+// Desktop Claude Design pass: the sidebar's own cards (donut/trend/
+// uncategorized) use DESKTOP_PANEL_CLASS, same as every other desktop panel
+// on this page (product-quality pass — these three used to be the older,
+// heavier DESKTOP_CARD_CLASS, sitting right beside the category column's own
+// DESKTOP_PANEL_CLASS panel with a visibly different border/radius/shadow).
+// 'web:tabletLg:shadow-sm' is the marker: unique to DESKTOP_PANEL_CLASS,
+// unlike 'web:tabletLg:min-h-[300px]' climbToPanel above looks for, which
+// only the single main panel carries.
+function climbToSidebarCard(textNode: any) {
+  let current = textNode
+  while (current && !((current.props?.className as string | undefined) ?? '').includes('web:tabletLg:shadow-sm')) {
     current = current.parent
   }
   return current
@@ -87,6 +104,7 @@ const DEFAULT_PROGRESS_RESULT: MockBudgetProgressResult = {
   totalSpentAgorot: 20000,
   isLoading: false,
   error: null,
+  hasData: true,
   refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: PROGRESS },
   }),
@@ -115,6 +133,7 @@ const DEFAULT_PREVIOUS_PROGRESS_RESULT: MockBudgetProgressResult = {
   totalSpentAgorot: 0,
   isLoading: false,
   error: null,
+  hasData: true,
   refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: PREVIOUS_PROGRESS },
   }),
@@ -125,6 +144,7 @@ const EMPTY_PROGRESS_RESULT: MockBudgetProgressResult = {
   totalSpentAgorot: 0,
   isLoading: false,
   error: null,
+  hasData: true,
   refetch: jest.fn<() => Promise<{ data?: { categories: BudgetCategoryProgress[] } }>>().mockResolvedValue({
     data: { categories: [] },
   }),
@@ -151,16 +171,34 @@ jest.mock('@/features/budgets/hooks/useSaveBudgetAllocations', () => ({
 jest.mock('@/features/transactions/hooks/useUpdateTransaction', () => ({
   useUpdateTransaction: () => ({ mutate: jest.fn(), isPending: false }),
 }))
+// Desktop Claude Design pass: the sidebar's donut/trend cards read from the
+// same useTransactions hook Transactions/CashFlow already mock elsewhere —
+// empty by default so every existing test below (none of which cares about
+// the analytics sidebar) renders it as a no-op (both cards gate on having
+// real spend, per DesktopCardClass' own conditionals).
+let mockAnalyticsTransactions: { category_id: string | null; amount_agorot: number; txn_date: string; is_shared: boolean; is_excluded: boolean; transfer_id: string | null }[] = []
+jest.mock('@/features/transactions/hooks/useTransactions', () => ({
+  useTransactions: () => ({ transactions: mockAnalyticsTransactions, isLoading: false, error: null }),
+}))
 
 // Fix 2's hook mock is mutable per-test so both the "genuine empty queue"
 // and "fetch failed" cases can be exercised from the same mocked module.
 let mockUncategorized: { id: string; description: string; amount_agorot: number; txn_date: string }[] = []
 let mockUncategorizedError: Error | null = null
+// The screen lists recurring charges that no allocation covers.
+jest.mock('@/features/recurring/hooks/useRecurringTransactions', () => ({
+  useRecurringTransactions: () => ({ recurringTransactions: [], isLoading: false, error: null }),
+}))
+
 jest.mock('@/features/budgets/hooks/useUncategorizedTransactions', () => ({
   useUncategorizedTransactions: () => ({
     uncategorized: mockUncategorized,
     isLoading: false,
     error: mockUncategorizedError,
+    // Mirrors the real hook: false only for the "genuinely never loaded"
+    // fetch-failed scenario (no prior successful data), true for every
+    // success/empty-queue case in this file.
+    hasData: !mockUncategorizedError,
   }),
 }))
 
@@ -170,6 +208,7 @@ describe('Budgets', () => {
     mockUncategorized = []
     mockUncategorizedError = null
     mockCategoriesLoading = false
+    mockAnalyticsTransactions = []
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
@@ -293,19 +332,92 @@ describe('Budgets', () => {
   // Design Phase 3 coverage: the hero summary card, the localized month
   // label (MonthNavigator), and the category row's remaining/exceeded
   // state text weren't asserted on before this phase.
-  it('shows the localized month label and the hero total/spent/remaining figures', async () => {
-    const { getByText } = await render(<Budgets />)
+  // Mobile redesign: the summary's hero figure is now what is LEFT, not
+  // what was allocated — a household opens this screen to decide against
+  // the remainder, and the allocation appears as the denominator it is.
+  it('shows the localized month label and leads with what is left', async () => {
+    const { getByText, getAllByText } = await render(<Budgets />)
 
     expect(getByText(formatMonthLabel(getCurrentMonthPeriodStart()))).toBeTruthy()
-    expect(getByText(formatILS(100000))).toBeTruthy() // total budget (hero figure)
-    expect(getByText(formatILS(20000))).toBeTruthy() // spent
-    expect(getByText(formatILS(80000))).toBeTruthy() // remaining
+    // Remaining is the hero. It also appears as the category's own
+    // remaining line, since the fixture has one category carrying the
+    // whole budget.
+    expect(getAllByText(formatILS(80000)).length).toBeGreaterThan(0)
+    expect(
+      getByText(i18n.t('budgets.summary.spentOf', { spent: formatILS(20000), total: formatILS(100000) }))
+    ).toBeTruthy()
   })
 
-  it("shows the category's remaining amount in a healthy (non-exceeded) tone", async () => {
-    const { getByText } = await render(<Budgets />)
+  describe('end-of-month spending pace', () => {
+    // Pins "today" to the 15th of the real current month/year, whatever
+    // that happens to be when this suite runs — TARGET_PERIOD_START above
+    // is itself derived from the real current date, so this keeps "today"
+    // inside that same period without hardcoding a date the test could
+    // outlive.
+    function pinMidMonth() {
+      const [year, month] = TARGET_PERIOD_START.split('-').map(Number) as [number, number]
+      jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(year, month - 1, 15))
+    }
 
-    expect(getByText(`נותרו ${formatILS(80000)}`)).toBeTruthy()
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('shows the projected end-of-month total once mid-month, computed from the same totals as the hero figures', async () => {
+      pinMidMonth()
+      const { getByText } = await render(<Budgets />)
+
+      // The projection is now a sentence rather than a labelled figure —
+      // "בקצב הזה תעמדו בתקציב" for a month on course, the overspend
+      // wording below when it is not.
+      expect(getByText(i18n.t('budgets.summary.projectionOk'))).toBeTruthy()
+    })
+
+    it('does not show a pace projection on day 1 of the month — not enough data to average yet', async () => {
+      const [year, month] = TARGET_PERIOD_START.split('-').map(Number) as [number, number]
+      jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date(year, month - 1, 1))
+
+      const { queryByText } = await render(<Budgets />)
+      expect(queryByText(i18n.t('budgets.summary.projectionOk'))).toBeNull()
+      expect(queryByText(i18n.t('budgets.summary.paceMarker'))).toBeNull()
+    })
+
+    it('does not show a pace projection when viewing a month with no budget allocated', async () => {
+      mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+        periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : EMPTY_PROGRESS_RESULT
+      )
+      pinMidMonth()
+
+      const { queryByText } = await render(<Budgets />)
+      expect(queryByText(i18n.t('budgets.summary.projectionOk'))).toBeNull()
+      expect(queryByText(i18n.t('budgets.summary.paceMarker'))).toBeNull()
+    })
+
+    it('flags a projected overspend distinctly from an on-track projection', async () => {
+      mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+        periodStart === PREVIOUS_PERIOD_START
+          ? DEFAULT_PREVIOUS_PROGRESS_RESULT
+          : { ...DEFAULT_PROGRESS_RESULT, totalAllocatedAgorot: 30000, totalSpentAgorot: 25000 }
+      )
+      pinMidMonth()
+
+      const { getByText, queryByText } = await render(<Budgets />)
+      expect(getByText(/חריגה צפויה של/)).toBeTruthy()
+      expect(queryByText(i18n.t('budgets.summary.projectionOk'))).toBeNull()
+      // Amber, not red: the month is over pace but still inside its
+      // allocation, and the state chip has to say which.
+      expect(getByText(i18n.t('budgets.state.approaching'))).toBeTruthy()
+    })
+  })
+
+  it("shows the category's remaining amount, and says it is on track", async () => {
+    const { getByText, getAllByText } = await render(<Budgets />)
+
+    expect(getByText(i18n.t('budgets.category.remaining', { amount: formatILS(80000) }))).toBeTruthy()
+    // Status reaches the household as a word, never as a color alone —
+    // twice here, since the month summary and its single category are both
+    // on track in this fixture.
+    expect(getAllByText(i18n.t('budgets.state.onTrack')).length).toBe(2)
   })
 
   it('shows an exceeded state for a category that has spent past its allocation', async () => {
@@ -320,7 +432,8 @@ describe('Budgets', () => {
 
     const { getByText } = await render(<Budgets />)
 
-    expect(getByText(`חריגה של ${formatILS(20000)}`)).toBeTruthy()
+    expect(getByText(i18n.t('budgets.category.exceeded', { amount: formatILS(20000) }))).toBeTruthy()
+    expect(getByText(i18n.t('budgets.state.over'))).toBeTruthy()
   })
 
   it('shows a compact empty state when no categories have a budget yet', async () => {
@@ -347,13 +460,17 @@ describe('Budgets', () => {
         : { ...DEFAULT_PROGRESS_RESULT, categories: [], totalAllocatedAgorot: 0, totalSpentAgorot: 0 }
     )
 
-    const { getByText, getAllByText } = await render(<Budgets />)
+    const { getAllByText } = await render(<Budgets />)
 
+    // Both the mobile and the desktop copy carry the hint now — EmptyState
+    // itself renders it, rather than the desktop branch adding a second
+    // Text under a hint-less component. Both exist in the RNTL tree at once
+    // because CSS visibility cannot be evaluated here.
     expect(
-      getByText(
+      getAllByText(
         'תקציב חודשי הוא סכום שמוקצה לכל קטגוריית הוצאה, כדי לעקוב כמה נותר להוציא בה. הוסיפו קטגוריה ראשונה כדי להתחיל.'
-      )
-    ).toBeTruthy()
+      ).length
+    ).toBe(2)
     // Mobile-compact + desktop-full renders both exist in the RNTL tree
     // simultaneously (CSS visibility can't be evaluated here) — same
     // established pattern as the empty-state message assertion above, now
@@ -370,26 +487,38 @@ describe('Budgets', () => {
   // flex-row-reverse (not plain flex-row) so categories (source-order-first,
   // the primary column) reads on the right in this RTL app — not a fake
   // pixel/viewport assertion.
-  it('groups category budgets and the uncategorized queue into the same flex-row-reverse desktop grid container', async () => {
+  // Visual QA + Desktop Polish pass: this previously matched via
+  // `.toContain('web:tabletLg:flex-row')`, a substring satisfied by BOTH the
+  // reversed and unreversed forms — so it silently kept passing through a
+  // real regression where the grid reverted to plain `flex-row`. Rewritten
+  // to exact whitespace-token membership.
+  it('groups category budgets and the sidebar into the same flex-row desktop grid container', async () => {
     const { getByText } = await render(<Budgets />)
 
     const categoriesPanel = climbToPanel(getByText('תקציב לפי קטגוריה'))
     const gridWrapper = categoriesPanel?.parent?.parent
-    expect(gridWrapper?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    const tokens = ((gridWrapper?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:tabletLg:flex-row')
+    expect(tokens).not.toContain('web:tabletLg:flex-row-reverse')
 
-    const uncategorizedPanel = climbToPanel(getByText('תנועות ללא קטגוריה'))
-    expect(uncategorizedPanel?.parent?.parent).toBe(gridWrapper)
+    // Desktop Claude Design pass: the uncategorized queue moved from an
+    // equal-width column into a 300px sidebar card (climbToSidebarCard,
+    // marker 'web:tabletLg:shadow-sm' — DESKTOP_PANEL_CLASS's own marker,
+    // distinct from the same class's 'web:tabletLg:min-h-[300px]' the
+    // category column adds on top of it) — still a child of the same grid
+    // row.
+    const uncategorizedCard = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))
+    expect(uncategorizedCard?.parent?.parent).toBe(gridWrapper)
   })
 
-  // Desktop polish pass: with the category-budgets side often fuller than
-  // the uncategorized-queue side, an unbounded "nearly empty" secondary
-  // column read as lopsided — both columns now get the same bordered panel
-  // treatment so the uncategorized side looks intentional even when empty.
-  it('gives both the category-budgets and uncategorized columns their own bounded desktop panel', async () => {
+  // Desktop polish pass: the uncategorized queue gets its own bordered
+  // sidebar card (DESKTOP_PANEL_CLASS), same as the category column's own
+  // bounded panel beside it.
+  it('gives both the category-budgets column and the uncategorized sidebar card their own bordered desktop treatment', async () => {
     const { getByText } = await render(<Budgets />)
 
-    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:border')
-    expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:border')
+    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:tabletLg:border')
+    expect(climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:tabletLg:border')
   })
 
   // Debugging pass (real-browser regression): see dashboard/index.test.tsx's
@@ -402,22 +531,33 @@ describe('Budgets', () => {
     const { getByText } = await render(<Budgets />)
 
     const className = climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string
-    expect(className).toContain('web:desktop:bg-surfaceMuted-light')
-    expect(className).toContain('dark:web:desktop:bg-surfaceMuted-dark')
-    expect(className).not.toContain('web:desktop:bg-surface-light')
-    expect(className).not.toContain('web:desktop:bg-surface-dark')
+    expect(className).toContain('web:tabletLg:bg-surfaceMuted-light')
+    expect(className).toContain('dark:web:tabletLg:bg-surfaceMuted-dark')
+    expect(className).not.toContain('web:tabletLg:bg-surface-light')
+    expect(className).not.toContain('web:tabletLg:bg-surface-dark')
   })
 
-  // Desktop polish pass: with `items-start` siblings that size to their own
-  // content, a short category list next to a longer uncategorized queue
-  // (or vice versa) read as an awkward sliver instead of a deliberate
-  // region — both panels now share a desktop floor height so neither ever
-  // collapses to near-nothing next to a fuller sibling.
-  it('gives both desktop panels a shared minimum height so neither collapses next to a fuller sibling', async () => {
+  // Desktop polish pass (still applies to the primary column): the category
+  // list keeps its own desktop floor height so it never collapses to a
+  // sliver. The sidebar no longer needs the same floor — it's several
+  // independently-sized cards (donut/trend/uncategorized) stacked in a
+  // column, not a single region competing for height against the category
+  // list the way the old equal-width uncategorized column did.
+  it('gives the category-budgets column a minimum desktop height', async () => {
     const { getByText } = await render(<Budgets />)
 
-    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
-    expect(climbToPanel(getByText('תנועות ללא קטגוריה'))?.props.className as string).toContain('web:desktop:min-h-[300px]')
+    expect(climbToPanel(getByText('תקציב לפי קטגוריה'))?.props.className as string).toContain('web:tabletLg:min-h-[300px]')
+  })
+
+  // Desktop Claude Design pass: the mockup's own right column — donut +
+  // 6-month trend + the (now-compact) uncategorized queue, in a fixed-width
+  // sidebar instead of the pre-redesign equal-width column.
+  it('shows the uncategorized queue in a 300px sidebar alongside the category-budgets column', async () => {
+    const { getByText } = await render(<Budgets />)
+
+    const sidebar = climbToSidebarCard(getByText('תנועות ללא קטגוריה'))?.parent
+    const tokens = ((sidebar?.props.className as string | undefined) ?? '').split(/\s+/)
+    expect(tokens).toContain('web:tabletLg:w-[300px]')
   })
 })
 
@@ -427,6 +567,7 @@ describe('Budgets — copy previous month budget', () => {
     mockUncategorized = []
     mockUncategorizedError = null
     mockCategoriesLoading = false
+    mockAnalyticsTransactions = []
     mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
       periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
     )
@@ -662,5 +803,101 @@ describe('Budgets — copy previous month budget', () => {
     await fireEvent.press(getByText(i18n.t('common.cancel')))
 
     expect(mockSaveAllocationsMutate).not.toHaveBeenCalled()
+  })
+})
+
+// Desktop Claude Design pass: the sidebar's donut ("לאן הלך הכסף") and
+// 6-month trend ("מגמה · 6 חודשים") cards, moved here from the pre-redesign
+// Dashboard (its own rebuild dropped this analytics window since the
+// approved Home mockup never showed it — see DesktopDashboard.tsx's header
+// comment).
+describe('Budgets — sidebar analytics', () => {
+  beforeEach(() => {
+    usePeriodStore.setState({ selectedPeriodStart: TARGET_PERIOD_START })
+    mockUncategorized = []
+    mockUncategorizedError = null
+    mockCategoriesLoading = false
+    mockUseBudgetProgress.mockImplementation((_householdId: string, periodStart: string) =>
+      periodStart === PREVIOUS_PERIOD_START ? DEFAULT_PREVIOUS_PROGRESS_RESULT : DEFAULT_PROGRESS_RESULT
+    )
+  })
+
+  it('shows neither the donut nor the trend card when the household has no spend in the 6-month window', async () => {
+    mockAnalyticsTransactions = []
+
+    const { queryByText } = await render(<Budgets />)
+
+    expect(queryByText(i18n.t('budgets.analytics.breakdownTitle'))).toBeNull()
+    expect(queryByText(i18n.t('budgets.analytics.trendTitle'))).toBeNull()
+  })
+
+  it('shows the donut card with a category legend once the month has real spend', async () => {
+    mockAnalyticsTransactions = [
+      {
+        category_id: 'cat-1',
+        amount_agorot: -30000,
+        txn_date: `${TARGET_PERIOD_START}-05`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: null,
+      },
+      {
+        category_id: 'cat-2',
+        amount_agorot: -10000,
+        txn_date: `${TARGET_PERIOD_START}-06`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: null,
+      },
+    ]
+
+    const { getByText, getAllByText } = await render(<Budgets />)
+
+    expect(getByText(i18n.t('budgets.analytics.breakdownTitle'))).toBeTruthy()
+    // "מזון"/"תחבורה" also appear as the category-budgets column's own row
+    // names — at least one match each is the donut legend's own row.
+    expect(getAllByText('מזון').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('75%')).toBeTruthy()
+    expect(getAllByText('תחבורה').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('25%')).toBeTruthy()
+  })
+
+  it('shows the trend card once any of the 6 months has real income or expense', async () => {
+    mockAnalyticsTransactions = [
+      {
+        category_id: 'cat-1',
+        amount_agorot: -30000,
+        txn_date: `${TARGET_PERIOD_START}-05`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: null,
+      },
+    ]
+
+    const { getByText, getByTestId } = await render(<Budgets />)
+
+    expect(getByText(i18n.t('budgets.analytics.trendTitle'))).toBeTruthy()
+    expect(getByTestId('monthly-trend-chart-svg', { includeHiddenElements: true })).toBeTruthy()
+  })
+
+  it("excludes a transfer leg's amount from both the donut and the trend", async () => {
+    mockAnalyticsTransactions = [
+      {
+        category_id: null,
+        amount_agorot: -50000,
+        txn_date: `${TARGET_PERIOD_START}-05`,
+        is_shared: true,
+        is_excluded: false,
+        transfer_id: 'transfer-1',
+      },
+    ]
+
+    const { queryByText } = await render(<Budgets />)
+
+    // A transfer leg is never categorized in this fixture and is excluded
+    // from analytics entirely (filterForAnalytics) — neither card has
+    // anything to show.
+    expect(queryByText(i18n.t('budgets.analytics.breakdownTitle'))).toBeNull()
+    expect(queryByText(i18n.t('budgets.analytics.trendTitle'))).toBeNull()
   })
 })

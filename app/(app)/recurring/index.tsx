@@ -13,10 +13,15 @@ import { useCreateRecurringTransaction } from '@/features/recurring/hooks/useCre
 import { usePriceIncreaseDetections } from '@/features/recurring/hooks/usePriceIncreaseDetections'
 import { signedAmountAgorot } from '@/features/transactions/lib/transactionSign'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay, formatDayOfMonth } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 import { Screen } from '@/components/ui/Screen'
+import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
-import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Chip } from '@/components/ui/Chip'
@@ -25,6 +30,10 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { StatusChip } from '@/components/ui/StatusChip'
+import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
+import { Money } from '@/components/ui/Money'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 import type { RecurringFrequency } from '@/types/app'
 
 const FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']
@@ -33,11 +42,19 @@ const DAY_OF_MONTH_FREQUENCIES: RecurringFrequency[] = ['monthly', 'quarterly', 
 export default function Recurring() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const isDark = scheme === 'dark'
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { recurringTransactions, isLoading: isRecurringLoading, error } = useRecurringTransactions(householdId)
+  const {
+    recurringTransactions,
+    isLoading: isRecurringLoading,
+    error,
+    hasData,
+    refetch,
+  } = useRecurringTransactions(householdId)
   const createRecurring = useCreateRecurringTransaction(householdId)
   const { detections: priceIncreaseDetections } = usePriceIncreaseDetections(householdId)
 
@@ -103,159 +120,233 @@ export default function Recurring() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
   const categoryOptions = categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name_he}` }))
   const frequencyOptions = FREQUENCIES.map((f) => ({ value: f, label: t(`recurring.frequency.${f}`) }))
+  const activeExpenseTemplates = recurringTransactions.filter((item) => item.is_active && item.amount_agorot < 0)
+  const activeMonthlyTotalAgorot = activeExpenseTemplates.reduce((sum, item) => sum + Math.abs(item.amount_agorot), 0)
+  // Checkpoint 6: connects the warning strip to the row it's actually about
+  // — a household scanning the list sees which charge changed without
+  // having to cross-reference the strip above by name. Real data already on
+  // the page (the same detections the strip itself renders), no new query.
+  const priceIncreasedRecurringIds = new Set(
+    priceIncreaseDetections.map((d) => d.recurringId).filter((id): id is string => id !== null)
+  )
 
   return (
-    <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('recurring.title')}</Text>
+    <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
+      {/* Part 29 of the product-quality audit: hidden from tablet width up
+          now, not just desktop — same reasoning as obligations/index.tsx's
+          identical comment. */}
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:tablet:hidden">
+        {t('recurring.title')}
+      </Text>
 
-      {priceIncreaseDetections.length > 0 && (
-        <View className="mb-4 web:desktop:max-w-[600px]">
-          <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
-            {t('recurring.priceIncrease.sectionTitle')}
-          </Text>
-          <Card>
-            {priceIncreaseDetections.map((d, index) => (
-              <View key={d.identityKey}>
-                {index > 0 && (
-                  <View className="my-3">
-                    <Divider />
-                  </View>
-                )}
+      <PlanningTabs active="recurring" />
+
+      {isLoading || isRecurringLoading ? (
+        <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('recurring.errors.generic')} onRetry={refetch} />
+      ) : (
+        <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('recurring.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
+          {/* No actionLabel/onAction — the persistent "Add recurring"
+              button below already covers it (mobile-expo-reviewer finding,
+              same as accounts/index.tsx and goals/index.tsx). */}
+          {/* Desktop Claude Design pass: the mockup's dark summary card,
+              scoped to this screen's own domain — see obligations/index.tsx's
+              identical card for why each of Obligations/Recurring gets its
+              own screen-scoped total rather than one shared cross-domain
+              "monthly commitment" figure. Sums only active expense
+              templates (income templates and paused ones don't belong in
+              "what this household is committed to paying monthly"); the
+              literal stored per-charge amount is used as-is, so a
+              bi-monthly/quarterly template is not normalized to a true
+              monthly-equivalent — a simplification worth a comment, not a
+              second engine. */}
+          {activeExpenseTemplates.length > 0 && (
+            // Part 3A/17 of the product-quality audit: see obligations/
+            // index.tsx's identical comment — this panel was pinned to a
+            // fixed 340px, leaving most of the wide desktop canvas empty
+            // beside it. Full width now, matching its sibling list card.
+            // Part 29: shown from tablet width up too, same reasoning as
+            // obligations/index.tsx's identical change.
+            <View className="hidden web:tablet:mb-5 web:tablet:flex">
+              <HeroPanel>
+                <HeroLabel>{t('recurring.title')}</HeroLabel>
+                <View className="web:desktop:mt-1.5">
+                  <Money agorot={activeMonthlyTotalAgorot} size="display" tone="hero" />
+                </View>
+                <Text className="web:desktop:mt-1 text-caption font-sans text-heroInkMuted-light">
+                  {t('recurring.summarySubtitle', { count: activeExpenseTemplates.length, amount: formatILS(activeMonthlyTotalAgorot) })}
+                </Text>
+              </HeroPanel>
+            </View>
+          )}
+
+          {/* Checkpoint 6: demoted from a leading full-detail card to a
+              compact strip below the total — a household opens this screen
+              to see its monthly load first, "something got more expensive"
+              second (design-review/FINDINGS.md: the prior order inverted
+              that). One line per detection instead of three; the same real
+              detections, the same navigation, just less visual weight than
+              the total it now follows. */}
+          {priceIncreaseDetections.length > 0 && (
+            <View className="mb-4 gap-1.5 rounded-control border border-warningBorder-light bg-warningSurface-light px-3 py-2.5 dark:border-warningBorder-dark dark:bg-warningSurface-dark">
+              {priceIncreaseDetections.map((d) => (
                 <Pressable
+                  key={d.identityKey}
                   onPress={() =>
                     d.recurringId
                       ? router.push(`/recurring/${d.recurringId}`)
                       : router.push(`/transactions/${d.currentTransactionId}`)
                   }
                   accessibilityRole="button"
+                  className="flex-row items-center gap-2 rounded-control py-1 web:hover:bg-warningTint-light/40 dark:web:hover:bg-warningTint-dark/20"
                 >
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-base text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {d.description}
-                    </Text>
-                    <Text className="text-xs font-semibold text-danger-light dark:text-danger-dark">
-                      {t('recurring.priceIncrease.badge')}
-                    </Text>
-                  </View>
-                  <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(d.previousAmountAgorot)} → {formatILS(d.currentAmountAgorot)}
+                  <Ionicons name="trending-up" size={ICON.chip} color={isDark ? colors.warning.dark : colors.warning.light} />
+                  <Text className="flex-1 text-caption text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                    {d.description}
                   </Text>
-                  <Text className="mt-0.5 text-xs text-danger-light dark:text-danger-dark">
-                    {t('recurring.priceIncrease.increaseLine', {
-                      amount: formatILS(d.increaseAgorot),
-                      percent: d.increasePercent,
-                    })}
+                  <Text className="text-caption font-sansSemibold text-warningStrong-light dark:text-warningStrong-dark">
+                    {t('recurring.priceIncrease.increaseLine', { amount: formatILS(d.increaseAgorot), percent: d.increasePercent })}
                   </Text>
                 </Pressable>
-              </View>
-            ))}
-          </Card>
-        </View>
-      )}
+              ))}
+            </View>
+          )}
 
-      {error ? (
-        <ErrorMessage message={t('recurring.errors.generic')} />
-      ) : isLoading || isRecurringLoading ? (
-        <SkeletonList rows={3} />
-      ) : (
-        <>
-          {/* No actionLabel/onAction — the persistent "Add recurring"
-              button below already covers it (mobile-expo-reviewer finding,
-              same as accounts/index.tsx and goals/index.tsx). */}
-          {recurringTransactions.length === 0 && <EmptyState icon="🔁" message={t('recurring.empty')} />}
-          {/* Responsive/desktop pass: a 2-column card grid once there's more
-              than one recurring item, desktop only — same calc()-free
-              pattern as accounts/index.tsx. */}
-          <View
-            className={
-              recurringTransactions.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
-            }
-          >
-          {recurringTransactions.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => router.push(`/recurring/${item.id}`)}
-              accessibilityRole="button"
-              className={recurringTransactions.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
-            >
-              {/* Paused items are dimmed and get a bolded status word instead
-                  of blending into the muted caption — the inline "· מושהית"
-                  suffix alone was too easy to miss when scanning the list
-                  (UX-completeness audit finding). */}
-              <Card
-                className={
-                  !item.is_active
-                    ? 'rounded-card border border-border-light bg-surfaceMuted-light p-3 opacity-60 dark:border-border-dark dark:bg-surfaceMuted-dark'
-                    : undefined
-                }
-              >
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-base font-semibold text-ink-light dark:text-ink-dark">
-                    {item.description}
+          {recurringTransactions.length === 0 && <EmptyState iconName="repeat-outline" message={t('recurring.empty')} hint={t('recurring.emptyHint')} />}
+          {/* One card, hairline rows, opening with the day of the month —
+              which is what both frames draw and what the list is actually
+              for: a household scanning "what comes off, and on which day".
+              A 2-column grid of cards answered "how many templates do we
+              have", a question nobody opens this screen to ask.
+
+              The amount is a magnitude, like every other recurring charge in
+              the design; the direction is the screen, not the sign. */}
+          {recurringTransactions.length > 0 && (
+            <View className="overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light px-4 dark:border-border-dark dark:bg-surfaceMuted-dark">
+              {recurringTransactions.map((item, index) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => router.push(`/recurring/${item.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.description}
+                  className={`min-h-[44px] flex-row items-center gap-3.5 rounded-control py-3 web:desktop:-mx-2 web:desktop:px-2 web:hover:bg-surface-light/60 dark:web:hover:bg-surface-dark/40 ${
+                    index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : ''
+                  } ${item.is_active ? '' : 'opacity-60'}`}
+                >
+                  <Text
+                    className="w-9 font-heeboBold text-caption text-inkMuted-light dark:text-inkMuted-dark"
+                    style={{ fontVariant: ['tabular-nums'] }}
+                  >
+                    {formatDayOfMonth(item.next_due_date)}
                   </Text>
-                  <Text className="text-sm text-inkMuted-light dark:text-inkMuted-dark">
-                    {formatILS(item.amount_agorot)}
-                  </Text>
-                </View>
-                <Text className="mt-1 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                  {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')} {item.next_due_date}
-                  {!item.is_active && (
-                    <Text className="font-semibold text-ink-light dark:text-ink-dark"> · {t('recurring.inactive')}</Text>
-                  )}
-                </Text>
-              </Card>
-            </Pressable>
-          ))}
-          </View>
+                  <View className="flex-1">
+                    <View className="flex-row flex-wrap items-center gap-1.5">
+                      <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {item.description}
+                      </Text>
+                      {priceIncreasedRecurringIds.has(item.id) && (
+                        <View testID={`price-increase-indicator-${item.id}`} accessibilityLabel={t('recurring.priceIncrease.badge')}>
+                          <Ionicons name="trending-up" size={ICON.chip} color={isDark ? colors.warning.dark : colors.warning.light} />
+                        </View>
+                      )}
+                      {!item.is_active && <StatusChip label={t('recurring.inactive')} />}
+                    </View>
+                    <Text className="text-meta font-sans text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                      {t(`recurring.frequency.${item.frequency}`)} · {t('recurring.nextDue')}{' '}
+                      {formatDateDisplay(item.next_due_date)}
+                    </Text>
+                  </View>
+                  <Money agorot={Math.abs(item.amount_agorot)} size="row" />
+                </Pressable>
+              ))}
+            </View>
+          )}
         </>
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
+          {/* Product-quality pass: a centered form with no heading of its
+              own still read as loose fields rather than a deliberate
+              panel — the button that opened it already says exactly this,
+              reused here rather than inventing new copy. */}
+          <Text className="mb-4 text-heading font-semibold text-ink-light dark:text-ink-dark">
+            {t('recurring.form.formTitle')}
+          </Text>
           <View className="mb-4 flex-row gap-2">
             <Chip label={t('transactions.form.expense')} selected={!isIncome} onPress={() => setIsIncome(false)} />
             <Chip label={t('transactions.form.income')} selected={isIncome} onPress={() => setIsIncome(true)} />
           </View>
 
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
-          <Input
-            label={t('transactions.form.descriptionLabel')}
-            value={description}
-            onChangeText={setDescription}
-            placeholder={t('transactions.form.descriptionPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountId}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('recurring.form.frequencyLabel')}
-            options={frequencyOptions}
-            value={frequency}
-            onChange={(value) => setFrequency(value as RecurringFrequency)}
-            placeholder={t('recurring.form.frequencyLabel')}
-          />
-          <DatePickerField
-            label={t('recurring.form.nextDueDateLabel')}
-            value={nextDueDate}
-            onChange={setNextDueDate}
-          />
+          {/* Visual QA + Desktop Polish pass: amount+description and
+              account+category pair into rows at desktop, matching every
+              other add/edit form in this app — this form previously stayed
+              a single stretched column even inside its own width-capped
+              wrapper. Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.descriptionLabel')}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={t('transactions.form.descriptionPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+          </View>
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('recurring.form.frequencyLabel')}
+                options={frequencyOptions}
+                value={frequency}
+                onChange={(value) => setFrequency(value as RecurringFrequency)}
+                placeholder={t('recurring.form.frequencyLabel')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <DatePickerField
+                label={t('recurring.form.nextDueDateLabel')}
+                value={nextDueDate}
+                onChange={setNextDueDate}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">
             {t('transactions.form.sharedLabel')}
@@ -268,10 +359,31 @@ export default function Recurring() {
           {(validationError || createRecurring.isError) && (
             <ErrorMessage message={validationError ?? t('recurring.errors.generic')} />
           )}
-          <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
+          {/* Part 4/21 of the product-quality audit: this form had no way
+              back once opened, the same gap found and fixed on Goals —
+              every sibling add-form pairs submit with a cancel.
+              resetForm() already existed and already flips isAdding back
+              to false; it just wasn't wired to anything. */}
+          <View className="web:desktop:flex-row web:desktop:gap-2">
+            <View className="web:desktop:flex-1">
+              <Button title={t('recurring.form.submit')} onPress={handleCreate} loading={createRecurring.isPending} />
+            </View>
+            <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+              <Button
+                title={t('common.cancel')}
+                variant="secondary"
+                disabled={createRecurring.isPending}
+                onPress={() => {
+                  setValidationError(null)
+                  resetForm()
+                }}
+              />
+            </View>
+          </View>
+          </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('recurring.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

@@ -10,7 +10,7 @@ type Handler<T extends EventType> = (event: DomainEvent<T, PayloadFor<T>>) => vo
 // generic key with a mapped type's value at a single call site (a known
 // limitation, not a real type hole — every read and write goes through the
 // fully-generic on()/emit() below, which ARE type-safe for every caller).
-const handlers = new Map<EventType, Array<Handler<EventType>>>()
+const handlers = new Map<EventType, Handler<EventType>[]>()
 
 export function on<T extends EventType>(type: T, handler: Handler<T>): void {
   const list = handlers.get(type) ?? []

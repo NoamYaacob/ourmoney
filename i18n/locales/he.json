@@ -15,25 +15,264 @@
     "appName": "OurMoney",
     "comingSoon": "בקרוב",
     "cancel": "ביטול",
-    "loading": "טוען..."
+    "loading": "טוען...",
+    "offline": "אין חיבור לאינטרנט. המספרים הם מה שנטען לאחרונה.",
+    "retry": "נסו שוב",
+    "back": "חזרה",
+    "datePicker": {
+      "previousMonth": "חודש קודם",
+      "nextMonth": "חודש הבא",
+      "today": "היום"
+    },
+    "select": {
+      "empty": "אין אפשרויות זמינות"
+    }
   },
   "theme": {
     "light": "מצב בהיר",
     "dark": "מצב כהה"
   },
   "tabs": {
-    "dashboard": "לוח בקרה",
+    "dashboard": "בית",
     "transactions": "תנועות",
-    "budgets": "תקציבים",
+    "budgets": "תקציב",
+    "cashFlow": "תזרים",
+    "more": "עוד",
     "settings": "הגדרות"
   },
   "nav": {
+    "tagline": "הכסף של הבית, במקום אחד",
+    "householdSubtitle": "{{count}} חברים · משק בית",
     "groups": {
-      "planning": "תכנון ותובנות",
-      "management": "ניהול"
+      "insights": "תובנות",
+      "obligations": "תכנון וחובות",
+      "management": "ניהול",
+      "planning": "תכנון",
+      "household": "משק בית"
     },
     "cashFlow": "תזרים מזומנים",
-    "alerts": "התראות"
+    "creditAndPayments": "אשראי ותשלומים",
+    "alerts": "התראות",
+    "quickActions": {
+      "title": "פעולות מהירות",
+      "newTransaction": "תנועה חדשה",
+      "importCsv": "ייבוא CSV",
+      "manageAccounts": "ניהול חשבונות"
+    },
+    "planningTabs": {
+      "obligations": "התחייבויות",
+      "recurring": "קבועים",
+      "goals": "יעדים"
+    }
+  },
+  "home": {
+    "greeting": {
+      "morning": "בוקר טוב, {{name}}",
+      "afternoon": "צהריים טובים, {{name}}",
+      "evening": "ערב טוב, {{name}}"
+    },
+    "hero": {
+      "label": "פנוי באמת · {{horizon}}",
+      "notBankBalance": "זו לא היתרה בבנק",
+      "perDay": "{{amount}} ליום",
+      "howWeCalculated": "איך חישבנו",
+      "shortfallTag": "חסר לכיסוי",
+      "shortfallNote": "ההתחייבויות הקרובות גדולות מהכסף שיש. כדאי להיכנס ולראות מה אפשר לדחות.",
+      "compositionLabel": "מתוך {{amount}} שיש עכשיו: {{safe}} פנוי, השאר כבר מיועד",
+      "protectedLabel": "מוגן",
+      "freeLabel": "פנוי",
+      "noDataTitle": "עדיין אין מספיק נתונים לחשב",
+      "noDataBody": "לא חיברתם עדיין חשבון — ברגע שיהיה חשבון אחד, \"פנוי באמת\" יחושב אוטומטית מהיתרה שלו.",
+      "noDataCta": "הוספת חשבון ראשון ←",
+      "noDataPreview": "אחרי החיבור תראו כאן גם: לאן פנוי כל חודש, מה דורש תשומת לב, וההתקדמות המשותפת שלכם ביעדים."
+    },
+    "next": {
+      "title": "הדבר הבא",
+      "summary": "{{count}} חיובים · {{amount}}",
+      "viewAll": "כל מה שמגיע",
+      "empty": "אין חיובים ידועים בשבועות הקרובים",
+      "today": "היום",
+      "tomorrow": "מחר",
+      "pastDue": "באיחור",
+      "inDays": "בעוד {{count}} ימים"
+    },
+    "budget": {
+      "title": "תקציב {{month}}",
+      "remainingOf": "נותרו מתוך {{total}}",
+      "projectionOver": "צפי לסוף החודש: חריגה של {{amount}}",
+      "projectionOk": "צפי לסוף החודש: בתוך התקציב",
+      "empty": "עוד לא הגדרתם תקציב לחודש הזה",
+      "setUp": "להגדיר תקציב"
+    },
+    "pulse": {
+      "sectionLabel": "מה השתנה מאז הפעם האחרונה",
+      "sinceLastTime": "מאז הפעם האחרונה",
+      "less": "{{amount}} פחות פנויים",
+      "more": "{{amount}} יותר פנויים",
+      "causeTransaction": "מאז הבדיקה הקודמת נרשם גם חיוב של {{amount}} · {{description}}",
+      "causeGeneric": "לא זוהה חיוב בודד שמסביר את השינוי",
+      "secondaryPriceIncrease": "{{description}} התייקר ב־{{amount}}"
+    },
+    "timeline": {
+      "title": "מה יקרה עד אז",
+      "today": "היום",
+      "low": "שפל: {{amount}} · {{date}}",
+      "lowSuffix": "שפל",
+      "date": "{{day}} ב{{month}}",
+      "cluster": "{{count}} חיובים",
+      "conclusionFlag": "= פנוי באמת",
+      "showAll": "הצג את כל {{count}} האירועים ←",
+      "showAllCompact": "הצג את כל מה שיקרה",
+      "showLess": "הצג פחות ←",
+      "empty": "אין התחייבויות ידועות ב-30 הימים הקרובים",
+      "emptyHint": "ברגע שתוסיפו חשבון, חיוב קבוע או התחייבות — ציר הזמן יצייר אותם כאן.",
+      "detailCta": "פתחו פרטים ←",
+      "source": {
+        "planned_obligation": "התחייבות",
+        "recurring": "חיוב קבוע",
+        "installment_plan": "תשלום",
+        "credit_card_cycle": "חיוב אשראי"
+      }
+    },
+    "attention": {
+      "title": "מה דורש תשומת לב",
+      "count": "{{count}} פריטים",
+      "empty": "אין התראות כרגע",
+      "emptyHint": "כשמשהו ידרוש תשומת לב — נציג אותו כאן, לא לפני זה.",
+      "action": {
+        "cashFlow": "פתחו את תזרים המזומנים ←",
+        "obligation": "פתחו בהתחייבויות ←",
+        "recurring": "פתחו בחיובים קבועים ←",
+        "budget": "פתחו בתקציב ←",
+        "account": "פתחו בחשבונות ←",
+        "goal": "פתחו ביעדים ←"
+      }
+    },
+    "goals": {
+      "title": "לאן אנחנו מתקדמים",
+      "count": "{{count}} יעדים",
+      "headline": "{{pct}}% מהיעדים שלנו כבר מומנו",
+      "viewAll": "כל היעדים ←",
+      "empty": "עוד אין יעדי חיסכון",
+      "emptyHint": "כשתוסיפו יעד ראשון — ההתקדמות המשותפת שלכם תופיע כאן.",
+      "addGoal": "הוספת יעד חיסכון"
+    },
+    "analytics": {
+      "toggle": "ניתוח החודש",
+      "hide": "לסגור"
+    }
+  },
+  "moneyJourney": {
+    "title": "מסע הכסף",
+    "subtitle": "כל אירוע כפי שהוא באמת משפיע על היתרה שלכם — האירוע, השינוי, והיתרה שנשארת",
+    "before": "לפני",
+    "after": "אחרי"
+  },
+  "safeToSpendDetail": {
+    "title": "איך חישבנו",
+    "intro": "זה מה שנשאר אחרי שכל מה שידוע לנו יירד. לא היתרה בבנק.",
+    "availableCash": "כסף זמין כרגע",
+    "availableCashSubtitle": "עו״ש ומזומן",
+    "obligations": "התחייבויות קרובות",
+    "recurring": "הוצאות קבועות צפויות",
+    "installments": "תשלומים שעוד לא חויבו",
+    "result": "פנוי באמת",
+    "shortfallResult": "חסרים",
+    "excludedTitle": "מה לא נכנס לחישוב.",
+    "excludedBody": "חיסכון, השקעות ויתרת כרטיס האשראי עצמה. הם קיימים, אבל הם לא כסף שאפשר להוציא עכשיו. (חיובים שכבר עלו לכרטיס כן מנוכים למעלה.)",
+    "showItems": "לפתוח",
+    "hideItems": "לסגור",
+    "empty": "אין חיובים ידועים בטווח הזה",
+    "obligationsSubtitle": "{{count}} חיובים חד־פעמיים עד סוף התקופה",
+    "recurringSubtitle": "{{count}} חיובים קבועים שעוד לא ירדו",
+    "installmentsSubtitle": "{{count}} תשלומים בתוכניות פעילות",
+    "creditCardCycle": "חיובים בכרטיס האשראי",
+    "creditCardCycleSubtitle": "{{count}} כרטיסי אשראי עם חיובים במחזור הנוכחי"
+  },
+  "impactCheck": {
+    "entryLabel": "אפשר להרשות לעצמנו את זה?",
+    "entrySubtitle": "בדקו מה קורה לתחזית אם מוציאים סכום נוסף עכשיו",
+    "sectionLabel": "בדיקת השפעת הוצאה",
+    "amountLabel": "כמה ההוצאה?",
+    "amountPlaceholder": "0",
+    "close": "סגירה",
+    "clear": "ניקוי",
+    "assumptionCashEquivalent": "לצורך הבדיקה, ההוצאה מחושבת כאילו היא יורדת מהכסף הזמין עכשיו.",
+    "assumptionDataUnchanged": "שאר הנתונים הידועים נשארים ללא שינוי.",
+    "currentLabel": "פנוי באמת היום",
+    "postPurchaseLabel": "פנוי באמת אחרי ההוצאה",
+    "lowPointLabel": "הנקודה הנמוכה הצפויה",
+    "lowPointDate": "ב־{{date}}",
+    "verdict": {
+      "safeTitle": "התחזית לא יורדת מתחת לאפס",
+      "safeBody": "אחרי ההוצאה, הנקודה הנמוכה הצפויה נשארת {{amount}}.",
+      "unsafeTitle": "התחזית יורדת מתחת לאפס",
+      "unsafeBody": "אחרי ההוצאה, הנקודה הנמוכה הצפויה היא {{amount}} {{date}}."
+    }
+  },
+  "more": {
+    "title": "עוד",
+    "householdSubtitle": "{{household}} · {{count}} חברים",
+    "alerts": "התראות ותובנות",
+    "credit": "אשראי ותשלומים",
+    "creditSubtitle": "החיוב הבא ב־{{date}}",
+    "creditEmpty": "אין חיוב קרוב",
+    "planning": "תכנון",
+    "planningSubtitle": "התחייבויות · קבועים · יעדים",
+    "accounts": "חשבונות ומקורות",
+    "accountsSubtitle": "זמין {{amount}}",
+    "goals": "יעדי חיסכון",
+    "goalsEmpty": "עוד לא הגדרתם יעד",
+    "import": "ייבוא מ־CSV",
+    "categories": "קטגוריות וכללי סיווג",
+    "settings": "הגדרות",
+    "goalsSubtitle": "{{count}} פעילים",
+    "connections": "חיבור בנקים וכרטיסים"
+  },
+  "connections": {
+    "title": "חיבור בנקים וכרטיסים",
+    "subtitle": "תצוגה מקדימה של יכולת עתידית. עדיין אין חיבור אמיתי לשום בנק או כרטיס.",
+    "notAvailableYet": "עדיין לא זמין",
+    "types": {
+      "bankAccount": "חשבון בנק",
+      "creditCard": "כרטיס אשראי"
+    },
+    "info": {
+      "title": "חיבור בנקים וכרטיסים",
+      "body": "חיבור בנקים וכרטיסים עדיין לא זמין ב-OurMoney. כשהיא תושק היא תעבור סקירה משפטית ורגולטורית מלאה. בינתיים, כל התנועות מוזנות ידנית או מיובאות מקובץ CSV.",
+      "dismiss": "הבנתי"
+    },
+    "otherWays": {
+      "sectionTitle": "הוספת מקור פיננסי",
+      "sectionSubtitle": "חיבור אוטומטי עדיין לא זמין. שתי הדרכים הזמינות היום:",
+      "bankSubtitle": "יתרות ותנועות נכנסות לבד",
+      "cardSubtitle": "קניות, חיובים ומחזורי חיוב",
+      "recommended": "בעתיד",
+      "manualAccount": "מזומן או חשבון ידני",
+      "manualAccountSubtitle": "כסף שלא יושב במוסד מחובר",
+      "importCsv": "ייבוא מקובץ",
+      "importCsvSubtitle": "היסטוריה, או מוסד בלי חיבור"
+    },
+    "preview": {
+      "entryLink": "תצוגה מקדימה: איך ייראה חיבור פעיל",
+      "title": "תצוגה מקדימה",
+      "bannerTitle": "לא אמיתי — תצוגה מקדימה בלבד",
+      "bannerBody": "המסך הזה מדגים איך ייראה חשבון מחובר, כשהיכולת תושק. שום חיבור אמיתי לא קיים, ולא בוצעה ואף לא תבוצע כאן שום פעולה.",
+      "connectedSectionTitle": "כך ייראה חשבון מחובר",
+      "exampleBankName": "בנק לדוגמה",
+      "exampleAccountSubtitle": "עו״ש לדוגמה · מחובר",
+      "exampleUpdatedNote": "לדוגמה: עודכן לפני 4 דקות",
+      "connectedBadge": "מחובר",
+      "statesSectionTitle": "כך ייראו הודעות סטטוס",
+      "states": {
+        "successTitle": "בנק לדוגמה מחובר",
+        "successBody": "312 תנועות לדוגמה נכנסו. מעכשיו זה יתעדכן לבד.",
+        "failedTitle": "החיבור לא הושלם",
+        "failedBody": "שום דבר לא נשמר. אפשר לנסות שוב.",
+        "expiredTitle": "ההרשאה פגה",
+        "expiredBody": "הבנק מבקש התחברות מחדש. הנתונים הקיימים נשמרו."
+      }
+    }
   },
   "transactions": {
     "title": "תנועות",
@@ -58,6 +297,8 @@
       "categoryLabel": "קטגוריה",
       "allCategories": "כל הקטגוריות",
       "uncategorized": "ללא קטגוריה",
+      "typeLabel": "סוג תנועה",
+      "sharedLabel": "שיוך",
       "type": {
         "all": "הכל",
         "expense": "הוצאות",
@@ -103,6 +344,7 @@
       "merchantPlaceholder": "לדוגמה: שופרסל",
       "accountLabel": "חשבון",
       "accountPlaceholder": "בחירת חשבון",
+      "accountEmptyHint": "צריך חשבון כדי לרשום תנועה — קל להוסיף אחד עכשיו.",
       "categoryLabel": "קטגוריה (אופציונלי)",
       "categoryPlaceholder": "בחירת קטגוריה",
       "categorySheetTitle": "בחירת קטגוריה",
@@ -143,7 +385,46 @@
       "categorizedByRule": "סווג אוטומטית לפי הכלל",
       "editRule": "עריכת הכלל"
     },
-    "transferLabel": "העברה"
+    "transferLabel": "העברה",
+    "installmentProgress": "תשלום {{index}} מתוך {{count}} · נותרו {{amount}}",
+    "queue": {
+      "title": "{{count}} תנועות מחכות לסיווג",
+      "subtitle": "{{amount}} שלא נספרים בתקציב. סיווג אחד יכול להפוך לכלל אוטומטי.",
+      "button": "לסווג עכשיו"
+    },
+    "summary": {
+      "title": "החודש · {{count}} תנועות",
+      "income": "הכנסות",
+      "expense": "הוצאות",
+      "net": "נטו",
+      "personalPortion": "מתוכן אישיות"
+    },
+    "rulesPanel": {
+      "title": "כללי סיווג פעילים",
+      "manageLink": "ניהול הכללים ←"
+    },
+    "columns": {
+      "transaction": "תנועה",
+      "category": "קטגוריה",
+      "account": "חשבון",
+      "attribution": "שיוך",
+      "amount": "סכום"
+    },
+    "mobile": {
+      "today": "היום",
+      "yesterday": "אתמול",
+      "filterButton": "סינון",
+      "searchButton": "חיפוש",
+      "filterSheetTitle": "סינון תנועות",
+      "applyFilters": "הצגת תוצאות",
+      "resetFilters": "איפוס",
+      "uncategorizedSubtitle": "{{amount}} שלא נספרים בתקציב",
+      "uncategorizedAction": "לסווג",
+      "transferLinked": "קושר אוטומטית",
+      "uncategorizedTitle": "{{count}} תנועות בלי קטגוריה",
+      "activeFilterCount": "{{count}} מסננים פעילים"
+    },
+    "emptyHint": "הוסיפו את הראשונה, או ייבאו קובץ מהבנק."
   },
   "transfers": {
     "detail": {
@@ -151,6 +432,7 @@
       "fromLabel": "מהחשבון",
       "toLabel": "לחשבון",
       "amountLabel": "סכום",
+      "amountPlaceholder": "0.00",
       "descriptionLabel": "תיאור",
       "save": "שמירה",
       "delete": "מחיקה",
@@ -175,6 +457,15 @@
     "title": "חשבונות",
     "empty": "עדיין אין חשבונות.",
     "addButton": "הוספת חשבון",
+    "totalBalance": "סך כל היתרות",
+    "activeAccountCount": "{{count}} חשבונות פעילים",
+    "availableToSpend": "זמין להוצאה",
+    "netWorth": "שווי נטו {{amount}}",
+    "groups": {
+      "liquid": "כסף נוזלי · זה מה שנכנס ל\"פנוי באמת\"",
+      "owed": "כסף שחייבים · יורד מהעו״ש בחיוב הבא",
+      "illiquid": "לא זמין מיד · חיסכון והשקעות"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
       "notFound": "החשבון לא נמצא"
@@ -185,12 +476,20 @@
       "credit_card": "כרטיס אשראי",
       "cash": "מזומן",
       "investment": "השקעות",
+      "loan": "הלוואה",
+      "mortgage": "משכנתא",
       "other": "אחר"
     },
     "form": {
+      "formTitle": "חשבון חדש",
       "nameLabel": "שם החשבון",
       "typeLabel": "סוג חשבון",
-      "submit": "הוספת חשבון"
+      "submit": "הוספת חשבון",
+      "billingCycleDayLabel": "יום סגירת מחזור חיוב",
+      "billingCycleDayPlaceholder": "לדוגמה: 10",
+      "errors": {
+        "invalidBillingCycleDay": "יום סגירת המחזור צריך להיות מספר שלם בין 1 ל-28"
+      }
     },
     "detail": {
       "title": "פרטי חשבון",
@@ -202,8 +501,25 @@
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת חשבון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. אם יש לחשבון תנועות משויכות, המחיקה תיכשל.",
-      "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום."
-    }
+      "hasTransactions": "לא ניתן למחוק חשבון עם תנועות משויכות. אפשר להעביר אותו לארכיון במקום.",
+      "currentCycleSpend": "הוצאות במחזור החיוב הנוכחי",
+      "balanceNow": "יתרה עכשיו",
+      "inThisMonth": "נכנס",
+      "outThisMonth": "יצא",
+      "activity": "פעילות",
+      "activityEmpty": "אין עדיין תנועות בחשבון הזה",
+      "activityEmptyHint": "תנועה שתשויך לחשבון תופיע כאן.",
+      "editSection": "עריכת החשבון"
+    },
+    "availableExplainer": "רק עו״ש ומזומן. מזה נגזר \"פנוי באמת\".",
+    "availableExplainerLong": "עו״ש ומזומן בלבד ({{amount}}). חיסכון, השקעות וכרטיסי אשראי לא נכנסים לחשבון, כדי ש\"פנוי באמת\" לא ינפח את התמונה.",
+    "availableExplainerTitle": "מה נכנס ל\"יתרה זמינה\"",
+    "heroStats": {
+      "owed": "חובות בכרטיסי אשראי",
+      "illiquid": "לא זמין מיד"
+    },
+    "manuallyManaged": "מנוהל ידנית",
+    "emptyHint": "בלי חשבון אחד לפחות אי אפשר לחשב כמה באמת פנוי."
   },
   "categories": {
     "title": "קטגוריות",
@@ -211,6 +527,8 @@
     "empty": "עדיין אין קטגוריות מותאמות אישית.",
     "delete": "מחיקה",
     "deleteCategoryLabel": "מחיקת קטגוריית {{name}}",
+    "deleteConfirmTitle": "מחיקת קטגוריה",
+    "deleteConfirmMessage": "הקטגוריה \"{{name}}\" תימחק, וכל כלל סיווג שמפנה אליה יימחק יחד איתה. לא ניתן לשחזר פעולה זו. אם יש תנועות המשויכות לקטגוריה זו, המחיקה תיכשל.",
     "edit": "עריכה",
     "editCategoryLabel": "עריכת קטגוריית {{name}}",
     "save": "שמירה",
@@ -226,9 +544,12 @@
     "rules": {
       "empty": "עדיין אין כללי סיווג.",
       "applyRetroactively": "החלת הכללים על תנועות קיימות",
+      "ruleBadge": "כלל",
       "ifLabel": "אם",
       "thenLabel": "אז",
       "deleteRuleLabel": "מחיקת כלל: {{field}} {{operator}} {{value}}",
+      "deleteConfirmTitle": "מחיקת כלל סיווג",
+      "deleteConfirmMessage": "הכלל \"{{field}} {{operator}} {{value}}\" יימחק. לא ניתן לשחזר פעולה זו. תנועות שסווגו בעבר לפי הכלל הזה יישארו כפי שהן — רק סיווג עתידי יושפע.",
       "editRuleLabel": "עריכת כלל: {{field}} {{operator}} {{value}}",
       "field": {
         "description": "תיאור",
@@ -252,11 +573,12 @@
     }
   },
   "recurring": {
-    "title": "הוראות קבע",
-    "empty": "עדיין אין הוראות קבע.",
-    "addButton": "הוספת הוראת קבע",
+    "title": "חיובים קבועים",
+    "empty": "עדיין אין חיובים קבועים.",
+    "addButton": "הוספת חיוב קבוע",
+    "summarySubtitle": "{{count}} פעילים · {{amount}} לחודש",
     "nextDue": "תאריך הבא:",
-    "inactive": "מושהית",
+    "inactive": "מושהה",
     "priceIncrease": {
       "sectionTitle": "עליות מחיר שזוהו",
       "badge": "המחיר עלה",
@@ -264,7 +586,7 @@
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
-      "notFound": "הוראת הקבע לא נמצאה"
+      "notFound": "החיוב הקבוע לא נמצא"
     },
     "frequency": {
       "daily": "יומי",
@@ -275,9 +597,10 @@
       "yearly": "שנתי"
     },
     "form": {
+      "formTitle": "חיוב קבוע חדש",
       "frequencyLabel": "תדירות",
       "nextDueDateLabel": "תאריך הבא",
-      "submit": "הוספת הוראת קבע",
+      "submit": "הוספת חיוב קבוע",
       "errors": {
         "missingAccount": "יש לבחור חשבון",
         "missingDescription": "יש להזין תיאור"
@@ -290,20 +613,34 @@
       "pause": "השהיה",
       "resume": "הפעלה מחדש",
       "delete": "מחיקה",
-      "deleteConfirmTitle": "מחיקת הוראת קבע",
+      "deleteConfirmTitle": "מחיקת חיוב קבוע",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
-    }
+    },
+    "emptyHint": "חיוב שחוזר בכל חודש — שכר דירה, מנוי, גן."
   },
   "savings": {
     "title": "יעדי חיסכון",
     "empty": "עדיין אין יעדי חיסכון.",
     "addButton": "הוספת יעד חיסכון",
     "completed": "היעד הושג! 🎉",
+    "pace": {
+      "requiredMonthlyLabel": "חיסכון חודשי נדרש",
+      "remainingByDate": "נותרו {{amount}} עד {{date}}",
+      "onTrack": "בקצב",
+      "behind": "מפגר בקצב",
+      "overdue": "עבר התאריך היעד",
+      "onTrackSentence": "נותרו {{amount}}. בקצב הנדרש של {{monthly}} בחודש תגיעו ליעד בזמן",
+      "behindSentence": "נותרו {{amount}}. התאריך שנקבע כבר עבר",
+      "noDateSentence": "נותרו {{amount}}. לא נקבע תאריך יעד"
+    },
     "errors": {
       "generic": "משהו השתבש. נסו שוב",
-      "notFound": "יעד החיסכון לא נמצא"
+      "notFound": "יעד החיסכון לא נמצא",
+      "accountAlreadyLinked": "החשבון הזה כבר מקושר כמקור ההתקדמות של יעד אחר. אפשר לבחור חשבון אחר או להשאיר את היעד במעקב ידני.",
+      "linkedAccountRequiresAccount": "כדי לעקוב לפי יתרת חשבון יש לבחור חשבון מקושר"
     },
     "form": {
+      "formTitle": "יעד חיסכון חדש",
       "nameLabel": "שם היעד",
       "namePlaceholder": "לדוגמה: חופשה משפחתית",
       "targetLabel": "סכום יעד",
@@ -312,6 +649,9 @@
       "hasTargetDate": "עם תאריך יעד",
       "noTargetDate": "ללא תאריך יעד",
       "submit": "הוספת יעד",
+      "progressSourceLabel": "מקור ההתקדמות",
+      "progressSourceManual": "עדכון ידני",
+      "progressSourceLinked": "לפי יתרת החשבון המקושר",
       "errors": {
         "missingName": "יש להזין שם ליעד"
       }
@@ -320,16 +660,27 @@
       "save": "שמירה",
       "updateProgressLabel": "עדכון סכום נוכחי",
       "updateProgressSubmit": "עדכון",
+      "linkedProgressNote": "ההתקדמות מחושבת אוטומטית לפי יתרת החשבון המקושר",
       "delete": "מחיקה",
       "deleteConfirmTitle": "מחיקת יעד חיסכון",
       "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו."
-    }
+    },
+    "progressOf": "{{current}} מתוך {{target}}",
+    "targetOn": "יעד {{date}}"
   },
   "obligations": {
     "title": "התחייבויות עתידיות",
     "empty": "עדיין אין התחייבויות מתוכננות.",
     "addButton": "הוספת התחייבות",
+    "summarySubtitle": "{{count}} צפויות · {{amount}}",
+    "groups": {
+      "overdue": "באיחור",
+      "thisWeek": "השבוע",
+      "later": "בהמשך"
+    },
     "pastDue": "באיחור",
+    "dueToday": "היום",
+    "inDays": "בעוד {{count}} ימים",
     "status": {
       "upcoming": "צפויה",
       "completed": "שולמה",
@@ -340,6 +691,7 @@
       "notFound": "ההתחייבות לא נמצאה"
     },
     "form": {
+      "formTitle": "התחייבות חדשה",
       "nameLabel": "שם ההתחייבות",
       "namePlaceholder": "לדוגמה: ביטוח רכב",
       "dueDateLabel": "תאריך יעד",
@@ -357,6 +709,14 @@
       "markPaid": "סימון כשולם",
       "markPaidConfirmTitle": "סימון כשולם",
       "markPaidConfirmMessage": "ההתחייבות תסומן כשולמה ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
+      "markPaidPanel": {
+        "createTransactionLabel": "רישום תנועה בפועל",
+        "createTransactionHint": "ניתן ליצור תנועת הוצאה בהתאם לפרטי ההתחייבות ולקשר אותה אליה.",
+        "createTransactionYes": "כן, ליצור תנועה",
+        "createTransactionNo": "לא, סימון בלבד",
+        "missingAccount": "יש לבחור חשבון ליצירת התנועה",
+        "submit": "אישור סימון כשולם"
+      },
       "cancelObligation": "ביטול ההתחייבות",
       "cancelConfirmTitle": "ביטול ההתחייבות",
       "cancelConfirmMessage": "ההתחייבות תסומן כמבוטלת ותוסר מרשימת ההתחייבויות הצפויות. ניתן לצפות בה בהיסטוריה.",
@@ -367,13 +727,91 @@
     "history": {
       "showButton": "היסטוריית התחייבויות",
       "hideButton": "הסתרת היסטוריה"
-    }
+    },
+    "emptyHint": "חיוב חד־פעמי שידוע מראש — ארנונה, ביטוח, אגרה."
+  },
+  "installments": {
+    "title": "רכישות בתשלומים",
+    "empty": "עדיין אין רכישות בתשלומים.",
+    "addButton": "הוספת רכישה בתשלומים",
+    "noCreditCardAccounts": "כדי להוסיף רכישה בתשלומים יש קודם להוסיף חשבון כרטיס אשראי",
+    "noCardAccountEmptyState": {
+      "title": "עדיין אין כאן כרטיס אשראי",
+      "body": "המסך הזה עוקב אחרי מחזורי החיוב שלכם ואחרי רכישות בתשלומים — כמה יורד, מתי, ומה מזה כבר התחייבתם עליו מראש.",
+      "step1": "הוסיפו חשבון מסוג כרטיס אשראי",
+      "step2": "הגדירו את יום הסגירה של המחזור",
+      "step3": "מחזור החיוב הנוכחי יופיע כאן אוטומטית",
+      "action": "הוספת כרטיס אשראי"
+    },
+    "installmentProgress": "שולמו {{materialized}} מתוך {{total}} תשלומים",
+    "remainingAmount": "יתרה לתשלום",
+    "monthlyAmount": "תשלום חודשי",
+    "cycleCards": {
+      "nextCharge": "החיוב הבא",
+      "range": "מחזור {{start}} עד {{end}}",
+      "regularSpend": "עסקאות רגילות",
+      "installmentSpend": "תשלומים",
+      "chargedFrom": "מחזור {{start}} עד {{end}} · חיוב מ{{account}}",
+      "emptyUnconfigured": "אין כרגע נתוני מחזור חיוב להצגה. ודאו שתאריך הסגירה של כרטיס האשראי מוגדר בפרטי החשבון.",
+      "emptyQuiet": "עדיין אין עסקאות במחזור החיוב הנוכחי של כרטיס זה."
+    },
+    "listTitle": "עסקאות בתשלומים",
+    "errors": {
+      "generic": "משהו השתבש. נסו שוב",
+      "notFound": "הרכישה לא נמצאה"
+    },
+    "form": {
+      "formTitle": "רכישה בתשלומים חדשה",
+      "descriptionLabel": "תיאור הרכישה",
+      "descriptionPlaceholder": "לדוגמה: מקרר חדש",
+      "merchantLabel": "בית עסק",
+      "merchantPlaceholder": "לא חובה",
+      "totalAmountLabel": "סכום כולל",
+      "totalAmountPlaceholder": "0.00",
+      "installmentCountLabel": "מספר תשלומים",
+      "installmentCountPlaceholder": "לדוגמה: 12",
+      "firstChargeDateLabel": "תאריך חיוב ראשון",
+      "submit": "הוספת רכישה",
+      "errors": {
+        "missingDescription": "יש להזין תיאור לרכישה",
+        "missingAccount": "יש לבחור חשבון כרטיס אשראי",
+        "invalidTotalAmount": "יש להזין סכום כולל תקין",
+        "invalidInstallmentCount": "יש להזין מספר תשלומים תקין (1 ומעלה)",
+        "missingFirstChargeDate": "יש לבחור תאריך חיוב ראשון"
+      }
+    },
+    "detail": {
+      "title": "פרטי הרכישה",
+      "cycleContext": "התשלום הבא, {{amount}}, נכלל במחזור החיוב של {{account}}, שנסגר ב-{{end}}.",
+      "edit": "עריכה",
+      "save": "שמירה",
+      "immutableNotice": "סכום, מספר תשלומים, חשבון ותאריך החיוב הראשון קבועים ולא ניתנים לעריכה לאחר יצירת הרכישה.",
+      "delete": "מחיקה",
+      "deleteConfirmTitle": "מחיקת רכישה בתשלומים",
+      "deleteConfirmMessage": "לא ניתן לשחזר פעולה זו. תשלומים שכבר נוצרו כתנועות בפועל יישארו ברשימת התנועות."
+    },
+    "perMonth": "בחודש",
+    "remainingLabel": "נותר",
+    "remainingCount": "נותרו {{count}} תשלומים · עד {{date}}",
+    "scheduleLine": "תשלום {{index}} מתוך {{total}} · הבא ב־{{next}} · אחרון ב־{{last}}",
+    "finishedLine": "כל {{total}} התשלומים שולמו · הסתיים ב־{{last}}",
+    "listTotals": "נותר לשלם סה״כ {{remaining}} · {{monthly}} לחודש",
+    "listExplainer": "{{monthly}} בחודש כבר יורדים מ\"פנוי באמת\" עד התשלום האחרון.",
+    "purchasedOn": "נרכש {{date}}",
+    "emptyHint": "רכישה שמתחלקת לתשלומים חודשיים בכרטיס."
   },
   "import": {
     "title": "ייבוא מקובץ CSV",
     "entryButton": "ייבוא מ-CSV",
     "pickHint": "בחרו קובץ CSV מהמכשיר כדי לייבא תנועות.",
+    "pickFormatHint": "קובץ CSV עם כותרות עמודות בשורה הראשונה",
     "pickButton": "בחירת קובץ",
+    "steps": {
+      "pick": "קובץ",
+      "map": "עמודות",
+      "preview": "תצוגה מקדימה",
+      "done": "סיום"
+    },
     "fileLabel": "קובץ:",
     "accountLabel": "חשבון יעד",
     "mapColumnsTitle": "התאמת עמודות",
@@ -418,6 +856,11 @@
     "totalAllocated": "סה״כ תוקצב",
     "remaining": "נותר",
     "categoriesTitle": "תקציב לפי קטגוריה",
+    "analytics": {
+      "breakdownTitle": "לאן הלך הכסף",
+      "trendTitle": "מגמה · 6 חודשים",
+      "otherCategories": "שאר הקטגוריות"
+    },
     "noCategories": "עדיין לא הוקצו קטגוריות לתקציב החודש.",
     "noCategoriesHint": "תקציב חודשי הוא סכום שמוקצה לכל קטגוריית הוצאה, כדי לעקוב כמה נותר להוציא בה. הוסיפו קטגוריה ראשונה כדי להתחיל.",
     "allocationLabel": "סכום תקציב",
@@ -433,6 +876,11 @@
     "assignCategoryButton": "שיוך לקטגוריה",
     "assignCategoryLabel": "קטגוריה",
     "assignCategorySubmit": "שיוך",
+    "pace": {
+      "label": "צפי לסוף החודש בקצב הנוכחי",
+      "onTrack": "בקצב הזה תעמדו בתקציב",
+      "overBy": "בקצב הזה תחרגו בכ-{{amount}}"
+    },
     "copyPrevious": {
       "actionButton": "העתקת התקציב מהחודש הקודם",
       "title": "העתקת תקציב מ{{fromMonth}}",
@@ -446,7 +894,36 @@
     },
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
-    }
+    },
+    "state": {
+      "onTrack": "בקצב תקין",
+      "approaching": "מתקרב לגבול",
+      "over": "חריגה"
+    },
+    "summary": {
+      "remainingLabel": "נותר להוציא",
+      "spentOf": "הוצא {{spent}} מתוך {{total}}",
+      "paceMarker": "הקו הכהה מסמן איפה אמורים להיות היום",
+      "projectionOver": "בקצב הזה התקציב ייגמר לפני סוף החודש. חריגה צפויה של {{amount}}",
+      "projectionOk": "בקצב הזה תעמדו בתקציב",
+      "spentLabel": "הוצא",
+      "allocatedLabel": "מתוך תקציב"
+    },
+    "category": {
+      "spentOf": "{{spent}} מתוך {{total}}",
+      "remaining": "נותרו {{amount}}",
+      "exceeded": "חריגה {{amount}}",
+      "projectedOver": "צפי לחריגה {{amount}}",
+      "remainingInCategory": "נותר בקטגוריה",
+      "detailTransactions": "התנועות בקטגוריה החודש",
+      "detailEmpty": "אין תנועות בקטגוריה הזאת החודש",
+      "detailEmptyHint": "תנועה שתסווג לכאן תופיע ברשימה.",
+      "countAndAverage": "{{count}} תנועות החודש, בממוצע {{average}}",
+      "editAllocation": "עריכת סכום התקציב",
+      "notFound": "הקטגוריה לא נמצאה בתקציב החודש"
+    },
+    "outsideBudgetTitle": "לא בתקציב · חיובים קבועים",
+    "outsideBudgetNote": "החיובים האלה יורדים בכל חודש, אבל אין להם קטגוריה בתקציב הזה — ולכן הם לא נספרים בקצב שלמעלה."
   },
   "appearance": {
     "system": "לפי המכשיר"
@@ -532,7 +1009,9 @@
       "shareButton": "שליחת הזמנה",
       "skipButton": "דילוג להזמנה מאוחר יותר",
       "shareMessage": "מצטרפים אליי ב-OurMoney כדי לנהל את הכספים המשותפים שלנו: {{link}}",
-      "shareError": "שיתוף ההזמנה נכשל. אפשר לנסות שוב"
+      "shareError": "שיתוף ההזמנה נכשל. אפשר לנסות שוב, או להעתיק את הקישור ולשלוח אותו בעצמכם:",
+      "copyLink": "העתקת קישור ההזמנה",
+      "copyLinkCopied": "הקישור הועתק"
     }
   },
   "invite": {
@@ -556,6 +1035,28 @@
   "dashboard": {
     "title": "לוח בקרה",
     "subtitle": "סקירה חודשית של המצב הפיננסי המשותף",
+    "searchPlaceholder": "חיפוש תנועה...",
+    "searchAction": "חיפוש",
+    "searchClear": "ניקוי החיפוש",
+    "hero": {
+      "label": "פנוי באמת",
+      "horizonWeek": "השבוע",
+      "horizonMonth": "החודש",
+      "horizonDays30": "30 ימים",
+      "notBankBalance": "לא יתרת הבנק",
+      "perDay": "כ-{{amount}} ליום",
+      "overspendWarning": "ההתחייבות הקרובה ב-{{date}} חורגת מהסכום הפנוי.",
+      "viewCashFlow": "לתזרים המלא"
+    },
+    "budgetPace": {
+      "title": "קצב תקציב",
+      "viewAll": "כל התקציבים",
+      "outOf": "מתוך {{amount}}",
+      "projection": "בקצב הנוכחי, חריגה צפויה של {{amount}}"
+    },
+    "needsAttention": {
+      "title": "דורש טיפול"
+    },
     "spent": "הוצא",
     "ofBudget": "מתוך תקציב",
     "percentUsed": "{{percent}}% מהתקציב נוצל",
@@ -570,8 +1071,25 @@
     "recentTitle": "תנועות אחרונות",
     "viewAll": "כל התנועות",
     "noTransactions": "עדיין אין תנועות החודש.",
+    "thisMonth": {
+      "title": "הכנסות והוצאות החודש"
+    },
+    "commitments": {
+      "title": "מה מגיע",
+      "viewAll": "כל ההתחייבויות",
+      "viewAllShort": "הצג הכל",
+      "empty": "אין התחייבויות ידועות ב-30 הימים הקרובים.",
+      "creditCardBurden": "מתוכן {{amount}} בכרטיסי אשראי",
+      "countAndTotal": "{{count}} פריטים · {{amount}} בסך הכל",
+      "cardCycleClosing": "{{name}} — המחזור נסגר ב-{{date}}, {{amount}} עד כה"
+    },
+    "savingsGoalsWidget": {
+      "title": "יעדי חיסכון",
+      "viewAll": "כל היעדים",
+      "empty": "עדיין אין יעדי חיסכון."
+    },
     "safeToSpend": {
-      "title": "כמה אפשר להוציא",
+      "title": "פנוי באמת",
       "subtitle": "עד סוף החודש",
       "shortfall": "חסר {{amount}} לכיסוי ההתחייבויות הקרובות",
       "zero": "ההתחייבויות הקרובות צורכות את כל היתרה הזמינה"
@@ -591,7 +1109,9 @@
     }
   },
   "cashFlow": {
-    "title": "כמה אפשר להוציא",
+    "title": "פנוי באמת",
+    "subtitle": "תמונת מצב נוכחית לצד תחזית היתרה קדימה",
+    "safeToSpendSectionTitle": "פנוי באמת",
     "horizon": {
       "week": "עד סוף השבוע",
       "month": "עד סוף החודש",
@@ -599,17 +1119,18 @@
     },
     "availableCash": "יתרה זמינה",
     "plannedObligations": "התחייבויות קרובות",
-    "recurringCharges": "הוראות קבע צפויות",
+    "recurringCharges": "חיובים קבועים צפויים",
+    "installmentCharges": "תשלומים שעוד לא חויבו",
     "reserved": "סה״כ שמור",
-    "safeToSpend": "אפשר להוציא",
+    "safeToSpend": "סה״כ פנוי",
     "shortfall": "חסר {{amount}} לכיסוי ההתחייבויות הקרובות",
     "zero": "ההתחייבויות הקרובות צורכות את כל היתרה הזמינה",
     "itemsTitle": "פירוט",
     "source": {
       "obligation": "התחייבות",
-      "recurring": "הוראת קבע"
+      "recurring": "חיוב קבוע"
     },
-    "empty": "אין התחייבויות או הוראות קבע צפויות בטווח הזמן שנבחר.",
+    "empty": "אין התחייבויות או חיובים קבועים צפויים בטווח הזמן שנבחר.",
     "errors": {
       "generic": "משהו השתבש. נסו שוב"
     },
@@ -618,7 +1139,10 @@
       "horizon": {
         "days30": "30 ימים",
         "days60": "60 ימים",
-        "days90": "90 ימים"
+        "days90": "90 ימים",
+        "days30Short": "30 י׳",
+        "days60Short": "60",
+        "days90Short": "90"
       },
       "availableCashToday": "יתרה זמינה היום",
       "projectedEndingBalance": "יתרה צפויה בסוף התקופה",
@@ -626,8 +1150,8 @@
       "upcomingEventsTitle": "אירועים קרובים",
       "source": {
         "planned_obligation": "התחייבות",
-        "recurring": "הוראת קבע",
-        "recurringIncome": "הוראת קבע / הכנסה חוזרת"
+        "recurring": "חיוב קבוע",
+        "recurringIncome": "חיוב קבוע / הכנסה חוזרת"
       },
       "pastDue": "באיחור",
       "shortfallWarningTitle": "צפוי חוסר בכיסוי",
@@ -639,6 +1163,33 @@
       "errors": {
         "generic": "משהו השתבש. נסו שוב"
       }
+    },
+    "commitments": {
+      "sectionTitle": "התחייבויות עתידיות ב-30 הימים הקרובים",
+      "subtitle": "כל מה שידוע שיוצא מהחשבון בחודש הקרוב: התחייבויות, חיובים קבועים, תשלומים ומחזור האשראי הפתוח",
+      "source": {
+        "obligation": "התחייבות",
+        "recurring": "חיוב קבוע",
+        "installment": "תשלומים",
+        "credit_card_cycle": "כרטיס אשראי — מחזור פתוח"
+      },
+      "sharedPersonalSplit": "משותף {{shared}} · אישי {{personal}}",
+      "empty": "אין התחייבויות ידועות ב-30 הימים הקרובים.",
+      "errors": {
+        "partial": "חלק מהנתונים לא זמינים כרגע — מוצג מידע חלקי."
+      }
+    },
+    "mobile": {
+      "answerShortfall": "הכסף מחזיק עד {{date}}, ואז חסרים {{amount}}.",
+      "answerOk": "לפי מה שידוע היום היתרה לא יורדת מתחת לאפס. הנקודה הנמוכה היא {{amount}} ב־{{date}}.",
+      "today": "היום",
+      "lowPoint": "הנקודה הנמוכה",
+      "atEnd": "בסוף",
+      "eventsTitle": "מה קורה בדרך",
+      "causeTag": "זה מה שמוריד אותנו מתחת לאפס",
+      "causeTagLow": "זה מה שמוריד לנקודה הנמוכה",
+      "eventsEmpty": "אין אירועים צפויים בטווח הזה",
+      "eventsCount": "{{count}} אירועים"
     }
   },
   "alerts": {
@@ -649,7 +1200,8 @@
     "groups": {
       "critical": "דורש טיפול",
       "warning": "כדאי לשים לב",
-      "info": "מידע"
+      "info": "מידע",
+      "positive": "תובנה חיובית"
     },
     "empty": "אין התראות כרגע.",
     "errors": {
@@ -673,7 +1225,32 @@
     "budgetRisk": {
       "title": "תקציב בסיכון",
       "description": "{{category}}: נוצלו {{percent}}% מהתקציב"
-    }
+    },
+    "highCreditCardCycleSpend": {
+      "title": "חיוב גבוה מהרגיל בכרטיס {{name}}",
+      "description": "החיוב הנוכחי כבר עומד על {{current}}, לעומת {{previous}} במחזור החיוב הקודם"
+    },
+    "categorySpendAboveTypical": {
+      "title": "הוצאה גבוהה מהרגיל ב{{category}}",
+      "description": "הוצאתם {{current}} על {{category}} החודש, לעומת כ-{{typical}} בדרך כלל"
+    },
+    "savingsGoalBehind": {
+      "title": "{{name}} מפגר בקצב",
+      "description": "עבר תאריך היעד ונותרו {{amount}} להשלמת החיסכון"
+    },
+    "excessCashAvailable": {
+      "title": "יש לכם עודף פנוי",
+      "description": "פנוי באמת {{amount}} מעבר להתחייבויות הידועות — אפשר להאיץ את יעד החיסכון"
+    },
+    "lowBalanceWarning": {
+      "title": "היתרה הפנויה מתקרבת לאפס",
+      "negativeTitle": "היתרה הפנויה כבר שלילית",
+      "description": "פנוי באמת: {{amount}}"
+    },
+    "badgeCritical": "{{count}} פריטים דורשים טיפול",
+    "openAction": "לפתוח ←",
+    "groupCount": "{{label}} · {{count}}",
+    "subtitle": "מתעדכן לפי הנתונים. כשהבעיה נפתרת, ההתראה נעלמת."
   },
   "household": {
     "errors": {
@@ -681,6 +1258,12 @@
       "alreadyInHousehold": "אתם כבר חברים במשק בית אחר",
       "inviteFailed": "שליחת ההזמנה נכשלה. נסו שוב",
       "bug": "משהו השתבש. נסו שוב"
+    },
+    "lens": {
+      "controlLabel": "תצוגת משק הבית",
+      "shared": "שלנו",
+      "me": "שלי",
+      "partner": "שלך"
     }
   },
   "settings": {
@@ -731,9 +1314,10 @@
       "title": "ניהול כספים",
       "accounts": "חשבונות",
       "categories": "קטגוריות וכללי סיווג",
-      "recurring": "הוראות קבע",
+      "recurring": "חיובים קבועים",
       "goals": "יעדי חיסכון",
-      "obligations": "התחייבויות עתידיות"
+      "obligations": "התחייבויות עתידיות",
+      "installments": "רכישות בתשלומים"
     },
     "appearance": {
       "title": "מראה"

@@ -1,8 +1,9 @@
 import { describe, expect, it } from '@jest/globals'
-import { buildFinancialAlerts, type BuildFinancialAlertsInput } from './buildFinancialAlerts'
+import { buildFinancialAlerts, type BuildFinancialAlertsInput, type SavingsGoalAlertInput } from './buildFinancialAlerts'
 import type { CashFlowForecastResult } from '../cashflow/calculateCashFlowForecast'
 import type { PlannedObligationForecastInput } from '../cashflow/calculateSafeToSpend'
 import type { PriceIncreaseDetection } from '@/features/recurring/lib/priceIncreaseDetection'
+import type { CreditCardCycleAccountInput } from './detectHighCreditCardCycleSpend'
 import type { BudgetCategoryProgress } from '@/types/app'
 
 const TODAY = '2026-08-16'
@@ -71,6 +72,33 @@ function baseInput(overrides: Partial<BuildFinancialAlertsInput> = {}): BuildFin
     obligations: [],
     priceIncreaseDetections: [],
     budgetCategories: [],
+    creditCardCycles: [],
+    categorySpend: null,
+    savingsGoals: [],
+    safeToSpendAgorot: null,
+    ...overrides,
+  }
+}
+
+function creditCardCycleAccount(
+  overrides: Partial<CreditCardCycleAccountInput> = {}
+): CreditCardCycleAccountInput {
+  return {
+    accountId: 'acc-cc-1',
+    accountName: 'ויזה',
+    billingCycleDay: 10,
+    transactions: [],
+    ...overrides,
+  }
+}
+
+function savingsGoal(overrides: Partial<SavingsGoalAlertInput> = {}): SavingsGoalAlertInput {
+  return {
+    id: 'goal-1',
+    name: 'קרן חירום',
+    currentAgorot: 100000,
+    targetAgorot: 500000,
+    targetDate: null,
     ...overrides,
   }
 }
@@ -95,6 +123,12 @@ describe('buildFinancialAlerts', () => {
   it('produces a warning alert for an obligation due in 3 days', () => {
     const alerts = buildFinancialAlerts(baseInput({ obligations: [obligation({ dueDate: '2026-08-19' })] }))
     expect(alerts[0]?.severity).toBe('warning')
+  })
+
+  it('formats the due date in the description as DD.MM.YYYY, never the raw ISO string', () => {
+    const alerts = buildFinancialAlerts(baseInput({ obligations: [obligation({ dueDate: '2026-08-19' })] }))
+    expect(alerts[0]?.description).toContain('19.08.2026')
+    expect(alerts[0]?.description).not.toContain('2026-08-19')
   })
 
   it('produces an info alert for an obligation due in 7 days', () => {
@@ -125,6 +159,14 @@ describe('buildFinancialAlerts', () => {
     expect(alerts[0]?.type).toBe('forecast_shortfall')
     expect(alerts[0]?.severity).toBe('critical')
     expect(alerts[0]?.amountAgorot).toBe(12400)
+  })
+
+  it('formats the shortfall date in the description as DD.MM.YYYY, never the raw ISO string', () => {
+    const alerts = buildFinancialAlerts(
+      baseInput({ forecast: forecast({ firstShortfallDate: '2026-08-18', lowestBalanceAgorot: -12400 }) })
+    )
+    expect(alerts[0]?.description).toContain('18.08.2026')
+    expect(alerts[0]?.description).not.toContain('2026-08-18')
   })
 
   it('reports the balance on firstShortfallDate itself, not the horizon-wide lowest balance', () => {
@@ -299,5 +341,205 @@ describe('buildFinancialAlerts', () => {
     expect(alerts.map((a) => a.type).sort()).toEqual(
       ['budget_risk', 'forecast_shortfall', 'recurring_price_increase', 'upcoming_obligation'].sort()
     )
+  })
+
+  describe('high credit-card cycle spend', () => {
+    // billingCycleDay 10, TODAY = 2026-08-16 -> current open cycle is
+    // 2026-08-11..2026-09-10, previous CLOSED cycle is 2026-07-11..2026-08-10.
+    it('fires a warning when current-cycle spend-so-far already exceeds the previous complete cycle by threshold', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          creditCardCycles: [
+            creditCardCycleAccount({
+              transactions: [
+                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false }, // previous cycle: ₪1000
+                { amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // current cycle: ₪1400
+              ],
+            }),
+          ],
+        })
+      )
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.type).toBe('high_credit_card_cycle_spend')
+      expect(alerts[0]?.severity).toBe('warning')
+      expect(alerts[0]?.amountAgorot).toBe(40000)
+    })
+
+    it('fires critical for a much larger excess', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          creditCardCycles: [
+            creditCardCycleAccount({
+              transactions: [
+                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+                { amount_agorot: -200000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // ₪2000, +100%
+              ],
+            }),
+          ],
+        })
+      )
+      expect(alerts[0]?.severity).toBe('critical')
+    })
+
+    it('produces no alert with no previous-cycle spend at all (no baseline to compare against)', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          creditCardCycles: [
+            creditCardCycleAccount({
+              transactions: [{ amount_agorot: -140000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }],
+            }),
+          ],
+        })
+      )
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert when the excess is below the meaningful threshold (false-positive prevention)', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          creditCardCycles: [
+            creditCardCycleAccount({
+              transactions: [
+                { amount_agorot: -100000, txn_date: '2026-07-20', transfer_id: null, is_excluded: false },
+                { amount_agorot: -110000, txn_date: '2026-08-12', transfer_id: null, is_excluded: false }, // +10%, ₪100 excess
+              ],
+            }),
+          ],
+        })
+      )
+      expect(alerts).toEqual([])
+    })
+  })
+
+  describe('category spending above typical', () => {
+    it('fires when this month already exceeds the historical median by threshold', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          categorySpend: {
+            currentMonth: [{ categoryId: 'cat-groceries', categoryNameHe: 'מכולת', spentAgorot: 50000 }],
+            historicalMonths: [
+              [{ categoryId: 'cat-groceries', categoryNameHe: 'מכולת', spentAgorot: 20000 }],
+              [{ categoryId: 'cat-groceries', categoryNameHe: 'מכולת', spentAgorot: 22000 }],
+            ],
+          },
+        })
+      )
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.type).toBe('category_spend_above_typical')
+      expect(alerts[0]?.severity).toBe('warning')
+    })
+
+    it('produces no alert when spend is close to typical (false-positive prevention)', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          categorySpend: {
+            currentMonth: [{ categoryId: 'cat-groceries', categoryNameHe: 'מכולת', spentAgorot: 25000 }],
+            historicalMonths: [
+              [{ categoryId: 'cat-groceries', categoryNameHe: 'מכולת', spentAgorot: 20000 }],
+              [{ categoryId: 'cat-groceries', categoryNameHe: 'מכולת', spentAgorot: 22000 }],
+            ],
+          },
+        })
+      )
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert when categorySpend is unavailable (that source errored)', () => {
+      const alerts = buildFinancialAlerts(baseInput({ categorySpend: null }))
+      expect(alerts).toEqual([])
+    })
+  })
+
+  describe('savings goal behind schedule', () => {
+    it('fires a warning for an incomplete goal whose target date has already passed', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({ savingsGoals: [savingsGoal({ targetDate: '2026-08-01' })] })
+      )
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.type).toBe('savings_goal_behind')
+      expect(alerts[0]?.severity).toBe('warning')
+      expect(alerts[0]?.amountAgorot).toBe(400000)
+    })
+
+    it('produces no alert for a goal with a future target date', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({ savingsGoals: [savingsGoal({ targetDate: '2026-12-01' })] })
+      )
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert for a goal with no target date at all (nothing deterministic to compare against)', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({ savingsGoals: [savingsGoal({ targetDate: null })] })
+      )
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert for a completed goal, even with an overdue target date', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          savingsGoals: [savingsGoal({ currentAgorot: 500000, targetAgorot: 500000, targetDate: '2020-01-01' })],
+        })
+      )
+      expect(alerts).toEqual([])
+    })
+  })
+
+  describe('excess cash available to accelerate a savings goal', () => {
+    it('fires info when safe-to-spend exceeds the meaningful threshold and an incomplete goal exists', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({ safeToSpendAgorot: 250000, savingsGoals: [savingsGoal()] })
+      )
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.type).toBe('excess_cash_available')
+      expect(alerts[0]?.severity).toBe('info')
+    })
+
+    it('produces no alert when there is no incomplete goal to accelerate', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({
+          safeToSpendAgorot: 250000,
+          savingsGoals: [savingsGoal({ currentAgorot: 500000, targetAgorot: 500000 })],
+        })
+      )
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert when safe-to-spend is below the meaningful threshold (false-positive prevention)', () => {
+      const alerts = buildFinancialAlerts(
+        baseInput({ safeToSpendAgorot: 50000, savingsGoals: [savingsGoal()] })
+      )
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert when safeToSpendAgorot is unavailable (null, that source errored)', () => {
+      const alerts = buildFinancialAlerts(baseInput({ safeToSpendAgorot: null, savingsGoals: [savingsGoal()] }))
+      expect(alerts).toEqual([])
+    })
+  })
+
+  describe('low-balance warning (current state, before going negative)', () => {
+    it('fires critical when safe-to-spend is already negative', () => {
+      const alerts = buildFinancialAlerts(baseInput({ safeToSpendAgorot: -5000 }))
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.type).toBe('low_balance_warning')
+      expect(alerts[0]?.severity).toBe('critical')
+      expect(alerts[0]?.amountAgorot).toBe(-5000)
+    })
+
+    it('fires warning when safe-to-spend is positive but below the low-balance threshold', () => {
+      const alerts = buildFinancialAlerts(baseInput({ safeToSpendAgorot: 10000 }))
+      expect(alerts[0]?.severity).toBe('warning')
+    })
+
+    it('produces no alert once safe-to-spend clears the low-balance threshold', () => {
+      const alerts = buildFinancialAlerts(baseInput({ safeToSpendAgorot: 50000 }))
+      expect(alerts).toEqual([])
+    })
+
+    it('produces no alert when safeToSpendAgorot is unavailable (null, that source errored)', () => {
+      const alerts = buildFinancialAlerts(baseInput({ safeToSpendAgorot: null }))
+      expect(alerts).toEqual([])
+    })
   })
 })

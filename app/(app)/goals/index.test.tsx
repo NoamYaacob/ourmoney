@@ -24,6 +24,9 @@ jest.mock('@/features/household/hooks/useHousehold', () => ({
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
   useAccounts: () => ({ accounts: [{ id: 'acc-1', name: 'עו״ש', type: 'checking' }], isLoading: false }),
 }))
+jest.mock('@/features/accounts/hooks/useAccountBalances', () => ({
+  useAccountBalances: () => ({ balances: {}, isLoading: false }),
+}))
 const mockCreateGoalMutate = jest.fn(
   (_variables: unknown, callbacks?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
     callbacks?.onSuccess?.()
@@ -34,8 +37,24 @@ jest.mock('@/features/savings/hooks/useCreateSavingsGoal', () => ({
 }))
 
 const GOALS = [
-  { id: 'goal-1', name: 'קרן חירום', current_agorot: 100000, target_agorot: 500000, is_completed: false },
-  { id: 'goal-2', name: 'חופשה', current_agorot: 20000, target_agorot: 300000, is_completed: false },
+  {
+    id: 'goal-1',
+    name: 'קרן חירום',
+    current_agorot: 100000,
+    target_agorot: 500000,
+    is_completed: false,
+    progress_source: 'manual',
+    account_id: null,
+  },
+  {
+    id: 'goal-2',
+    name: 'חופשה',
+    current_agorot: 20000,
+    target_agorot: 300000,
+    is_completed: false,
+    progress_source: 'manual',
+    account_id: null,
+  },
 ]
 const mockUseSavingsGoals = jest.fn()
 jest.mock('@/features/savings/hooks/useSavingsGoals', () => ({
@@ -50,7 +69,7 @@ describe('Goals list', () => {
   // UX-completeness audit P1 fix: account_id/target_date were writable by
   // useCreateSavingsGoal but there was no UI field for either.
   it('lets the create form set an account and an optional target date, sending both on create', async () => {
-    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null, hasData: true })
 
     const { getByText, getByLabelText, getByPlaceholderText } = await render(<Goals />)
 
@@ -69,7 +88,7 @@ describe('Goals list', () => {
   })
 
   it('defaults to no target date, sending targetDate: null on create', async () => {
-    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null })
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null, hasData: true })
 
     const { getByText, getByLabelText, getByPlaceholderText } = await render(<Goals />)
 
@@ -81,16 +100,45 @@ describe('Goals list', () => {
     expect(mockCreateGoalMutate).toHaveBeenCalledWith(expect.objectContaining({ targetDate: null }), expect.anything())
   })
 
-  it('reverses the desktop 2-column goals grid so the first goal renders on the right', async () => {
-    mockUseSavingsGoals.mockReturnValue({ goals: GOALS, isLoading: false, error: null })
+  // Part 4/21 of the product-quality audit: this form had no way back once
+  // opened — every sibling add-form (Obligations, Recurring, Installments,
+  // Accounts) pairs submit with a cancel that closes the form.
+  it('offers a way to cancel out of the add form without creating anything', async () => {
+    mockUseSavingsGoals.mockReturnValue({ goals: [], isLoading: false, error: null, hasData: true })
+
+    const { getByText, getByPlaceholderText, queryByText } = await render(<Goals />)
+
+    await fireEvent.press(getByText('הוספת יעד חיסכון'))
+    await fireEvent.changeText(getByPlaceholderText('לדוגמה: חופשה משפחתית'), 'טיול')
+    await fireEvent.press(getByText('ביטול'))
+
+    expect(mockCreateGoalMutate).not.toHaveBeenCalled()
+    expect(queryByText('ביטול')).toBeNull()
+    expect(getByText('הוספת יעד חיסכון')).toBeTruthy()
+  })
+
+  // The 2-column grid is gone. Both frames draw one column of goal rows
+  // inside a single card, each carrying the thing the grid never said: how
+  // it is going. Every figure in that sentence comes from
+  // calculateSavingsPace, which the screen already ran and then ignored.
+  it('says how each goal is going, not just how full its bar is', async () => {
+    mockUseSavingsGoals.mockReturnValue({ goals: GOALS, isLoading: false, error: null, hasData: true })
+
+    const { getByText, getAllByText } = await render(<Goals />)
+
+    expect(getByText('קרן חירום')).toBeTruthy()
+    // A percent per goal, and a pace chip per goal.
+    expect(getAllByText(/^\d+%$/).length).toBe(GOALS.length)
+  })
+
+  it('states plainly that a goal with no target date has no projection', async () => {
+    // calculateSavingsPace returns null without a target date, and the row
+    // must not invent one — "hide instead of inventing precision".
+    const noDate = [{ ...GOALS[0], id: 'g-nodate', name: 'ללא תאריך', target_date: null }]
+    mockUseSavingsGoals.mockReturnValue({ goals: noDate, isLoading: false, error: null, hasData: true })
 
     const { getByText } = await render(<Goals />)
 
-    let node = getByText('קרן חירום').parent
-    while (node && !(node.props.className as string | undefined)?.includes('w-[48%]')) {
-      node = node.parent
-    }
-    const gridContainer = node?.parent
-    expect(gridContainer?.props.className as string).toContain('web:desktop:flex-row-reverse')
+    expect(getByText(/לא נקבע תאריך יעד/)).toBeTruthy()
   })
 })

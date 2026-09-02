@@ -4,6 +4,8 @@
 // treatment — still the original bottom sheet below that breakpoint.
 import { describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
+import type { ComponentProps } from 'react'
+import i18n from '@/i18n'
 import { Select } from './Select'
 
 jest.mock('@expo/vector-icons', () => ({
@@ -44,16 +46,20 @@ function findModal(container: { queryAll: (predicate: (i: TestInstanceLike) => b
   return container?.queryAll((instance) => instance.type === 'Modal')[0]
 }
 
-async function renderOpenSelect(sheetTitle?: string) {
+async function renderOpenSelect(
+  sheetTitle?: string,
+  overrides: Partial<{ options: typeof OPTIONS; emptyState: ComponentProps<typeof Select>['emptyState'] }> = {},
+) {
   const result = await render(
     <Select
       variant="row"
       label="pick"
-      options={OPTIONS}
+      options={overrides.options ?? OPTIONS}
       value={null}
       onChange={jest.fn()}
       placeholder="choose"
       sheetTitle={sheetTitle}
+      emptyState={overrides.emptyState}
     />,
   )
   await fireEvent.press(result.getByLabelText('pick'))
@@ -131,5 +137,49 @@ describe('Select desktop popover', () => {
     // or open state stuck.
     await fireEvent.press(getByLabelText('pick'))
     expect(getByText('Option 1')).toBeTruthy()
+  })
+})
+
+// RRR §16 P1-9: an empty `options` array previously rendered the sheet
+// (desktop popover AND both mobile bottom-sheet variants) with nothing in
+// it at all — no message, no way out. A brand-new household's very first
+// "add a transaction" attempt dead-ends exactly here (no accounts yet).
+describe('Select — empty options list', () => {
+  it('renders a real message instead of a blank sheet, in the desktop popover', async () => {
+    mockWidth = 1440
+    const { getByText } = await renderOpenSelect('Choose', { options: [] })
+
+    expect(getByText(i18n.t('common.select.empty'))).toBeTruthy()
+  })
+
+  it('renders a real message instead of a blank sheet, in the mobile row-variant bottom sheet', async () => {
+    mockWidth = 375
+    const { getByText } = await renderOpenSelect('Choose', { options: [] })
+
+    expect(getByText(i18n.t('common.select.empty'))).toBeTruthy()
+  })
+
+  it('renders a real message instead of a blank sheet, in the mobile box-variant bottom sheet (no variant prop)', async () => {
+    mockWidth = 375
+    const { getByLabelText, getByText } = await render(
+      <Select label="pick" options={[]} value={null} onChange={jest.fn()} placeholder="choose" />,
+    )
+    await fireEvent.press(getByLabelText('pick'))
+
+    expect(getByText(i18n.t('common.select.empty'))).toBeTruthy()
+  })
+
+  it('renders the caller-provided message, hint, and a working recovery action when supplied', async () => {
+    mockWidth = 1440
+    const onAction = jest.fn()
+    const { getByText } = await renderOpenSelect('Choose', {
+      options: [],
+      emptyState: { message: 'עדיין אין חשבונות.', hint: 'הוסיפו חשבון כדי להתחיל.', actionLabel: 'הוספת חשבון', onAction },
+    })
+
+    expect(getByText('עדיין אין חשבונות.')).toBeTruthy()
+    expect(getByText('הוסיפו חשבון כדי להתחיל.')).toBeTruthy()
+    await fireEvent.press(getByText('הוספת חשבון'))
+    expect(onAction).toHaveBeenCalledTimes(1)
   })
 })

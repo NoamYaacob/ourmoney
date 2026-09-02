@@ -1,5 +1,5 @@
 // Supabase-aware composition layer only — same shape as useSafeToSpend.ts,
-// reusing the exact same four hooks (same TanStack Query keys, so calling
+// reusing the exact same seven hooks (same TanStack Query keys, so calling
 // both this hook and useSafeToSpend on one screen never issues a duplicate
 // network request — they share the same cache entries). All computation
 // happens in lib/engines/cashflow/calculateCashFlowForecast.ts.
@@ -8,8 +8,13 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useAccountBalances } from '@/features/accounts/hooks/useAccountBalances'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useRecurringTransactions } from '@/features/recurring/hooks/useRecurringTransactions'
-import { sumEligibleCashAgorot } from '@/lib/engines/cashflow/eligibleCashAccounts'
-import { getDayRangeHorizon, type DayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
+import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
+import { useTransactions } from '@/features/transactions/hooks/useTransactions'
+import { assembleForecastInputs } from '@/lib/engines/cashflow/assembleForecastInputs'
+import { CREDIT_CARD_CYCLE_LOOKBACK_DAYS } from '@/lib/engines/cashflow/creditCardCycleReservation'
+import { addDays, getDayRangeHorizon, type DayRangeHorizon } from '@/lib/engines/cashflow/horizonRange'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { calculateCashFlowForecast, type CashFlowForecastResult } from '@/lib/engines/cashflow/calculateCashFlowForecast'
 
 export interface UseCashFlowForecastResult {
@@ -17,54 +22,128 @@ export interface UseCashFlowForecastResult {
   horizon: DayRangeHorizon
   isLoading: boolean
   error: Error | null
+  // See useSafeToSpend.ts's identical field for the full rationale: `result`
+  // is always fully computed from each source's own defaulted data, so it
+  // can never distinguish "nothing has loaded yet" from "loaded, and
+  // happens to be all zeros." True only once every one of the seven composed
+  // sources has resolved with data at least once; stays true through a
+  // later background refetch failure.
+  hasData: boolean
+  refetch: () => void
 }
 
 export function useCashFlowForecast(
   householdId: string | null | undefined,
   horizonDays: number
 ): UseCashFlowForecastResult {
-  const { accounts, isLoading: isAccountsLoading, error: accountsError } = useAccounts(householdId)
-  const { balances, isLoading: isBalancesLoading, error: balancesError } = useAccountBalances(householdId)
-  const { obligations, isLoading: isObligationsLoading, error: obligationsError } = usePlannedObligations(householdId)
+  const {
+    accounts,
+    isLoading: isAccountsLoading,
+    error: accountsError,
+    hasData: hasAccountsData,
+    refetch: refetchAccounts,
+  } = useAccounts(householdId)
+  const {
+    balances,
+    isLoading: isBalancesLoading,
+    error: balancesError,
+    hasData: hasBalancesData,
+    refetch: refetchBalances,
+  } = useAccountBalances(householdId)
+  const {
+    obligations,
+    isLoading: isObligationsLoading,
+    error: obligationsError,
+    hasData: hasObligationsData,
+    refetch: refetchObligations,
+  } = usePlannedObligations(householdId)
   const {
     recurringTransactions,
     isLoading: isRecurringLoading,
     error: recurringError,
+    hasData: hasRecurringData,
+    refetch: refetchRecurring,
   } = useRecurringTransactions(householdId)
+  const {
+    plans: installmentPlans,
+    isLoading: isInstallmentPlansLoading,
+    error: installmentPlansError,
+    hasData: hasInstallmentPlansData,
+    refetch: refetchInstallmentPlans,
+  } = useInstallmentPlans(householdId)
+  const {
+    maxMaterializedIndices,
+    isLoading: isMaterializedCountsLoading,
+    error: materializedCountsError,
+    hasData: hasMaterializedCountsData,
+    refetch: refetchMaterializedCounts,
+  } = useInstallmentMaterializedCounts(householdId)
+
+  const today = localDateString()
+  const {
+    transactions: recentTransactions,
+    isLoading: isRecentTransactionsLoading,
+    error: recentTransactionsError,
+    hasData: hasRecentTransactionsData,
+    refetch: refetchRecentTransactions,
+  } = useTransactions(householdId, { periodStart: addDays(today, -CREDIT_CARD_CYCLE_LOOKBACK_DAYS), periodEnd: today })
 
   const horizon = getDayRangeHorizon(horizonDays)
-  const startingBalanceAgorot = sumEligibleCashAgorot(accounts, balances)
+  const { availableCashAgorot: startingBalanceAgorot, ...engineInputs } = assembleForecastInputs(
+    {
+      accounts,
+      balances,
+      obligations,
+      recurringTransactions,
+      installmentPlans,
+      maxMaterializedIndices,
+      transactions: recentTransactions,
+    },
+    today
+  )
 
   const result = calculateCashFlowForecast({
+    ...engineInputs,
     startingBalanceAgorot,
     startDate: horizon.start,
     endDate: horizon.end,
-    obligations: obligations.map((o) => ({
-      id: o.id,
-      name: o.name,
-      amountAgorot: o.amount_agorot,
-      dueDate: o.due_date,
-      status: o.status,
-      categoryId: o.category_id,
-      accountId: o.account_id,
-    })),
-    recurringTemplates: recurringTransactions.map((r) => ({
-      id: r.id,
-      description: r.description,
-      amountAgorot: r.amount_agorot,
-      frequency: r.frequency,
-      dayOfMonth: r.day_of_month,
-      nextDueDate: r.next_due_date,
-      isActive: r.is_active,
-      categoryId: r.category_id,
-      accountId: r.account_id,
-    })),
   })
 
   return {
     result,
     horizon,
-    isLoading: isAccountsLoading || isBalancesLoading || isObligationsLoading || isRecurringLoading,
-    error: accountsError ?? balancesError ?? obligationsError ?? recurringError,
+    isLoading:
+      isAccountsLoading ||
+      isBalancesLoading ||
+      isObligationsLoading ||
+      isRecurringLoading ||
+      isInstallmentPlansLoading ||
+      isMaterializedCountsLoading ||
+      isRecentTransactionsLoading,
+    error:
+      accountsError ??
+      balancesError ??
+      obligationsError ??
+      recurringError ??
+      installmentPlansError ??
+      materializedCountsError ??
+      recentTransactionsError,
+    hasData:
+      hasAccountsData &&
+      hasBalancesData &&
+      hasObligationsData &&
+      hasRecurringData &&
+      hasInstallmentPlansData &&
+      hasMaterializedCountsData &&
+      hasRecentTransactionsData,
+    refetch: () => {
+      void refetchAccounts()
+      void refetchBalances()
+      void refetchObligations()
+      void refetchRecurring()
+      void refetchInstallmentPlans()
+      void refetchMaterializedCounts()
+      void refetchRecentTransactions()
+    },
   }
 }

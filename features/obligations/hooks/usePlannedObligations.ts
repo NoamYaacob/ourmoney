@@ -4,6 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { diagnoseQuery } from '@/lib/diagnostics/queryDiagnostics'
 import type { PlannedObligation } from '@/types/app'
 
 export function plannedObligationsQueryKey(householdId: string | null | undefined) {
@@ -14,11 +15,9 @@ export function usePlannedObligations(householdId: string | null | undefined) {
   const query = useQuery({
     queryKey: plannedObligationsQueryKey(householdId),
     queryFn: async (): Promise<PlannedObligation[]> => {
-      const { data, error } = await supabase
-        .from('planned_obligations')
-        .select('*')
-        .eq('household_id', householdId as string)
-        .order('due_date', { ascending: true })
+      const { data, error } = await diagnoseQuery('usePlannedObligations', 'planned_obligations', 'select', { householdId }, () =>
+        supabase.from('planned_obligations').select('*').eq('household_id', householdId as string).order('due_date', { ascending: true })
+      )
       if (error) throw error
       return data as PlannedObligation[]
     },
@@ -29,6 +28,10 @@ export function usePlannedObligations(householdId: string | null | undefined) {
     obligations: query.data ?? [],
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // See features/accounts/hooks/useAccounts.ts's identical field: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
     // Exposed for the detail screen's conflict-recovery flow — a failed
     // compare-and-swap means the mutation never invalidated this query, so
     // "load latest version" needs an explicit refetch, not a cache read

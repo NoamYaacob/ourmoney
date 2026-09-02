@@ -7,14 +7,24 @@
 // actual detection work as a pure function.
 
 import { useTransactions } from '@/features/transactions/hooks/useTransactions'
-import { detectPriceIncreases, type RecurringChargeObservation } from '../lib/priceIncreaseDetection'
-import type { PriceIncreaseDetection, PriceIncreaseThreshold } from '../lib/priceIncreaseDetection'
+import {
+  detectPriceIncreases,
+  type RecurringChargeObservation,
+  type PriceIncreaseDetection,
+  type PriceIncreaseThreshold,
+} from '../lib/priceIncreaseDetection'
 
 export function usePriceIncreaseDetections(
   householdId: string | null | undefined,
   threshold?: PriceIncreaseThreshold
-): { detections: PriceIncreaseDetection[]; isLoading: boolean; error: Error | null } {
-  const { transactions, isLoading, error } = useTransactions(householdId)
+): {
+  detections: PriceIncreaseDetection[]
+  isLoading: boolean
+  error: Error | null
+  hasData: boolean
+  refetch: () => void
+} {
+  const { transactions, isLoading, error, hasData, refetch } = useTransactions(householdId)
 
   // Migration 008 (ADR-035): a transfer leg is never a recurring charge —
   // excluded before detection rather than relying on detectPriceIncreases
@@ -38,5 +48,7 @@ export function usePriceIncreaseDetections(
     detections: detectPriceIncreases(observations, threshold),
     isLoading,
     error,
+    hasData,
+    refetch,
   }
 }

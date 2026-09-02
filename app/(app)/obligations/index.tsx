@@ -18,12 +18,16 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useCategories } from '@/features/categories/hooks/useCategories'
 import { usePlannedObligations } from '@/features/obligations/hooks/usePlannedObligations'
 import { useCreatePlannedObligation } from '@/features/obligations/hooks/useCreatePlannedObligation'
-import { filterUpcomingObligations, isPastDue } from '@/features/obligations/lib/upcomingObligations'
+import { filterUpcomingObligations } from '@/features/obligations/lib/upcomingObligations'
 import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { formatDateDisplay } from '@/lib/dates/format'
 import { localDateString } from '@/features/budgets/lib/budgetPeriod'
 import { categoryIconName } from '@/features/categories/lib/categoryIcon'
 import { CategoryIcon } from '@/features/categories/components/CategoryIcon'
+import { CommitmentRow } from '@/components/ui/CommitmentRow'
+import { commitmentUrgency } from '@/features/dashboard/lib/commitmentUrgency'
 import { Screen } from '@/components/ui/Screen'
+import { PlanningTabs } from '@/components/ui/PlanningTabs'
 import { Card } from '@/components/ui/Card'
 import { Divider } from '@/components/ui/Divider'
 import { Input } from '@/components/ui/Input'
@@ -34,6 +38,9 @@ import { DatePickerField } from '@/components/ui/DatePickerField'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { HeroPanel, HeroLabel } from '@/components/ui/HeroPanel'
+import { Money } from '@/components/ui/Money'
+import { INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
 
 export default function Obligations() {
   const { t } = useTranslation()
@@ -42,7 +49,7 @@ export default function Obligations() {
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
   const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
   const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
-  const { obligations, isLoading: isObligationsLoading, error } = usePlannedObligations(householdId)
+  const { obligations, isLoading: isObligationsLoading, error, hasData, refetch } = usePlannedObligations(householdId)
   const createObligation = useCreatePlannedObligation(householdId)
 
   const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
@@ -113,6 +120,7 @@ export default function Obligations() {
   )
   const upcomingById = new Map(obligations.map((o) => [o.id, o]))
   const today = localDateString()
+  const upcomingTotalAgorot = upcoming.reduce((sum, item) => sum + (upcomingById.get(item.id)?.amount_agorot ?? 0), 0)
 
   const history = obligations
     .filter((o) => o.status !== 'upcoming')
@@ -123,77 +131,133 @@ export default function Obligations() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen keyboardAvoiding width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+    <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
+      {/* Part 29 of the product-quality audit: hidden from tablet width up
+          now, not just desktop — the hero panel below picks up the same
+          text as its own HeroLabel from that width too, so this would
+          otherwise duplicate it rather than genuinely add a heading. */}
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:tablet:hidden">
         {t('obligations.title')}
       </Text>
 
-      {error ? (
-        <ErrorMessage message={t('obligations.errors.generic')} />
-      ) : isLoading || isObligationsLoading ? (
+      <PlanningTabs active="obligations" />
+
+      {isLoading || isObligationsLoading ? (
         <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('obligations.errors.generic')} onRetry={refetch} />
       ) : (
         <>
-          {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} />}
-          {/* Responsive/desktop pass: same 2-column card grid as
-              accounts/recurring/goals once there's more than one obligation,
-              desktop only — `w-[48%]` + `justify-between` on a `flex-row
-              flex-wrap` container is a calc()-free way to get two even
-              columns in Yoga/RN's flexbox. Mobile/tablet keep the original
-              single-column list untouched. */}
-          <View
-            className={
-              upcoming.length > 1 ? 'web:desktop:flex-row-reverse web:desktop:flex-wrap web:desktop:justify-between' : undefined
-            }
-          >
-            {upcoming.map((item) => {
-              const obligation = upcomingById.get(item.id)
-              if (!obligation) return null
-              const category = obligation.category_id ? categories.find((c) => c.id === obligation.category_id) : undefined
-              const pastDue = isPastDue(obligation.due_date, today)
-              return (
-                <Pressable
-                  key={obligation.id}
-                  onPress={() => router.push(`/obligations/${obligation.id}`)}
-                  accessibilityRole="button"
-                  className={upcoming.length > 1 ? 'mb-2 web:desktop:w-[48%]' : 'mb-2'}
-                >
-                  <Card>
-                    <View className="flex-row items-center justify-between web:flex-row-reverse">
-                      <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
-                        <CategoryIcon icon={category?.icon} size="sm" />
-                        <View className="flex-1">
-                          <Text className="text-base font-semibold text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                            {obligation.name}
-                          </Text>
-                          <Text
-                            className={`text-xs ${
-                              pastDue ? 'text-danger-light dark:text-danger-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'
-                            }`}
-                          >
-                            {obligation.due_date}
-                            {pastDue ? ` · ${t('obligations.pastDue')}` : ''}
-                            {' · '}
-                            {obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
-                          </Text>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('obligations.errors.generic')} onRetry={refetch} />
+            </View>
+          )}
+          {/* Desktop Claude Design pass: the mockup's dark summary card,
+              stating what's already committed before any decision is made
+              this month — desktop only. The figure is a plain sum of the
+              upcoming obligations already loaded below (no new query, no
+              cross-domain total): Recurring gets the identical treatment
+              for its own domain (see recurring/index.tsx), each screen
+              scoped to data it already owns rather than one shared
+              cross-domain "monthly commitment" figure, which would need
+              new queries on every one of these three routes for a single
+              decorative card. */}
+          {upcoming.length > 0 && (
+            // Part 3A/17 of the product-quality audit: this panel was
+            // pinned to a fixed 340px while its sibling list card below (and
+            // Accounts' own hero card) span the full content column — on a
+            // wide desktop viewport that left ~780px of empty canvas beside
+            // a small floating card, exactly the pattern flagged. Full
+            // width now, matching every other panel on this content column.
+            //
+            // Part 29: also shown from tablet width up, not just desktop —
+            // below this width change, the tablet tier showed the plain
+            // mobile list with this panel hidden and nothing else to fill
+            // the rest of a 768-1199px canvas, the same dead-space pattern
+            // Home's own tablet pass (Part 23) already fixed by widening
+            // existing content rather than inventing new panels.
+            <View className="hidden web:tablet:mb-5 web:tablet:flex">
+              <HeroPanel>
+                <HeroLabel>{t('obligations.title')}</HeroLabel>
+                <View className="web:desktop:mt-1.5">
+                  <Money agorot={upcomingTotalAgorot} size="display" tone="hero" />
+                </View>
+                <Text className="web:desktop:mt-1 text-caption font-sans text-heroInkMuted-light">
+                  {t('obligations.summarySubtitle', { count: upcoming.length, amount: formatILS(upcomingTotalAgorot) })}
+                </Text>
+              </HeroPanel>
+            </View>
+          )}
+
+          {upcoming.length === 0 && <EmptyState iconName="calendar-outline" message={t('obligations.empty')} hint={t('obligations.emptyHint')} />}
+          {/* Checkpoint 6: grouped by timing, not one flat chronological
+              list — a household opening this screen wants "what's actually
+              urgent right now" before "what's coming eventually," and
+              commitmentUrgency already computes exactly that per row (the
+              same function a dashboard alert about the same charge would
+              use, so the two can never disagree). This is presentation of
+              already-computed data, not a new engine — a shared urgency
+              rail was explicitly considered and rejected (design-review/
+              SYSTEM.md §6): with the full list already visible and short,
+              a rail would just re-sum numbers already on screen.
+              One continuous panel, group headers instead of a second
+              bordered box per group — SYSTEM.md §3's "one Level-1 panel per
+              section" rule. */}
+          {upcoming.length > 0 && (() => {
+            const rows = upcoming
+              .map((item) => upcomingById.get(item.id))
+              .filter((o): o is NonNullable<typeof o> => o !== undefined)
+              .map((obligation) => ({ obligation, urgency: commitmentUrgency(today, obligation.due_date) }))
+            const groups: { key: 'overdue' | 'thisWeek' | 'later'; rows: typeof rows }[] = [
+              { key: 'overdue' as const, rows: rows.filter((r) => r.urgency.daysUntil < 0) },
+              { key: 'thisWeek' as const, rows: rows.filter((r) => r.urgency.daysUntil >= 0 && r.urgency.daysUntil <= 7) },
+              { key: 'later' as const, rows: rows.filter((r) => r.urgency.daysUntil > 7) },
+            ].filter((g) => g.rows.length > 0)
+
+            return (
+              <View className="overflow-hidden rounded-card border border-border-light bg-surfaceMuted-light px-4 dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:border-border-light/70 web:desktop:shadow-sm dark:web:desktop:border-border-dark/70">
+                {groups.map((group, groupIndex) => (
+                  <View key={group.key} className={groupIndex > 0 ? 'mt-1' : undefined}>
+                    <Text
+                      className={`text-meta font-heeboBold text-inkMuted-light dark:text-inkMuted-dark ${
+                        groupIndex > 0 ? 'border-t border-divider-light pb-2 pt-4 dark:border-divider-dark' : 'pb-2 pt-4'
+                      }`}
+                    >
+                      {t(`obligations.groups.${group.key}`)}
+                    </Text>
+                    {group.rows.map(({ obligation, urgency }, index) => {
+                      const chipLabel =
+                        urgency.labelKey === 'inDays'
+                          ? t('home.next.inDays', { count: urgency.count })
+                          : t(`home.next.${urgency.labelKey}`)
+                      return (
+                        <View key={obligation.id} className={index > 0 ? 'border-t border-divider-light dark:border-divider-dark' : undefined}>
+                          <CommitmentRow
+                            testID={`obligation-${obligation.id}`}
+                            date={obligation.due_date}
+                            name={obligation.name}
+                            amountAgorot={obligation.amount_agorot}
+                            timeLabel={chipLabel}
+                            tone={urgency.tone}
+                            meta={obligation.is_shared ? t('transactions.form.shared') : t('transactions.form.personal')}
+                            onPress={() => router.push(`/obligations/${obligation.id}`)}
+                          />
                         </View>
-                      </View>
-                      <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
-                        {formatILS(obligation.amount_agorot)}
-                      </Text>
-                    </View>
-                  </Card>
-                </Pressable>
-              )
-            })}
-          </View>
+                      )
+                    })}
+                  </View>
+                ))}
+              </View>
+            )
+          })()}
 
           {history.length > 0 && (
             <View className="mt-4">
               <Pressable
                 onPress={() => setIsHistoryVisible((v) => !v)}
                 accessibilityRole="button"
-                className="flex-row items-center gap-1 web:flex-row-reverse"
+                className="flex-row items-center gap-1 web:flex-row"
               >
                 <Text className="text-caption font-medium text-accent-light dark:text-accent-dark">
                   {t(isHistoryVisible ? 'obligations.history.hideButton' : 'obligations.history.showButton')}
@@ -217,24 +281,24 @@ export default function Obligations() {
                               <Divider />
                             </View>
                           )}
-                          <View className="flex-row items-center justify-between web:flex-row-reverse">
-                            <View className="flex-1 flex-row items-center gap-3 web:flex-row-reverse">
+                          <View className="flex-row items-center justify-between web:flex-row">
+                            <View className="flex-1 flex-row items-center gap-3 web:flex-row">
                               <CategoryIcon icon={category?.icon} size="sm" />
                               <View className="flex-1">
                                 <Text
-                                  className="text-base font-semibold text-ink-light dark:text-ink-dark"
+                                  className="text-body font-sansSemibold text-ink-light dark:text-ink-dark"
                                   numberOfLines={1}
                                 >
                                   {obligation.name}
                                 </Text>
-                                <Text className="text-xs text-inkMuted-light dark:text-inkMuted-dark">
-                                  {obligation.due_date}
+                                <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
+                                  {formatDateDisplay(obligation.due_date)}
                                   {' · '}
                                   {t(`obligations.status.${obligation.status}`)}
                                 </Text>
                               </View>
                             </View>
-                            <Text className="text-sm font-semibold text-ink-light dark:text-ink-dark">
+                            <Text className="text-body font-sansSemibold text-ink-light dark:text-ink-dark">
                               {formatILS(obligation.amount_agorot)}
                             </Text>
                           </View>
@@ -250,30 +314,55 @@ export default function Obligations() {
       )}
 
       {isAdding ? (
-        <View className="mt-4 web:desktop:max-w-[600px]">
-          <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
-          <Input
-            label={t('transactions.form.amountLabel')}
-            value={amountText}
-            onChangeText={setAmountText}
-            placeholder={t('transactions.form.amountPlaceholder')}
-            keyboardType="decimal-pad"
-          />
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
+          {/* Product-quality pass: a centered form with no heading of its
+              own still read as loose fields rather than a deliberate
+              panel — the button that opened it already says exactly this,
+              reused here rather than inventing new copy. */}
+          <Text className="mb-4 text-heading font-semibold text-ink-light dark:text-ink-dark">
+            {t('obligations.form.formTitle')}
+          </Text>
+          {/* Visual QA + Desktop Polish pass: name+amount and category+
+              account pair into rows at desktop, matching every other add/
+              edit form in this app — this form previously stayed a single
+              stretched column even inside its own width-capped wrapper.
+              Mobile/tablet untouched. */}
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Input label={t('obligations.form.nameLabel')} value={name} onChangeText={setName} placeholder={t('obligations.form.namePlaceholder')} />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Input
+                label={t('transactions.form.amountLabel')}
+                value={amountText}
+                onChangeText={setAmountText}
+                placeholder={t('transactions.form.amountPlaceholder')}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
           <DatePickerField label={t('obligations.form.dueDateLabel')} value={dueDate} onChange={setDueDate} />
-          <Select
-            label={t('transactions.form.categoryLabel')}
-            options={categoryOptions}
-            value={categoryId}
-            onChange={setCategoryId}
-            placeholder={t('transactions.form.categoryPlaceholder')}
-          />
-          <Select
-            label={t('transactions.form.accountLabel')}
-            options={accountOptions}
-            value={accountIdOverride}
-            onChange={setAccountIdOverride}
-            placeholder={t('transactions.form.accountPlaceholder')}
-          />
+          <View className="web:desktop:flex-row web:desktop:gap-4">
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.categoryLabel')}
+                options={categoryOptions}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder={t('transactions.form.categoryPlaceholder')}
+              />
+            </View>
+            <View className="web:desktop:flex-1">
+              <Select
+                label={t('transactions.form.accountLabel')}
+                options={accountOptions}
+                value={accountIdOverride}
+                onChange={setAccountIdOverride}
+                placeholder={t('transactions.form.accountPlaceholder')}
+              />
+            </View>
+          </View>
 
           <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('transactions.form.sharedLabel')}</Text>
           <View className="mb-4 flex-row gap-2">
@@ -292,8 +381,11 @@ export default function Obligations() {
           {(validationError || createObligation.isError) && (
             <ErrorMessage message={validationError ?? t('obligations.errors.generic')} />
           )}
+          <View className="web:desktop:flex-row web:desktop:gap-2">
+          <View className="web:desktop:flex-1">
           <Button title={t('obligations.form.submit')} onPress={handleCreate} loading={createObligation.isPending} />
-          <View className="mt-3">
+          </View>
+          <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
             <Button
               title={t('common.cancel')}
               variant="secondary"
@@ -304,9 +396,11 @@ export default function Obligations() {
               }}
             />
           </View>
+          </View>
+          </Card>
         </View>
       ) : (
-        <View className="mt-4 web:desktop:max-w-[600px]">
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
           <Button title={t('obligations.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
         </View>
       )}

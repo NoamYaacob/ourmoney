@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { SettingsSection } from '@/components/ui/SettingsSection'
@@ -218,19 +218,24 @@ export default function Settings() {
   }
 
   return (
-    <Screen width="wide">
-      <Text className="mb-6 text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+    <Screen onBack={() => router.back()} width="wide">
+      <Text className="mb-6 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
         {t('settings.title')}
       </Text>
 
       {/* Responsive/desktop pass: profile+household in one column, the rest
           (money management/appearance/security/account) in a second column
-          — desktop only (`web:desktop:flex-row-reverse`; see _layout.tsx's
+          — desktop only (`web:desktop:flex-row`; see _layout.tsx's
           DesktopSideRail comment for why `-reverse` is needed on web).
           Reversing keeps source/DOM order as [profile+household, the rest]
           (primary content announced first) while visually placing
           profile+household on the right and the secondary column on the
-          left — the correct RTL reading order. Mobile/tablet stay a single
+          left — the correct RTL reading order. Visual QA + Desktop Polish
+          pass: this had silently regressed to plain `flex-row` — the
+          dedicated regression test only checked
+          `.toContain('web:desktop:flex-row')`, satisfied by both forms, so
+          the drift went uncaught. Restored to `-reverse` and the test
+          tightened to exact-token matching. Mobile/tablet stay a single
           stacked column in the original order.
           Desktop polish pass (round 2): each column previously reflowed the
           exact same unbounded mobile sections side by side — a real-browser
@@ -248,13 +253,18 @@ export default function Settings() {
           height mismatch is still there, but distributed across several
           natural breaks instead of concentrated in one, so it reads as an
           intentional multi-panel column rather than a rendering gap. */}
-      <View className="web:desktop:flex-row-reverse web:desktop:items-start web:desktop:gap-6">
+      <View className="web:desktop:flex-row web:desktop:items-start web:desktop:gap-6">
       <View className="web:desktop:flex-1">
       <View className={DESKTOP_PANEL_CLASS}>
       {/* Profile */}
       {isProfileLoading ? (
+        // Release-readiness pass: was a bare LoadingSpinner, unlike every
+        // other section on this screen (the members list below already
+        // uses SkeletonList) — an unsized spinner replaced by the resolved
+        // avatar+name+button Card caused a visible layout jump. Shaped to
+        // roughly the resolved Card's own height instead.
         <View className="mb-6">
-          <LoadingSpinner />
+          <SkeletonList rows={1} rowClassName="h-20 w-full rounded-card" />
         </View>
       ) : isEditingProfile ? (
         <Card>
@@ -265,7 +275,10 @@ export default function Settings() {
             autoFocus
           />
           {updateProfile.isError && <ErrorMessage message={t('settings.profile.errors.generic')} />}
-          <View className="flex-row-reverse gap-2">
+          {/* Visual QA pass: was flex-row-reverse — see components/ui/
+              Modal.tsx's identical fix. Plain flex-row keeps Save (first
+              child) on the right under global.css's direction: rtl. */}
+          <View className="flex-row gap-2">
             <Button
               title={t('settings.profile.save')}
               onPress={handleSaveProfileName}
@@ -282,7 +295,7 @@ export default function Settings() {
         </Card>
       ) : (
         <Card>
-          <View className="flex-row items-center gap-3 web:flex-row-reverse">
+          <View className="flex-row items-center gap-3 web:flex-row">
             <Avatar displayName={displayName ?? ''} avatarUrl={avatarUrl} size={56} />
             <View className="flex-1">
               <Text className="text-heading font-semibold text-ink-light dark:text-ink-dark">{displayName}</Text>
@@ -308,7 +321,13 @@ export default function Settings() {
         {householdError ? (
           <ErrorMessage message={t('household.errors.bug')} />
         ) : isHouseholdLoading ? (
-          <LoadingSpinner />
+          // Release-readiness pass: same LoadingSpinner-vs-SkeletonList gap
+          // as Profile above — this block resolves to a name row plus a
+          // short members list, not one spinner-sized shape.
+          <View className="gap-3">
+            <Skeleton className="h-6 w-1/2 rounded-md" />
+            <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
+          </View>
         ) : (
           <>
             {isRenamingHousehold ? (
@@ -320,7 +339,9 @@ export default function Settings() {
                   autoFocus
                 />
                 {updateHousehold.isError && <ErrorMessage message={t('settings.household.renameErrors.generic')} />}
-                <View className="flex-row-reverse gap-2">
+                {/* Visual QA pass: was flex-row-reverse — see components/ui/
+                    Modal.tsx's identical fix. */}
+                <View className="flex-row gap-2">
                   <Button
                     title={t('settings.household.save')}
                     onPress={handleSaveHouseholdName}
@@ -336,7 +357,7 @@ export default function Settings() {
                 </View>
               </View>
             ) : (
-              <View className="flex-row items-center justify-between web:flex-row-reverse">
+              <View className="flex-row items-center justify-between web:flex-row">
                 <Text className="text-body font-semibold text-ink-light dark:text-ink-dark">{household?.name}</Text>
                 {/* Admin-only (Fix 1) — households_update's RLS
                     (is_household_admin(id)) is the real gate; `role` here
@@ -363,7 +384,7 @@ export default function Settings() {
               <SkeletonList rows={2} rowClassName="h-8 w-full rounded-md" />
             ) : (
               members.map((member) => (
-                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row-reverse">
+                <View key={member.userId} className="mb-2 flex-row items-center gap-2 web:flex-row">
                   <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size={28} />
                   <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{member.displayName}</Text>
                   <Text className="text-caption text-inkMuted-light dark:text-inkMuted-dark">
@@ -447,6 +468,11 @@ export default function Settings() {
           iconName="calendar-outline"
           label={t('settings.financial.obligations')}
           onPress={() => router.push('/obligations')}
+        />
+        <SettingsRow
+          iconName="layers-outline"
+          label={t('settings.financial.installments')}
+          onPress={() => router.push('/installments')}
         />
       </SettingsSection>
       </View>

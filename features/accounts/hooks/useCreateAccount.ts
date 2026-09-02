@@ -10,6 +10,10 @@ interface CreateAccountInput {
   ownerId?: string | null
   color?: string | null
   icon?: string | null
+  // Only meaningful for type 'credit_card' — the day-of-month a statement
+  // cycle closes on, migration 016 (ADR-037). A card's current-cycle spend
+  // is always derived live from this value, never stored.
+  billingCycleDay?: number | null
 }
 
 export function useCreateAccount(householdId: string | null | undefined) {
@@ -24,6 +28,7 @@ export function useCreateAccount(householdId: string | null | undefined) {
         owner_id: input.ownerId ?? null,
         color: input.color ?? null,
         icon: input.icon ?? null,
+        billing_cycle_day: input.billingCycleDay ?? null,
       })
       if (error) throw error
     },

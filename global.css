@@ -1,3 +1,121 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Web-shell polish. React Native owns component layout; these rules only
+   normalize browser behaviour that RN cannot express consistently across
+   Safari/Chrome. */
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+/* Hebrew is the product's primary UI language. Native gets RTL from
+   I18nManager; web needs a real CSS/DOM direction as well. Without this,
+   logical start/end, flex rows, inputs, browser popovers and selection
+   controls silently fall back to LTR even while the React Native tree thinks
+   it is RTL. Keeping direction here makes the browser itself participate in
+   RTL instead of patching individual screens with row-reverse exceptions. */
+html,
+body,
+#root {
+  direction: rtl;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  overscroll-behavior-y: none;
+  text-align: start;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+/* The one field whose size is part of the design rather than the platform's.
+   `OurMoney - Mobile.dc.html` screen 05 draws the amount being typed at the
+   design system's `figure-xl` — 52/58 — and it is the only thing on that
+   screen.
+
+   It needs a rule of its own, and `!important`, because nothing else reaches
+   an <input>'s size on web. Measured in a real browser rather than reasoned
+   about: the field declared 52px through its class and computed 16; setting
+   `element.style.fontSize` directly still computed 16; only `!important`
+   took effect. Something in the react-native-web / Tailwind-preflight stack
+   is setting it with that weight, so matching it is the only thing that
+   works — this is the one place in the app that uses `!important`, and the
+   measurement above is why.
+
+   `line-height` needs no such help, which is the tell: it lands from this
+   very rule. Only the size is being held down.
+
+   Deliberately scoped to this one field rather than lifting the restriction
+   for every input: the rest of the form's fields are body-sized on purpose,
+   and a blanket change would move all of them at once. */
+input[data-hero-amount] {
+  font-size: 52px !important;
+  line-height: 58px;
+}
+
+input,
+textarea,
+select {
+  direction: rtl;
+  text-align: right;
+}
+
+button,
+[role='button'],
+[role='tab'] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0f6b5c;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(15, 107, 92, 0.2);
+}
+
+/* iOS Safari zooms the page when focusing an input whose computed font-size
+   is below 16px. OurMoney is a form-heavy finance app, so keep editable
+   controls at the non-zoom threshold on phone/tablet web without changing
+   desktop typography. */
+@media (max-width: 1199px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* React Navigation exposes each bottom-nav destination as role="tab" on
+     web. Give every destination a comfortable touch target and enough bottom
+     breathing room for iPhone browser/safe-area chrome. The desktop rail
+     replaces these tabs at >=1200px, so the rule is intentionally scoped
+     below that breakpoint. */
+  [role='tab'] {
+    min-height: 64px;
+    padding-top: 6px !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+  }
+}

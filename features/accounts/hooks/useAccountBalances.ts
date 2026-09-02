@@ -19,6 +19,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
+import { diagnoseQuery } from '@/lib/diagnostics/queryDiagnostics'
 import { computeAccountBalances } from '../lib/computeAccountBalances'
 
 export function accountBalancesQueryKey(householdId: string | null | undefined) {
@@ -29,12 +30,11 @@ export function useAccountBalances(householdId: string | null | undefined) {
   const query = useQuery({
     queryKey: accountBalancesQueryKey(householdId),
     queryFn: async (): Promise<Record<string, number>> => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('account_id, amount_agorot')
-        .eq('household_id', householdId as string)
+      const { data, error } = await diagnoseQuery('useAccountBalances', 'transactions', 'select', { householdId }, () =>
+        supabase.from('transactions').select('account_id, amount_agorot').eq('household_id', householdId as string)
+      )
       if (error) throw error
-      return computeAccountBalances(data)
+      return computeAccountBalances(data as { account_id: string; amount_agorot: number }[])
     },
     enabled: !!householdId,
   })
@@ -43,5 +43,10 @@ export function useAccountBalances(householdId: string | null | undefined) {
     balances: query.data ?? {},
     isLoading: !!householdId && query.isPending,
     error: query.error,
+    // See useAccounts.ts's identical field for why this exists: `data`
+    // survives a failed background refetch, so this is the only reliable
+    // "never loaded" signal distinct from `error`.
+    hasData: query.data !== undefined,
+    refetch: query.refetch,
   }
 }

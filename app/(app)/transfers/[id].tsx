@@ -9,7 +9,7 @@
 // affordance anywhere in this screen, by design.
 
 import { useState } from 'react'
-import { Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth/hooks/useAuth'
@@ -18,7 +18,7 @@ import { useAccounts } from '@/features/accounts/hooks/useAccounts'
 import { useTransfer } from '@/features/transactions/hooks/useTransfer'
 import { useUpdateTransfer } from '@/features/transactions/hooks/useUpdateTransfer'
 import { useDeleteTransfer } from '@/features/transactions/hooks/useDeleteTransfer'
-import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { agorotFromILS } from '@/lib/money/format'
 import { accountIconName } from '@/features/accounts/lib/accountIcon'
 import { Screen } from '@/components/ui/Screen'
 import { Input } from '@/components/ui/Input'
@@ -27,9 +27,12 @@ import { Button } from '@/components/ui/Button'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Modal } from '@/components/ui/Modal'
+import { SurfacePanel } from '@/components/ui/SurfacePanel'
+import { AmountField } from '@/features/transactions/components/AmountField'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
 
 export default function TransferDetail() {
   const { t } = useTranslation()
@@ -43,6 +46,7 @@ export default function TransferDetail() {
   const deleteTransfer = useDeleteTransfer(householdId)
   const { colorScheme: scheme } = useColorScheme()
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
+  const dangerColor = scheme === 'dark' ? colors.dangerStrong.dark : colors.dangerStrong.light
 
   const [fromAccountIdOverride, setFromAccountIdOverride] = useState<string | null>(null)
   const [toAccountIdOverride, setToAccountIdOverride] = useState<string | null>(null)
@@ -70,7 +74,7 @@ export default function TransferDetail() {
 
   if (isLoading || isHouseholdLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
@@ -78,7 +82,7 @@ export default function TransferDetail() {
 
   if (!transfer) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <ErrorMessage message={t('transfers.errors.notFound')} />
       </Screen>
     )
@@ -125,76 +129,94 @@ export default function TransferDetail() {
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }))
 
   return (
-    <Screen keyboardAvoiding>
+    <Screen onBack={() => router.back()} keyboardAvoiding width="form">
       <View className="mb-6 flex-row items-center gap-2">
-        <Ionicons name="swap-horizontal" size={22} color={mutedColor} />
-        <Text className="text-2xl font-bold text-ink-light dark:text-ink-dark">{t('transfers.detail.title')}</Text>
+        <Ionicons name="swap-horizontal" size={ICON.hero} color={mutedColor} />
+        <Text className="text-title font-bold text-ink-light dark:text-ink-dark web:desktop:text-[28px]">
+          {t('transfers.detail.title')}
+        </Text>
       </View>
 
-      <Select
-        variant="row"
-        label={t('transfers.detail.fromLabel')}
-        options={accountOptions}
-        value={fromAccountId}
-        onChange={setFromAccountIdOverride}
-        placeholder={t('transactions.form.fromAccountPlaceholder')}
-        sheetTitle={t('transfers.detail.fromLabel')}
-        leadingIcon={
-          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-            <Ionicons name={accountIconName(selectedFromAccount?.type)} size={17} color={mutedColor} />
-          </View>
-        }
-      />
-      <Select
-        variant="row"
-        label={t('transfers.detail.toLabel')}
-        options={accountOptions}
-        value={toAccountId}
-        onChange={setToAccountIdOverride}
-        placeholder={t('transactions.form.toAccountPlaceholder')}
-        sheetTitle={t('transfers.detail.toLabel')}
-        leadingIcon={
-          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-            <Ionicons name={accountIconName(selectedToAccount?.type)} size={17} color={mutedColor} />
-          </View>
-        }
-      />
+      {/* Checkpoint 7: one panel, matching every sibling form's own desktop
+          treatment — and, unlike those siblings, nothing nested inside it.
+          `tier="tablet"` gives this the same considered chrome from 768px
+          up rather than leaving it invisible until 1200 (the same fix
+          already proven on Installments' cycle cards). */}
+      <SurfacePanel tier="tablet">
+        <AmountField
+          label={t('transfers.detail.amountLabel')}
+          value={amountText}
+          onChangeText={setAmountText}
+          placeholder={t('transfers.detail.amountPlaceholder')}
+        />
 
-      <Input
-        label={t('transfers.detail.amountLabel')}
-        value={amountText}
-        onChangeText={setAmountText}
-        keyboardType="decimal-pad"
-      />
-      <Input
-        label={t('transfers.detail.descriptionLabel')}
-        value={description}
-        onChangeText={setDescription}
-      />
-
-      {(validationError || updateTransfer.isError) && (
-        <ErrorMessage message={validationError ?? t('transfers.errors.generic')} />
-      )}
-
-      <View className="mt-2">
-        <Button title={t('transfers.detail.save')} onPress={handleSave} loading={updateTransfer.isPending} />
-      </View>
-
-      {canDelete && (
-        <View className="mt-3">
-          <Button
-            title={t('transfers.detail.delete')}
-            variant="ghost"
-            onPress={() => setConfirmDeleteVisible(true)}
+        <View className="border-t border-divider-light dark:border-divider-dark">
+          <Select
+            variant="row"
+            label={t('transfers.detail.fromLabel')}
+            options={accountOptions}
+            value={fromAccountId}
+            onChange={setFromAccountIdOverride}
+            placeholder={t('transactions.form.fromAccountPlaceholder')}
+            sheetTitle={t('transfers.detail.fromLabel')}
+            leadingIcon={
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                <Ionicons name={accountIconName(selectedFromAccount?.type)} size={ICON.row} color={mutedColor} />
+              </View>
+            }
           />
         </View>
-      )}
+        <View className="border-t border-divider-light dark:border-divider-dark">
+          <Select
+            variant="row"
+            label={t('transfers.detail.toLabel')}
+            options={accountOptions}
+            value={toAccountId}
+            onChange={setToAccountIdOverride}
+            placeholder={t('transactions.form.toAccountPlaceholder')}
+            sheetTitle={t('transfers.detail.toLabel')}
+            leadingIcon={
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                <Ionicons name={accountIconName(selectedToAccount?.type)} size={ICON.row} color={mutedColor} />
+              </View>
+            }
+          />
+        </View>
 
-      {deleteTransfer.isError && <ErrorMessage message={t('transfers.detail.deleteError')} />}
+        <View className="mt-4">
+          <Input
+            label={t('transfers.detail.descriptionLabel')}
+            value={description}
+            onChangeText={setDescription}
+          />
+        </View>
 
-      <Text className="mt-4 text-xs text-inkMuted-light dark:text-inkMuted-dark">
-        {formatILS(transfer.amount_agorot)}
-      </Text>
+        {(validationError || updateTransfer.isError) && (
+          <ErrorMessage message={validationError ?? t('transfers.errors.generic')} />
+        )}
+
+        {/* Save and delete on one row, matching transactions/[id].tsx's own
+            asymmetric-weight convention: the primary action takes the
+            width, deletion is a compact 52px icon beside it — not the same
+            visual weight as saving. */}
+        <View className="mt-3 flex-row items-stretch gap-2.5">
+          <View className="flex-1">
+            <Button title={t('transfers.detail.save')} onPress={handleSave} loading={updateTransfer.isPending} />
+          </View>
+          {canDelete && (
+            <Pressable
+              onPress={() => setConfirmDeleteVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('transfers.detail.delete')}
+              className="h-[52px] w-[52px] items-center justify-center rounded-control border border-border-light bg-surfaceMuted-light active:opacity-70 dark:border-border-dark dark:bg-surfaceMuted-dark"
+            >
+              <Ionicons name="trash-outline" size={ICON.nav} color={dangerColor} />
+            </Pressable>
+          )}
+        </View>
+
+        {deleteTransfer.isError && <ErrorMessage message={t('transfers.detail.deleteError')} />}
+      </SurfacePanel>
 
       {canDelete && (
         <Modal

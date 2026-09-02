@@ -33,7 +33,15 @@ export interface HouseholdMemberWithProfile {
 // Milestone 6 — MVP-2 Core Financial Loop
 // ============================================================================
 
-export type AccountType = 'checking' | 'savings' | 'credit_card' | 'cash' | 'investment' | 'other'
+export type AccountType =
+  | 'checking'
+  | 'savings'
+  | 'credit_card'
+  | 'cash'
+  | 'investment'
+  | 'loan'
+  | 'mortgage'
+  | 'other'
 export type CategoryRuleField = 'description' | 'merchant_name'
 export type CategoryRuleOperator = 'contains' | 'equals' | 'starts_with'
 export type TransactionSource = 'manual' | 'csv_import' | 'recurring'
@@ -85,10 +93,19 @@ export interface RecurringTransaction extends Omit<Tables<'recurring_transaction
 }
 
 // is_completed is DB-derived (migration 003's derive_savings_goal_completion
-// trigger: current_agorot >= target_agorot) — never client-set. No narrowing
-// beyond the generated row shape is needed since every column here already
-// has a concrete type.
-export type SavingsGoal = Tables<'savings_goals'>
+// trigger: current_agorot >= target_agorot) — never client-set for a
+// 'manual' goal. progress_source (migration 015) narrows a CHECK-constrained
+// TEXT column the same way RecurringTransaction narrows frequency above.
+// For a 'linked_account' goal, current_agorot/is_completed as stored are NOT
+// the source of truth for display — features/savings/lib/goalProgress.ts's
+// resolveGoalCurrentAgorot() derives the real progress live from the linked
+// account's balance, the same "compute live, never persist" precedent
+// lib/engines/cashflow uses for Safe-to-Spend.
+export type SavingsGoalProgressSource = 'manual' | 'linked_account'
+
+export type SavingsGoal = Omit<Tables<'savings_goals'>, 'progress_source'> & {
+  progress_source: SavingsGoalProgressSource
+}
 
 // ============================================================================
 // Migration 007 — Planned obligations (Annual Expenses / Planned Obligations)
@@ -109,11 +126,20 @@ export interface PlannedObligation extends Omit<Tables<'planned_obligations'>, '
 // point BudgetCategoryProgress above already lives at this level for.
 // ============================================================================
 
-export type FinancialAlertType = 'forecast_shortfall' | 'upcoming_obligation' | 'recurring_price_increase' | 'budget_risk'
+export type FinancialAlertType =
+  | 'forecast_shortfall'
+  | 'upcoming_obligation'
+  | 'recurring_price_increase'
+  | 'budget_risk'
+  | 'high_credit_card_cycle_spend'
+  | 'category_spend_above_typical'
+  | 'savings_goal_behind'
+  | 'excess_cash_available'
+  | 'low_balance_warning'
 
 export type FinancialAlertSeverity = 'info' | 'warning' | 'critical'
 
-export type FinancialAlertSource = 'cash_flow' | 'planned_obligation' | 'recurring' | 'budget'
+export type FinancialAlertSource = 'cash_flow' | 'planned_obligation' | 'recurring' | 'budget' | 'account' | 'savings_goal'
 
 export interface FinancialAlert {
   // Deterministic, derived from type + source identity — never random, never
@@ -136,3 +162,14 @@ export interface FinancialAlert {
   // typed Href needed at the engine layer.
   actionRoute: string
 }
+
+// ============================================================================
+// Migration 016 (ADR-037) — Credit-card settlement + instalment purchases
+// ============================================================================
+
+// No column needs narrowing beyond what's already generated — every CHECK
+// on installment_plans (positive amounts, monthly_agorot = floor-division
+// remainder-aware split) is a numeric constraint, not a literal union, the
+// same reason Account/Category/Transfer/Budget above are plain Tables<...>
+// aliases rather than Omit<...> & {...} narrowings.
+export type InstallmentPlan = Tables<'installment_plans'>

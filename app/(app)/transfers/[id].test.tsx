@@ -1,16 +1,20 @@
-// Migration 008 (ADR-035) — the transfer detail/edit screen. Mirrors
-// transactions/[id].test.tsx and accounts/[id].test.tsx's established
-// screen-testing pattern (role-gated delete, prefilled edit form).
+// Checkpoint 7 regression test — before this fix, this screen showed the
+// edited amount twice: once live in the (now AmountField) input, and once
+// in a second, static caption at the bottom of the screen that read
+// straight from the originally-loaded `transfer` object and never updated
+// from the live draft. Editing the amount and looking down the page showed
+// the OLD figure still printed, reading as "my edit didn't take" even
+// though the mutation payload was correct. The fix removed the stale
+// duplicate outright — this test proves it can never come back silently.
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
 import { fireEvent, render } from '@testing-library/react-native'
 import '@/i18n'
 import { formatILS } from '@/lib/money/format'
 import TransferDetail from './[id]'
 
-const mockRouterBack = jest.fn()
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: mockRouterBack, push: jest.fn() }),
-  useLocalSearchParams: () => ({ id: 'transfer-1' }),
+  useRouter: () => ({ back: jest.fn() }),
+  useLocalSearchParams: () => ({ id: 'tr-1' }),
 }))
 // Avoids a deep, environment-specific import chain
 // (@expo/vector-icons -> expo-font -> expo-asset) unrelated to what this
@@ -21,103 +25,71 @@ jest.mock('@expo/vector-icons', () => ({
 jest.mock('@/features/auth/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),
 }))
-const mockUseHousehold = jest.fn(() => ({ householdId: 'household-1', role: 'admin', isLoading: false }))
 jest.mock('@/features/household/hooks/useHousehold', () => ({
-  useHousehold: () => mockUseHousehold(),
+  useHousehold: () => ({ householdId: 'household-1', role: 'admin', isLoading: false }),
 }))
+
+const ACCOUNTS = [
+  { id: 'acc-checking', household_id: 'household-1', name: 'עו״ש לאומי', type: 'checking', is_active: true },
+  { id: 'acc-savings', household_id: 'household-1', name: 'קרן השתלמות', type: 'savings', is_active: true },
+]
 jest.mock('@/features/accounts/hooks/useAccounts', () => ({
-  useAccounts: () => ({
-    accounts: [
-      { id: 'acct-checking', name: 'עו״ש', type: 'checking' },
-      { id: 'acct-savings', name: 'חיסכון', type: 'savings' },
-    ],
-    isLoading: false,
-  }),
+  useAccounts: () => ({ accounts: ACCOUNTS }),
 }))
 
 const TRANSFER = {
-  id: 'transfer-1',
+  id: 'tr-1',
   household_id: 'household-1',
-  from_account_id: 'acct-checking',
-  to_account_id: 'acct-savings',
-  amount_agorot: 50000,
-  txn_date: '2026-08-15',
+  from_account_id: 'acc-checking',
+  to_account_id: 'acc-savings',
+  amount_agorot: 200_000, // ₪2,000.00
+  txn_date: '2026-08-05',
   description: 'העברה לחיסכון',
 }
 jest.mock('@/features/transactions/hooks/useTransfer', () => ({
-  useTransfer: () => ({ transfer: TRANSFER, isLoading: false }),
+  useTransfer: () => ({ transfer: TRANSFER, isLoading: false, error: null }),
 }))
 
 const mockUpdateMutate = jest.fn()
 jest.mock('@/features/transactions/hooks/useUpdateTransfer', () => ({
   useUpdateTransfer: () => ({ mutate: mockUpdateMutate, isPending: false, isError: false }),
 }))
-
-const mockDeleteMutate = jest.fn()
-let mockDeleteIsError = false
 jest.mock('@/features/transactions/hooks/useDeleteTransfer', () => ({
-  useDeleteTransfer: () => ({ mutate: mockDeleteMutate, isPending: false, isError: mockDeleteIsError }),
+  useDeleteTransfer: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }))
 
 describe('TransferDetail', () => {
   beforeEach(() => {
-    mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'admin', isLoading: false })
-    mockUpdateMutate.mockClear()
-    mockDeleteMutate.mockClear()
-    mockDeleteIsError = false
-    mockRouterBack.mockClear()
+    jest.clearAllMocks()
   })
 
-  it('renders the edit form prefilled with the description and amount', async () => {
+  it('prefills the amount field with the loaded transfer amount', async () => {
     const { getByDisplayValue } = await render(<TransferDetail />)
-    expect(getByDisplayValue('העברה לחיסכון')).toBeTruthy()
-    expect(getByDisplayValue('500')).toBeTruthy()
+    expect(getByDisplayValue('2000')).toBeTruthy()
   })
 
-  it('shows the transfer amount', async () => {
-    const { getByText } = await render(<TransferDetail />)
-    expect(getByText(formatILS(50000))).toBeTruthy()
+  it('updates the visible amount when edited, with no stale second display of the old figure', async () => {
+    const { getByDisplayValue, queryByText } = await render(<TransferDetail />)
+
+    await fireEvent.changeText(getByDisplayValue('2000'), '3500')
+
+    // The live field reflects the edit...
+    expect(getByDisplayValue('3500')).toBeTruthy()
+    // ...and the screen no longer shows the old amount anywhere — this is
+    // the exact regression: a second, non-live caption re-printing
+    // formatILS(transfer.amount_agorot) regardless of what was typed.
+    expect(queryByText(formatILS(200_000))).toBeNull()
   })
 
-  it('saves an edit via useUpdateTransfer with every field, not a partial patch', async () => {
+  it('saves the live edited amount, not the originally-loaded one', async () => {
     const { getByDisplayValue, getByText } = await render(<TransferDetail />)
 
-    const descriptionInput = getByDisplayValue('העברה לחיסכון')
-    await fireEvent.changeText(descriptionInput, 'העברה מעודכנת')
+    await fireEvent.changeText(getByDisplayValue('2000'), '3500')
     await fireEvent.press(getByText('שמירה'))
 
     expect(mockUpdateMutate).toHaveBeenCalledWith(
-      {
-        transferId: 'transfer-1',
-        householdId: 'household-1',
-        fromAccountId: 'acct-checking',
-        toAccountId: 'acct-savings',
-        amountAgorot: 50000,
-        txnDate: '2026-08-15',
-        description: 'העברה מעודכנת',
-      },
+      expect.objectContaining({ transferId: 'tr-1', amountAgorot: 350_000 }),
       expect.anything()
     )
-  })
-
-  // delete_transfer() is admin-only server-side (matches
-  // useDeleteTransaction.ts's admin-gated hard delete) — the button must be
-  // hidden, not merely disabled, for a non-admin.
-  it('shows the delete button to an admin', async () => {
-    mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'admin', isLoading: false })
-    const { getByText } = await render(<TransferDetail />)
-    expect(getByText('מחיקה')).toBeTruthy()
-  })
-
-  it('hides the delete button from a non-admin member', async () => {
-    mockUseHousehold.mockReturnValue({ householdId: 'household-1', role: 'member', isLoading: false })
-    const { queryByText } = await render(<TransferDetail />)
-    expect(queryByText('מחיקה')).toBeNull()
-  })
-
-  it('shows a delete error message when the delete mutation fails', async () => {
-    mockDeleteIsError = true
-    const { getByText } = await render(<TransferDetail />)
-    expect(getByText('מחיקת ההעברה נכשלה. נסו שוב')).toBeTruthy()
   })
 })

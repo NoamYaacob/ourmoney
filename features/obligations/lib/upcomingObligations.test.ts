@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { filterUpcomingObligations, isPastDue } from './upcomingObligations'
+import { daysUntilDue, filterUpcomingObligations, isPastDue } from './upcomingObligations'
 
 describe('filterUpcomingObligations', () => {
   it('sorts by nearest due date first', () => {
@@ -72,5 +72,23 @@ describe('isPastDue', () => {
   it('handles a year boundary correctly', () => {
     expect(isPastDue('2026-12-31', '2027-01-01')).toBe(true)
     expect(isPastDue('2027-01-01', '2026-12-31')).toBe(false)
+  })
+})
+
+describe('daysUntilDue', () => {
+  it('returns a positive count for a future due date', () => {
+    expect(daysUntilDue('2026-08-27', '2026-08-21')).toBe(6)
+  })
+
+  it('returns 0 for a due date of today', () => {
+    expect(daysUntilDue('2026-08-16', '2026-08-16')).toBe(0)
+  })
+
+  it('returns a negative count for a past due date', () => {
+    expect(daysUntilDue('2026-08-10', '2026-08-16')).toBe(-6)
+  })
+
+  it('handles a year boundary correctly', () => {
+    expect(daysUntilDue('2027-01-01', '2026-12-31')).toBe(1)
   })
 })

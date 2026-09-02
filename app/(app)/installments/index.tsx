@@ -1,0 +1,599 @@
+// Credit-card instalment purchases — reached from Settings, not a tab, same
+// posture as accounts/obligations/goals/recurring. An installment_plans row
+// is the economic event (migration 016, ADR-037); this screen creates and
+// lists plans, never individual instalment transactions — those materialize
+// on their own via generate_installment_transactions(), mounted at app load
+// (useGenerateInstallmentTransactions in app/(app)/_layout.tsx).
+
+import { useState } from 'react'
+import { Platform, Text, View, useWindowDimensions } from 'react-native'
+import { useRouter } from 'expo-router'
+import { useTranslation } from 'react-i18next'
+import { Ionicons } from '@expo/vector-icons'
+import { useColorScheme } from 'nativewind'
+import { colors } from '@/constants/colors'
+import { ICON } from '@/constants/icons'
+import { useAuth } from '@/features/auth/hooks/useAuth'
+import { useHousehold } from '@/features/household/hooks/useHousehold'
+import { useAccounts } from '@/features/accounts/hooks/useAccounts'
+import { useCategories } from '@/features/categories/hooks/useCategories'
+import { useInstallmentPlans } from '@/features/installments/hooks/useInstallmentPlans'
+import { useInstallmentMaterializedCounts } from '@/features/installments/hooks/useInstallmentMaterializedCounts'
+import { useCreateInstallmentPlan } from '@/features/installments/hooks/useCreateInstallmentPlan'
+import { useUpcomingCommitments } from '@/features/cashflow/hooks/useUpcomingCommitments'
+import { getCurrentBillingCycleRange } from '@/features/accounts/lib/creditCardCycle'
+import { daysBetween } from '@/lib/engines/alerts/alertSeverity'
+import { agorotFromILS, formatILS } from '@/lib/money/format'
+import { sumAgorot } from '@/lib/money/arithmetic'
+import { formatDateDisplay } from '@/lib/dates/format'
+import { localDateString } from '@/features/budgets/lib/budgetPeriod'
+import { categoryIconName } from '@/features/categories/lib/categoryIcon'
+import { Screen } from '@/components/ui/Screen'
+import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Chip } from '@/components/ui/Chip'
+import { Button } from '@/components/ui/Button'
+import { DatePickerField } from '@/components/ui/DatePickerField'
+import { ErrorMessage } from '@/components/ui/ErrorMessage'
+import { SkeletonList } from '@/components/ui/SkeletonList'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Money } from '@/components/ui/Money'
+import { CountdownRing } from '@/components/ui/CountdownRing'
+import { DESKTOP_BREAKPOINT_PX, INLINE_FORM_WIDTH_CLASS } from '@/constants/layout'
+import { SurfacePanel } from '@/components/ui/SurfacePanel'
+import { InsetGroup } from '@/components/ui/InsetGroup'
+import { InstallmentPlanRow } from '@/features/installments/components/InstallmentPlanRow'
+
+export default function Installments() {
+  const { t } = useTranslation()
+  const router = useRouter()
+  const { colorScheme: scheme } = useColorScheme()
+  const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
+  const { user } = useAuth()
+  const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
+  const { accounts, isLoading: isAccountsLoading } = useAccounts(householdId)
+  const { categories, isLoading: isCategoriesLoading } = useCategories(householdId)
+  const { plans, isLoading: isPlansLoading, error, hasData, refetch: refetchPlans } = useInstallmentPlans(householdId)
+  const { materializedCounts } = useInstallmentMaterializedCounts(householdId)
+  const createPlan = useCreateInstallmentPlan(householdId)
+  // Desktop Claude Design pass: the mockup's billing-cycle cards, at the
+  // top of what it calls "אשראי ותשלומים" (Credit & Payments) — this
+  // screen's own nav destination already carries that label (see
+  // _layout.tsx's RAIL_GROUPS). Reuses useUpcomingCommitments' own
+  // credit_card_cycle entries (the exact same current-cycle-spend figure
+  // Dashboard's "מה מגיע" panel and Safe-to-Spend already reserve against)
+  // rather than a second, parallel query — only the cycle's own start/end
+  // dates (for the countdown ring) are computed fresh here, via the same
+  // pure getCurrentBillingCycleRange every other current-cycle figure in
+  // this app already goes through.
+  const { commitments } = useUpcomingCommitments(householdId)
+  // Same route split the other redesigned screens make.
+  const { width } = useWindowDimensions()
+  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
+  const creditCardCycleCommitments = commitments.filter((c) => c.source === 'credit_card_cycle')
+  const today = localDateString()
+
+  const isLoading = isHouseholdLoading || isAccountsLoading || isCategoriesLoading
+
+  const creditCardAccounts = accounts.filter((a) => a.type === 'credit_card' && a.is_active)
+  // Two different real reasons a real card can have no cycle card to show —
+  // distinguished so the empty state gives an accurate, actionable reason
+  // rather than one generic message covering both:
+  //   - unconfigured: no billing_cycle_day at all, so
+  //     getCurrentBillingCycleRange has nothing to compute against.
+  //   - genuinely quiet: billing_cycle_day IS set, but
+  //     buildUpcomingCommitments.ts's own credit-card-cycle loop skips
+  //     emitting a commitment when this cycle's spend is exactly ₪0 (a
+  //     brand-new card, or one with no transactions yet) — not a
+  //     configuration problem, so telling a household to "make sure the
+  //     billing date is set" here would be actively wrong.
+  const creditCardAccountsMissingCycleDay = creditCardAccounts.filter((a) => a.billing_cycle_day === null)
+  const creditCardAccountsConfiguredButQuiet = creditCardAccounts.filter(
+    (a) => a.billing_cycle_day !== null && !creditCardCycleCommitments.some((c) => c.sourceId === a.id)
+  )
+  // Part 6 of the product-quality audit: this screen used to render a
+  // generic "no installments yet" empty state (identical to a household
+  // that simply hasn't logged a purchase yet) even when the real reason was
+  // that no credit-card account exists at all — the only way to discover
+  // that was to open the add-purchase form and hit a dead-end error inside
+  // it. Once loading has actually settled, a household with zero
+  // credit-card accounts gets the real prerequisite explained up front,
+  // with a direct way to go add one, instead of empty-box → click → modal
+  // says no.
+  const noCreditCardAccountsAtAll = !isLoading && creditCardAccounts.length === 0
+
+  const [isAdding, setIsAdding] = useState(false)
+  const [description, setDescription] = useState('')
+  const [merchantName, setMerchantName] = useState('')
+  const [totalAmountText, setTotalAmountText] = useState('')
+  const [installmentCountText, setInstallmentCountText] = useState('')
+  const [firstChargeDate, setFirstChargeDate] = useState(localDateString())
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [isShared, setIsShared] = useState(true)
+  const [validationError, setValidationError] = useState<string | null>(null)
+
+  function resetForm() {
+    setDescription('')
+    setMerchantName('')
+    setTotalAmountText('')
+    setInstallmentCountText('')
+    setFirstChargeDate(localDateString())
+    setAccountId(null)
+    setCategoryId(null)
+    setIsShared(true)
+    setIsAdding(false)
+  }
+
+  function handleCreate() {
+    if (!householdId || createPlan.isPending) return
+    setValidationError(null)
+
+    if (!description.trim()) {
+      setValidationError(t('installments.form.errors.missingDescription'))
+      return
+    }
+    if (!accountId) {
+      setValidationError(t('installments.form.errors.missingAccount'))
+      return
+    }
+    const parsedTotal = agorotFromILS(totalAmountText)
+    if (!parsedTotal.ok || parsedTotal.agorot === null || parsedTotal.agorot <= 0) {
+      setValidationError(t('installments.form.errors.invalidTotalAmount'))
+      return
+    }
+    const installmentCount = Number(installmentCountText.trim())
+    if (!Number.isInteger(installmentCount) || installmentCount < 1) {
+      setValidationError(t('installments.form.errors.invalidInstallmentCount'))
+      return
+    }
+    if (!firstChargeDate) {
+      setValidationError(t('installments.form.errors.missingFirstChargeDate'))
+      return
+    }
+
+    createPlan.mutate(
+      {
+        householdId,
+        accountId,
+        categoryId,
+        merchantName: merchantName.trim() || null,
+        description: description.trim(),
+        totalAgorot: parsedTotal.agorot,
+        installmentCount,
+        firstChargeDate,
+        isShared,
+      },
+      { onSuccess: resetForm }
+    )
+  }
+
+  // What the whole set of plans still costs. Every open plan reserves its
+  // monthly figure out of "פנוי באמת" until its last charge, so the column
+  // total is a fact about this month, not just a sum of history.
+  const openPlans = plans.filter((plan) => (materializedCounts[plan.id] ?? 0) < plan.installment_count)
+  const totalRemainingAgorot = sumAgorot(
+    openPlans.map((plan) => plan.total_agorot - plan.monthly_agorot * (materializedCounts[plan.id] ?? 0))
+  )
+  const totalMonthlyAgorot = sumAgorot(openPlans.map((plan) => plan.monthly_agorot))
+
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name_he, iconName: categoryIconName(c.icon) }))
+  const accountOptions = creditCardAccounts.map((a) => ({ value: a.id, label: a.name }))
+
+  return (
+    <Screen onBack={() => router.back()} keyboardAvoiding width="wide">
+      {/* Desktop Claude Design pass: the mockup titles this screen "אשראי
+          ותשלומים" (Credit & Payments), matching its nav destination's own
+          label — mobile keeps its original, narrower "רכישות בתשלומים"
+          title, since mobile shows only the installments list below, never
+          the billing-cycle cards. Same two-copy toggle pattern this app
+          already uses for compact-vs-full empty states. */}
+      {/* The phone frame titles this screen the same as its nav destination
+          does — "אשראי ותשלומים", not the narrower "רכישות בתשלומים", because
+          the billing-cycle cards below are half of what it shows. Desktop
+          gets the same title from the shell bar (DesktopTopBar). */}
+      <Text className="mb-4 text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+        {t('nav.creditAndPayments')}
+      </Text>
+
+      {noCreditCardAccountsAtAll && (
+        // Product-quality pass (section 7): this used to be the shared,
+        // deliberately modest EmptyState — right for a filtered list with
+        // nothing matching, wrong for the ONE genuine first-use onboarding
+        // moment on this screen. A household opening "אשראי ותשלומים" for
+        // the first time needs telling what the screen is for, why it's
+        // blank, and exactly what to do — not a dashed box with a bare
+        // sentence and a tiny outline button floating in a huge desktop
+        // canvas. Built as its own panel rather than a new EmptyState
+        // variant: nowhere else in the app currently needs this shape, and
+        // forcing it into the shared component would mean threading a
+        // three-step list through a prop nothing else uses.
+        <View className="mb-6 items-center">
+          <View className="w-full items-center gap-5 rounded-hero border border-border-light bg-surfaceMuted-light px-6 py-10 dark:border-border-dark dark:bg-surfaceMuted-dark web:desktop:max-w-[640px] web:desktop:px-12 web:desktop:py-14 web:desktop:shadow-sm">
+            <View className="h-14 w-14 items-center justify-center rounded-full bg-accentTint-light dark:bg-accentTint-dark">
+              <Ionicons
+                name="card-outline"
+                size={ICON.hero}
+                color={accentColor}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+            </View>
+
+            <View className="items-center gap-2">
+              <Text className="text-center text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[22px]">
+                {t('installments.noCardAccountEmptyState.title')}
+              </Text>
+              <Text className="max-w-[420px] text-center text-bodySm font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                {t('installments.noCardAccountEmptyState.body')}
+              </Text>
+            </View>
+
+            {/* The "what happens after" — the exact three steps between
+                here and a real billing-cycle card, so the primary CTA
+                below doesn't read as a leap into the unknown. */}
+            <View className="w-full max-w-[360px] gap-2.5">
+              {[
+                t('installments.noCardAccountEmptyState.step1'),
+                t('installments.noCardAccountEmptyState.step2'),
+                t('installments.noCardAccountEmptyState.step3'),
+              ].map((step, index) => (
+                <View key={step} className="flex-row items-center gap-3">
+                  <View className="h-6 w-6 items-center justify-center rounded-full bg-surface-light dark:bg-surface-dark">
+                    <Text className="text-caption font-sansSemibold text-ink-light dark:text-ink-dark">{index + 1}</Text>
+                  </View>
+                  <Text className="flex-1 text-caption font-sans text-ink-light dark:text-ink-dark">{step}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* A real primary action, not the outline `secondary` treatment
+                the rest of this screen's own "add" button uses below — this
+                is the one and only thing to do on the screen right now.
+                Pre-selects the credit-card type on Accounts (`?add=`) so
+                the household lands straight in the right form instead of
+                having to find the type picker themselves. */}
+            <View className="w-full max-w-[280px]">
+              <Button
+                title={t('installments.noCardAccountEmptyState.action')}
+                onPress={() => router.push({ pathname: '/accounts', params: { add: 'credit_card' } })}
+              />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {creditCardAccounts.length > 0 && creditCardCycleCommitments.length === 0 && !isLoading && (
+        // The billing-cycle cards below only ever render an account with a
+        // `credit_card_cycle` commitment. A real card can be missing one
+        // for two different reasons (see creditCardAccountsMissingCycleDay/
+        // creditCardAccountsConfiguredButQuiet above) — shown as two
+        // distinct messages rather than one generic "nothing to show,"
+        // since only one of them is actually asking the household to do
+        // something. Both is possible (some cards unconfigured, others
+        // just quiet this cycle) and both render.
+        <View className="mb-5 gap-3">
+          {creditCardAccountsMissingCycleDay.length > 0 && (
+            <EmptyState iconName="card-outline" message={t('installments.cycleCards.emptyUnconfigured')} compact />
+          )}
+          {creditCardAccountsConfiguredButQuiet.length > 0 && (
+            <EmptyState iconName="checkmark-circle-outline" message={t('installments.cycleCards.emptyQuiet')} compact />
+          )}
+        </View>
+      )}
+
+      {creditCardCycleCommitments.length > 0 && (
+        /* Both frames lead with these. `OurMoney - Mobile.dc.html` screen 09
+           stacks one card per credit card; the desktop frame sets them side
+           by side. They had been desktop-only, which left the phone opening
+           a screen called "אשראי ותשלומים" with no אשראי on it.
+
+           Checkpoint 6: both cycles now sit inside ONE SurfacePanel as
+           side-by-side InsetGroups (a divider, not a second border) instead
+           of each being its own bordered box — the exact consolidation
+           InsetGroup.tsx's own header comment names this screen for.
+
+           Checkpoint 6 tablet fix: SYSTEM.md §5 documents this exact 2-up
+           composition starting at the 834px tablet tier, not just desktop —
+           the original `web:desktop:`-only scoping left 834-1199 with no
+           surface/border/shadow at all (disclosed in the Checkpoint 6
+           visual review as a genuine, pre-existing defect). `tier="tablet"`
+           on the panel and both groups below keys the exact same values off
+           `web:tablet:` (768px+) instead, and this container's own layout
+           classes (flex-row, dividers, flex-1) move with it — mobile
+           (below 768) is unaffected either way, and 1440 desktop renders
+           byte-for-byte the same values as before, just from an earlier
+           matching breakpoint. */
+        <View className="mb-5">
+          <SurfacePanel tier="tablet" className="gap-3 web:tablet:flex-row web:tablet:gap-0">
+          {creditCardCycleCommitments.map((commitment, cycleIndex) => {
+            const account = creditCardAccounts.find((a) => a.id === commitment.sourceId)
+            if (!account || account.billing_cycle_day === null) return null
+            const range = getCurrentBillingCycleRange(account.billing_cycle_day, today)
+            const cycleLengthDays = Math.max(1, daysBetween(range.start, range.end))
+            const daysElapsed = Math.max(0, daysBetween(range.start, today))
+            const daysLeft = Math.max(0, daysBetween(today, range.end))
+            const installmentAgorot = commitment.installmentAgorot ?? 0
+            return (
+              <InsetGroup
+                key={account.id}
+                tier="tablet"
+                className={`web:tablet:flex-1 ${
+                  cycleIndex > 0
+                    ? 'web:tablet:border-s web:tablet:border-divider-light web:tablet:ps-4 dark:web:tablet:border-divider-dark'
+                    : cycleIndex < creditCardCycleCommitments.length - 1
+                      ? 'web:tablet:pe-4'
+                      : ''
+                }`}
+              >
+                <View className="flex-row items-center justify-between gap-3">
+                  <View className="flex-1">
+                    <Text className="text-meta font-sansSemibold tracking-[0.1em] text-inkMuted-light dark:text-inkMuted-dark" numberOfLines={1}>
+                      {account.name}
+                    </Text>
+                    <Text className="mt-0.5 text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[18px]" numberOfLines={1}>
+                      {t('installments.cycleCards.nextCharge')} · {formatDateDisplay(range.end)}
+                    </Text>
+                  </View>
+                  <CountdownRing percentElapsed={Math.min(100, (daysElapsed / cycleLengthDays) * 100)} daysLeft={daysLeft} />
+                </View>
+                <View className="mt-3.5">
+                  <Money agorot={commitment.amountAgorot} size="display" />
+                </View>
+
+                {/* What this statement is MADE of. The frame's own subtitle
+                    for this screen is "כמה יירד ומתי, ומה מזה תשלומים", and
+                    a household looking at a card bill wants to know how much
+                    of it is a decision they already made months ago. The two
+                    segments are the same total split, never a second sum. */}
+                <View className="mt-3.5 h-2.5 flex-row gap-0.5 overflow-hidden rounded-full">
+                  <View
+                    className="bg-inkMuted-light dark:bg-inkMuted-dark"
+                    style={{ flexGrow: Math.max(0, commitment.amountAgorot - installmentAgorot), flexBasis: 0 }}
+                  />
+                  {installmentAgorot > 0 && (
+                    <View className="bg-accent-light dark:bg-accent-dark" style={{ flexGrow: installmentAgorot, flexBasis: 0 }} />
+                  )}
+                </View>
+
+                <View className="mt-3 gap-2">
+                  <View className="flex-row items-center gap-2">
+                    <View className="h-2.5 w-2.5 rounded-[3px] bg-inkMuted-light dark:bg-inkMuted-dark" />
+                    <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                      {t('installments.cycleCards.regularSpend')}
+                    </Text>
+                    <View className="ms-auto">
+                      <Money agorot={commitment.amountAgorot - installmentAgorot} size="caption" tone="muted" />
+                    </View>
+                  </View>
+                  {installmentAgorot > 0 && (
+                    <View className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-[3px] bg-accent-light dark:bg-accent-dark" />
+                      <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+                        {t('installments.cycleCards.installmentSpend')}
+                      </Text>
+                      <View className="ms-auto">
+                        <Money agorot={installmentAgorot} size="caption" tone="muted" />
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                <Text className="mt-3 border-t border-divider-light pt-3 text-caption font-sans text-inkMuted-light dark:border-divider-dark dark:text-inkMuted-dark">
+                  {t('installments.cycleCards.range', { start: formatDateDisplay(range.start), end: formatDateDisplay(range.end) })}
+                </Text>
+              </InsetGroup>
+            )
+          })}
+          </SurfacePanel>
+        </View>
+      )}
+
+      {plans.length > 0 && (
+        // The list's own head, as both frames draw it: the title, then what
+        // the whole set costs — the total still owed and what it takes out
+        // of each month. A household reading a list of purchases needs the
+        // column total before the rows, not after them.
+        <View className="mb-3 mt-2">
+          {/* Stacks on a phone. Two figures and a title do not share a
+              390px line without one of them truncating, and truncating the
+              total is worse than spending a row on it. */}
+          <View className="gap-1 web:desktop:flex-row web:desktop:items-baseline web:desktop:justify-between web:desktop:gap-3">
+            <Text className="text-heading font-heeboBold text-ink-light dark:text-ink-dark web:desktop:text-[19px]">
+              {t('installments.listTitle')}
+            </Text>
+            <Text className="text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+              {t('installments.listTotals', {
+                remaining: formatILS(totalRemainingAgorot),
+                monthly: formatILS(totalMonthlyAgorot),
+              })}
+            </Text>
+          </View>
+          <Text className="mt-1 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+            {t('installments.listExplainer', { monthly: formatILS(totalMonthlyAgorot) })}
+          </Text>
+        </View>
+      )}
+
+      {isLoading || isPlansLoading ? (
+        <SkeletonList rows={3} />
+      ) : !hasData ? (
+        <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
+      ) : (
+        <>
+          {error && (
+            <View className="mb-3">
+              <ErrorMessage message={t('installments.errors.generic')} onRetry={refetchPlans} />
+            </View>
+          )}
+          {plans.length === 0 && !noCreditCardAccountsAtAll && (
+            <EmptyState iconName="card-outline" message={t('installments.empty')} hint={t('installments.emptyHint')} />
+          )}
+          {/* The phone stacks cards; desktop lays each plan across one line
+              with its own figure columns. Both carry the same pill track —
+              a plan is a countable number of payments, not a percentage.
+
+              Checkpoint 6: the desktop rows (divider-separated already, per
+              InstallmentPlanRow's own `row` variant) now sit inside their
+              own SurfacePanel — the list's own, separate Level-1 panel
+              SYSTEM.md's target calls for, distinct from the cycle-cards
+              panel above. SurfacePanel's own styling is desktop-only, so
+              mobile's stacked-card list (`gap-2.5`) is unaffected. Guarded
+              on `plans.length > 0` — SurfacePanel still paints its desktop
+              border/shadow/padding around zero children, which read as a
+              stray empty box above/below the real empty state otherwise. */}
+          {plans.length > 0 && (
+            <SurfacePanel className={isDesktopWeb ? undefined : 'gap-2.5'}>
+              {plans.map((plan) => (
+                <InstallmentPlanRow
+                  key={plan.id}
+                  plan={plan}
+                  paidCount={materializedCounts[plan.id] ?? 0}
+                  categoryIcon={plan.category_id ? categories.find((c) => c.id === plan.category_id)?.icon : undefined}
+                  accountName={accounts.find((a) => a.id === plan.account_id)?.name}
+                  variant={isDesktopWeb ? 'row' : 'card'}
+                />
+              ))}
+            </SurfacePanel>
+          )}
+        </>
+      )}
+
+      {isAdding ? (
+        <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+          <Card>
+            {/* Product-quality pass: a centered form with no heading of its
+                own still read as loose fields rather than a deliberate
+                panel — the button that opened it already says exactly this,
+                reused here rather than inventing new copy. */}
+            <Text className="mb-4 text-heading font-semibold text-ink-light dark:text-ink-dark">
+              {t('installments.form.formTitle')}
+            </Text>
+            {creditCardAccounts.length === 0 ? (
+              <>
+                <ErrorMessage message={t('installments.noCreditCardAccounts')} />
+                {/* mobile-expo-reviewer finding: this branch renders
+                    transiently while useAccounts is still resolving (its
+                    default is an empty array until the query settles) — the
+                    steady-state zero-accounts case is now caught earlier by
+                    noCreditCardAccountsAtAll, which hides the trigger button
+                    entirely, so this is only reachable in that brief window.
+                    Kept as a defensive fallback, still with an explicit way
+                    back rather than isAdding staying true with no control
+                    left to close the form. */}
+                <View className="mt-3">
+                  <Button title={t('common.cancel')} variant="secondary" onPress={() => setIsAdding(false)} />
+                </View>
+              </>
+            ) : (
+              <>
+                <View className="web:desktop:flex-row web:desktop:gap-4">
+                  <View className="web:desktop:flex-1">
+                    <Input
+                      label={t('installments.form.descriptionLabel')}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder={t('installments.form.descriptionPlaceholder')}
+                    />
+                  </View>
+                  <View className="web:desktop:flex-1">
+                    <Input
+                      label={t('installments.form.merchantLabel')}
+                      value={merchantName}
+                      onChangeText={setMerchantName}
+                      placeholder={t('installments.form.merchantPlaceholder')}
+                    />
+                  </View>
+                </View>
+                <View className="web:desktop:flex-row web:desktop:gap-4">
+                  <View className="web:desktop:flex-1">
+                    <Input
+                      label={t('installments.form.totalAmountLabel')}
+                      value={totalAmountText}
+                      onChangeText={setTotalAmountText}
+                      placeholder={t('installments.form.totalAmountPlaceholder')}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View className="web:desktop:flex-1">
+                    <Input
+                      label={t('installments.form.installmentCountLabel')}
+                      value={installmentCountText}
+                      onChangeText={setInstallmentCountText}
+                      placeholder={t('installments.form.installmentCountPlaceholder')}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
+                <DatePickerField
+                  label={t('installments.form.firstChargeDateLabel')}
+                  value={firstChargeDate}
+                  onChange={setFirstChargeDate}
+                />
+                <View className="web:desktop:flex-row web:desktop:gap-4">
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      label={t('transactions.form.accountLabel')}
+                      options={accountOptions}
+                      value={accountId}
+                      onChange={setAccountId}
+                      placeholder={t('transactions.form.accountPlaceholder')}
+                    />
+                  </View>
+                  <View className="web:desktop:flex-1">
+                    <Select
+                      label={t('transactions.form.categoryLabel')}
+                      options={categoryOptions}
+                      value={categoryId}
+                      onChange={setCategoryId}
+                      placeholder={t('transactions.form.categoryPlaceholder')}
+                    />
+                  </View>
+                </View>
+
+                <Text className="mb-1 text-sm text-inkMuted-light dark:text-inkMuted-dark">{t('transactions.form.sharedLabel')}</Text>
+                <View className="mb-4 flex-row gap-2">
+                  <Chip label={t('transactions.form.shared')} selected={isShared} onPress={() => setIsShared(true)} />
+                  <Chip label={t('transactions.form.personal')} selected={!isShared} onPress={() => setIsShared(false)} />
+                </View>
+
+                {(validationError || createPlan.isError) && (
+                  <ErrorMessage message={validationError ?? t('installments.errors.generic')} />
+                )}
+                <View className="web:desktop:flex-row web:desktop:gap-2">
+                  <View className="web:desktop:flex-1">
+                    <Button title={t('installments.form.submit')} onPress={handleCreate} loading={createPlan.isPending} />
+                  </View>
+                  <View className="mt-3 web:desktop:mt-0 web:desktop:flex-1">
+                    <Button
+                      title={t('common.cancel')}
+                      variant="secondary"
+                      disabled={createPlan.isPending}
+                      onPress={() => {
+                        setValidationError(null)
+                        resetForm()
+                      }}
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+          </Card>
+        </View>
+      ) : (
+        // Hidden once loading has settled and there is truly no credit-card
+        // account — clicking it could only ever dead-end inside the form
+        // (see the noCreditCardAccounts fallback below), and the empty
+        // state above already carries the one real next action. Still
+        // rendered during the brief window before useAccounts resolves, so
+        // the screen doesn't visibly flicker a button in and out.
+        !noCreditCardAccountsAtAll && (
+          <View className={`mt-4 ${INLINE_FORM_WIDTH_CLASS}`}>
+            <Button title={t('installments.addButton')} variant="secondary" onPress={() => setIsAdding(true)} />
+          </View>
+        )
+      )}
+    </Screen>
+  )
+}

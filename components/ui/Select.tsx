@@ -1,10 +1,14 @@
-import { useRef, useState, type ComponentProps, type ReactNode } from 'react'
-import { FlatList, Modal, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { useState, type ComponentProps, type ReactNode } from 'react'
+import { FlatList, Modal, Platform, Pressable, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
+import { useTranslation } from 'react-i18next'
 import { colors } from '@/constants/colors'
-import { DESKTOP_BREAKPOINT_PX, DIALOG_WIDTH_CLASS } from '@/constants/layout'
+import { ICON } from '@/constants/icons'
+import { DIALOG_WIDTH_CLASS } from '@/constants/layout'
+import { usePopoverAnchor } from '@/hooks/usePopoverAnchor'
+import { EmptyState } from './EmptyState'
 
 export interface SelectOption {
   value: string
@@ -32,24 +36,24 @@ interface SelectProps {
   variant?: 'box' | 'row'
   leadingIcon?: ReactNode
   sheetTitle?: string
-}
-
-// Desktop Visual/Responsive Design pass: what a desktop-only render measures
-// from the trigger (via `measureInWindow` — real on-screen coordinates, cheap
-// and correct regardless of RTL since it reflects wherever the trigger
-// physically renders, not a logical left/right assumption) so the anchored
-// popover that replaces the centered dialog at desktop can size/position
-// itself off the control that opened it, not the screen.
-interface Anchor {
-  x: number
-  y: number
-  width: number
-  height: number
+  // RRR §16 P1-9: an empty `options` list previously rendered the sheet
+  // with nothing in it — no message, no way out, dead-ending a brand-new
+  // household's very first "add a transaction" attempt at the account
+  // picker specifically (no accounts yet). Every field here is optional —
+  // omitting this prop entirely still renders a real message (never a
+  // blank sheet), just not an actionable one; a caller that DOES know the
+  // specific next step (e.g. "add an account") passes hint/actionLabel/
+  // onAction for a genuine recovery path.
+  emptyState?: {
+    message?: string
+    hint?: string
+    actionLabel?: string
+    onAction?: () => void
+  }
 }
 
 const POPOVER_MAX_HEIGHT = 320
 const POPOVER_MIN_WIDTH = 260
-const POPOVER_MARGIN = 8
 
 export function Select({
   label,
@@ -60,61 +64,48 @@ export function Select({
   variant = 'box',
   leadingIcon,
   sheetTitle,
+  emptyState,
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [anchor, setAnchor] = useState<Anchor | null>(null)
-  const triggerRef = useRef<View>(null)
+  const { triggerRef, anchor, isDesktopWeb, measure, style: anchorStyle } = usePopoverAnchor()
   const { colorScheme: scheme } = useColorScheme()
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
+  const { t } = useTranslation()
   const selectedOption = options.find((option) => option.value === value)
   const selectedLabel = selectedOption?.label
   const mutedColor = scheme === 'dark' ? colors.inkMuted.dark : colors.inkMuted.light
   const accentColor = scheme === 'dark' ? colors.accent.dark : colors.accent.light
-  // Below `desktop`, this Modal stays the original bottom sheet (slide-up,
-  // bottom-anchored, drag handle, top corners only) on both native and web —
-  // unchanged from every pre-existing caller. At desktop width on web only,
-  // it becomes an anchored popover instead: a centered dialog (and before
-  // that, a bottom sheet) reads as a mobile pattern once there's a full
-  // desktop viewport around it, and — for a short list especially — opens a
-  // large box with no visual relationship to the control the user tapped.
-  const isDesktopWeb = Platform.OS === 'web' && windowWidth >= DESKTOP_BREAKPOINT_PX
+
+  // RRR §16 P1-9: rendered whenever `options` is empty, in place of the
+  // FlatList — never nothing. `message` always resolves (falls back to a
+  // generic i18n string) even when the caller passes no `emptyState` at
+  // all; `hint`/`actionLabel`/`onAction` stay undefined unless the caller
+  // supplied them, so EmptyState's own action button only appears where a
+  // real next step exists.
+  const emptyStateBody = (
+    <EmptyState
+      compact
+      message={emptyState?.message ?? t('common.select.empty')}
+      hint={emptyState?.hint}
+      actionLabel={emptyState?.actionLabel}
+      onAction={emptyState?.onAction}
+    />
+  )
 
   function openSelect() {
-    // Opening never waits on measurement — measureInWindow is a real
-    // native-bridge call with no guaranteed-synchronous callback (and no
-    // callback at all in a JS-only test renderer, which has no host view to
-    // measure), so gating `setIsOpen(true)` on it firing would mean the
-    // popover could silently never open. The anchor is instead applied
-    // opportunistically: it starts null (popoverStyle()'s null-anchor
-    // fallback below covers that render), and snaps to the trigger's real
-    // position the moment the callback does resolve.
+    // Opening never waits on measurement — see usePopoverAnchor's own
+    // comment for why. popoverStyle()'s null-anchor fallback covers the
+    // render before it resolves.
     setIsOpen(true)
-    if (isDesktopWeb && triggerRef.current) {
-      // measureInWindow gives real screen coordinates — used directly as
-      // `left`/`top` below (see the Anchor comment above for why that's
-      // correct regardless of RTL).
-      triggerRef.current.measureInWindow((x, y, width, height) => {
-        setAnchor({ x, y, width, height })
-      })
-    }
+    measure()
   }
 
-  // Clamped so the popover never renders off the bottom/right/left edge of
-  // the viewport — flips above the trigger instead of below it when there
-  // isn't room underneath, and slides horizontally back onto screen rather
-  // than clipping. `anchor` is only ever set on a desktop-web open, so this
-  // is only consulted from the desktop branch below.
+  // Popover width is content-driven (grows to fit a wide option list, never
+  // narrower than the trigger); usePopoverAnchor handles the actual
+  // top/left/viewport-collision math shared with DatePickerField's calendar
+  // popover.
   function popoverStyle() {
     const popoverWidth = anchor ? Math.max(anchor.width, POPOVER_MIN_WIDTH) : POPOVER_MIN_WIDTH
-    if (!anchor) {
-      return { position: 'absolute' as const, top: 80, left: windowWidth / 2 - popoverWidth / 2, width: popoverWidth }
-    }
-    const fitsBelow = anchor.y + anchor.height + POPOVER_MARGIN + POPOVER_MAX_HEIGHT <= windowHeight
-    const top = fitsBelow
-      ? anchor.y + anchor.height + 4
-      : Math.max(POPOVER_MARGIN, anchor.y - POPOVER_MAX_HEIGHT - 4)
-    const left = Math.min(Math.max(anchor.x, POPOVER_MARGIN), windowWidth - popoverWidth - POPOVER_MARGIN)
-    return { position: 'absolute' as const, top, left, width: popoverWidth }
+    return anchorStyle(popoverWidth, POPOVER_MAX_HEIGHT)
   }
 
   return (
@@ -141,7 +132,7 @@ export function Select({
               {selectedLabel ?? placeholder}
             </Text>
           </View>
-          <Ionicons name="chevron-down" size={18} color={mutedColor} />
+          <Ionicons name="chevron-down" size={ICON.row} color={mutedColor} />
         </Pressable>
       ) : (
         <View className="mb-4">
@@ -162,7 +153,7 @@ export function Select({
             <Text className={selectedLabel ? 'text-ink-light dark:text-ink-dark' : 'text-inkMuted-light dark:text-inkMuted-dark'}>
               {selectedLabel ?? placeholder}
             </Text>
-            <Ionicons name="chevron-down" size={18} color={mutedColor} />
+            <Ionicons name="chevron-down" size={ICON.row} color={mutedColor} />
           </Pressable>
         </View>
       )}
@@ -193,32 +184,40 @@ export function Select({
                   {sheetTitle}
                 </Text>
               )}
-              <FlatList
-                data={options}
-                keyExtractor={(item) => item.value}
-                ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() => {
-                      onChange(item.value)
-                      setIsOpen(false)
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: item.value === value }}
-                    className="flex-row items-center gap-3 px-3 py-2.5"
-                  >
-                    {item.iconName && (
-                      <View className="h-7 w-7 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                        <Ionicons name={item.iconName} size={15} color={mutedColor} />
-                      </View>
-                    )}
-                    <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
-                      {item.label}
-                    </Text>
-                    {item.value === value && <Ionicons name="checkmark" size={16} color={accentColor} />}
-                  </Pressable>
-                )}
-              />
+              {options.length === 0 ? (
+                <View className="p-3">{emptyStateBody}</View>
+              ) : (
+                <FlatList
+                  data={options}
+                  keyExtractor={(item) => item.value}
+                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      onPress={() => {
+                        onChange(item.value)
+                        setIsOpen(false)
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: item.value === value }}
+                      // RRR §16 P0-4: aria-selected reaches the DOM directly
+                      // (RNW forwards it; accessibilityState's object form is
+                      // dropped) — see SegmentedControl.tsx's identical note.
+                      aria-selected={item.value === value}
+                      className="flex-row items-center gap-3 px-3 py-2.5"
+                    >
+                      {item.iconName && (
+                        <View className="h-7 w-7 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                          <Ionicons name={item.iconName} size={ICON.chip} color={mutedColor} />
+                        </View>
+                      )}
+                      <Text className="flex-1 text-body text-ink-light dark:text-ink-dark" numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                      {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
+                    </Pressable>
+                  )}
+                />
+              )}
             </View>
           </Pressable>
         ) : (
@@ -236,58 +235,83 @@ export function Select({
                     {sheetTitle}
                   </Text>
                 )}
-                <FlatList
-                  data={options}
-                  keyExtractor={(item) => item.value}
-                  contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 8 : 16 }}
-                  ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      onPress={() => {
-                        onChange(item.value)
-                        setIsOpen(false)
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: item.value === value }}
-                      className="flex-row items-center gap-3 px-4 py-3.5"
-                    >
-                      {item.iconName && (
-                        <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={item.iconName} size={18} color={mutedColor} />
-                        </View>
-                      )}
-                      <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
-                      {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
-                    </Pressable>
-                  )}
-                />
+                {options.length === 0 ? (
+                  <View className="px-4 pb-4">{emptyStateBody}</View>
+                ) : (
+                  <FlatList
+                    data={options}
+                    keyExtractor={(item) => item.value}
+                    contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 8 : 16 }}
+                    ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => {
+                          onChange(item.value)
+                          setIsOpen(false)
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: item.value === value }}
+                        // RRR §16 P0-4: aria-selected reaches the DOM directly
+                        // (RNW forwards it; accessibilityState's object form
+                        // is dropped) — see SegmentedControl.tsx's note.
+                        aria-selected={item.value === value}
+                        className="flex-row items-center gap-3 px-4 py-3.5"
+                      >
+                        {item.iconName && (
+                          <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                            <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
+                          </View>
+                        )}
+                        <Text className="flex-1 text-body text-ink-light dark:text-ink-dark">{item.label}</Text>
+                        {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
+                      </Pressable>
+                    )}
+                  />
+                )}
                 <SafeAreaView edges={['bottom']} />
               </View>
             ) : (
               <View className={`max-h-96 w-full ${DIALOG_WIDTH_CLASS} rounded-t-2xl bg-surface-light p-4 dark:bg-surface-dark`}>
-                <FlatList
-                  data={options}
-                  keyExtractor={(item) => item.value}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      onPress={() => {
-                        onChange(item.value)
-                        setIsOpen(false)
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: item.value === value }}
-                      className="flex-row items-center gap-3 border-b border-border-light py-3 dark:border-border-dark"
-                    >
-                      {item.iconName && (
-                        <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
-                          <Ionicons name={item.iconName} size={16} color={mutedColor} />
-                        </View>
-                      )}
-                      <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
-                      {item.value === value && <Ionicons name="checkmark" size={18} color={accentColor} />}
-                    </Pressable>
-                  )}
-                />
+                {options.length === 0 ? (
+                  emptyStateBody
+                ) : (
+                  <FlatList
+                    data={options}
+                    keyExtractor={(item) => item.value}
+                    // Visual QA pass: this variant had no bottom padding and no
+                    // safe-area handling at all — the 'row' variant's own
+                    // trailing `<SafeAreaView edges={['bottom']} />` below is
+                    // what this was missing, on the one variant every
+                    // pre-existing caller (Accounts, Budgets, Recurring,
+                    // Settings, Import, edit-transaction) still uses.
+                    contentContainerStyle={{ paddingBottom: 8 }}
+                    ItemSeparatorComponent={() => <View className="h-px bg-border-light dark:bg-border-dark" />}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => {
+                          onChange(item.value)
+                          setIsOpen(false)
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: item.value === value }}
+                        // RRR §16 P0-4: aria-selected reaches the DOM directly
+                        // (RNW forwards it; accessibilityState's object form
+                        // is dropped) — see SegmentedControl.tsx's note.
+                        aria-selected={item.value === value}
+                        className="flex-row items-center gap-3 py-3"
+                      >
+                        {item.iconName && (
+                          <View className="h-8 w-8 items-center justify-center rounded-full bg-surfaceMuted-light dark:bg-surfaceMuted-dark">
+                            <Ionicons name={item.iconName} size={ICON.row} color={mutedColor} />
+                          </View>
+                        )}
+                        <Text className="flex-1 text-base text-ink-light dark:text-ink-dark">{item.label}</Text>
+                        {item.value === value && <Ionicons name="checkmark" size={ICON.row} color={accentColor} />}
+                      </Pressable>
+                    )}
+                  />
+                )}
+                <SafeAreaView edges={['bottom']} />
               </View>
             )}
           </Pressable>

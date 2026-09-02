@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { agorotFromILS, formatILS } from './format'
+import { agorotFromILS, formatILS, formatRatioILS } from './format'
 
 // Assertions check for the expected substrings rather than byte-for-byte
 // string equality: he-IL currency formatting includes locale-dependent
@@ -24,6 +24,20 @@ describe('formatILS', () => {
 
   it('formats zero', () => {
     const result = formatILS(0)
+    expect(result).toContain('0.00')
+    expect(result).not.toContain('-')
+  })
+
+  // Comprehensive upgrade pass: a caller negating a sum that happens to be
+  // exactly 0 (e.g. `-safeToSpend.plannedObligationsAgorot` with zero
+  // upcoming obligations — dashboard/index.tsx and cash-flow/index.tsx both
+  // do this) produces JS's `-0`, not `0`. `-0 === 0` is true, but
+  // `Intl.NumberFormat` still renders a sign, producing a spurious
+  // "-₪0.00" a household with nothing owed would see every time. This is
+  // the exact regression this test guards against — `formatILS` must
+  // normalize it, not every call site.
+  it('never renders a negative sign for negative zero (-0)', () => {
+    const result = formatILS(-0)
     expect(result).toContain('0.00')
     expect(result).not.toContain('-')
   })
@@ -95,5 +109,36 @@ describe('agorotFromILS', () => {
   it('accepts an amount exactly at the upper bound', () => {
     const result = agorotFromILS('10000000')
     expect(result.ok).toBe(true)
+  })
+})
+
+describe('formatRatioILS', () => {
+  it('keeps spent before total, which bidi would otherwise swap', () => {
+    // Both operands of a naive "{spent} / {total}" are strong-RTL runs
+    // (formatILS opens with U+200F and closes with ₪), so the pair renders
+    // in the opposite visual order — a row claiming a household spent 4,500
+    // of 926. The isolate is what stops that.
+    const ratio = formatRatioILS(92_630, 450_000)
+    expect(ratio.indexOf('926.30')).toBeLessThan(ratio.indexOf('4,500.00'))
+  })
+
+  it('wraps the whole ratio in one LTR isolate', () => {
+    const ratio = formatRatioILS(92_630, 450_000)
+    expect(ratio.startsWith('\u2066')).toBe(true)
+    expect(ratio.endsWith('\u2069')).toBe(true)
+  })
+
+  it('carries the currency once, on the total', () => {
+    const ratio = formatRatioILS(92_630, 450_000)
+    expect(ratio.split('₪')).toHaveLength(2)
+  })
+
+  it('formats the bare operand to the same two decimals formatILS uses', () => {
+    expect(formatRatioILS(98_000, 140_000)).toContain('980.00')
+  })
+
+  it('renders a zero spend as a plain zero, never "-0"', () => {
+    expect(formatRatioILS(-0, 140_000)).toContain('0.00')
+    expect(formatRatioILS(-0, 140_000)).not.toContain('-0.00')
   })
 })

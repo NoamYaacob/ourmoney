@@ -30,6 +30,14 @@ describe('isEligibleCashAccount', () => {
     expect(isEligibleCashAccount(account({ type: 'other' }))).toBe(false)
   })
 
+  it('excludes a loan account', () => {
+    expect(isEligibleCashAccount(account({ type: 'loan' }))).toBe(false)
+  })
+
+  it('excludes a mortgage account', () => {
+    expect(isEligibleCashAccount(account({ type: 'mortgage' }))).toBe(false)
+  })
+
   it('excludes an inactive checking account', () => {
     expect(isEligibleCashAccount(account({ is_active: false }))).toBe(false)
   })

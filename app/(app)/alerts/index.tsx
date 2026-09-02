@@ -6,101 +6,128 @@
 // separately-named, still-future "in-app notification centre" — see
 // features/alerts/hooks/useFinancialAlerts.ts's own header).
 
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
-import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'nativewind'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { useHousehold } from '@/features/household/hooks/useHousehold'
 import { useFinancialAlerts } from '@/features/alerts/hooks/useFinancialAlerts'
-import { severityColorToken, severityIconName } from '@/features/alerts/lib/alertDisplay'
+import { alertTier, tierColor, TIER_LABEL_CLASS, type AlertTier } from '@/features/alerts/lib/alertDisplay'
+import { AlertCard } from '@/features/alerts/components/AlertCard'
 import { Screen } from '@/components/ui/Screen'
-import { Card } from '@/components/ui/Card'
-import { Divider } from '@/components/ui/Divider'
 import { ErrorMessage } from '@/components/ui/ErrorMessage'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { SkeletonList } from '@/components/ui/SkeletonList'
 import { EmptyState } from '@/components/ui/EmptyState'
-import type { FinancialAlert, FinancialAlertSeverity } from '@/types/app'
+import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout'
+import type { FinancialAlert } from '@/types/app'
 
-const SEVERITY_GROUPS: { severity: FinancialAlertSeverity; labelKey: string }[] = [
-  { severity: 'critical', labelKey: 'alerts.groups.critical' },
-  { severity: 'warning', labelKey: 'alerts.groups.warning' },
-  { severity: 'info', labelKey: 'alerts.groups.info' },
+// The four tiers, in the order the design files stack them: what is broken,
+// what is heading that way, what changed, and what is good news.
+const TIER_GROUPS: { tier: AlertTier; labelKey: string }[] = [
+  { tier: 'critical', labelKey: 'alerts.groups.critical' },
+  { tier: 'warning', labelKey: 'alerts.groups.warning' },
+  { tier: 'info', labelKey: 'alerts.groups.info' },
+  { tier: 'positive', labelKey: 'alerts.groups.positive' },
 ]
 
 export default function Alerts() {
   const { t } = useTranslation()
   const router = useRouter()
+  // Same route split the other redesigned screens make: the two frames draw
+  // an alert differently enough that a utility override cannot express it.
+  const { width } = useWindowDimensions()
+  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT_PX
   const { user } = useAuth()
   const { householdId, isLoading: isHouseholdLoading } = useHousehold(user?.id)
-  const { alerts, isLoading, hasPartialError } = useFinancialAlerts(householdId)
+  const { alerts, isLoading, hasPartialError, refetch } = useFinancialAlerts(householdId)
   const { colorScheme: scheme } = useColorScheme()
 
   if (isHouseholdLoading) {
     return (
-      <Screen center>
+      <Screen onBack={() => router.back()} center>
         <LoadingSpinner />
       </Screen>
     )
   }
 
   return (
-    <Screen width="wide">
-      <Text className="mb-6 text-2xl font-bold text-ink-light dark:text-ink-dark">{t('alerts.screenTitle')}</Text>
+    // Part 3A/24 of the product-quality audit: this was `width="wide"`
+    // (1150px at desktop) with its own list wrapped in a hard 600px cap —
+    // the exact "huge canvas, narrow floating content" pattern flagged
+    // elsewhere, and unlike Obligations/Recurring's hero panel (a stat
+    // display that benefits from the extra width), alert copy is prose —
+    // stretching each card edge to edge across 1150px would only hurt
+    // readability. `medium` commits the whole page to a centered 800px
+    // column instead, which reads as an intentional list layout rather
+    // than content stranded in a corner.
+    <Screen onBack={() => router.back()} width="medium">
+      <Text className="text-title font-heebo text-ink-light dark:text-ink-dark web:desktop:hidden">
+        {t('alerts.screenTitle')}
+      </Text>
+      {/* Both frames carry this line under the title. It is the one thing a
+          household needs to know about this screen: nothing here is a log —
+          an alert exists only while the condition behind it does, and it
+          leaves on its own when the problem is solved. */}
+      <Text className="mb-4 mt-0.5 text-caption font-sans text-inkMuted-light dark:text-inkMuted-dark">
+        {t('alerts.subtitle')}
+      </Text>
 
       {/* A single failed source degrades to fewer alerts, never a blank
           screen (useFinancialAlerts.ts's own partial-availability design)
           — this is a non-blocking heads-up, not an error state. */}
       {hasPartialError && (
         <View className="mb-4">
-          <ErrorMessage message={t('alerts.errors.partial')} />
+          <ErrorMessage message={t('alerts.errors.partial')} onRetry={refetch} />
         </View>
       )}
 
-      <View className="web:desktop:max-w-[600px]">
+      <View>
         {isLoading ? (
           <SkeletonList rows={3} />
         ) : alerts.length === 0 ? (
-          <EmptyState icon="✅" message={t('alerts.empty')} />
+          // Visual QA + Desktop Polish pass: a small icon + one line was the
+          // entire desktop page below the title — the same "reads as
+          // broken/empty" problem Budgets/Transactions' true-empty states
+          // already solved with a bounded, padded card. Mobile/tablet keep
+          // the exact original (non-compact) EmptyState, unchanged; desktop
+          // additionally wraps its own copy in a roomier bordered card.
+          // architecture-reviewer finding: an earlier version of this fix
+          // switched the mobile copy to `compact`, which would have shrunk
+          // mobile's existing empty state — not requested, and not what the
+          // comment claimed.
+          <>
+            <View className="web:desktop:hidden">
+              <EmptyState iconName="checkmark-circle-outline" message={t('alerts.empty')} />
+            </View>
+            <View className="hidden web:desktop:flex web:desktop:items-center web:desktop:rounded-card web:desktop:border web:desktop:border-border-light web:desktop:bg-surfaceMuted-light web:desktop:px-10 web:desktop:py-16 dark:web:desktop:border-border-dark dark:web:desktop:bg-surfaceMuted-dark">
+              <EmptyState iconName="checkmark-circle-outline" message={t('alerts.empty')} />
+            </View>
+          </>
         ) : (
-          SEVERITY_GROUPS.map((group) => {
-            const groupAlerts = alerts.filter((alert) => alert.severity === group.severity)
+          TIER_GROUPS.map((group) => {
+            const groupAlerts = alerts.filter((alert) => alertTier(alert) === group.tier)
             if (groupAlerts.length === 0) return null
             return (
-              <View key={group.severity} className="mb-6">
-                <Text className="mb-2 text-sm font-semibold text-ink-light dark:text-ink-dark">
-                  {t(group.labelKey)}
-                </Text>
-                <Card>
-                  {groupAlerts.map((alert: FinancialAlert, index) => (
-                    <View key={alert.id}>
-                      {index > 0 && (
-                        <View className="my-3">
-                          <Divider />
-                        </View>
-                      )}
-                      <Pressable
-                        onPress={() => router.push(alert.actionRoute)}
-                        accessibilityRole="button"
-                        className="flex-row items-center gap-3"
-                      >
-                        <Ionicons
-                          name={severityIconName(alert.severity)}
-                          size={20}
-                          color={severityColorToken(alert.severity, scheme === 'dark' ? 'dark' : 'light')}
-                        />
-                        <View className="flex-1">
-                          <Text className="text-body text-ink-light dark:text-ink-dark">{alert.title}</Text>
-                          <Text className="mt-0.5 text-caption text-inkMuted-light dark:text-inkMuted-dark">
-                            {alert.description}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    </View>
+              <View key={group.tier} className="mb-5">
+                {/* The heading carries a tier dot and the count, as both
+                    frames draw it — "דורש טיפול · 2" tells a household how
+                    much is waiting before they read a single card. */}
+                <View className="mb-2 flex-row items-center gap-2">
+                  <View
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: tierColor(group.tier, scheme === 'dark' ? 'dark' : 'light') }}
+                  />
+                  <Text className={`text-meta font-sansSemibold tracking-[0.06em] ${TIER_LABEL_CLASS[group.tier]}`}>
+                    {t('alerts.groupCount', { label: t(group.labelKey), count: groupAlerts.length })}
+                  </Text>
+                </View>
+                <View className="gap-2.5">
+                  {groupAlerts.map((alert: FinancialAlert) => (
+                    <AlertCard key={alert.id} alert={alert} variant={isDesktopWeb ? 'stripe' : 'card'} />
                   ))}
-                </Card>
+                </View>
               </View>
             )
           })

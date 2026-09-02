@@ -26,23 +26,25 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
     // vertical space before the grouped fields below it. Mobile untouched.
     <View className="mb-6 items-center border-b border-border-light pb-5 web:desktop:mb-4 web:desktop:pb-3 dark:border-border-dark">
       <Text className="mb-1 text-caption text-inkMuted-light dark:text-inkMuted-dark">{label}</Text>
-      {/* Native Yoga auto-mirrors flex-row under the forced-RTL flag
-          (app/_layout.tsx), so "₪" (first JSX child) already lands on the
-          visual right there. NativeWind's web-compiled CSS does not consult
-          that flag (no dir="rtl" on the web document), so web needs an
-          explicit web:flex-row-reverse to get the same result — DOM order
-          (and screen-reader order) is unchanged, only the web visual
-          position flips. Matches formatILS's own Intl('he-IL') currency
-          formatting (symbol before the amount).
-          Phase 3.1: the TextInput keeps a min-width so short/empty values
-          still have a comfortable, stable tap target, but its text is
-          right-aligned (not centered) within that box — center-aligning a
-          short value inside a wide fixed box left visible dead air between
-          "₪" and the first digit. Right-aligning pins the digits flush
-          against the symbol regardless of how many are typed, with any
-          extra width growing away from it (left) instead of around it. */}
-      <View className="flex-row items-center gap-1 web:flex-row-reverse">
-        <Text className="text-display font-bold text-ink-light dark:text-ink-dark">₪</Text>
+      {/* The ₪ comes after the digits in source, which under RTL puts it on
+          the physical left — where `formatILS` puts it in every other figure
+          in the app, and where the design's own entry screen draws it. It
+          had been first, so the one amount a household actually types was
+          the one amount laid out differently from all the ones it reads
+          back.
+
+          The input keeps a min-width so a short or empty value still has a
+          stable tap target, and right-aligns inside it so the digits stay
+          flush against the symbol however many are typed — extra width grows
+          away from it rather than around it.
+
+          It also needs a max-width and `shrink`. A browser sizes a text
+          input from its `size` attribute — about twenty characters — so at
+          52px the field measured 626px inside a 390px screen and pushed
+          itself and the ₪ clean off both edges. Nothing about that is
+          visible until you measure it: the row reported no overflow because
+          it was centred, so it hung off each side equally. */}
+      <View className="w-full flex-row items-center justify-center gap-1">
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -50,9 +52,20 @@ export function AmountField({ label, value, onChangeText, placeholder }: AmountF
           placeholderTextColor={placeholderColor}
           keyboardType="decimal-pad"
           accessibilityLabel={label}
-          className="min-w-[90px] text-display font-bold text-ink-light dark:text-ink-dark"
+          className="min-w-[90px] max-w-[240px] shrink font-heebo text-heroXl text-ink-light dark:text-ink-dark"
+          // The class alone cannot size an <input> on web — see the
+          // `input[data-hero-amount]` rule in global.css for why, and for the
+          // measurement behind it. Native takes the size from the class.
+          {...({ dataSet: { heroAmount: '' } } as object)}
           style={{ textAlign: 'right' }}
+          maxFontSizeMultiplier={1.2}
         />
+        <Text
+          className="font-heebo text-heroXl text-ink-light dark:text-ink-dark"
+          maxFontSizeMultiplier={1.2}
+        >
+          ₪
+        </Text>
       </View>
     </View>
   )

@@ -1,0 +1,216 @@
+name: Migration 012 DB Validation
+
+# Real Supabase database/RLS gate for the obligation-to-transaction linkage
+# milestone (supabase/migrations/012_obligation_transaction_link.sql).
+# Mirrors migration-007-db-validation.yml's proven pattern exactly: a
+# disposable local Supabase stack started BY THIS RUNNER via `supabase
+# start` (real Postgres + Auth in Docker containers that exist only for the
+# lifetime of this job) — no SUPABASE_ACCESS_TOKEN, no SUPABASE_DB_PASSWORD,
+# no SUPABASE_PROJECT_REF, no `supabase link`, no hosted project touched.
+# The local stack's Postgres password is Supabase CLI's own well-known local
+# default ('postgres', bound to 127.0.0.1 only, torn down with the runner),
+# not a secret. Needed because this session's sandbox has the Docker CLI
+# installed but no reachable daemon, so local `supabase db reset` cannot run
+# here — the same situation migration-005/007's own workflows were built to
+# work around.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/responsive-qa-polish
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/migration-012-db-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  db-validation:
+    name: Real database / RLS gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase in GitHub runner
+        run: supabase start
+
+      - name: Reset database and apply all migrations (001 -> 012) from scratch
+        run: supabase db reset
+
+      # Structural proof this run never touched anything remote: local-only
+      # ports/host, and the remote-shaped env vars this app's client code
+      # needs are deliberately left unset here — nothing in this job can
+      # accidentally point the app at a real project.
+      - name: Assert no remote Supabase configuration is present
+        run: |
+          if [ -n "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -n "$SUPABASE_ACCESS_TOKEN" ] || [ -n "$SUPABASE_DB_PASSWORD" ]; then
+            echo "A remote/production-shaped Supabase env var is set in this job — refusing to continue." >&2
+            exit 1
+          fi
+          echo "Confirmed: no remote Supabase URL, access token, or DB password is set. Local stack only."
+
+      - name: Run full RLS/database test suite (incl. Group 11)
+        shell: bash
+        run: |
+          set -o pipefail
+          PGPASSWORD=postgres psql \
+            -h 127.0.0.1 \
+            -p 54322 \
+            -U postgres \
+            -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/rls_tests.sql 2>&1 | tee rls-test-output.txt
+          grep -F "=== ALL RLS TESTS PASSED" rls-test-output.txt
+          grep -F "PASS RECURRING.CONCURRENT" rls-test-output.txt
+          grep -F "PASS DELETE_ACCOUNT.CONCURRENT" rls-test-output.txt
+          grep -F "PASS LEAVE.CONCURRENT" rls-test-output.txt
+
+      - name: Verify no Group 11 test was silently skipped
+        shell: bash
+        run: |
+          # A test that errored would already have aborted the script above
+          # (-v ON_ERROR_STOP=1); this additionally catches a test that was
+          # accidentally commented out or never reached.
+          for t in 11.1 11.2 11.3 11.4 11.5 11.6 11.7 11.8 11.9 11.10 11.11; do
+            grep -F "PASS $t:" rls-test-output.txt || { echo "Missing PASS for test $t" >&2; exit 1; }
+          done
+          echo "All 11 Group 11 tests confirmed present in the output."
+
+      - name: Inspect transactions.obligation_id + widened RLS + new/replaced functions structurally against the real local database
+        shell: bash
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          -- obligation_id column exists, nullable, FK to planned_obligations
+          -- with ON DELETE SET NULL.
+          SELECT
+            a.attname,
+            a.attnotnull,
+            pg_get_constraintdef(c.oid) AS fk_def
+          FROM pg_attribute a
+          JOIN pg_constraint c ON c.conrelid = a.attrelid AND a.attnum = ANY (c.conkey)
+          WHERE a.attrelid = 'public.transactions'::regclass
+            AND a.attname = 'obligation_id' AND c.contype = 'f';
+
+          -- transactions_insert/_update both require obligation_id IS NULL,
+          -- exactly mirroring transfer_id's existing hard block.
+          SELECT policyname, cmd, qual, with_check
+          FROM pg_policies
+          WHERE schemaname = 'public' AND tablename = 'transactions'
+            AND policyname IN ('transactions_insert', 'transactions_update')
+          ORDER BY policyname;
+
+          -- complete_planned_obligation() is SECURITY DEFINER with a fixed
+          -- search_path (matches rls_tests.sql 6.5, structurally
+          -- re-verified here); set_planned_obligation_status() likewise
+          -- after its CREATE OR REPLACE.
+          SELECT proname, prosecdef, proconfig
+          FROM pg_proc
+          WHERE proname IN ('complete_planned_obligation', 'set_planned_obligation_status')
+            AND pronamespace = 'public'::regnamespace
+          ORDER BY proname;
+          SQL
+
+      - name: Generate database types
+        run: supabase gen types typescript --local > /tmp/database.generated.ts
+
+      - name: Verify obligation_id + complete_planned_obligation are in generated types
+        shell: bash
+        run: |
+          grep -F "obligation_id" /tmp/database.generated.ts
+          grep -F "complete_planned_obligation" /tmp/database.generated.ts
+
+      - name: Verify prior migrations' tables/RPCs are still in generated types (regression)
+        shell: bash
+        run: |
+          grep -F "planned_obligations" /tmp/database.generated.ts
+          grep -F "transfer_id" /tmp/database.generated.ts
+          grep -F "matched_rule_id" /tmp/database.generated.ts
+          grep -F "create_transfer" /tmp/database.generated.ts
+          grep -F "set_planned_obligation_status" /tmp/database.generated.ts
+          grep -F "delete_planned_obligation" /tmp/database.generated.ts
+
+      - name: Diff generated types against the hand-authored types/database.ts
+        shell: bash
+        run: |
+          set +e
+          diff -u types/database.ts /tmp/database.generated.ts > /tmp/types.diff
+          echo "diff exit code: $?"
+          set -e
+          wc -l /tmp/types.diff
+          cat /tmp/types.diff
+
+      - name: Upload RLS output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-012-rls-output
+          path: rls-test-output.txt
+          if-no-files-found: ignore
+
+      - name: Upload generated types and diff (always, for local reconciliation)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-012-generated-types
+          path: |
+            /tmp/database.generated.ts
+            /tmp/types.diff
+          if-no-files-found: ignore
+
+  app-checks:
+    name: App-layer checks (tests / typecheck / lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          # Full history, not just the pushed commit: needed so
+          # `git diff --check origin/main...HEAD` below can find a real
+          # merge base instead of diffing against nothing.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch main for whitespace diff check
+        run: git fetch origin main
+
+      - name: Check for whitespace errors relative to main
+        run: git diff --check origin/main...HEAD
+
+      # See migration-007-db-validation.yml's identical step for why
+      # `timeout` bounds the whole process tree externally and pass/fail is
+      # judged from Jest's own printed summary line, not the wrapped
+      # process's exit code — this runner's npm/sh/node process tree does
+      # not reliably exit on its own after Jest itself finishes.
+      - name: Unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout --signal=TERM 90 npm test -- --runInBand 2>&1 | tee jest-output.txt || true
+          grep -qE "^Test Suites: [0-9]+ passed, [0-9]+ total$" jest-output.txt
+          grep -qE "^Tests:       [0-9]+ passed, [0-9]+ total$" jest-output.txt
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint

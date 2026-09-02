@@ -15,10 +15,14 @@ interface MonthlyTrendChartProps {
   points: MonthlyTrendPoint[]
 }
 
-const CHART_HEIGHT = 120
-const BAR_WIDTH = 10
+// Checkpoint 5 (Cash Flow + Budget + Accounts): 120/10/14 -> 140/12/16 —
+// Checkpoint 1's own finding was that this chart reads visually plainer/
+// smaller than the panel around it (a fixed-width SVG, not width-scaling,
+// so it never used the sidebar's own width regardless of container).
+const CHART_HEIGHT = 140
+const BAR_WIDTH = 12
 const BAR_GAP = 6
-const GROUP_GAP = 14
+const GROUP_GAP = 16
 
 export function MonthlyTrendChart({ points }: MonthlyTrendChartProps) {
   const { colorScheme: scheme } = useColorScheme()

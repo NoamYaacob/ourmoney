@@ -5,7 +5,16 @@ import '../features/budgets/lib/budgetThresholdSubscriber'
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityIndicator, I18nManager, Platform, View } from 'react-native'
+import { enableScreens } from 'react-native-screens'
 import * as Updates from 'expo-updates'
+import { useFonts } from 'expo-font'
+import {
+  Assistant_400Regular,
+  Assistant_500Medium,
+  Assistant_600SemiBold,
+  Assistant_700Bold,
+} from '@expo-google-fonts/assistant'
+import { Heebo_500Medium, Heebo_700Bold, Heebo_800ExtraBold } from '@expo-google-fonts/heebo'
 import { Slot } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -87,6 +96,49 @@ function SplashReadySignal({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+// Holds first paint until Heebo and Assistant are resident, so the product
+// never paints one frame in the system font and then reflows into its own
+// typography — the same cold-start flash ThemeGate below exists to prevent,
+// and far more visible here because every screen's figures change width.
+//
+// Only the seven weights the design system actually names are loaded (four
+// Assistant, three Heebo). Loading a family's full range would cost startup
+// time for faces no screen ever asks for.
+//
+// Deliberately proceeds on failure as well as on success: `useFonts` reports
+// an error if a face can't be decoded, and a household that can't read its
+// balance because a webfont 404'd is a far worse outcome than one reading it
+// in the system font. The Tailwind `fontFamily` stacks all end in
+// `system-ui, sans-serif` precisely so that degradation is a fallback rather
+// than a blank screen.
+function FontGate({ children }: { children: ReactNode }) {
+  const [loaded, error] = useFonts({
+    Assistant_400Regular,
+    Assistant_500Medium,
+    Assistant_600SemiBold,
+    Assistant_700Bold,
+    Heebo_500Medium,
+    Heebo_700Bold,
+    Heebo_800ExtraBold,
+  })
+
+  useEffect(() => {
+    if (error) {
+      console.warn('[fonts] falling back to the system font', error)
+    }
+  }, [error])
+
+  if (!loaded && !error) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface-light dark:bg-surface-dark">
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
+  return <>{children}</>
+}
+
 // Holds first paint until the persisted appearance preference has been read
 // and applied to NativeWind at least once (see
 // features/settings/hooks/useTheme.ts) — without this, the app would render
@@ -115,6 +167,79 @@ function ThemeGate({ children }: { children: ReactNode }) {
     </>
   )
 }
+
+// Sets the web document's direction before first paint.
+//
+// react-native-web's I18nManager is a no-op: `forceRTL()` returns without
+// doing anything and `getConstants().isRTL` is hard-coded `false` (see
+// node_modules/react-native-web/dist/exports/I18nManager/index.js). The
+// bootstrap below genuinely flips native layout and achieves nothing at all
+// on web, so without this the browser lays the whole app out left-to-right:
+// `flex-row` puts the first child on the LEFT, and every logical property —
+// `start`/`end`, `ms-`/`me-`, `ps-`/`pe-`, `border-s`, `text-start` —
+// silently resolves against LTR.
+//
+// The app had compensated for the row-order half of that with
+// `flex-row-reverse` at 83 call sites, which fixed the order while leaving
+// padding, margins, borders and alignment mirrored the wrong way. The design
+// system states the intended rule outright: the layout is
+// `flex-direction: row` under `dir="rtl"`, not `row-reverse`. Declaring the
+// direction once makes that true everywhere, and those compensations came
+// out in the same change that added this.
+//
+// Not done via Expo Router's `+html.tsx`: that file is only used under
+// static rendering (`web.output: "static"`), and this app ships as an SPA,
+// where Expo serves its own index.html template. Doing it here works under
+// both output modes and does not change the deployment shape.
+//
+// Runs at module scope rather than in an effect so it lands before React
+// paints anything — there is no LTR frame to flash.
+function applyWebDocumentDirection() {
+  if (Platform.OS !== 'web') return
+  if (typeof document === 'undefined') return
+
+  document.documentElement.setAttribute('dir', 'rtl')
+  // `lang` drives the browser's own font selection and hyphenation, and is
+  // what a screen reader uses to choose a Hebrew voice.
+  document.documentElement.setAttribute('lang', 'he')
+}
+
+applyWebDocumentDirection()
+
+// Fixes a real, previously-documented bug (docs/KNOWN_ISSUES.md's
+// "Inactive tab screens stay mounted and interactive on web" — found via
+// Playwright driving the app with real mouse clicks: after Home →
+// Transactions, `document.querySelectorAll` found two live copies of the
+// same row's text in the DOM at once, both `pointer-events: auto`).
+//
+// Root cause, traced to source: expo-router's vendored bottom-tabs view
+// (node_modules/expo-router/build/react-navigation/bottom-tabs/views/
+// ScreenFallback.js) only renders a tab's scene through react-native-
+// screens' own `Screen` component — the one that actually removes an
+// inactive scene from layout/hit-testing — when `Screens.screensEnabled()`
+// is true. Nothing in this app ever called `enableScreens()`, and
+// react-native-screens' own default (core.ts: `ENABLE_SCREENS =
+// isNativePlatformSupported`) is `false` on web, so every inactive tab fell
+// back to a plain `View` that BottomTabView.js only pushes behind the
+// active tab with `zIndex: -1` — visually hidden, but never removed from
+// hit-testing, and its queries/effects never stop running either.
+//
+// react-native-screens 4.26 (the version this app has installed) ships a
+// real web implementation (components/Screen.web.tsx): once `enabled` is
+// true, an inactive screen (`activityState === 0`, which
+// BottomTabView.js's own `detachInactiveScreens` already defaults to `true`
+// on web — see that file — independently of this call) renders with
+// `hidden={true}` and `style={{ display: 'none' }}`, which removes it from
+// layout, paint, AND hit-testing entirely on web — strictly stronger than a
+// `pointerEvents="none"` patch, and unlike one, requires no changes to any
+// vendored file. `enableScreens()` itself does nothing risky on native
+// (core.ts already defaults `ENABLE_SCREENS` to `true` there via
+// `isNativePlatformSupported`, so this call is a no-op re-affirmation on
+// iOS/Android) — it only changes behavior on web, which is exactly the
+// platform the bug was on. Called at module scope, before any screen ever
+// mounts, for the same "must land before first paint" reason
+// applyWebDocumentDirection() above does.
+enableScreens()
 
 // RTL bootstrap — see ARCHITECTURE.md § RTL Implementation.
 export default function RootLayout() {
@@ -167,9 +292,11 @@ export default function RootLayout() {
             captureException(error, { componentStack: info.componentStack ?? '' })
           }}
         >
-          <ThemeGate>
-            <AuthGate />
-          </ThemeGate>
+          <FontGate>
+            <ThemeGate>
+              <AuthGate />
+            </ThemeGate>
+          </FontGate>
         </AppErrorBoundary>
       </QueryClientProvider>
     </SafeAreaProvider>

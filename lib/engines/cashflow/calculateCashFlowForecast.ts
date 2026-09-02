@@ -8,11 +8,15 @@
 //   = startingBalanceAgorot
 //   + confirmed inflows through day N   (recurring income templates)
 //   − confirmed outflows through day N  (planned obligations + recurring
-//                                         expense templates)
+//                                         expense templates + not-yet-
+//                                         materialized instalment charges,
+//                                         migration 016/ADR-037)
 //
 // Reuses, does not reimplement:
 //   - forecastRecurringOccurrences (recurrence date math, both signs since
 //     that primitive was broadened for this engine — see its own header)
+//   - forecastInstallmentOccurrences (instalment date math + remainder
+//     handling — see its own header)
 //   - the same obligations/recurring filter shape calculateSafeToSpend.ts
 //     already established (status='upcoming', dueDate/occurrence <=
 //     horizon end; inactive/malformed recurring templates never forecast)
@@ -54,11 +58,13 @@
 // never change any dailyPoint or summary figure.
 
 import { forecastRecurringOccurrences, type RecurringForecastTemplate } from './forecastRecurringOccurrences'
+import { forecastInstallmentOccurrences, type InstallmentPlanForecastTemplate } from './forecastInstallmentOccurrences'
 import { addDays } from './horizonRange'
 import { isPastDue } from '@/features/obligations/lib/upcomingObligations'
 import type { PlannedObligationForecastInput } from './calculateSafeToSpend'
+import type { CreditCardCycleReservationItem } from './creditCardCycleReservation'
 
-export type CashFlowEventSource = 'planned_obligation' | 'recurring'
+export type CashFlowEventSource = 'planned_obligation' | 'recurring' | 'installment_plan' | 'credit_card_cycle'
 export type CashFlowEventDirection = 'inflow' | 'outflow'
 
 export interface CashFlowForecastEvent {
@@ -91,6 +97,12 @@ export interface CashFlowForecastInput {
   endDate: string
   obligations: readonly PlannedObligationForecastInput[]
   recurringTemplates: readonly RecurringForecastTemplate[]
+  installmentPlans: readonly InstallmentPlanForecastTemplate[]
+  // RRR P1 finding #7 — same already-resolved reservation items
+  // calculateSafeToSpend.ts's own SafeToSpendInput.creditCardCycleItems
+  // consumes; see that file's header for why they're pre-computed rather
+  // than re-derived here.
+  creditCardCycleItems: readonly CreditCardCycleReservationItem[]
 }
 
 export interface CashFlowForecastResult {
@@ -151,10 +163,56 @@ function buildRecurringEvents(
   })
 }
 
+function buildInstallmentEvents(
+  installmentPlans: readonly InstallmentPlanForecastTemplate[],
+  startDate: string,
+  endDate: string
+): CashFlowForecastEvent[] {
+  return forecastInstallmentOccurrences(installmentPlans, endDate).map((occurrence) => {
+    const pastDue = isPastDue(occurrence.date, startDate)
+    return {
+      id: `installment_plan:${occurrence.installmentPlanId}:${occurrence.date}`,
+      date: pastDue ? startDate : occurrence.date,
+      // Always negative on the forecaster's own contract (an instalment is
+      // always an expense) — magnitude only, direction is always outflow.
+      amountAgorot: Math.abs(occurrence.amountAgorot),
+      direction: 'outflow' as const,
+      source: 'installment_plan' as const,
+      sourceId: occurrence.installmentPlanId,
+      title: occurrence.description,
+      pastDue,
+    }
+  })
+}
+
+function buildCreditCardCycleEvents(
+  items: readonly CreditCardCycleReservationItem[],
+  startDate: string,
+  endDate: string
+): CashFlowForecastEvent[] {
+  return items
+    .filter((item) => item.date <= endDate)
+    .map((item) => {
+      const pastDue = isPastDue(item.date, startDate)
+      return {
+        id: `credit_card_cycle:${item.accountId}:${item.date}`,
+        date: pastDue ? startDate : item.date,
+        amountAgorot: item.amountAgorot,
+        direction: 'outflow' as const,
+        source: 'credit_card_cycle' as const,
+        sourceId: item.accountId,
+        title: item.description,
+        pastDue,
+      }
+    })
+}
+
 export function calculateCashFlowForecast(input: CashFlowForecastInput): CashFlowForecastResult {
   const events = [
     ...buildObligationEvents(input.obligations, input.startDate, input.endDate),
     ...buildRecurringEvents(input.recurringTemplates, input.startDate, input.endDate),
+    ...buildInstallmentEvents(input.installmentPlans, input.startDate, input.endDate),
+    ...buildCreditCardCycleEvents(input.creditCardCycleItems, input.startDate, input.endDate),
   ].sort((a, b) => a.date.localeCompare(b.date) || a.sourceId.localeCompare(b.sourceId))
 
   // Group by (already-clamped) date first — the same-day aggregation
