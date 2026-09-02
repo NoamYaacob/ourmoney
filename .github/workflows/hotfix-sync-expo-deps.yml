@@ -17,29 +17,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: hotfix/ci-release-gates
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Align packages to Expo SDK 57
-        run: |
-          npm install \
-            expo@~57.0.19 \
-            expo-constants@~57.0.17 \
-            expo-dev-client@~57.0.18 \
-            expo-file-system@~57.0.6 \
-            expo-font@~57.0.3 \
-            expo-linking@~57.0.9 \
-            expo-notifications@~57.0.16 \
-            expo-router@~57.0.18 \
-            expo-secure-store@~57.0.3 \
-            expo-splash-screen@~57.0.8 \
-            expo-updates@~57.0.21 \
-            react-native@0.86.3 \
-            @react-native/jest-preset@0.86.3 \
-            eslint-config-expo@~57.0.2 \
-            jest-expo@~57.0.5
+      - name: Generate lockfile from the aligned SDK 57 package set
+        run: npm install
       - name: Verify Expo Doctor
         run: npx expo-doctor
       - name: Commit generated dependency alignment
@@ -52,4 +35,6 @@ jobs:
             exit 0
           fi
           git commit -m "fix(ci): align Expo SDK 57 patch versions"
+          git fetch origin hotfix/ci-release-gates
+          git rebase origin/hotfix/ci-release-gates
           git push origin HEAD:hotfix/ci-release-gates
